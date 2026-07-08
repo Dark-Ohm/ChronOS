@@ -102,10 +102,17 @@ pub fn acquire_at(path: &Path, payload: &str) -> AcquireResult {
     })
 }
 
+fn get_user_id() -> String {
+    std::env::var("UID")
+        .or_else(|_| std::env::var("SUDO_UID"))
+        .or_else(|_| std::env::var("USER"))
+        .unwrap_or_else(|_| "unknown".to_string())
+}
+
 pub fn socket_path_in(runtime_dir: Option<&str>) -> PathBuf {
     match runtime_dir {
         Some(dir) => PathBuf::from(dir).join("chronos.sock"),
-        None => PathBuf::from("/tmp").join(format!("chronos-{}.sock", std::process::id())),
+        None => PathBuf::from("/tmp").join(format!("chronos-{}.sock", get_user_id())),
     }
 }
 
