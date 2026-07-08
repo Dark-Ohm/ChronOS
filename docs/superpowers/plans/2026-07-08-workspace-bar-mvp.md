@@ -60,8 +60,8 @@ members = ["crates/app"]
 resolver = "3"
 
 [workspace.dependencies]
-gpui = { path = "../SOURCE/gpui/gpui-ce-main/crates/gpui" }
-gpui_platform = { path = "../SOURCE/gpui/gpui-ce-main/crates/gpui_platform" }
+gpui = { path = "/home/neo/Projects/SOURCE/gpui/gpui-ce-main/crates/gpui" }
+gpui_platform = { path = "/home/neo/Projects/SOURCE/gpui/gpui-ce-main/crates/gpui_platform" }
 anyhow = "1.0.100"
 tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros", "time", "net"] }
 tracing = { version = "0.1.41", features = ["log"] }
@@ -128,7 +128,7 @@ async fn main() {
 Run: `cargo build --manifest-path Cargo.toml`
 Expected: compiles successfully (first build pulls in `gpui`/`gpui_platform` from the local `SOURCE/gpui/gpui-ce-main` checkout — this will take a while, it's a large crate graph). No "believes it's in a workspace" or path-resolution errors.
 
-If the path is wrong, `cargo build` fails immediately with `failed to load source for dependency 'gpui'` — fix the relative path in the workspace root `Cargo.toml` (it must resolve to `/home/neo/Projects/SOURCE/gpui/gpui-ce-main/crates/gpui` from `/home/neo/Projects/chronos/Cargo.toml`).
+If the path is wrong, `cargo build` fails immediately with `failed to load source for dependency 'gpui'` — the path is absolute (`/home/neo/Projects/SOURCE/gpui/gpui-ce-main/crates/gpui`) specifically so it resolves the same whether the workspace root is `/home/neo/Projects/chronos` or a worktree checkout under `.claude/worktrees/...`. Do not change it to a relative path.
 
 - [ ] **Step 5: Run and verify clean startup/shutdown**
 
