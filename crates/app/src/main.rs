@@ -22,6 +22,7 @@ async fn main() {
     app.run(move |cx| {
         tracing::info!("GPUI application context ready");
         subscriber.start(cx);
+        bar::init(cx);
     });
 
     tracing::info!("Chronos exited");
