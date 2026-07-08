@@ -133,7 +133,7 @@ impl BarWidgetRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::div;
+    use gpui::{div, IntoElement};
 
     struct FakeWidget {
         section: BarSection,
