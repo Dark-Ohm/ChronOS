@@ -8,7 +8,9 @@ Stack: Rust + GPUI (gpui-ce) + mLua-luauJIT
 Note: Luau is a typed dialect of Lua (developed by Roblox), not classic Lua.
 The `crates/luau` runtime uses Luau via mlua — type checking at plugin load
 acts as an extra shield at the boundary (fewer runtime VM crashes, cheaper
-error budget). This is preferred over classic Lua for a sandboxed shell.
+error budget). mlua accepts BOTH classic Lua and Luau with no restriction, so
+plugin authors may use either; Luau is the recommended default for its type
+safety, but it is not mandated.
 
 ## 1. Goal
 
