@@ -140,7 +140,25 @@ must not kill the shell. Use `panic = "unwind"` or rigorous `expect` audit.
 - **LuaU plugins**: recreate VM instance, re-run `init.luau`, re-bind hooks. State
   in Rust survives.
 
-## 10. What we reuse from gpui-shell (reference)
+## 10. Runtime strategy (tokio + GPUI executors)
+
+Two runtimes, no conflict:
+
+1. **GPUI main thread** — `App::background_executor()` / `cx.spawn()` for UI
+   futures (widget timers, animations, hot-reload). Single-threaded, no tokio.
+2. **Services layer** — dedicated `tokio::runtime::Runtime` (multi-thread) in
+   a separate OS thread. All D-Bus (zbus), Hyprland IPC, upower, network,
+   bluetooth run here. They communicate with UI via `futures_signals::Mutable`
+   + `watch()` bridge (gpui-shell `state.rs:143-164`), NOT callbacks.
+
+This matches gpui-shell pattern exactly: `#[tokio::main]` in main, services
+spawn their own `current_thread` tokio runtimes in `thread::spawn`. GPUI
+executor stays UI-only.
+
+`panic = "unwind"` (not `abort`) — a panic in a service thread must not kill
+the shell. Services use `Result`/`expect` rigorously.
+
+## 11. What we reuse from gpui-shell (reference)
 
 - `window_options()` layer-shell matrix (`bar.rs:168-218`) — copy 1:1.
 - Multi-monitor bar loop (`bar.rs:236-252`).
@@ -150,17 +168,17 @@ must not kill the shell. Use `panic = "unwind"` or rigorous `expect` audit.
 - TOML config + `FileWatcher` hot-reload (`config/mod.rs`).
 - D-Bus service modules (network/upower/bluetooth/tray/notification) — near-ready.
 
-## 11. What we do NOT reuse / fix
+## 12. What we do NOT reuse / fix
 
 - Static `enum Widget` / `all_views()` → runtime registry (§6).
 - `panic = "abort"` → `unwind` (§7).
 - `gpui = zed/main` (no pin) → `gpui-ce` pinned rev (§2).
-- No LuaU layer → add `crates/luau` + `crates/plugins` (§3, §5).
+- No Luau layer → add `crates/luau` + `crates/plugins` (§3, §5).
 - Niri backend incomplete in gpui-shell (special workspaces bail) — acceptable,
   Hyprland is primary target.
 - Audio tied to PulseAudio without graceful degradation — revisit if PipeWire-only.
 
-## 12. Out of scope (YAGNI)
+## 13. Out of scope (YAGNI)
 
 - Niri-first support (Hyprland primary).
 - Plugin marketplace / signing.
