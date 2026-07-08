@@ -25,6 +25,8 @@ impl Default for BarWidgetRegistry {
 impl Global for BarWidgetRegistry {}
 
 impl BarWidgetRegistry {
+    // Widget-registration API; not yet called until a widget registers itself.
+    #[allow(dead_code)]
     pub fn register(&mut self, widget: Box<dyn BarWidget>) {
         self.widgets.push(widget);
     }

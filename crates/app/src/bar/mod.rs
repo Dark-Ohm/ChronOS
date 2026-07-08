@@ -5,13 +5,13 @@ mod widget;
 use std::time::Duration;
 
 use gpui::{
-    App, AnyElement, Bounds, Context, DisplayId, Global, Render, Size, Window,
+    App, AnyElement, Bounds, Context, DisplayId, Render, Size, Window,
     WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, layer_shell::*,
     point, prelude::*, px, rgb,
 };
 
 use sections::{BarSection, BAR_COLOR, BAR_HEIGHT};
-use widget::{BarWidget, BarWidgetRegistry};
+use widget::BarWidgetRegistry;
 
 struct Bar;
 
