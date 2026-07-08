@@ -1,0 +1,16 @@
+[package]
+name = "chronos"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "chronos"
+path = "src/main.rs"
+
+[dependencies]
+gpui.workspace = true
+gpui_platform.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

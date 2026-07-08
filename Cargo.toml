@@ -1,0 +1,21 @@
+[workspace]
+members = ["crates/app"]
+resolver = "3"
+
+[workspace.dependencies]
+gpui = { path = "/home/neo/Projects/SOURCE/gpui/gpui-ce-main/crates/gpui" }
+gpui_platform = { path = "/home/neo/Projects/SOURCE/gpui/gpui-ce-main/crates/gpui_platform" }
+anyhow = "1.0.100"
+tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros", "time", "net"] }
+tracing = { version = "0.1.41", features = ["log"] }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "unwind"
+opt-level = "z"
+strip = true
+debug = false
+debug-assertions = false
+overflow-checks = false
