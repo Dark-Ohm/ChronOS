@@ -12,3 +12,6 @@ reference/
 
 # Claude Code project state (settings, worktrees)
 .claude/
+
+# Subagent-driven-development scratch (progress ledger, task briefs/reports)
+.superpowers/
