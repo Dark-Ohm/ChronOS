@@ -1,3 +1,4 @@
+mod bar;
 mod ipc;
 
 use gpui_platform::application;
