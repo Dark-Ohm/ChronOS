@@ -1,0 +1,107 @@
+# Chronos — Decisions Log
+
+Append-only. Each entry: what was considered, what was rejected and why, what
+was decided. Full rationale for the currently-approved architecture lives in
+`ARCHITECTURE.md`; this file is the history, including things ARCHITECTURE.md
+no longer needs to spell out because they're settled.
+
+---
+
+## 2026-07-08 — GPUI source: gpui-ce
+
+- Considered: `zed/main` (upstream Zed GPUI), `crates.io` (`gpui` + `gpui-component`),
+  local `gpui-ce` fork.
+- Rejected `zed/main`: Zed issue #48501 (layer-shell window ignores target
+  monitor) is still open there — breaks multi-monitor bar placement.
+- Rejected `crates.io`: `gpui-ce` published there is ~6 months stale (v0.3.3,
+  no Wayland fixes); `gpui-component` there (v0.5.1) requires `gpui ^0.2.2`,
+  10 versions behind the local checkout (`0.58.0`). The two would not form a
+  consistent pair.
+- Decided: local `gpui-ce` checkout, pinned rev `20340e14874a3b55122e5cb2aa0d023874e08b2d`
+  (2026-07-06). Verified fix in source at
+  `gpui-ce-main/crates/gpui_linux/src/linux/wayland/client.rs:827-834`. Also
+  gained `input_region` + `exclusive_zone` (PR #82), required for dock/bar.
+  Path-dep now, migrate to `git = "...", rev = "..."` once gpui-ce-main is a
+  git repo. Upstream sync on-demand only, not a maintained relationship.
+
+## 2026-07-08 — gpui-component: fork, not dependency
+
+- Considered: depend on `gpui-component` as-is (crates.io or git), fork and
+  trim into `crates/ui`.
+- Rejected as-is: pulls tree-sitter + all grammars, WebView (wry), Markdown —
+  none needed, all add build weight and attack surface for a shell that
+  doesn't need a text editor or embedded browser.
+- Decided: fork `longbridge/gpui-component` at `49d1bef84cb374c42d82b2e8d7e8b0d685d9ed48`
+  into `crates/ui`, strip tree-sitter/wry/Markdown, keep Button/Input/List/Slider/Switch,
+  rewrite internal `gpui` dep to point at gpui-ce. Upstream not tracked, sync
+  only on demand.
+
+## 2026-07-08 — Module registry: runtime, not static enum
+
+- Considered: gpui-shell's pattern (`enum Widget` + `match` in `registry.rs`,
+  `all_views()` for launcher), a runtime `HashMap`/`Vec` registry.
+- Rejected static enum: adding a module means editing core and recompiling —
+  directly conflicts with the plugin-without-core-rebuild requirement.
+- Decided: `HashMap<String, Box<dyn BarWidget>>` + `Vec<Box<dyn LauncherView>>`,
+  populated at runtime via `chronos.bar:register(...)` from LuaU. Traits made
+  object-safe (`dyn`).
+
+## 2026-07-08 — Panic strategy: unwind, not abort
+
+- Considered: gpui-shell's `panic = "abort"`, switch to `panic = "unwind"`.
+- Rejected abort: an `unwrap()` in a D-Bus listener thread or a plugin VM
+  callback would kill the entire shell — unacceptable for a long-running
+  desktop process with untrusted plugin code in the loop.
+- Decided: `panic = "unwind"`. Services and plugin host still expected to use
+  `Result`/`expect` rigorously — unwind is a backstop, not a substitute for
+  error handling.
+
+## 2026-07-08 — Frame/LuaU budget: 144 FPS, not 60 FPS
+
+- Considered: an earlier draft's "16.7 ms / 60 fps" call budget for LuaU
+  event callbacks.
+- Rejected: target hardware (RTX 3070) and stated goal are 144 FPS; 60 fps
+  budget was leftover from an earlier, less specific draft and doesn't match
+  the actual target refresh rate.
+- Decided: synchronous LuaU call budget < 4 ms, against a 144 Hz frame budget
+  of 6.94 ms. LuaU never runs in the render path regardless — only on events
+  (workspace/focus/tick) and config load.
+
+## 2026-07-08 — LuaU vs classic Lua: recommended, not mandated
+
+- Considered: mandate Luau only, allow classic Lua + Luau both.
+- Context: initial phrasing (`AGENTS.md`, early spec draft) was ambiguous
+  about whether "LuaU" meant the plugin layer strictly required Roblox's
+  typed Luau dialect, or just used it as the primary/expected language.
+  Commits `a390280` and `c4a0ea4` clarified this after review.
+- Decided: `mlua` accepts both classic Lua and Luau with no code-level
+  restriction — nothing stops a plugin author using either. Luau is the
+  recommended default (type checking at load time is an extra shield at the
+  plugin boundary, catches more errors before the VM runs), but it is not
+  enforced or mandated.
+
+## 2026-07-08 — Runtime split: tokio (services) + GPUI executor (UI)
+
+- Considered: single tokio runtime driving everything including UI, GPUI
+  executor only, two separate runtimes bridged via signals.
+- Rejected single-runtime-for-everything: GPUI's executor model expects to
+  own the UI thread; mixing tokio driving UI code risks executor conflicts
+  and defeats GPUI's own scheduling.
+- Decided: GPUI main thread owns UI futures via `cx.spawn()` (single-threaded,
+  no tokio). A dedicated multi-thread `tokio::runtime::Runtime` on its own OS
+  thread runs all D-Bus (zbus), Hyprland/Niri IPC, upower, network, bluetooth.
+  Bridge is `futures_signals::Mutable` + `watch()` (gpui-shell `state.rs:143-164`),
+  not callbacks. Matches gpui-shell's existing pattern.
+
+## 2026-07-08 — Scope cuts (YAGNI for MVP)
+
+- Considered vs. rejected for MVP:
+  - Niri-first support — rejected, Hyprland is the stated primary target;
+    Niri backend stays incomplete like in gpui-shell, acceptable for now.
+  - Plugin marketplace / signing — rejected, no distribution story needed yet.
+  - Remote/network plugin loading — rejected, local files only; no reason to
+    open a network attack surface for plugin loading at this stage.
+  - Custom shaders (`runtime_shaders`) — rejected, not needed to hit the
+    144 FPS / visual-polish goals for MVP.
+- Decided: all four explicitly out of scope, revisit only if a concrete need
+  appears post-MVP.

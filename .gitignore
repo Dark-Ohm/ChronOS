@@ -1,0 +1,14 @@
+# Rust / GPUI build output
+target/
+
+# Nix build outputs
+result*
+
+# direnv
+.direnv/
+
+# Local reference checkouts (study material, not a dependency)
+reference/
+
+# Claude Code project state (settings, worktrees)
+.claude/
