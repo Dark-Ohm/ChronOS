@@ -53,12 +53,12 @@ pub trait BarWidget: 'static {
     /// bar render widgets through a shared `&dyn BarWidget` borrow from the
     /// immutable registry. Stateful reactivity later uses interior mutability
     /// (an `Entity`, `Mutex`, or a global `AppState`), not `&mut self`.
-    fn render(&self, window: &mut Window, cx: &mut App) -> AnyElement;
+    fn render(&self, window: &mut Window, cx: &App) -> AnyElement;
 }
 ```
 
 Rationale:
-- `&self` + `AnyElement` (a `Sized` type) → object-safe. `Context<Self>` is excluded on purpose; using `&mut App` for global access keeps dispatch dynamic. `&self` (not `&mut self`) is required so the bar can call `render` through a shared `&dyn BarWidget` borrowed from the immutable registry during `Bar::render`.
+- `&self` + `AnyElement` (a `Sized` type) → object-safe. `Context<Self>` is excluded on purpose; render reads globals through `&App` (immutable), which keeps dispatch dynamic and avoids a borrow conflict: `Bar::render` already holds an immutable `cx.global()` borrow of the registry, so widget `render` must take `&App`, not `&mut App`. `&self` (not `&mut self`) is required so the bar can call `render` through a shared `&dyn BarWidget` borrowed from the immutable registry during `Bar::render`.
 - Reactive widgets later hold an `Entity` or read a global `AppState` internally; the contract does not require that today.
 
 ## 5. Registry (runtime, global)
