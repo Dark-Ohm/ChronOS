@@ -1,6 +1,8 @@
 use gpui_platform::application;
 use tracing_subscriber::EnvFilter;
 
+mod ipc;
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
