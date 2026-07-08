@@ -142,3 +142,26 @@ no longer needs to spell out because they're settled.
   for this project) and were not affected by this bug — they defer or queue
   `on_finish_launching` differently and don't share calloop's reset-on-entry
   semantics.
+
+## 2026-07-08 — IPC `/tmp` fallback: per-user id, not PID
+
+- Found during the final whole-branch review of the Workspace + Bar MVP
+  plan: `ipc/service.rs`'s `socket_path_in(None)` (used only when
+  `$XDG_RUNTIME_DIR` is unset) embedded `std::process::id()` in the socket
+  path. Every process has a different PID, so the fallback path differs on
+  every invocation — a second instance could never find the first's socket,
+  silently defeating single-instance detection in that branch.
+- Root cause: transcription error while adapting `gpui-shell`'s
+  `ipc/service.rs` for this plan. The reference implementation used a
+  per-*user* identifier (`UID` / `SUDO_UID` / `USER` env vars) for exactly
+  this reason — stable across separate invocations by the same user, unlike
+  a PID. The plan text substituted `std::process::id()` by mistake.
+- Considered: fix now vs. leave as tracked backlog (the bug is dormant —
+  Hyprland under a systemd user session always sets `XDG_RUNTIME_DIR`, so
+  the buggy branch is not reachable in normal operation).
+- Decided: fix now. Correctness bugs in code paths meant to provide
+  single-instance guarantees shouldn't ship dormant, even if today's target
+  platform happens not to trigger them — a future headless/container/minimal
+  environment could unset `XDG_RUNTIME_DIR` and hit this silently. Replaced
+  with the same `UID`/`SUDO_UID`/`USER` fallback chain as the `gpui-shell`
+  reference. Plan doc corrected to match.
