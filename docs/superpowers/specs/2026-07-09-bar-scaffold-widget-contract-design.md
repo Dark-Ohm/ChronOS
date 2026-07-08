@@ -49,14 +49,16 @@ pub trait BarWidget: 'static {
     fn section(&self) -> BarSection { BarSection::Left }
 
     /// Produce the widget's element. Called every frame.
-    /// `&mut self` (not `Context<Self>`) keeps the trait object-safe
-    /// and avoids the `Self`-parameter problem that blocks `dyn`.
-    fn render(&mut self, window: &mut Window, cx: &mut App) -> AnyElement;
+    /// `&self` (not `Context<Self>`) keeps the trait object-safe and lets the
+    /// bar render widgets through a shared `&dyn BarWidget` borrow from the
+    /// immutable registry. Stateful reactivity later uses interior mutability
+    /// (an `Entity`, `Mutex`, or a global `AppState`), not `&mut self`.
+    fn render(&self, window: &mut Window, cx: &mut App) -> AnyElement;
 }
 ```
 
 Rationale:
-- `&mut self` + `AnyElement` (a `Sized` type) → object-safe. `Context<Self>` is excluded on purpose; using `&mut App` for global access keeps dispatch dynamic.
+- `&self` + `AnyElement` (a `Sized` type) → object-safe. `Context<Self>` is excluded on purpose; using `&mut App` for global access keeps dispatch dynamic. `&self` (not `&mut self`) is required so the bar can call `render` through a shared `&dyn BarWidget` borrowed from the immutable registry during `Bar::render`.
 - Reactive widgets later hold an `Entity` or read a global `AppState` internally; the contract does not require that today.
 
 ## 5. Registry (runtime, global)
@@ -82,9 +84,9 @@ impl Global for BarWidgetRegistry {}
 
 `Bar::render` reads `cx.global::<BarWidgetRegistry>()`, lays out a horizontal flex:
 
-- `Left` — flush-left.
-- `Center` — centered (absolute-center or middle flex child).
-- `Right` — flush-right.
+- `Left` — `flex-1` container, content `justify_start` (flush-left).
+- `Center` — `flex-none` container, content centered (middle flex child).
+- `Right` — `flex-1` container, content `justify_end` (flush-right).
 
 Implementation sketch:
 
