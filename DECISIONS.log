@@ -105,3 +105,40 @@ no longer needs to spell out because they're settled.
     144 FPS / visual-polish goals for MVP.
 - Decided: all four explicitly out of scope, revisit only if a concrete need
   appears post-MVP.
+
+## 2026-07-08 — gpui-ce Linux bug: quit() before any window hangs forever
+
+- Found while building the Workspace + Bar MVP smoke test (Task 1): calling
+  `cx.quit()` from `on_finish_launching` with zero windows opened hung the
+  process forever on Linux (Wayland and X11; both share `LinuxPlatform`).
+- Root cause (verified in gpui-ce source): `LinuxPlatform::run()` called
+  `on_finish_launching()` synchronously *before* starting the calloop event
+  loop. `calloop::EventLoop::run()` unconditionally resets its internal stop
+  flag to `false` on entry, so the early `cx.quit()` -> `signal.stop()` call
+  was wiped before the loop ever saw it. `quit()` also never called
+  `signal.wakeup()`, so even a later `stop()` couldn't interrupt an
+  indefinite `poll(None)`.
+- Considered: work around it in application code (never call `cx.quit()`
+  with zero windows, let the process run forever and rely on `kill`); patch
+  `gpui-ce` directly.
+- Rejected the app-code workaround: real fix was well-scoped once traced
+  (each backend already stores a calloop `LoopHandle` — no new plumbing
+  needed at the field level), and leaving it broken would resurface the
+  moment any future graceful-shutdown path calls `cx.quit()` while the loop
+  is idle.
+- Decided: patched `gpui-ce` directly at
+  `/home/neo/Projects/SOURCE/gpui/gpui-ce-main` (commit `6a7b386`, on top of
+  baseline commit `352c9f2` — this checkout had no git history before, so a
+  git repo was initialized there first as a rollback safety net). Fix: new
+  `LinuxClient::insert_idle()` (implemented in all three backends —
+  wayland, x11, headless — via their existing stored `LoopHandle`) defers
+  `on_finish_launching` to run from inside the loop's first idle-dispatch
+  cycle instead of before the loop starts, plus an explicit
+  `signal.wakeup()` in both `run()` (to unblock the first `poll()`) and
+  `quit()` (so a later `stop()` while the loop is genuinely idle isn't
+  stranded either). Verified: `app.run(|cx| cx.quit())` with no window
+  opened now exits with code 0 instead of hanging.
+- Scope note: macOS/Windows platform backends are untouched (not a target
+  for this project) and were not affected by this bug — they defer or queue
+  `on_finish_launching` differently and don't share calloop's reset-on-entry
+  semantics.
