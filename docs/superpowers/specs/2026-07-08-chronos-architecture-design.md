@@ -3,7 +3,12 @@
 > Status: approved design (brainstorming phase complete)
 > Date: 2026-07-08
 > Scope: desktop shell for Hyprland 0.55.4+ on CachyOS (RTX 3070, i5 12400F, 64GB DDR4)
-> Stack: Rust + GPUI (gpui-ce) + mLua-luauJIT
+Stack: Rust + GPUI (gpui-ce) + mLua-luauJIT
+
+Note: Luau is a typed dialect of Lua (developed by Roblox), not classic Lua.
+The `crates/luau` runtime uses Luau via mlua — type checking at plugin load
+acts as an extra shield at the boundary (fewer runtime VM crashes, cheaper
+error budget). This is preferred over classic Lua for a sandboxed shell.
 
 ## 1. Goal
 
@@ -51,7 +56,8 @@ crates/
 ```
 
 `luau` and `plugins` are separate crates = physical sandbox boundary. A plugin
-panic cannot take down `services` or `app`.
+panic cannot take down `services` or `app`. The Luau VM is per-plugin, typed,
+and isolated (see §5).
 
 ## 4. Layer-shell windowing (from gpui-shell reference)
 
