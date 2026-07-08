@@ -67,7 +67,7 @@ pub const BAR_COLOR: u32 = 0x1e1e2e;
 
 - [ ] **Step 2: Build to confirm it compiles in isolation**
 
-Run: `cargo build -p chronos-app 2>&1 | tail -20`
+Run: `cargo build -p chronos 2>&1 | tail -20`
 Expected: compiles (may warn about unused `mod` if not yet wired — that is fixed in Task 3). If `crates/app` is the default member, `cargo build` works too.
 
 - [ ] **Step 3: Commit**
@@ -184,8 +184,8 @@ mod tests {
 
 - [ ] **Step 2: Run the test to verify it compiles & passes**
 
-Run: `cargo test -p chronos-app widget 2>&1 | tail -30`
-Expected: PASS (2 tests). If `bar` module is not yet wired into `main.rs`/`mod.rs`, the file may not be compiled — that is wired in Task 3; for now compile-check with `cargo build -p chronos-app` and the test will run once Task 3 connects the module. If you need to run the test before Task 3, temporarily add `mod widget; mod sections;` to `crates/app/src/main.rs` under a `#[cfg(test)]` or just proceed to Task 3 and run there.
+Run: `cargo test -p chronos widget 2>&1 | tail -30`
+Expected: PASS (2 tests). If `bar` module is not yet wired into `main.rs`/`mod.rs`, the file may not be compiled — that is wired in Task 3; for now compile-check with `cargo build -p chronos` and the test will run once Task 3 connects the module. If you need to run the test before Task 3, temporarily add `mod widget; mod sections;` to `crates/app/src/main.rs` under a `#[cfg(test)]` or just proceed to Task 3 and run there.
 
 - [ ] **Step 3: Commit**
 
@@ -206,7 +206,15 @@ git commit -m "feat(bar): add object-safe BarWidget trait and global registry"
 - Consumes: `BarSection`, `BAR_HEIGHT`, `BAR_COLOR` (Task 1); `BarWidget`, `BarWidgetRegistry` (Task 2).
 - Produces: `pub fn init(cx: &mut App)` (signature unchanged from original `bar.rs`), `struct Bar` implementing `Render`.
 
-- [ ] **Step 1: Write `bar/mod.rs`**
+- [ ] **Step 1: Delete legacy `crates/app/src/bar.rs`**
+
+Rust cannot resolve `mod bar;` to both `bar.rs` and `bar/mod.rs` — having both is a compile error. Remove the old file before creating the module dir.
+
+Run: `git rm crates/app/src/bar.rs`
+
+(The deletion was originally scheduled for Task 4; it must happen here so `bar/mod.rs` can exist. Task 4 becomes verification-only.)
+
+- [ ] **Step 2: Write `bar/mod.rs`**
 
 ```rust
 // crates/app/src/bar/mod.rs
@@ -351,9 +359,9 @@ pub fn init(cx: &mut App) {
 
 Note: `cx.global()` in `render` borrows `cx` immutably; `w.render(window, cx)` takes `&App` (immutable), so the two immutable borrows coexist — no borrow conflict. `window` is passed through as `&mut Window`, which is fine across sequential widget calls.
 
-- [ ] **Step 2: Run the registry unit tests now that the module is wired**
+- [ ] **Step 3: Run the registry unit tests now that the module is wired**
 
-Run: `cargo test -p chronos-app widget 2>&1 | tail -30`
+Run: `cargo test -p chronos widget 2>&1 | tail -30`
 Expected: PASS (2 tests from Task 2).
 
 - [ ] **Step 3: Commit**
@@ -373,25 +381,26 @@ git commit -m "feat(bar): render 3 sections from global registry, bootstrap in i
 **Interfaces:**
 - Consumes: everything from Tasks 1–3. No new public API.
 
-- [ ] **Step 1: Delete the old single-file bar module**
+- [ ] **Step 1: Confirm legacy `bar.rs` is gone**
 
-Run: `git rm crates/app/src/bar.rs`
+The old `crates/app/src/bar.rs` was deleted in Task 3 (Rust forbids `bar.rs` and `bar/mod.rs` coexisting). Verify it is absent:
 
-(Rust resolves `mod bar;` in `main.rs` to `crates/app/src/bar/mod.rs` once `bar.rs` is gone. Having both present is a compile error, so this deletion is mandatory.)
+Run: `ls crates/app/src/bar.rs 2>&1 || echo "bar.rs absent (good)"`
+Expected: `bar.rs absent (good)`.
 
 - [ ] **Step 2: Full build**
 
-Run: `cargo build -p chronos-app 2>&1 | tail -30`
+Run: `cargo build -p chronos 2>&1 | tail -30`
 Expected: compiles with no errors. Warnings allowed.
 
 - [ ] **Step 3: Full test run**
 
-Run: `cargo test -p chronos-app 2>&1 | tail -30`
+Run: `cargo test -p chronos 2>&1 | tail -30`
 Expected: all tests PASS (the 2 registry tests). No panics.
 
 - [ ] **Step 4: Sanity-check the bar still opens (optional, needs Wayland display)**
 
-Run: `cargo run -p chronos-app` (under Hyprland). Expected: a plain bar strip on every monitor, no crash. If no display is available, rely on the build + test steps above.
+Run: `cargo run -p chronos` (under Hyprland). Expected: a plain bar strip on every monitor, no crash. If no display is available, rely on the build + test steps above.
 
 - [ ] **Step 5: Commit**
 
