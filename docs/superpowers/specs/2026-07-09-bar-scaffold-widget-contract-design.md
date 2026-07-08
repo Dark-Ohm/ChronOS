@@ -125,8 +125,8 @@ Constants `BAR_HEIGHT`, `BAR_COLOR` move into `sections.rs` as defaults (no conf
 
 ## 9. Testing
 
-- Unit test (`crates/app/src/bar/widget.rs` `#[cfg(test)]`): within `App::new()`, register a fake `BarWidget` (returns a fixed `div()`), assert `section()` default and that `render()` yields a non-empty `AnyElement`.
-- Build check: `cargo build` in worktree must pass (baseline).
+- Unit test (`crates/app/src/bar/widget.rs` `#[cfg(test)]`): register fake `BarWidget`s and assert `widgets_for(section)` filters correctly by `BarSection`, that the default `section()` is `Left`, and that `render()` produces an `AnyElement` (real filtering/default-section behavior, not mocks). The registry holds an empty `Vec` by default (no panic on an empty bar).
+- Build check: `cargo build -p chronos` in worktree must pass with 0 warnings (baseline); `cargo test -p chronos` must pass (the 2 registry tests).
 
 ## 10. Out of scope (YAGNI)
 

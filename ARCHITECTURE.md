@@ -107,7 +107,14 @@ launcher views in `all_views()` — adding a module requires editing core.
 Chronos uses a runtime registry instead:
 
 - `crates/luau` exposes `chronos.bar:register(kind, render_fn, config)` etc.
-- Rust side holds `HashMap<String, Box<dyn BarWidget>>` (and `Vec<Box<dyn LauncherView>>`).
+- Rust side holds the widget collection as a **runtime registry**. The bar
+  scaffold (2026-07-09) uses an order-preserving `Vec<Box<dyn BarWidget>>`
+  because widget ORDER within a section (left→right) is layout-significant;
+  `HashMap` is unordered and would scramble it. The originally-planned
+  `HashMap<String, Box<dyn BarWidget>>` (name-keyed replacement of individual
+  widgets) is deferred until named widget replacement is actually needed.
+  `LauncherView` similarly uses `Vec<Box<dyn LauncherView>>`. See
+  `DECISIONS.log` (2026-07-09 — Bar registry: Vec, not HashMap).
 - A LuaU widget = thin Rust adapter whose `render()` calls the LuaU callback,
   returning an intermediate element DSL (serialized, not `AnyElement` directly).
 

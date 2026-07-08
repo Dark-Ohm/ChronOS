@@ -165,3 +165,25 @@ no longer needs to spell out because they're settled.
   environment could unset `XDG_RUNTIME_DIR` and hit this silently. Replaced
   with the same `UID`/`SUDO_UID`/`USER` fallback chain as the `gpui-shell`
   reference. Plan doc corrected to match.
+
+## 2026-07-09 — Bar registry: Vec, not HashMap
+
+- Context: ARCHITECTURE.md §6 (written 2026-07-08) described the Rust side as
+  `HashMap<String, Box<dyn BarWidget>>`. The bar scaffold implemented on
+  2026-07-09 ships `Vec<Box<dyn BarWidget>>` instead — a deliberate,
+  plan-recorded deviation (see the bar scaffold spec/plan: Global Constraints
+  "Reconciliation note").
+- Considered: keep `HashMap` (name-keyed, supports replacing a widget by key),
+  use `Vec` (order-preserving, append-only).
+- Rejected `HashMap` for the scaffold: widget ORDER within a bar section
+  (left→right) is layout-significant and `HashMap` iteration order is
+  unspecified — it would scramble widget layout. Name-keyed replacement isn't
+  needed at scaffold stage (no widgets exist to replace yet).
+- Decided: `Vec<Box<dyn BarWidget>>` as the registry backing store, registered
+  globally and read by `Bar::render` to lay widgets into Left/Center/Right
+  sections in registration order. If named-widget replacement becomes a
+  requirement later, revisit (a `HashMap<String, …>` keyed by a `name()`
+  method, or a position index, layered on top of the `Vec`).
+- Reconciled into ARCHITECTURE.md §6 so the canonical doc matches the code
+  (per AGENTS.md: canonical doc wins; deviations must be recorded there, not
+  only in plan/spec).
