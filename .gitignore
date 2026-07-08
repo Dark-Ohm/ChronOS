@@ -12,3 +12,4 @@ reference/
 
 # Claude Code project state (settings, worktrees)
 .claude/
+System prompts/
