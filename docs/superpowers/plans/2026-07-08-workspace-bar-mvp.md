@@ -537,10 +537,13 @@ git commit -m "feat: wire single-instance IPC into Chronos entrypoint"
 
 **Files:**
 - Create: `crates/app/src/bar.rs`
+- Modify: `crates/app/src/main.rs` (add `mod bar;` only — do NOT call `bar::init(cx)` yet, that's Task 5)
 
 **Interfaces:**
 - Produces (used by Task 5): `bar::init(cx: &mut App)` — spawns bar windows on every currently-known display, 100ms after startup (mirrors `gpui-shell`'s `bar::init`, ARCHITECTURE.md §4).
 - Consumes: nothing from earlier tasks — this module is IPC-agnostic.
+
+Note: `mod bar;` must be added in this task, not deferred to Task 5, even though nothing calls `bar::init` yet. Without a `mod` declaration, `bar.rs` is an orphan file rustc never compiles — Step 3's build would trivially "succeed" without ever type-checking the new code, and the expected `dead_code` warning below would be impossible to produce.
 
 - [ ] **Step 1: Write `crates/app/src/bar.rs`**
 
@@ -628,15 +631,19 @@ pub fn init(cx: &mut App) {
 }
 ```
 
-- [ ] **Step 2: Build**
+- [ ] **Step 2: Add `mod bar;` to `crates/app/src/main.rs`**
+
+Add it alongside the existing `mod ipc;` line. Do not add a call to `bar::init(cx)` anywhere — that wiring belongs to Task 5.
+
+- [ ] **Step 3: Build**
 
 Run: `cargo build --manifest-path Cargo.toml`
-Expected: compiles. `bar` is unused from `main.rs`'s perspective until Task 5 — expect a `dead_code` warning, not an error.
+Expected: compiles. `bar` is unused from `main.rs`'s perspective until Task 5 calls `bar::init` — expect `dead_code` warnings for `BAR_HEIGHT`, `BAR_COLOR`, `Bar`, `window_options`, `open_on_display`, and `init`, not an error. If you get a compile error instead, that's a real problem in `bar.rs` — fix it before proceeding, don't suppress the warning.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add crates/app/src/bar.rs
+git add crates/app/src/bar.rs crates/app/src/main.rs
 git commit -m "feat: add layer-shell bar window module"
 ```
 
