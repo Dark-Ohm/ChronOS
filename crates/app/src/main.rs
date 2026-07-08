@@ -1,7 +1,8 @@
-use gpui_platform::application;
-use tracing_subscriber::EnvFilter;
-
 mod ipc;
+
+use gpui_platform::application;
+use ipc::IpcSubscriber;
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() {
@@ -11,10 +12,15 @@ async fn main() {
 
     tracing::info!("Chronos starting");
 
+    let Some(subscriber) = IpcSubscriber::init() else {
+        tracing::info!("Another Chronos instance is running, signaled it and exiting");
+        return;
+    };
+
     let app = application();
-    app.run(|cx| {
+    app.run(move |cx| {
         tracing::info!("GPUI application context ready");
-        cx.quit();
+        subscriber.start(cx);
     });
 
     tracing::info!("Chronos exited");
