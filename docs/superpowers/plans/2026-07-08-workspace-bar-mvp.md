@@ -703,12 +703,12 @@ RUST_LOG=info cargo run --manifest-path Cargo.toml > /tmp/chronos-bar.log 2>&1 &
 CHRONOS_PID=$!
 sleep 2
 
-grep -c "Opening bar on display" /tmp/chronos-bar.log
+grep -c "Opening bar on" /tmp/chronos-bar.log
 hyprctl monitors -j | jq 'length'
 hyprctl layers -j | jq '[.[] | .levels."2"[]? | select(.namespace == "bar")] | length'
 ```
 
-Expected: the `hyprctl layers` count of `bar`-namespace layer surfaces equals the `hyprctl monitors` count (one bar per monitor). Visually: a solid dark bar (`#1e1e2e`) 32px tall pinned to the top edge of every monitor, with desktop windows/content shifted down by 32px (proves `exclusive_zone` is honored, not just an overlay).
+Expected: the `hyprctl layers` count of `bar`-namespace layer surfaces equals the `hyprctl monitors` count (one bar per monitor). Visually: a solid dark bar (`#1e1e2e`) 32px tall pinned to the top edge of every monitor, with desktop windows/content shifted down by 32px (proves `exclusive_zone` is honored, not just an overlay). The `grep` line is a one-time sanity check that `bar::init` logged its one-shot "Opening bar on N displays" (or "opening bar on default display" if none were found) — the `hyprctl` counts are the actual pass/fail signal, don't fail the task over the grep alone.
 
 - [ ] **Step 4: Clean up and commit**
 
