@@ -202,3 +202,60 @@ mod tests {
         }
     }
 }
+
+/// A BarWidget backed by a LuaU render callback.
+/// Used by both `plugin_bridge.rs` (crates/app) and `reregister_widgets` (crates/luau)
+/// so the watcher can rebuild widgets without depending on crates/app.
+pub struct LuaWidgetAdapter {
+    name: String,
+    section: crate::bar::BarSection,
+    lua: mlua::Lua,
+    render_fn_name: String,
+}
+
+impl LuaWidgetAdapter {
+    pub fn new(
+        name: String,
+        section: crate::bar::BarSection,
+        lua: mlua::Lua,
+        render_fn_name: String,
+    ) -> Self {
+        Self { name, section, lua, render_fn_name }
+    }
+}
+
+impl crate::bar::BarWidget for LuaWidgetAdapter {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn section(&self) -> crate::bar::BarSection {
+        self.section
+    }
+
+    fn render(&self, _window: &mut gpui::Window, _cx: &gpui::App) -> gpui::AnyElement {
+        let result: Result<mlua::Table, _> = self
+            .lua
+            .globals()
+            .get::<mlua::Function>(&*self.render_fn_name)
+            .and_then(|f| f.call(()));
+
+        match result {
+            Ok(table) => match Element::from_lua_table(&table) {
+                Ok(element) => element.into_any_element(),
+                Err(e) => {
+                    tracing::warn!("Plugin {} render error: {e}", self.name);
+                    gpui::div()
+                        .child(format!("[{}: render error]", self.name))
+                        .into_any_element()
+                }
+            },
+            Err(e) => {
+                tracing::warn!("Plugin {} Lua call error: {e}", self.name);
+                gpui::div()
+                    .child(format!("[{}: call error]", self.name))
+                    .into_any_element()
+            }
+        }
+    }
+}
