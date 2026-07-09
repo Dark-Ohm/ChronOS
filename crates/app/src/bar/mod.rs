@@ -1,6 +1,6 @@
 // crates/app/src/bar/mod.rs
-mod sections;
-mod widget;
+pub mod sections;
+pub mod widget;
 
 use std::time::Duration;
 

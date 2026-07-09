@@ -1,6 +1,8 @@
 mod bar;
 mod ipc;
+mod plugin_bridge;
 
+use chronos_luau::PluginManager;
 use gpui_platform::application;
 use ipc::IpcSubscriber;
 use tracing_subscriber::EnvFilter;
@@ -23,6 +25,15 @@ async fn main() {
         tracing::info!("GPUI application context ready");
         subscriber.start(cx);
         bar::init(cx);
+
+        let plugin_dirs = vec![
+            dirs::config_dir().unwrap().join("chronos/plugins"),
+            std::path::PathBuf::from("/usr/share/chronos/plugins"),
+        ];
+        let mut plugin_manager = PluginManager::new(plugin_dirs);
+        plugin_manager.load_all();
+        plugin_bridge::register_plugin_widgets(&plugin_manager, cx);
+        plugin_manager.start_tick_loop(cx);
     });
 
     tracing::info!("Chronos exited");

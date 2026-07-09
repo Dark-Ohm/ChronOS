@@ -7,3 +7,4 @@ pub mod api;
 pub use manager::PluginManager;
 pub use dsl::{Element, TextStyle, Alignment};
 pub use capabilities::Manifest;
+pub use mlua;
