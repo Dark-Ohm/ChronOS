@@ -6,7 +6,7 @@ pub fn create_bar_api(lua: &Lua) -> mlua::Result<mlua::Table> {
 
     bar.set("register", lua.create_function({
         let widgets = widgets.clone();
-        move |_, (spec,): (mlua::Table,)| -> mlua::Result<()> {
+        move |_, (_self, spec): (mlua::Table, mlua::Table)| -> mlua::Result<()> {
             let name: String = spec.get("name")?;
             let section: String = spec.get("section").unwrap_or_else(|_| "left".into());
             let _render: mlua::Function = spec.get("render")?;
