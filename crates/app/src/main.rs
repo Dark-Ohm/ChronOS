@@ -33,7 +33,8 @@ async fn main() {
         let mut plugin_manager = PluginManager::new(plugin_dirs);
         plugin_manager.load_all();
         plugin_bridge::register_plugin_widgets(&plugin_manager, cx);
-        plugin_manager.start_tick_loop(cx);
+        cx.set_global(plugin_manager);
+        PluginManager::start_tick_loop(cx);
     });
 
     tracing::info!("Chronos exited");

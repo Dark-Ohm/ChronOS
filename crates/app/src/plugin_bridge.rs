@@ -1,7 +1,6 @@
 use chronos_luau::dsl;
 use chronos_luau::PluginManager;
-use crate::bar::sections::BarSection;
-use crate::bar::widget::{BarWidget, BarWidgetRegistry};
+use chronos_luau::bar::{BarSection, BarWidget, BarWidgetRegistry};
 use gpui::{AnyElement, App, Window, ParentElement, IntoElement};
 
 /// A BarWidget backed by a LuaU render callback.

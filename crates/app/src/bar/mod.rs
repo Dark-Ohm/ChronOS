@@ -1,6 +1,5 @@
 // crates/app/src/bar/mod.rs
-pub mod sections;
-pub mod widget;
+pub use chronos_luau::bar::{BarSection, BarWidget, BarWidgetRegistry, BAR_COLOR, BAR_HEIGHT};
 
 use std::time::Duration;
 
@@ -9,9 +8,6 @@ use gpui::{
     WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, layer_shell::*,
     point, prelude::*, px, rgb,
 };
-
-use sections::{BarSection, BAR_COLOR, BAR_HEIGHT};
-use widget::BarWidgetRegistry;
 
 struct Bar;
 

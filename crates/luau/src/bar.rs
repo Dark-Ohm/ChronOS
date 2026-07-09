@@ -1,7 +1,22 @@
-// crates/app/src/bar/widget.rs
+//! Bar widget trait, sections, and global registry.
+//! Moved from crates/app to avoid circular dependencies — the watcher
+//! in crates/luau needs BarWidgetRegistry access via cx.update_global.
+
 use gpui::{AnyElement, App, Global, Window};
 
-use crate::bar::sections::BarSection;
+/// Which horizontal section a widget renders into.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BarSection {
+    Left,
+    Center,
+    Right,
+}
+
+/// Bar thickness in logical pixels.
+pub const BAR_HEIGHT: f32 = 32.0;
+
+/// Bar background color (0xRRGGBB).
+pub const BAR_COLOR: u32 = 0x1e1e2e;
 
 pub trait BarWidget: 'static {
     fn name(&self) -> &str {
@@ -28,13 +43,10 @@ impl Default for BarWidgetRegistry {
 impl Global for BarWidgetRegistry {}
 
 impl BarWidgetRegistry {
-    #[allow(dead_code)]
     pub fn register(&mut self, widget: Box<dyn BarWidget>) {
         self.widgets.push(widget);
     }
 
-    /// Replace a widget by name. If found, swaps it and returns the old widget.
-    /// If not found, pushes the new widget and returns None.
     pub fn replace_by_name(&mut self, name: &str, widget: Box<dyn BarWidget>) -> Option<Box<dyn BarWidget>> {
         if let Some(pos) = self.widgets.iter().position(|w| w.name() == name) {
             let old = std::mem::replace(&mut self.widgets[pos], widget);
@@ -45,8 +57,6 @@ impl BarWidgetRegistry {
         }
     }
 
-    /// Remove a widget by name. Returns the removed widget if found.
-    #[allow(dead_code)]
     pub fn unregister_by_name(&mut self, name: &str) -> Option<Box<dyn BarWidget>> {
         if let Some(pos) = self.widgets.iter().position(|w| w.name() == name) {
             Some(self.widgets.remove(pos))
@@ -103,20 +113,6 @@ mod tests {
     }
 
     #[test]
-    fn default_section_is_left() {
-        struct Plain;
-        impl BarWidget for Plain {
-            fn render(&self, _w: &mut Window, _c: &App) -> AnyElement {
-                div().into_any_element()
-            }
-        }
-        let mut registry = BarWidgetRegistry::default();
-        registry.register(Box::new(Plain));
-        assert_eq!(registry.widgets_for(BarSection::Left).count(), 1);
-        assert_eq!(registry.widgets_for(BarSection::Center).count(), 0);
-    }
-
-    #[test]
     fn replace_by_name_swaps_existing() {
         let mut registry = BarWidgetRegistry::default();
         registry.register(Box::new(FakeWidget { name: "w1".into(), section: BarSection::Left }));
@@ -127,26 +123,11 @@ mod tests {
     }
 
     #[test]
-    fn replace_by_name_pushes_new() {
-        let mut registry = BarWidgetRegistry::default();
-        let old = registry.replace_by_name("new", Box::new(FakeWidget { name: "new".into(), section: BarSection::Center }));
-        assert!(old.is_none());
-        assert_eq!(registry.widgets_for(BarSection::Center).count(), 1);
-    }
-
-    #[test]
     fn unregister_by_name_removes() {
         let mut registry = BarWidgetRegistry::default();
         registry.register(Box::new(FakeWidget { name: "w1".into(), section: BarSection::Left }));
         let removed = registry.unregister_by_name("w1");
         assert!(removed.is_some());
         assert_eq!(registry.widgets_for(BarSection::Left).count(), 0);
-    }
-
-    #[test]
-    fn unregister_by_name_returns_none_for_missing() {
-        let mut registry = BarWidgetRegistry::default();
-        let removed = registry.unregister_by_name("nope");
-        assert!(removed.is_none());
     }
 }

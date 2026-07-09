@@ -7,6 +7,8 @@ use mlua::Lua;
 use crate::capabilities::Manifest;
 use crate::sandbox;
 
+impl gpui::Global for PluginManager {}
+
 /// Handle for a loaded plugin.
 pub struct PluginHandle {
     pub name: String,
@@ -119,18 +121,15 @@ impl PluginManager {
 
     /// Start a periodic tick loop using GPUI executor (not tokio).
     /// Matches the runtime-split decision: GPUI main thread owns UI futures.
-    pub fn start_tick_loop(&self, cx: &mut gpui::App) {
-        let manager = self as *const Self;
+    /// Requires `PluginManager` to be set as a GPUI global via `cx.set_global()`.
+    pub fn start_tick_loop(cx: &mut gpui::App) {
         cx.spawn(async move |cx| {
             loop {
                 cx.background_executor()
                     .timer(std::time::Duration::from_secs(1))
                     .await;
-                let _ = cx.update(|_cx| {
-                    // SAFETY: manager lives for the app lifetime; this async block
-                    // is detached and runs until the app exits. The raw pointer
-                    // borrow is a single read per second — acceptable for MVP.
-                    unsafe { &*manager }.dispatch_tick();
+                let _ = cx.update(|cx| {
+                    cx.global::<PluginManager>().dispatch_tick();
                 });
             }
         })
