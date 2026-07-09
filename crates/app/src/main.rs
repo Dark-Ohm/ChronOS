@@ -35,6 +35,7 @@ async fn main() {
         plugin_bridge::register_plugin_widgets(&plugin_manager, cx);
         cx.set_global(plugin_manager);
         PluginManager::start_tick_loop(cx);
+        PluginManager::start_watcher(cx);
     });
 
     tracing::info!("Chronos exited");

@@ -164,13 +164,12 @@ Services use `Result`/`expect` rigorously.
 - **Config**: inotify watch → `Config::reload` + `cx.refresh_windows()`
   (gpui-shell `config/mod.rs:133-185`). Bar does in-place update, not window
   teardown (avoid flicker at 144 fps).
-- **LuaU plugins**: NOT YET IMPLEMENTED. Planned: inotify on plugin dirs
-  triggers `PluginManager` to drop old `mlua::Lua` instance (state lost —
-  acceptable per §8), re-read manifest → re-create VM → re-run `init.luau`
-  → re-register widgets via `BarWidgetRegistry::replace_by_name()`. If new
-  VM fails → keep old widgets (don't unregister until new ones succeed).
-  `replace_by_name` infrastructure exists (`widget.rs:38`); the inotify
-  watcher that would call it does not.
+- **LuaU plugins**: inotify watcher implemented (2026-07-09). Watches plugin
+  dirs for CLOSE_WRITE | MOVED_TO | CREATE | DELETE events. Debounced at 300ms.
+  New subdirectories get watches() + immediate poll (race condition fix).
+  Reload drops old VM, recreates, re-registers widgets via
+  BarWidgetRegistry::replace_by_name(). If new VM fails → keep old widgets.
+  `replace_by_name` infrastructure exists; inotify watcher calls it.
 
 ## 10. Runtime strategy (tokio + GPUI executors)
 
