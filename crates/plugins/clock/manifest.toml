@@ -1,0 +1,13 @@
+[plugin]
+name = "clock"
+version = "0.1.0"
+author = "Chronos Team"
+description = "Simple clock widget for the bar"
+
+[plugin.capabilities]
+fs = false
+spawn = false
+network = false
+ipc = false
+
+unsafe = false
