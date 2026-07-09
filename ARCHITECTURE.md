@@ -39,7 +39,7 @@ See `DECISIONS.log` for why zed/main and crates.io were rejected.
 
 | Dependency | Source | Rev / Version |
 |---|---|---|
-| `gpui-ce` (gpui + gpui_platform) | local `SOURCE/gpui/gpui-ce-main` → `gpui-ce/gpui-ce` | `20340e14874a3b55122e5cb2aa0d023874e08b2d` (2026-07-06) |
+| `gpui-ce` (gpui + gpui_platform) | local `SOURCE/gpui/gpui-ce-main` → `gpui-ce/gpui-ce` | `20340e14874a3b55122e5cb2aa0d023874e08b2d` (2026-07-06) + local patch `6a7b386` (quit-hang fix) |
 | `gpui-component` → our `crates/ui` | fork of `longbridge/gpui-component` `49d1bef84cb374c42d82b2e8d7e8b0d685d9ed48` | folded into workspace, upstream NOT tracked |
 | `gpui-shell` (reference only) | `andre-brandao/gpui-shell` `c3476bd` | NOT a dependency, code study only |
 
