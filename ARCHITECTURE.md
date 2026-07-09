@@ -1,7 +1,7 @@
 # Chronos Shell — Architecture
 
 > Status: approved design (brainstorming phase complete)
-> Last updated: 2026-07-08
+> Last updated: 2026-07-09
 > Scope: desktop shell for Hyprland 0.55.4+ on CachyOS (RTX 3070, i5 12400F, 64GB DDR4)
 > Stack: Rust + GPUI (gpui-ce) + mLua-LuauJIT
 
@@ -65,7 +65,8 @@ crates/
 panic cannot take down `services` or `app`. The Luau VM is per-plugin, typed,
 and isolated (see §5).
 
-**Status: not yet created.** No `Cargo.toml` / `crates/` exist in this repo yet.
+**Status: `crates/luau` implemented** (2026-07-09). `crates/plugins/clock`
+ships as example. `crates/services` and `crates/ui` not yet created.
 
 ## 4. Layer-shell windowing
 
@@ -90,12 +91,19 @@ Every plugin is a folder: `manifest.toml` + `init.luau`.
 `manifest.toml` declares `capabilities` (subset of `fs`, `spawn`, `network`, `ipc`)
 and optional `unsafe = true`.
 
-Host loading:
+Host loading (implemented in `crates/luau/src/sandbox.rs`):
 1. Create a dedicated `mlua::Lua` instance per plugin.
-2. Strip `os` / `io` / raw socket globals.
-3. Register only the `chronos.*` API surface + capabilities declared in manifest.
-4. Without manifest → minimal rights (only `chronos.*` declarative API, no `fs`/`spawn`).
-5. `unsafe = true` → full trust (TOFU), for first-party plugins only.
+2. Strip `os` / `io` / `debug` globals.
+3. Register `chronos.*` API table into Lua global scope — capability-gated:
+   - Always present: `chronos.bar`, `chronos.time`, `chronos.log`, `chronos.on`
+   - Gated by manifest: `chronos.fs`, `chronos.process`, `chronos.net`, `chronos.ipc`
+4. Without manifest → minimal rights (only base `chronos.*` API).
+5. `unsafe = true` → full trust (TOFU), all capabilities enabled, for first-party plugins only.
+
+`PluginManager` (`crates/luau/src/manager.rs`) handles discovery across multiple
+dirs (`~/.chronos/plugins`, `/usr/share/chronos/plugins`), loading, and tick
+dispatch via GPUI executor. Invalid manifest → skip plugin, `tracing::error!`,
+never crash.
 
 This is Rust-way: explicit, checked at the boundary, zero-cost after load.
 Compatible with JIT hot-reload: recreate the LuaU instance, state lives in Rust.
@@ -115,6 +123,9 @@ Chronos uses a runtime registry instead:
   widgets) is deferred until named widget replacement is actually needed.
   `LauncherView` similarly uses `Vec<Box<dyn LauncherView>>`. See
   `DECISIONS.log` (2026-07-09 — Bar registry: Vec, not HashMap).
+  The Vec registry now supports `replace_by_name(name, widget)` and
+  `unregister_by_name(name)` for hot-reload — added 2026-07-09 for the
+  luau plugin layer. `BarWidget` trait has `fn name() -> &str` (default: `"unnamed"`).
 - A LuaU widget = thin Rust adapter whose `render()` calls the LuaU callback,
   returning an intermediate element DSL (serialized, not `AnyElement` directly).
 
@@ -152,8 +163,11 @@ Services use `Result`/`expect` rigorously.
 - **Config**: inotify watch → `Config::reload` + `cx.refresh_windows()`
   (gpui-shell `config/mod.rs:133-185`). Bar does in-place update, not window
   teardown (avoid flicker at 144 fps).
-- **LuaU plugins**: recreate VM instance, re-run `init.luau`, re-bind hooks.
-  State in Rust survives.
+- **LuaU plugins**: inotify on plugin dirs (planned for `PluginManager`).
+  On file change: drop old `mlua::Lua` instance (state lost — acceptable per
+  §8), re-read manifest → re-create VM → re-run `init.luau` → re-register
+  widgets via `BarWidgetRegistry::replace_by_name()`. If new VM fails → keep
+  old widgets (don't unregister until new ones succeed).
 
 ## 10. Runtime strategy (tokio + GPUI executors)
 
@@ -187,7 +201,7 @@ stays UI-only.
 - Static `enum Widget` / `all_views()` → runtime registry (§6).
 - `panic = "abort"` → `unwind` (§7, §10).
 - `gpui = zed/main` (no pin) → `gpui-ce` pinned rev (§2).
-- No Luau layer → add `crates/luau` + `crates/plugins` (§3, §5).
+- No Luau layer → **done** (2026-07-09): `crates/luau` + `crates/plugins/clock` implemented (§3, §5, §6).
 - Niri backend incomplete in gpui-shell (special workspaces bail) —
   acceptable, Hyprland is primary target.
 - Audio tied to PulseAudio without graceful degradation — revisit if

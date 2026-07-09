@@ -187,3 +187,51 @@ no longer needs to spell out because they're settled.
 - Reconciled into ARCHITECTURE.md §6 so the canonical doc matches the code
   (per AGENTS.md: canonical doc wins; deviations must be recorded there, not
   only in plan/spec).
+
+## 2026-07-09 — Luau plugin layer: three architectural fixes
+
+During the luau-plugin-layer implementation, cross-doc review found three
+issues in the plan/spec that contradicted existing code or DECISIONS.log:
+
+1. **BarWidgetRegistry hot-reload support.** The Vec registry had only
+   `register()` (push). Hot-reload requires replacing old widgets by name.
+   - Considered: add `unregister(name)` + `replace(name, widget)` to the Vec,
+     or switch to `HashMap` for native key-based operations.
+   - Rejected `HashMap`: widget ORDER within sections is layout-significant
+     (already decided 2026-07-09). Switching back would scramble layout.
+   - Decided: add `fn name(&self) -> &str` to `BarWidget` trait (default:
+     `"unnamed"`), add `replace_by_name(name, widget)` and
+     `unregister_by_name(name)` to `BarWidgetRegistry`. These do linear scan
+     on the Vec — acceptable because widget count per section is small (<20)
+     and registration happens at startup/reload, not per-frame.
+
+2. **`chronos.log` API: table with methods, not flat function.** Spec §7
+   defined `chronos.log(msg)` (flat function call), but the implementation
+   and example plugin both used `chronos.log.info(msg)` / `chronos.log.warn(msg)`.
+   - Decided: table-with-methods is more idiomatic Lua and extensible. Spec §7
+     corrected to match. `api/log.rs` returns a table with `.info` and `.warn`
+     methods.
+
+3. **Tick timer via GPUI executor, not tokio.** The plan specified
+   `tokio::spawn` for the 1-second tick timer. DECISIONS.log (2026-07-08)
+   explicitly decided: GPUI main thread owns UI futures via `cx.spawn()`;
+   tokio is for services only.
+   - Decided: tick timer uses `cx.spawn()` with
+     `cx.background_executor().timer(Duration::from_secs(1))` in a loop,
+     matching the existing pattern in `bar::init()`. `PluginManager::start_tick_loop(&self, cx: &mut App)` is the public API.
+
+## 2026-07-09 — Luau plugin layer: implementation
+
+Implemented `crates/luau` — the LuaU plugin runtime for Chronos:
+- `capabilities.rs`: TOML manifest parsing, capability gates, unsafe=TOFU
+- `dsl.rs`: Element DSL (text/row/column) with Lua→Rust deserialize and
+  `into_any_element()` GPUI conversion
+- `sandbox.rs`: per-plugin VM creation, global stripping, chronos.* API registration
+- `api/`: bar (widget registration), time (epoch), log (table with methods),
+  events (callback store + dispatch); capability stubs (fs/process/net/ipc)
+- `manager.rs`: PluginManager — discovery, load, tick dispatch via GPUI executor
+- `plugin_bridge.rs` (in `crates/app`): LuaWidgetAdapter implementing BarWidget,
+  wires PluginManager into Chronos startup
+- `crates/plugins/clock/`: example plugin rendering time in bar left section
+
+Package name: `chronos-luau`. 17 unit tests passing.
