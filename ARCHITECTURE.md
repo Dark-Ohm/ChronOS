@@ -65,8 +65,9 @@ crates/
 panic cannot take down `services` or `app`. The Luau VM is per-plugin, typed,
 and isolated (see §5).
 
-**Status: `crates/luau` implemented** (2026-07-09). `crates/plugins/clock`
-ships as example. `crates/services` and `crates/ui` not yet created.
+**Status: `crates/luau` core implemented** (2026-07-09): sandbox, DSL,
+API, PluginManager, clock example. inotify hot-reload watcher — NOT YET
+IMPLEMENTED (see §9). `crates/services` and `crates/ui` not yet created.
 
 ## 4. Layer-shell windowing
 
@@ -163,11 +164,13 @@ Services use `Result`/`expect` rigorously.
 - **Config**: inotify watch → `Config::reload` + `cx.refresh_windows()`
   (gpui-shell `config/mod.rs:133-185`). Bar does in-place update, not window
   teardown (avoid flicker at 144 fps).
-- **LuaU plugins**: inotify on plugin dirs (planned for `PluginManager`).
-  On file change: drop old `mlua::Lua` instance (state lost — acceptable per
-  §8), re-read manifest → re-create VM → re-run `init.luau` → re-register
-  widgets via `BarWidgetRegistry::replace_by_name()`. If new VM fails → keep
-  old widgets (don't unregister until new ones succeed).
+- **LuaU plugins**: NOT YET IMPLEMENTED. Planned: inotify on plugin dirs
+  triggers `PluginManager` to drop old `mlua::Lua` instance (state lost —
+  acceptable per §8), re-read manifest → re-create VM → re-run `init.luau`
+  → re-register widgets via `BarWidgetRegistry::replace_by_name()`. If new
+  VM fails → keep old widgets (don't unregister until new ones succeed).
+  `replace_by_name` infrastructure exists (`widget.rs:38`); the inotify
+  watcher that would call it does not.
 
 ## 10. Runtime strategy (tokio + GPUI executors)
 
@@ -201,7 +204,7 @@ stays UI-only.
 - Static `enum Widget` / `all_views()` → runtime registry (§6).
 - `panic = "abort"` → `unwind` (§7, §10).
 - `gpui = zed/main` (no pin) → `gpui-ce` pinned rev (§2).
-- No Luau layer → **done** (2026-07-09): `crates/luau` + `crates/plugins/clock` implemented (§3, §5, §6).
+- No Luau layer → **partially done** (2026-07-09): `crates/luau` core (sandbox, DSL, API, PluginManager) + `crates/plugins/clock` implemented (§3, §5, §6). inotify hot-reload watcher still missing (§9).
 - Niri backend incomplete in gpui-shell (special workspaces bail) —
   acceptable, Hyprland is primary target.
 - Audio tied to PulseAudio without graceful degradation — revisit if
