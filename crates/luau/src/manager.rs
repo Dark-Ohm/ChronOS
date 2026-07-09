@@ -267,6 +267,13 @@ impl PluginManager {
         .detach();
     }
 
+    /// Start the inotify file watcher for hot-reload.
+    /// Requires `PluginManager` to be set as a GPUI global via `cx.set_global()`.
+    pub fn start_watcher(cx: &mut gpui::App) {
+        let dirs = cx.global::<PluginManager>().plugin_dirs.clone();
+        crate::watcher::start_watcher_loop(cx, dirs);
+    }
+
     /// Get all registered bar widget specs from all plugins.
     pub fn get_registered_widgets(&self) -> Vec<(String, String, mlua::Table)> {
         let mut result = Vec::new();

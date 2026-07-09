@@ -1,8 +1,6 @@
-use chronos_luau::dsl;
 use chronos_luau::dsl::LuaWidgetAdapter;
 use chronos_luau::PluginManager;
 use chronos_luau::bar::{BarSection, BarWidgetRegistry};
-use gpui::{AnyElement, App, Window, ParentElement, IntoElement};
 
 /// After loading plugins, register their bar widgets with the global registry.
 /// Uses replace_by_name for hot-reload safety.
