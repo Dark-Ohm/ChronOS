@@ -40,7 +40,7 @@ See `DECISIONS.log` for why zed/main and crates.io were rejected.
 | Dependency | Source | Rev / Version |
 |---|---|---|
 | `gpui-ce` (gpui + gpui_platform) | local `SOURCE/gpui/gpui-ce-main` → `gpui-ce/gpui-ce` | `20340e14874a3b55122e5cb2aa0d023874e08b2d` (2026-07-06) + local patch `6a7b386` (quit-hang fix) |
-| `gpui-component` → our `crates/ui` | fork of `longbridge/gpui-component` `49d1bef84cb374c42d82b2e8d7e8b0d685d9ed48` | folded into workspace, upstream NOT tracked |
+| `gpui-component` → planned `crates/ui` | fork of `longbridge/gpui-component` `49d1bef84cb374c42d82b2e8d7e8b0d685d9ed48` | PLANNED — not yet folded into workspace (see §3 status); upstream NOT tracked |
 | `gpui-shell` (reference only) | `andre-brandao/gpui-shell` `c3476bd` | NOT a dependency, code study only |
 
 Dependency mechanism: path-dep during early dev, migrate to `git = "...", rev = "..."`
@@ -53,8 +53,9 @@ something breaks), not a maintained relationship.
 crates/
   app/        # entry point, lifecycle, window-manager (layer-shell windows),
               # single-instance socket, hot-reload orchestration
-  ui/         # fork of gpui-component, trimmed (no tree-sitter/webview/markdown
+  ui/         # PLANNED: fork of gpui-component, trimmed (no tree-sitter/webview/markdown
               # unless needed); BarWidget / LauncherView traits (dyn-safe)
+              # NOT YET CREATED (see status below)
   services/   # D-Bus + IPC integrations, wrapped in a unified Service trait
   luau/       # mLua-LuauJIT runtime, per-plugin VM pool, runtime module registry,
               # sandbox allocator, LuaU<->Rust API bridge
