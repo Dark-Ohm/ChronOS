@@ -486,6 +486,9 @@ PluginManager global then releases it before the closure returns, so a
 
   - Considered: `niri-ipc = "=25.11.0"` per plan — does not exist on crates.io (available: 26.x only).
   - Decided: use `niri-ipc = "26"` (latest 26.x). Scaffold only; Niri backend is stubbed (Task 2).
-  - Considered: `anyhow::Error` as `Service::Error` type in contract test — does not satisfy `std::error::Error` bound directly (impl via Deref only).
-  - Decided: test uses `std::io::Error` (concrete, implements Error + Send + Sync + 'static). Real services will use domain-specific errors (`zbus::Error`, `hyprland::Error`).
+  - Considered: `anyhow::Error` as `Service::Error` type — does not satisfy `std::error::Error` bound directly (impl via Deref only).
+  - Decided: **remove `std::error::Error` bound from `Service::Error`**, keep only `Send + Sync + 'static`.
+    - Rationale: trait doesn't invoke Error methods; errors are logged via `tracing::{warn,error}` in impls.
+    - Contract test uses `type Error = anyhow::Error` and passes.
+    - Future services (Compositor/Network/UPower) can use `anyhow::Error` or domain-specific errors.
   - `hyprland = "0.4.0-beta.3"` — only available version (prerelease). API surface may shift; Task 2 will verify against this version.
