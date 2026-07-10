@@ -15,4 +15,4 @@ chrono.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-futures-executor = "0.3"
+# futures-util from workspace provides StreamExt for tests
