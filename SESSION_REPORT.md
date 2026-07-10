@@ -37,14 +37,22 @@ Implemented Task 2 from the Services Layer plan (`docs/superpowers/plans/2026-07
 
 5. **`crates/services/src/lib.rs`** — Added `pub mod compositor;` and re-exports
 
-## Расхождения (Deviations from Plan)
+## Расхождения (Deviations from Plan / Reference Architecture)
 
-None — implementation matches the plan spec exactly:
-- Types match plan lines 191-230
-- Hyprland backend functions match plan lines 258-337
-- Niri scaffold matches plan lines 391-405
-- `detect_backend()`, `spawn_retry()`, `CompositorSubscriber` match plan lines 419-503
-- Regression test matches plan lines 574-615
+**1. Data model fields subset of reference gpui-shell** — Plan spec (lines 191-230) defines trimmed structs vs. reference `gpui-shell/crates/services/src/compositor/hyprland.rs`:
+   - `Workspace`: plan has `id, name, active` only. Reference adds `monitor_id: i32`, `index: i32`, `windows: Vec<Window>`.
+   - `Monitor`: plan has `name, active_workspace`. Reference adds `id: i32`, `x: i32`, `y: i32`, `scale: f32`, `transform: Transform`, `dpms_status: bool`, `vrr: bool`, `make: String`, `model: String`, `serial: String`.
+   - `ActiveWindow`: plan has `title, class`. Reference adds `address: String`, `workspace: i32`, `floating: bool`, `pinned: bool`, `fullscreen: u8`, `monitor: i32`, `x: i32`, `y: i32`, `width: i32`, `height: i32`.
+
+   **Critical gap:** `Workspace.monitor_id` is **absent in plan** but present in reference. This field is required for **multi-monitor workspace filtering** (which monitor a workspace is currently on). Without it, bar widgets cannot correctly show per-monitor workspace state on multi-head setups.
+
+   **Status:** Требует решения Lead Architect, не решено самостоятельно. Вопрос: расширять типы под multi-monitor сейчас (добавить `monitor_id` в `Workspace`, `id/x/y/scale` в `Monitor`, `address` в `ActiveWindow`) — или сознательно оставить MVP-сужение с записью в DECISIONS.log почему (и создать follow-up issue для расширения).
+
+**2. Plan vs implementation match** — otherwise implementation matches the plan spec exactly:
+   - Hyprland backend functions match plan lines 258-337
+   - Niri scaffold matches plan lines 391-405
+   - `detect_backend()`, `spawn_retry()`, `CompositorSubscriber` match plan lines 419-503
+   - Regression test matches plan lines 574-615
 
 ## Не реализовано (Not Implemented)
 
