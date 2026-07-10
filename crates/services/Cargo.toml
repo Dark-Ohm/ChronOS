@@ -1,0 +1,18 @@
+[package]
+name = "chronos-services"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+tokio.workspace = true
+futures-signals.workspace = true
+futures-util.workspace = true
+zbus.workspace = true
+hyprland.workspace = true
+niri-ipc.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+futures-executor = "0.3"
