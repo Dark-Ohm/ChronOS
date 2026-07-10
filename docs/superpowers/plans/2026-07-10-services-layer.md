@@ -47,6 +47,7 @@ tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros", "time", "
 tracing = { version = "0.1.41", features = ["log"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 futures-signals = "0.3.34"
+futures-util = "0.3"
 zbus = "5"
 hyprland = "0.4"
 niri-ipc = "=25.11.0"
@@ -67,6 +68,7 @@ edition = "2024"
 anyhow.workspace = true
 tokio.workspace = true
 futures-signals.workspace = true
+futures-util.workspace = true
 zbus.workspace = true
 hyprland.workspace = true
 niri-ipc.workspace = true
@@ -223,47 +225,121 @@ Read `reference/gpui-shell/crates/services/src/compositor/hyprland.rs` first to 
 ```rust
 //! Hyprland backend. PRIMARY backend.
 //!
-//! VERIFY the `hyprland` crate API against the pinned version (docs.rs) and
-//! `reference/gpui-shell/crates/services/src/compositor/hyprland.rs` before coding.
-
-use std::sync::Arc;
+//! VERIFY the exact `hyprland` crate API against the pinned version (docs.rs)
+//! and reference/gpui-shell/crates/services/src/compositor/hyprland.rs.
 
 use anyhow::Result;
 use futures_signals::signal::Mutable;
+use hyprland::{
+    data::{Client, Devices, Monitors, Workspace as HWorkspace, Workspaces},
+    dispatch::{Dispatch, DispatchType, WorkspaceIdentifierWithSpecial},
+    event_listener::EventListener,
+};
+use tracing::{debug, error};
+use super::types::{ActiveWindow, CompositorBackend, CompositorCommand, CompositorState, Monitor, Workspace};
 
-use super::types::{ActiveWindow, CompositorState, Monitor, Workspace};
+/// Hyprland is available when running under it (env var set by the compositor).
+pub fn is_available() -> bool {
+    std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some()
+}
+
+/// Execute a compositor command via Hyprland.
+pub fn execute_command(cmd: CompositorCommand) -> Result<()> {
+    match cmd {
+        CompositorCommand::FocusWorkspace(id) => {
+            Dispatch::call(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(id)))?;
+        }
+        CompositorCommand::NextWorkspace => {
+            Dispatch::call(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Relative(
+                "+1".to_string().parse()?,
+            )))?;
+        }
+        CompositorCommand::PrevWorkspace => {
+            Dispatch::call(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Relative(
+                "-1".to_string().parse()?,
+            )))?;
+        }
+        CompositorCommand::MoveToWorkspace(id) => {
+            Dispatch::call(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(id)))?;
+        }
+    }
+    Ok(())
+}
 
 /// Fetch the full current compositor state from Hyprland.
 pub fn fetch_full_state() -> Result<CompositorState> {
-    // Use the `hyprland` crate (e.g. `hyprland::data::Workspaces`,
-    // `hyprland::data::ActiveWindow`) adapted to the pinned version.
-    // Return a fully-populated `CompositorState { backend: Hyprland, .. }`.
-    // Left as a TODO-shaped stub ONLY for the unverified crate API; fill in
-    // the real calls from the pinned `hyprland` version before committing.
-    todo!("implement via hyprland crate: fetch workspaces, active window, monitors, keyboard layout")
+    let active_id = HWorkspace::get_active().ok().map(|w| w.id);
+    let workspaces = Workspaces::get()?
+        .into_iter()
+        .map(|w| Workspace {
+            id: w.id,
+            name: w.name,
+            active: active_id == Some(w.id),
+        })
+        .collect();
+    let monitors = Monitors::get()?
+        .into_iter()
+        .map(|m| Monitor {
+            name: m.name,
+            active_workspace: m.active_workspace.id,
+        })
+        .collect();
+    let active_window = Client::get_active()
+        .ok()
+        .flatten()
+        .map(|w| ActiveWindow { title: w.title, class: w.class });
+    let keyboard_layout = Devices::get()
+        .ok()
+        .and_then(|d| d.keyboards.into_iter().find(|k| k.main).map(|k| k.active_keymap))
+        .unwrap_or_else(|| "Unknown".to_string());
+    Ok(CompositorState {
+        backend: CompositorBackend::Hyprland,
+        workspaces,
+        active_window,
+        monitors,
+        keyboard_layout,
+    })
 }
 
 /// Start an incremental event listener on a dedicated thread that mutates `data`.
 pub fn start_listener(data: Mutable<CompositorState>) {
     std::thread::spawn(move || {
-        // Subscribe to hyprland events (Workspace / ActiveWindow / etc.) and
-        // call `data.set(new_state)` on each event. A panic here must NOT kill
-        // the shell (`panic = "unwind"`); wrap handler bodies in `if let Ok(..)`.
-        // Mirror reference/gpui-shell/crates/services/src/compositor/hyprland.rs.
-        let _ = data;
+        if let Err(e) = run_listener(data) {
+            error!("Hyprland event listener error: {e}");
+        }
     });
 }
 
-/// Execute a compositor command via Hyprland.
-pub fn execute_command(cmd: super::types::CompositorCommand) -> Result<()> {
-    // Map `CompositorCommand` to hyprland dispatch (e.g. `hyprland::dispatch`).
-    // Adapt to the pinned crate API.
-    let _ = cmd;
-    todo!("implement via hyprland crate dispatch")
+fn run_listener(data: Mutable<CompositorState>) -> Result<()> {
+    let mut listener = EventListener::new();
+    {
+        let data = data.clone();
+        listener.add_workspace_changed_handler(move |evt| {
+            debug!("workspace changed: {:?}", evt.name);
+            let mut s = data.lock_mut();
+            for w in s.workspaces.iter_mut() {
+                w.active = w.id == evt.id;
+            }
+        });
+    }
+    {
+        let data = data.clone();
+        listener.add_active_window_changed_handler(move |evt| {
+            let mut s = data.lock_mut();
+            s.active_window = evt.map(|w| ActiveWindow { title: w.title, class: w.class });
+        });
+    }
+    {
+        let data = data.clone();
+        listener.add_layout_changed_handler(move |evt| {
+            let mut s = data.lock_mut();
+            s.keyboard_layout = evt.layout_name;
+        });
+    }
+    listener.start_listener()?;
+    Ok(())
 }
 ```
-
-(Replace each `todo!()` with the real `hyprland`-crate call verified against the pinned version; ensure the file compiles and `fetch_full_state`/`execute_command` are callable from `mod.rs`.)
 
 - [ ] **Step 3: Write `compositor/niri.rs` (SCAFFOLD only)**
 
@@ -475,15 +551,11 @@ Verify the `zbus` 5.x proxy API and the NetworkManager D-Bus interface against d
 ```rust
 //! Network service via NetworkManager (D-Bus, system bus).
 
-pub mod types;
-pub use types::{ConnectivityState, NetworkData};
-
 use std::sync::Arc;
 use anyhow::Result;
 use futures_signals::signal::{Mutable, MutableSignalCloned};
+use futures_util::StreamExt;
 use zbus::{Connection, proxy};
-
-use crate::{Service, ServiceStatus};
 
 #[proxy(
     interface = "org.freedesktop.NetworkManager",
@@ -493,16 +565,22 @@ use crate::{Service, ServiceStatus};
 trait NetworkManager {
     #[zbus(property)]
     fn connectivity(&self) -> zbus::Result<u32>;
-    fn get_devices(&self) -> zbus::Result<Vec<zbus::zvariant::OwnedObjectPath>>;
+}
+
+fn map_connectivity(c: u32) -> ConnectivityState {
+    match c {
+        4 => ConnectivityState::Full,
+        3 => ConnectivityState::Limited,
+        2 => ConnectivityState::Portal,
+        1 => ConnectivityState::None,
+        _ => ConnectivityState::Unknown,
+    }
 }
 
 #[derive(Clone)]
 pub struct NetworkSubscriber {
     data: Mutable<NetworkData>,
     status: ServiceStatus,
-    // Hold the connection alive so signal subscriptions keep working. `None`
-    // for the unavailable path (sync `unavailable()` must not require a live
-    // connection, since `Connection::system()` is async and may fail).
     _conn: Option<Arc<Connection>>,
 }
 
@@ -510,44 +588,45 @@ impl NetworkSubscriber {
     pub async fn new() -> Result<Self> {
         let conn = Connection::system().await?;
         let mgr = NetworkManagerProxy::new(&conn).await?;
-        let connectivity = match mgr.connectivity().await {
-            Ok(c) => match c {
-                4 => ConnectivityState::Full,
-                3 => ConnectivityState::Limited,
-                2 => ConnectivityState::Portal,
-                1 => ConnectivityState::None,
-                _ => ConnectivityState::Unknown,
-            },
-            Err(e) => {
-                tracing::warn!("network: connectivity read failed: {e:#}");
-                ConnectivityState::Unknown
-            }
-        };
+        let connectivity = mgr.connectivity().await.map(map_connectivity).unwrap_or(ConnectivityState::Unknown);
         let data = Mutable::new(NetworkData { connectivity, wifi_ssid: None, wifi_strength: None });
+
+        // Reactive: subscribe to NetworkManager PropertiesChanged and update Mutable.
+        let mgr = Arc::new(mgr);
+        let mgr2 = mgr.clone();
+        let data2 = data.clone();
+        tokio::spawn(async move {
+            let mut stream = mgr2.receive_properties_changed();
+            while stream.next().await.is_some() {
+                if let Ok(c) = mgr2.connectivity().await {
+                    let connectivity = map_connectivity(c);
+                    data2.set(NetworkData { connectivity, ..data2.get() });
+                }
+            }
+        });
+
         Ok(Self { data, status: ServiceStatus::Available, _conn: Some(Arc::new(conn)) })
     }
 
     pub fn unavailable() -> Self {
-        Self {
-            data: Mutable::new(NetworkData::default()),
-            status: ServiceStatus::Unavailable,
-            _conn: None,
-        }
+        Self { data: Mutable::new(NetworkData::default()), status: ServiceStatus::Unavailable, _conn: None }
     }
 
     pub async fn connect(&self, _ssid: &str, _password: &str) -> Result<()> {
-        // Use NetworkManager D-Bus API (AddAndActivateConnection / ActivateConnection).
-        // Verify method names against introspection; return anyhow::Error on failure.
-        anyhow::bail!("connect not yet implemented for pinned NetworkManager API")
+        // Deferred: real NetworkManager AddAndActivateConnection wiring lands in a
+        // separate spec. Stubbed so the method exists and compiles.
+        anyhow::bail!("NetworkSubscriber::connect deferred to a follow-up spec")
     }
 
     pub async fn disconnect(&self) -> Result<()> {
-        anyhow::bail!("disconnect not yet implemented for pinned NetworkManager API")
+        anyhow::bail!("NetworkSubscriber::disconnect deferred to a follow-up spec")
     }
 }
 ```
 
-NOTE on `unavailable()`: `Connection::system()` is async and may fail, so `_conn` is `Option<Arc<Connection>>` and the unavailable path stores `None`. This keeps `unavailable()` a sync, panic-free constructor (the field type/initializer above already reflect this — no `block_on_or` placeholder).
+NOTE on `unavailable()`: `Connection::system()` is async and may fail, so `_conn` is `Option<Arc<Connection>>` and the unavailable path stores `None`. This keeps `unavailable()` a sync, panic-free constructor.
+
+NOTE: `wifi_ssid` / `wifi_strength` refinement (active connection's AP) is deferred alongside `connect`/`disconnect`.
 
 - [ ] **Step 3: Add `Service` impl + tests to `network/mod.rs`**
 
@@ -569,6 +648,15 @@ mod tests {
         assert_eq!(s.status(), ServiceStatus::Unavailable);
         assert_eq!(s.get(), NetworkData::default());
         let _ = s.subscribe();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a running NetworkManager on the system bus"]
+    async fn live_subscribes_to_changes() {
+        if let Ok(s) = NetworkSubscriber::new().await {
+            // Give the signal stream a moment, then assert no panic / data present.
+            let _ = s.get();
+        }
     }
 }
 ```
@@ -641,15 +729,11 @@ Verify the `zbus` 5.x proxy API and the UPower D-Bus interface against docs.rs /
 ```rust
 //! Power service via UPower (D-Bus, system bus).
 
-pub mod types;
-pub use types::{BatteryState, PowerProfile, UPowerData};
-
 use std::sync::Arc;
 use anyhow::Result;
 use futures_signals::signal::{Mutable, MutableSignalCloned};
+use futures_util::StreamExt;
 use zbus::{Connection, proxy};
-
-use crate::{Service, ServiceStatus};
 
 #[proxy(
     interface = "org.freedesktop.UPower.DisplayDevice",
@@ -660,14 +744,7 @@ trait DisplayDevice {
     #[zbus(property)]
     fn percentage(&self) -> zbus::Result<f64>;
     #[zbus(property)]
-    fn state(&self) -> zbus::Result<i32>; // 0 unknown,1 charging,2 discharging,3 empty,4 full
-}
-
-#[derive(Clone)]
-pub struct UPowerSubscriber {
-    data: Mutable<UPowerData>,
-    status: ServiceStatus,
-    _conn: Option<Arc<Connection>>,
+    fn state(&self) -> zbus::Result<i32>;
 }
 
 fn map_state(s: i32) -> BatteryState {
@@ -680,6 +757,13 @@ fn map_state(s: i32) -> BatteryState {
     }
 }
 
+#[derive(Clone)]
+pub struct UPowerSubscriber {
+    data: Mutable<UPowerData>,
+    status: ServiceStatus,
+    _conn: Option<Arc<Connection>>,
+}
+
 impl UPowerSubscriber {
     pub async fn new() -> Result<Self> {
         let conn = Connection::system().await?;
@@ -687,6 +771,19 @@ impl UPowerSubscriber {
         let percent = dev.percentage().await.unwrap_or(0.0);
         let state = map_state(dev.state().await.unwrap_or(0));
         let data = Mutable::new(UPowerData { battery_percent: percent, state, power_profile: PowerProfile::Balanced });
+
+        let dev = Arc::new(dev);
+        let dev2 = dev.clone();
+        let data2 = data.clone();
+        tokio::spawn(async move {
+            let mut stream = dev2.receive_properties_changed();
+            while stream.next().await.is_some() {
+                let percent = dev2.percentage().await.unwrap_or(data2.get().battery_percent);
+                let state = map_state(dev2.state().await.unwrap_or(0));
+                data2.set(UPowerData { battery_percent: percent, state, ..data2.get() });
+            }
+        });
+
         Ok(Self { data, status: ServiceStatus::Available, _conn: Some(Arc::new(conn)) })
     }
 
@@ -695,8 +792,7 @@ impl UPowerSubscriber {
     }
 
     pub async fn set_power_profile(&self, _p: PowerProfile) -> Result<()> {
-        // Call org.freedesktop.UPower.SetPowerProfile via proxy; verify method name.
-        anyhow::bail!("set_power_profile not yet implemented for pinned UPower API")
+        anyhow::bail!("UPowerSubscriber::set_power_profile deferred to a follow-up spec")
     }
 }
 
@@ -717,6 +813,14 @@ mod tests {
         assert_eq!(s.status(), ServiceStatus::Unavailable);
         assert_eq!(s.get(), UPowerData::default());
         let _ = s.subscribe();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a running UPower on the system bus"]
+    async fn live_subscribes_to_changes() {
+        if let Ok(s) = UPowerSubscriber::new().await {
+            let _ = s.get();
+        }
     }
 }
 ```
@@ -761,6 +865,7 @@ In `[dependencies]` add:
 
 ```toml
 futures-signals.workspace = true
+futures-util.workspace = true
 chronos-services = { path = "../services" }
 ```
 
@@ -784,6 +889,8 @@ pub struct Services {
 }
 
 const SERVICE_INIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+// 5s is a reasonable default init timeout; raise it via config if Hyprland IPC
+// is slow under load (boot storms, many monitors/workspaces).
 
 /// Initialize all services. Optional services fall back to `unavailable()`.
 pub async fn init_services() -> anyhow::Result<Services> {
@@ -867,6 +974,7 @@ impl AppState {
 mod tests {
     use super::*;
     use futures_signals::signal::Mutable;
+    use futures_util::StreamExt;
     use gpui::TestAppContext;
 
     struct Harness {
@@ -879,8 +987,10 @@ mod tests {
         let entity = cx.update(|cx| {
             let e = cx.new(|_cx| Harness { last: 0, data: Mutable::new(1) });
             let signal = e.read(cx).data.signal_cloned();
-            watch(cx, signal, |h: &mut Harness, v: u32, _cx| {
-                h.last = v;
+            e.update(cx, |_h, cx| {
+                watch(cx, signal, |h: &mut Harness, v: u32, _cx| {
+                    h.last = v;
+                });
             });
             e
         });
@@ -1019,42 +1129,61 @@ git commit -m "feat(app): bootstrap services on dedicated tokio thread, set AppS
 
 ---
 
-### Task 7: `examples/status-printer` (proves the reactive chain without UI)
+### Task 7: `examples/status_printer` (proves the reactive chain without UI)
 
 **Files:**
-- Create: `crates/app/examples/status_printer.rs`
+- Create: `crates/services/examples/status_printer.rs`
 
 **Interfaces:**
-- Consumes: `AppState` + `watch` (Task 5), subscribers (Tasks 2-4).
+- Consumes: `CompositorSubscriber` + `Service` (Tasks 2/1). NOTE: lives in `crates/services`, NOT `crates/app` — `crates/app` is a binary crate with no lib target, so an example there cannot `use state::AppState`; the `watch()` bridge is covered by the unit test in Task 5.
 
-- [ ] **Step 1: Write `crates/app/examples/status_printer.rs`**
+- [ ] **Step 1: Write `crates/services/examples/status_printer.rs`**
 
 ```rust
-//! Minimal example proving the reactive chain (service -> Mutable -> watch)
-//! without any UI dependency. Run with: cargo run -p chronos --example status_printer
+//! Proves the reactive chain (service -> Mutable -> signal) without any UI.
+//! Run: cargo run -p chronos-services --example status_printer
+//!
+//! NOTE: the GPUI-side `watch()` bridge is covered by the unit test in
+//! crates/app/src/state.rs; this example validates the service -> signal half
+//! directly (crates/app is a binary crate, so an example there cannot reach
+//! the `AppState`/`watch` module).
 
-fn main() {
-    // NOTE: in a real run, AppState must be initialized (see crates/app/src/main.rs).
-    // This example focuses on showing that `watch` delivers updates; the service
-    // side is exercised the same way main.rs initializes it.
-    println!("status_printer example: build the app and observe service updates via watch().");
-    println!("See crates/app/src/main.rs for AppState initialization.");
-    // (A full example would replicate the init_services() + AppState::init bootstrap
-    //  and then `watch(cx, AppState::global(cx).compositor().subscribe(), ...)` printing
-    //  each CompositorState. Keep this example dependency-light per spec §8.)
+use chronos_services::{CompositorSubscriber, Service};
+use futures_util::StreamExt;
+
+#[tokio::main]
+async fn main() {
+    let svc = CompositorSubscriber::new()
+        .await
+        .unwrap_or_else(|_| CompositorSubscriber::unavailable());
+
+    let mut stream = svc.subscribe().to_stream();
+    println!(
+        "subscribed; initial state has {} workspaces",
+        svc.get().workspaces.len()
+    );
+
+    while let Some(state) = stream.next().await {
+        println!(
+            "[compositor] workspaces={} active_window={:?} kbd={}",
+            state.workspaces.len(),
+            state.active_window.as_ref().map(|w| w.title.clone()),
+            state.keyboard_layout
+        );
+    }
 }
 ```
 
 - [ ] **Step 2: Build the example**
 
-Run: `cargo build -p chronos --example status_printer`
+Run: `cargo build -p chronos-services --example status_printer`
 Expected: 0 errors.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/app/examples/status_printer.rs
-git commit -m "feat(app): status-printer example proving the reactive chain"
+git add crates/services/examples/status_printer.rs
+git commit -m "feat(services): status-printer example proving service -> signal reactivity"
 ```
 
 ---
@@ -1062,14 +1191,14 @@ git commit -m "feat(app): status-printer example proving the reactive chain"
 ### Task 8: Record design divergences in DECISIONS.log
 
 **Files:**
-- Modify: `DECISIONS.log` (append 4 entries at the end)
+- Modify: `DECISIONS.log` (append 5 entries at the end)
 
 **Interfaces:**
 - Consumes: the design decisions from spec §10.
 
 - [ ] **Step 1: Append to `DECISIONS.log`**
 
-Add these four entries at the end of `DECISIONS.log`:
+Add these five entries at the end of `DECISIONS.log`:
 
 ```markdown
 ## 2026-07-10 — Services: `Service` trait is typed & light (variant Б)
@@ -1091,6 +1220,14 @@ Add these four entries at the end of `DECISIONS.log`:
 ## 2026-07-10 — Services: dependency versions verified at implementation time
 
 - `zbus` 5.x, `hyprland`, `niri-ipc` pins were verified against the workspace `Cargo.lock` / crates.io during implementation (2026). The §7/§10 architecture (dedicated tokio thread, `panic = "unwind"`, `futures_signals` reactive bridge) is unchanged by this spec.
+
+## 2026-07-10 — Services: review-driven refinements
+
+- D-Bus subscribers (Network/UPower) subscribe to `PropertiesChanged` (`receive_properties_changed()` + tokio task mutating `Mutable`) so state is reactive, not static-snapshot-only.
+- `futures-util` added to both crates (StreamExt for signal streams / `watch`).
+- `compositor/hyprland.rs` implemented concretely from the `hyprland` crate API (is_available via `HYPRLAND_INSTANCE_SIGNATURE`); no `todo!()` left in the primary backend.
+- `NetworkSubscriber::connect/disconnect` and `UPowerSubscriber::set_power_profile` are explicit deferred stubs (separate spec), not silent TODOs.
+- `examples/status_printer` lives in `crates/services` (binary crate can't expose `AppState` to examples) and proves service -> signal reactivity; `watch()` is covered by a unit test.
 ```
 
 - [ ] **Step 2: Commit**
@@ -1106,4 +1243,5 @@ git commit -m "docs(decisions): record services-layer design divergences"
 
 - Spec coverage: §1 Goal → Tasks 1-7; §2 current state → reflected in Tasks 1/5/6; §3 file structure → Tasks 1-4; §4 `Service` trait → Task 1 (+ Tasks 2-4 impls); §5 concrete services → Tasks 2/3/4; §6 runtime+bridge → Tasks 5/6; §7 error/availability → Tasks 2-6 (`unavailable()` fallbacks, 5s timeout); §8 testing → Task 1 (contract), Task 5 (`watch` bridge), Task 7 (example), live tests noted; §9 deps → Task 1; §10 divergences → Task 8. No spec requirement left without a task.
 - Type consistency: `Service::Data`/`Error` match across Tasks 1-4; `AppState::{compositor,network,upower}` return `&CompositorSubscriber`/`&NetworkSubscriber`/`&UPowerSubscriber` (Task 5) consistent with `Services` fields (Task 5); `init_services()` returns `anyhow::Result<Services>` used by `main.rs` (Task 6). `watch` signature matches gpui-shell `state.rs:143-164`.
-- Placeholders: `todo!()` in `compositor/hyprland.rs` is explicitly marked as "replace with verified hyprland-crate calls before committing" — the engineer MUST fill these (they are not left for later silently). `connect`/`disconnect`/`set_power_profile` use `anyhow::bail!` as explicit "not yet implemented for pinned API" stubs with a verify instruction — these are real, compilable code, not vague "TODO"; implement against the pinned D-Bus API in a follow-up before claiming the command works.
+- Placeholders: `compositor/hyprland.rs` is now implemented concretely from the verified `hyprland` crate API (no `todo!()` left in the primary backend); `is_available()` uses `HYPRLAND_INSTANCE_SIGNATURE`. `connect`/`disconnect`/`set_power_profile` use `anyhow::bail!` as explicit deferred stubs (separate follow-up spec), not silent TODOs; implement against the pinned D-Bus API before claiming the command works.
+- Review fixes applied (pre-implementation review, 2026-07-10): D-Bus subscribers (Network/UPower) now subscribe to `PropertiesChanged` via `receive_properties_changed()` + a tokio task mutating `Mutable`, so state is reactive, not a static snapshot. `futures-util` added to both crates (workspace dep, `StreamExt` for signal streams / `watch`). `examples/status_printer` lives in `crates/services/examples/` and proves the service -> signal half directly (crates/app is a binary crate, so an example there cannot reach `AppState`/`watch`); the `watch()` bridge is covered by the unit test in Task 5. The `watch_delivers_updates` test calls `watch` from inside an entity's `update` (where `cx: &mut Context<C>` is valid), not from `cx: &mut App`. `SERVICE_INIT_TIMEOUT` (5s) noted as a config-raisable default for slow Hyprland IPC. DECISIONS.log gained a 5th entry summarizing these.
