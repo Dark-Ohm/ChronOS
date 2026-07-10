@@ -1,0 +1,157 @@
+//! Hyprland compositor backend — PRIMARY backend.
+//!
+//! VERIFY the exact `hyprland` crate API against the pinned version (docs.rs)
+//! and reference/gpui-shell/crates/services/src/compositor/hyprland.rs.
+
+use std::panic;
+use std::thread;
+
+use anyhow::Result;
+use futures_signals::signal::Mutable;
+use hyprland::{
+    data::{Client, Devices, Monitors, Workspace as HWorkspace, Workspaces},
+    dispatch::{Dispatch, DispatchType, WorkspaceIdentifierWithSpecial},
+    event_listener::EventListener,
+    prelude::*,
+};
+use tracing::{debug, error};
+
+use super::types::{
+    ActiveWindow, CompositorBackend, CompositorCommand, CompositorState, Monitor, Workspace,
+};
+use crate::ServiceStatus;
+
+/// Hyprland is available when running under it (env var set by the compositor).
+pub fn is_available() -> bool {
+    std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some()
+}
+
+/// Execute a compositor command via Hyprland.
+pub fn execute_command(cmd: CompositorCommand) -> Result<()> {
+    match cmd {
+        CompositorCommand::FocusWorkspace(id) => {
+            Dispatch::call(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
+                id,
+            )))?;
+        }
+        CompositorCommand::NextWorkspace => {
+            Dispatch::call(DispatchType::Workspace(
+                WorkspaceIdentifierWithSpecial::Relative(1),
+            ))?;
+        }
+        CompositorCommand::PrevWorkspace => {
+            Dispatch::call(DispatchType::Workspace(
+                WorkspaceIdentifierWithSpecial::Relative(-1),
+            ))?;
+        }
+        CompositorCommand::MoveToWorkspace(id) => {
+            Dispatch::call(DispatchType::MoveToWorkspace(
+                WorkspaceIdentifierWithSpecial::Id(id),
+                None,
+            ))?;
+        }
+    }
+    Ok(())
+}
+
+/// Fetch the full current compositor state from Hyprland (sync).
+pub fn fetch_full_state() -> Result<CompositorState> {
+    let active_id = HWorkspace::get_active().ok().map(|w| w.id);
+    let workspaces = Workspaces::get()?
+        .into_iter()
+        .map(|w| Workspace {
+            id: w.id,
+            name: w.name,
+            active: active_id == Some(w.id),
+        })
+        .collect();
+    let monitors = Monitors::get()?
+        .into_iter()
+        .map(|m| Monitor {
+            name: m.name,
+            active_workspace: m.active_workspace.id,
+        })
+        .collect();
+    let active_window = Client::get_active().ok().flatten().map(|w| ActiveWindow {
+        title: w.title,
+        class: w.class,
+    });
+    let keyboard_layout = Devices::get()
+        .ok()
+        .and_then(|d| {
+            d.keyboards
+                .into_iter()
+                .find(|k| k.main)
+                .map(|k| k.active_keymap)
+        })
+        .unwrap_or_else(|| "Unknown".to_string());
+    Ok(CompositorState {
+        backend: CompositorBackend::Hyprland,
+        workspaces,
+        active_window,
+        monitors,
+        keyboard_layout,
+    })
+}
+
+/// Spawn the dedicated listener thread and **block until it exits** (panic or
+/// clean). The caller (`spawn_retry`) loops on exit, so a panicking listener is
+/// restarted via the retry mechanism — a panic must not freeze the service at
+/// `Unavailable` (spec §4.2 / §5.2). Returns the `JoinHandle` so the caller can
+/// `join()` and detect exit.
+pub fn start_listener(
+    data: Mutable<CompositorState>,
+    status: Mutable<ServiceStatus>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let result = panic::catch_unwind(panic::AssertUnwindSafe(|| run_listener(data.clone())));
+        if result.is_err() {
+            error!("Hyprland listener thread panicked; caller will restart via retry");
+            status.set(ServiceStatus::Unavailable);
+        }
+        // Thread ends here; `spawn_retry` joins and loops back to fetch+retry.
+    })
+}
+
+fn run_listener(data: Mutable<CompositorState>) -> Result<()> {
+    // TEST HOOK (cfg(test) only): when set, panic on entry to exercise the
+    // listener-restart path in `spawn_retry`. No effect in production builds.
+    // `LISTENER_SHOULD_PANIC` is defined at the `compositor` module root (see
+    // the `#[cfg(test)]` block in `mod.rs`) and is reachable here via `super`.
+    #[cfg(test)]
+    {
+        if super::LISTENER_SHOULD_PANIC.load(std::sync::atomic::Ordering::SeqCst) {
+            panic!("injected listener panic for regression test");
+        }
+    }
+    let mut listener = EventListener::new();
+    {
+        let data = data.clone();
+        listener.add_workspace_changed_handler(move |evt| {
+            debug!("workspace changed: {:?}", evt.name);
+            let mut s = data.lock_mut();
+            for w in s.workspaces.iter_mut() {
+                w.active = w.id == evt.id;
+            }
+        });
+    }
+    {
+        let data = data.clone();
+        listener.add_active_window_changed_handler(move |evt| {
+            let mut s = data.lock_mut();
+            s.active_window = evt.map(|w| ActiveWindow {
+                title: w.title,
+                class: w.class,
+            });
+        });
+    }
+    {
+        let data = data.clone();
+        listener.add_layout_changed_handler(move |evt| {
+            let mut s = data.lock_mut();
+            s.keyboard_layout = evt.layout_name;
+        });
+    }
+    listener.start_listener()?;
+    Ok(())
+}

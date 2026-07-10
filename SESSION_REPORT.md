@@ -1,39 +1,74 @@
-# SESSION_REPORT.md — Task 1: Scaffold `crates/services` + `Service` trait + `ServiceStatus` + contract test
+# Session Report: Task 2 - CompositorSubscriber Implementation
 
-## Сделано
-- Добавлен `crates/services` в workspace members (`Cargo.toml`)
-- Добавлены workspace-зависимости: `futures-signals = "0.3.34"`, `futures-util = "0.3"`, `zbus = "5"`, `hyprland = "0.4.0-beta.3"`, `niri-ipc = "26"`, `chrono = "0.4"`
-- Создан `crates/services/Cargo.toml` с workspace-зависимостями
-- Реализован `crates/services/src/lib.rs`:
-  - `pub enum ServiceStatus { Initializing, Available, Unavailable, Degraded(String) }` — 4 варианта по спеке
-  - `pub trait Service { type Data; type Error: Send + Sync + 'static; fn subscribe() -> impl Signal + Unpin + 'static; fn get(); fn status() }` — **bound `std::error::Error` убран** (см. Расхождения)
-  - Контрактный тест `service_contract_emits_on_mutate` с `FakeService` (использует `type Error = anyhow::Error`)
-  - Регрессионный тест `anyhow_error_satisfies_error_bound` — проверяет, что `anyhow::Error` удовлетворяет bound
-- Тесты проходят: `cargo test -p chronos-services` → **2 passed, 0 failed**
-- Коммит: `feat(services): scaffold crate + Service trait + ServiceStatus (v2)` + fix-коммит с поправкой bound
+## Сделано (Completed)
 
-## Расхождения с планом/спекой
-1. **`niri-ipc = "26"` вместо `=25.11.0`** — версии 25.11.0 не существует на crates.io (доступны 26.x). Niri backend — scaffold only (Hyprland primary).
-2. **`Service::Error` bound изменён с `std::error::Error + Send + Sync + 'static` на `Send + Sync + 'static`** — `anyhow::Error` не реализует `std::error::Error` напрямую (только `Deref<Target = dyn Error>`). План/спека фиксировали bound под anyhow::Error (Task 2-4: `type Error = anyhow::Error`), но он технически некорректен. Исправлен в этом таске постфактум, чтобы не тащить несовместимость в Task 2-4. Реальные сервисы будут использовать `anyhow::Error` или доменные ошибки (`zbus::Error`, `hyprland::Error`).
-3. Контрактный тест использует `anyhow::Error` (вместо `std::io::Error` как в первом проходе) — теперь согласовано с реальным bound.
+Implemented Task 2 from the Services Layer plan (`docs/superpowers/plans/2026-07-10-services-layer.md`): **CompositorSubscriber with Hyprland (primary) + Niri (scaffold) backends using sync-thread model**.
 
-## Не реализовано из acceptance criteria
-- Нет (всё выполнено)
+### Files Created/Updated:
 
-## Проверено фактом
-```bash
-# Workspace build + test
-cargo test -p chronos-services
-# running 2 tests
-# test tests::anyhow_error_satisfies_error_bound ... ok
-# test tests::service_contract_emits_on_mutate ... ok
-# test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-```
+1. **`crates/services/src/compositor/types.rs`** — Core type definitions:
+   - `CompositorBackend` enum (Hyprland, Niri)
+   - `Workspace` struct (id, name, active)
+   - `ActiveWindow` struct (title, class)
+   - `Monitor` struct (name, active_workspace)
+   - `CompositorState` struct (backend, workspaces, active_window, monitors, keyboard_layout)
+   - `CompositorCommand` enum (FocusWorkspace, NextWorkspace, PrevWorkspace, MoveToWorkspace)
 
-## Новые риски
-- `hyprland = "0.4.0-beta.3"` — prerelease версия, API может меняться. Task 2 придёт валидировать точно этот крейт.
-- `niri-ipc = "26"` — scaffold only, реальная реализация отложена.
+2. **`crates/services/src/compositor/hyprland.rs`** — PRIMARY backend implementation:
+   - `is_available()` — checks `HYPRLAND_INSTANCE_SIGNATURE` env var
+   - `execute_command()` — dispatches Hyprland commands via `hyprland` crate 0.4.0-beta.3 API
+   - `fetch_full_state()` — sync fetch of workspaces, monitors, active window, keyboard layout
+   - `start_listener()` — spawns dedicated thread with `catch_unwind` panic handling
+   - `run_listener()` — registers event handlers (workspace_changed, active_window_changed, layout_changed) and blocks on `EventListener::start_listener()`
 
-## Статус ARCHITECTURE.md / DECISIONS.log
-- ARCHITECTURE.md не требует изменений (Service trait соответствует §7, §10)
-- DECISIONS.log: добавлена запись 2026-07-10 с решением по bound `Service::Error` и версией niri-ipc
+3. **`crates/services/src/compositor/niri.rs`** — SCAFFOLD only:
+   - `is_available()` returns `false`
+   - `fetch_full_state()` returns default `CompositorState`
+   - `start_listener()` spawns no-op thread
+   - `execute_command()` no-op
+
+4. **`crates/services/src/compositor/mod.rs`** — Module coordination:
+   - Re-exports all public types
+   - `LISTENER_SHOULD_PANIC` static (test-only panic injection)
+   - `CompositorSubscriber` struct implementing `Service` trait
+   - `detect_backend()` — Hyprland priority, Niri fallback
+   - `spawn_retry()` — sync retry loop with MAX_ATTEMPTS=5, joins listener handle, restarts on exit (panic or clean)
+   - Regression test: `listener_panic_restarts_instead_of_freezing` — verifies panic/restart contract
+
+5. **`crates/services/src/lib.rs`** — Added `pub mod compositor;` and re-exports
+
+## Расхождения (Deviations from Plan)
+
+None — implementation matches the plan spec exactly:
+- Types match plan lines 191-230
+- Hyprland backend functions match plan lines 258-337
+- Niri scaffold matches plan lines 391-405
+- `detect_backend()`, `spawn_retry()`, `CompositorSubscriber` match plan lines 419-503
+- Regression test matches plan lines 574-615
+
+## Не реализовано (Not Implemented)
+
+Per plan: Niri backend is scaffold only (no real IPC). This is intentional per ARCHITECTURE.md §13.
+
+## Проверено фактом (Verified by Fact)
+
+- `cargo check -p chronos-services` ✅ compiles cleanly
+- `cargo test -p chronos-services` ✅ all 3 tests pass:
+  - `tests::anyhow_error_satisfies_error_bound`
+  - `tests::service_contract_emits_on_mutate`
+  - `compositor::tests::listener_panic_restarts_instead_of_freezing` (exercises panic/restart path)
+- Hyprland backend API verified against `hyprland` crate 0.4.0-beta.3 (via reference implementation in `reference/gpui-shell`)
+
+## Новые риски (New Risks)
+
+1. **Test environment dependency**: The regression test requires a running Hyprland instance (socket at `/run/user/$UID/hypr/...`). In CI without Hyprland, `is_available()` returns true (env var set) but socket connection hangs. Current `is_available()` only checks env var — may need socket existence check for robust CI skipping.
+
+2. **Sync-thread model constraint**: The sync-thread design (no tokio) is intentional per spec §5.2 but means the listener thread blocks on `EventListener::start_listener()`. If Hyprland socket becomes unresponsive, the thread cannot be interrupted cleanly.
+
+3. **Limited event coverage**: Current `run_listener()` handles only 3 event types (workspace_changed, active_window_changed, layout_changed). Reference implementation handles 10+ events. This is acceptable for MVP but will need expansion for full feature parity.
+
+## Статус доков (Documentation Status)
+
+- Plan document: `docs/superpowers/plans/2026-07-10-services-layer.md` — Task 2 complete
+- Code documentation: All public items have doc comments
+- SESSION_REPORT.md: This file created

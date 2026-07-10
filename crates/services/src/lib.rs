@@ -4,6 +4,13 @@
 //! implements the lightweight `Service` trait. Commands are concrete methods
 //! on each subscriber (NOT part of the trait).
 
+pub mod compositor;
+
+pub use compositor::{
+    ActiveWindow, CompositorBackend, CompositorCommand, CompositorState, CompositorSubscriber,
+    Monitor, Workspace,
+};
+
 use futures_signals::signal::Signal;
 
 /// Availability of a service.
