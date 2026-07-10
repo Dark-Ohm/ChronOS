@@ -14,6 +14,4 @@ System prompts/
 
 # Subagent-driven-development scratch (progress ledger, task briefs/reports)
 
-# Git worktrees (isolated workspaces, not part of the repo)
-docs/superpowers/plans/done/
-docs/superpowers/specs/done/
+# Git worktrees (isolated workspaces, not part of the repo).worktrees
