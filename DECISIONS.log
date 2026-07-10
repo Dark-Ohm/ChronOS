@@ -433,50 +433,59 @@ PluginManager global then releases it before the closure returns, so a
     is a deployment detail; the manifest name is Lua-authored plugin
     identity) — they only happened to coincide in every plugin fixture tested
     so far (`clock` dir + `name = "clock"`).
-  - `crates/app/src/plugin_bridge.rs`'s `register_plugin_widgets()` made the
-    same category of mistake one level down: it re-derived "which plugin owns
-    this widget" by matching the *widget's* registered name
-    (`chronos.bar:register({name=...})`) against `PluginHandle.name` — but a
-    widget's name and its owning plugin's manifest name are different,
-    unrelated namespaces. They only happened to coincide for the one shipped
-    example plugin (`clock`'s widget is also named `"clock"`), which is
-    exactly what let this ship unnoticed until a plugin with a differently-
-    named widget was tested live.
-- Rejected: patching `plugin_bridge.rs`'s lookup to match by directory path
-  too (mirroring the `manager.rs` fix). `get_registered_widgets()` already
-  iterates each owning `PluginHandle` internally to build its result — it can
-  hand the caller the owning `Lua` handle directly with no lookup at all,
-  which is strictly more correct than any name- or path-based re-search
-  performed after the fact.
-- Decided (one fix for the whole defect class, not two patches): `PluginHandle.path`
-  is the single lookup key across `reload()`, `unregister_plugin()`, and
-  `reregister_widgets()` — the only field guaranteed unique (the filesystem
-  cannot have two directories at the same path) and independent of anyone's
-  discipline filling in `manifest.toml`. `PluginHandle.name` (manifest-derived)
-  remains for logs/display only, never for lookups. `get_registered_widgets()`
-  now returns `(Lua, widget_name, section, spec)` tuples instead of
-  `(widget_name, section, spec)`, so `plugin_bridge.rs` needs no lookup at all.
-  Pre-flight swept for a third occurrence of the same pattern before fixing
-  (`grep -rn "\.name ==" crates/luau crates/app`) — confirmed exactly these
-  four call sites, no other location.
-- Also found and fixed in the same pass, unrelated to plugin identity but
-  discovered while touching this code: `crates/luau/Cargo.toml` had
-  `gpui`'s `test-support` feature under `[dependencies]` instead of
-  `[dev-dependencies]` (added in this same branch's Task 1 commit,
-  undocumented, no `DECISIONS.log` entry, no design-doc discussion — an
-  unexamined pattern, not a conscious choice). Since `crates/luau` is a plain
-  library linked into `crates/app`'s release `chronos` binary, this compiled
-  GPUI's test scaffolding into every release build. Confirmed every
-  `TestAppContext`/`gpui::test` usage in the crate sits inside
-  `#[cfg(test)]` before moving it; moved both crates' `test-support` to
-  `[dev-dependencies]` rather than propagate the pattern when adding it to
-  `crates/app` for its own new test.
-- Verified by execution: live run with a deliberately mismatched plugin
-  (dir `test-race-plugin`, manifest `name = "race"`, widget name
-  `race-widget`) produced `Hot-reloaded plugin: race (".../test-race-plugin")`
-  with no `WARN ... not found` — the exact scenario that previously always
-  produced that warning. New regression tests
-  (`reload_registers_widget_when_dir_name_differs_from_manifest_name` in
-  `manager.rs`, `register_plugin_widgets_handles_name_mismatch` in
-  `plugin_bridge.rs`) exercise this mismatch directly; full suites pass
-  25 (chronos-luau) + 7 (chronos) = 32/32.
+  — they only happened to coincide in every plugin fixture tested so far (`clock` dir + `name = "clock"`).
+    - `crates/app/src/plugin_bridge.rs`'s `register_plugin_widgets()` made the
+      same category of mistake one level down: it re-derived "which plugin owns
+      this widget" by matching the *widget's* registered name
+      (`chronos.bar:register({name=...})`) against `PluginHandle.name` — but a
+      widget's name and its owning plugin's manifest name are different,
+      unrelated namespaces. They only happened to coincide for the one shipped
+      example plugin (`clock`'s widget is also named `"clock"`), which is
+      exactly what let this ship unnoticed until a plugin with a differently-
+      named widget was tested live.
+  - Rejected: patching `plugin_bridge.rs`'s lookup to match by directory path
+    too (mirroring the `manager.rs` fix). `get_registered_widgets()` already
+    iterates each owning `PluginHandle` internally to build its result — it can
+    hand the caller the owning `Lua` handle directly with no lookup at all,
+    which is strictly more correct than any name- or path-based re-search
+    performed after the fact.
+  - Decided (one fix for the whole defect class, not two patches): `PluginHandle.path`
+    is the single lookup key across `reload()`, `unregister_plugin()`, and
+    `reregister_widgets()` — the only field guaranteed unique (the filesystem
+    cannot have two directories at the same path) and independent of anyone's
+    discipline filling in `manifest.toml`. `PluginHandle.name` (manifest-derived)
+    remains for logs/display only, never for lookups. `get_registered_widgets()`
+    now returns `(Lua, widget_name, section, spec)` tuples instead of
+    `(widget_name, section, spec)`, so `plugin_bridge.rs` needs no lookup at all.
+    Pre-flight swept for a third occurrence of the same pattern before fixing
+    (`grep -rn "\.name ==" crates/luau crates/app`) — confirmed exactly these
+    four call sites, no other location.
+  - Also found and fixed in the same pass, unrelated to plugin identity but
+    discovered while touching this code: `crates/luau/Cargo.toml` had
+    `gpui`'s `test-support` feature under `[dependencies]` instead of
+    `[dev-dependencies]` (added in this same branch's Task 1 commit,
+    undocumented, no `DECISIONS.log` entry, no design-doc discussion — an
+    unexamined pattern, not a conscious choice). Since `crates/luau` is a plain
+    library linked into `crates/app`'s release `chronos` binary, this compiled
+    GPUI's test scaffolding into every release build. Confirmed every
+    `TestAppContext`/`gpui::test` usage in the crate sits inside
+    `#[cfg(test)]` before moving it; moved both crates' `test-support` to
+    `[dev-dependencies]` rather than propagate the pattern when adding it to
+    `crates/app` for its own new test.
+  - Verified by execution: live run with a deliberately mismatched plugin
+    (dir `test-race-plugin`, manifest `name = "race"`, widget name
+    `race-widget`) produced `Hot-reloaded plugin: race (".../test-race-plugin")`
+    with no `WARN ... not found` — the exact scenario that previously always
+    produced that warning. New regression tests
+    (`reload_registers_widget_when_dir_name_differs_from_manifest_name` in
+    `manager.rs`, `register_plugin_widgets_handles_name_mismatch` in
+    `plugin_bridge.rs`) exercise this mismatch directly; full suites pass
+    25 (chronos-luau) + 7 (chronos) = 32/32.
+
+  ## 2026-07-10 — Services layer: crate scaffolding + Service trait (Task 1)
+
+  - Considered: `niri-ipc = "=25.11.0"` per plan — does not exist on crates.io (available: 26.x only).
+  - Decided: use `niri-ipc = "26"` (latest 26.x). Scaffold only; Niri backend is stubbed (Task 2).
+  - Considered: `anyhow::Error` as `Service::Error` type in contract test — does not satisfy `std::error::Error` bound directly (impl via Deref only).
+  - Decided: test uses `std::io::Error` (concrete, implements Error + Send + Sync + 'static). Real services will use domain-specific errors (`zbus::Error`, `hyprland::Error`).
+  - `hyprland = "0.4.0-beta.3"` — only available version (prerelease). API surface may shift; Task 2 will verify against this version.
