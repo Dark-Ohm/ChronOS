@@ -55,8 +55,9 @@ use futures_signals::signal::Signal;
 pub trait Service: Send + Sync + 'static {
     /// Snapshot type. Must be cheaply clonable.
     type Data: Clone + 'static;
-    /// Service-specific error type.
-    type Error: std::error::Error + Send + Sync + 'static;
+    /// Service-specific error type. Only required to be Send + Sync + 'static
+    /// (trait never invokes std::error::Error methods; errors are logged via tracing).
+    type Error: Send + Sync + 'static;
 
     /// Reactive signal that emits on every state change.
     /// Returns `impl Signal` (not `MutableSignalCloned`) so consumers cannot call `.set()`.
