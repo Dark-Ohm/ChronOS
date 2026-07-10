@@ -3,6 +3,10 @@ name = "chronos"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "chronos_app"
+path = "src/lib.rs"
+
 [[bin]]
 name = "chronos"
 path = "src/main.rs"
@@ -14,7 +18,10 @@ anyhow.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+futures-signals.workspace = true
+futures-util.workspace = true
 chronos-luau = { path = "../luau" }
+chronos-services = { path = "../services" }
 dirs = "6"
 
 [dev-dependencies]

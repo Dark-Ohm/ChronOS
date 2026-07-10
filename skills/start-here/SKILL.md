@@ -18,6 +18,26 @@ Each skill is a node; skills cross-reference and route to one another. When a
 skill points you to another, follow the link instead of re-deriving the answer.
 This skill is the entry node.
 
+### ⚠️ MANDATORY: Acknowledge `mcp-memory-workflow` IMMEDIATELY
+
+**Before doing ANY coding work**, you MUST acknowledge and start the
+`mcp-memory-workflow` protocol. This is NOT optional — it is the memory
+layer protocol for this repo.
+
+Execute in order:
+```
+lean-ctx:    ctx_session(action="load")     → restore previous session state
+lean-ctx:    ctx_knowledge(action="recall") → load project-specific knowledge
+engram:      mem_session_start(directory, id, project)  → register session
+engram:      mem_search(query="<project name>")         → recall prior context
+codebase:    index_status(project) → if stale, index_repository(project)
+```
+
+**Do NOT start coding before completing these calls.** The mcp-memory-workflow
+skill contains the full protocol, automatic save triggers, and tool reference.
+You MUST follow its protocol for the entire session.
+
+---
 ## Step 0 — Read Project Docs, In This Order
 
 Do this before writing code, answering an architecture question, or claiming

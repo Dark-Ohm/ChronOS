@@ -63,6 +63,7 @@ pub fn fetch_full_state() -> Result<CompositorState> {
             id: w.id,
             name: w.name,
             active: active_id == Some(w.id),
+            monitor_id: w.monitor_id,
         })
         .collect();
     let monitors = Monitors::get()?
@@ -70,11 +71,16 @@ pub fn fetch_full_state() -> Result<CompositorState> {
         .map(|m| Monitor {
             name: m.name,
             active_workspace: m.active_workspace.id,
+            id: m.id,
+            x: m.x,
+            y: m.y,
+            scale: m.scale,
         })
         .collect();
     let active_window = Client::get_active().ok().flatten().map(|w| ActiveWindow {
         title: w.title,
         class: w.class,
+        address: w.address.to_string(),
     });
     let keyboard_layout = Devices::get()
         .ok()
@@ -142,6 +148,7 @@ fn run_listener(data: Mutable<CompositorState>) -> Result<()> {
             s.active_window = evt.map(|w| ActiveWindow {
                 title: w.title,
                 class: w.class,
+                address: w.address.to_string(),
             });
         });
     }

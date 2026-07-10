@@ -1,14 +1,15 @@
 mod bar;
 mod ipc;
 mod plugin_bridge;
+pub mod state;
 
 use chronos_luau::PluginManager;
+use chronos_services;
 use gpui_platform::application;
 use ipc::IpcSubscriber;
 use tracing_subscriber::EnvFilter;
 
-#[tokio::main]
-async fn main() {
+fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
@@ -20,9 +21,23 @@ async fn main() {
         return;
     };
 
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+
+    // block_on enters the runtime context so Handle::current() resolves
+    // inside NetworkSubscriber::new() / UPowerSubscriber::new().
+    let services = rt.block_on(async { chronos_services::init_all() });
+
+    // services is Send + Sync (Mutable + zbus::Connection) -> crosses to GPUI thread
     let app = application();
     app.run(move |cx| {
         tracing::info!("GPUI application context ready");
+
+        // Initialize global AppState so watch() / AppState::compositor() etc. work
+        state::AppState::init(services, cx);
+
         subscriber.start(cx);
         bar::init(cx);
 
