@@ -23,6 +23,7 @@ futures-util.workspace = true
 chronos-luau = { path = "../luau" }
 chronos-services = { path = "../services" }
 dirs = "6"
+inotify = "0.11"
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }

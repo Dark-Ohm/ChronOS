@@ -42,6 +42,10 @@ fn main() {
         subscriber.start(cx);
         bar::init(cx);
 
+        // Initialize desktop entry cache before bar (bar may eventually show launcher toggle)
+        launcher::cache::init(cx);
+        launcher::cache::start_watcher(cx);
+
         let plugin_dirs = vec![
             dirs::config_dir().unwrap().join("chronos/plugins"),
             std::path::PathBuf::from("/usr/share/chronos/plugins"),
