@@ -1,5 +1,6 @@
 mod bar;
 mod ipc;
+mod launcher;
 mod plugin_bridge;
 pub mod state;
 
