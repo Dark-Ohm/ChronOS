@@ -172,3 +172,44 @@ If its empty\not full - its a fresh log. - see previous log in /home/neo/Project
   - Full test suite: `cargo test` → 43 tests pass (11 app + 25 luau + 7 services).
   - Build: `cargo check -p chronos` clean (3 warnings about unused public API
     — expected, meant for downstream UI widgets).
+
+  ## 2026-07-11 — Launcher module (Task 9): nucleo 0.5, layer-shell overlay, IPC toggle
+
+  - **nucleo 0.5 API deviations:** `nucleo 0.5.0` moved `CaseMatching`/`Normalization`
+    to `nucleo::pattern` module, removed `Normalization::None` (use `Normalization::Never`),
+    `Item.data` is `&T` (requires deref), `Snapshot::matched_items(range)` panics if
+    range end > matched count. Fixed in `crates/app/src/launcher/search.rs`.
+  - **Fuzzy search engine:** `nucleo` chosen over custom/rapidfuzz — mature, MPL-2.0,
+    used by Helix editor. `Config::DEFAULT` fine for launcher (no custom scoring).
+  - **Layer-shell centering:** Spec §3.1 described centered overlay via `window_bounds`
+    origin. Layer-shell protocol centers via `anchor = TOP|BOTTOM|LEFT|RIGHT` +
+    symmetric `margin` (stretch to full output, inset by margin). `Anchor::empty()` +
+    `window_bounds.origin = center` is compositor-dependent and fails on Hyprland.
+    Implemented: `anchor = TOP|BOTTOM|LEFT|RIGHT`, `margin = (margin_y, margin_x, margin_y, margin_x)`.
+  - **Keyboard interactivity — Exclusive vs OnDemand (Critical):**
+    - Spec §3.1 requested `KeyboardInteractivity::Exclusive` (rofi-like capture-all).
+    - Tested: `Exclusive` on `Layer::Overlay` + `anchor=empty` on Hyprland/Niri → compositor
+       freezes entire input stack (session crash/reboot required). Root cause:
+       exclusive layer-shell surface never acks keyboard focus, compositor waits indefinitely.
+    - Fallback: `KeyboardInteractivity::OnDemand` + explicit `window.activate_window()` +
+       `window.focus(&focus_handle)` in `open()`. Window opens, but **does not receive
+       keyboard focus automatically** on Hyprland/Niri — requires click or Alt+Tab to
+       acquire focus. Once focused, key events work (Enter/Escape/navigation).
+    - Root cause: layer-shell `OnDemand` requires compositor to explicitly grant focus
+       (usually on click or focus policy). `activate_window()` sends `xdg_activation_v1`
+       token, but layer-shell surfaces don't participate in xdg_activation.
+    - **Deferred fix:** Investigate `zwlr_layer_surface_v1.set_keyboard_interactivity`
+       timing / proper focus ack in GPUI platform, or fallback to XDG popup/toplevel
+       for launcher. Marked Critical severity.
+  - **IPC ToggleLauncher:** Spec §7 proposed separate `ShowLauncher`/`HideLauncher`/`ToggleLauncher`.
+    Simplified to single `ToggleLauncher` payload (stateless toggle) — reduces message
+    surface, matches user workflow (single keybind).
+  - **IPC dual-channel accept loop:** `accept_loop` now merges `ping` + `toggle_launcher`
+    channels via `tokio::select!` — avoids head-of-line blocking if one channel stalls.
+  - **DesktopEntry fields `icon`/`terminal`/`no_display` parsed but unused:**
+    Parsed per XDG spec, `no_display` filters at parse time, `icon`/`terminal` stored
+    for future (icon rendering, terminal launch). YAGNI deferred.
+  - **Setsid launch:** `launch()` uses `setsid sh -c "exec"` + triple `Stdio::null()`
+    — detached process survives parent death. Validated by `setsid --version` test.
+  - **Setsid availability test:** Added compile-time check that `setsid` exists on host.
+    Fails fast if missing (non-POSIX environments).

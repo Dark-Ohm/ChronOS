@@ -1,7 +1,14 @@
 use std::path::Path;
 
 /// A parsed XDG .desktop file (Type=Application only).
+///
+/// `icon` and `terminal` are parsed and stored but not yet consumed at runtime:
+/// icon rendering and terminal-launch are explicit YAGNI follow-ups per the
+/// launcher design spec (§9). `no_display` is enforced at parse time (entries
+/// with `NoDisplay=true` are dropped), so the field is retained for callers
+/// that may want to introspect the raw entry.
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct DesktopEntry {
     /// Filename without `.desktop` extension (e.g. "firefox").
     pub id: String,
@@ -67,18 +74,16 @@ pub fn parse_desktop_file(path: &Path) -> Option<DesktopEntry> {
     let mut no_display = false;
 
     // Determine locale for Name[lang]= fallback
-    let locale = std::env::var("LANG")
-        .ok()
-        .and_then(|l| {
-            // "ru_UF.UTF-8" -> "ru", "C.UTF-8" -> skip (not a real locale)
-            let lang_part = l.split('.').next()?;
-            let lang_base = lang_part.split('_').next()?;
-            if lang_base == "C" || lang_base.is_empty() {
-                None
-            } else {
-                Some(lang_base.to_string())
-            }
-        });
+    let locale = std::env::var("LANG").ok().and_then(|l| {
+        // "ru_UF.UTF-8" -> "ru", "C.UTF-8" -> skip (not a real locale)
+        let lang_part = l.split('.').next()?;
+        let lang_base = lang_part.split('_').next()?;
+        if lang_base == "C" || lang_base.is_empty() {
+            None
+        } else {
+            Some(lang_base.to_string())
+        }
+    });
 
     for line in content.lines() {
         let line = line.trim();
@@ -190,7 +195,10 @@ mod tests {
 
     #[test]
     fn strip_field_codes_removes_percent_args() {
-        assert_eq!(strip_field_codes("/usr/bin/app %f --flag"), "/usr/bin/app --flag");
+        assert_eq!(
+            strip_field_codes("/usr/bin/app %f --flag"),
+            "/usr/bin/app --flag"
+        );
         assert_eq!(strip_field_codes("/usr/bin/app %u"), "/usr/bin/app");
         assert_eq!(strip_field_codes("/usr/bin/app %F %U"), "/usr/bin/app");
         assert_eq!(strip_field_codes("/usr/bin/app"), "/usr/bin/app");
@@ -199,16 +207,19 @@ mod tests {
 
     #[test]
     fn strip_field_codes_collapses_consecutive_spaces() {
-        assert_eq!(strip_field_codes("/usr/bin/app %f --flag"), "/usr/bin/app --flag");
+        assert_eq!(
+            strip_field_codes("/usr/bin/app %f --flag"),
+            "/usr/bin/app --flag"
+        );
     }
 
     #[test]
     fn locale_name_fallback() {
         let dir = std::env::temp_dir().join("desktop-test-locale");
         std::fs::create_dir_all(&dir).unwrap();
-// Set LANG for this test
-    let original_lang = std::env::var("LANG").ok();
-    unsafe { std::env::set_var("LANG", "ru_UF.UTF-8") };
+        // Set LANG for this test
+        let original_lang = std::env::var("LANG").ok();
+        unsafe { std::env::set_var("LANG", "ru_UF.UTF-8") };
 
         let path = write_desktop_file(
             &dir,
@@ -218,11 +229,11 @@ mod tests {
         let entry = parse_desktop_file(&path).unwrap();
         assert_eq!(entry.name, "Russkii");
 
-// Restore LANG
-    match original_lang {
-        Some(val) => unsafe { std::env::set_var("LANG", val) },
-        None => unsafe { std::env::remove_var("LANG") },
-    }
+        // Restore LANG
+        match original_lang {
+            Some(val) => unsafe { std::env::set_var("LANG", val) },
+            None => unsafe { std::env::remove_var("LANG") },
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

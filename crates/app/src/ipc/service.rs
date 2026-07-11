@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 use tokio::net::UnixListener as TokioUnixListener;
 use tokio::sync::mpsc;
 
-use super::messages::{encode_ping, is_ping};
+use super::messages::{encode_ping, is_ping, is_toggle_launcher};
 
 pub type IpcReceiver = mpsc::UnboundedReceiver<()>;
+pub type IpcToggleReceiver = mpsc::UnboundedReceiver<()>;
 
 pub enum AcquireResult {
     Primary(IpcSubscriber),
@@ -16,8 +17,13 @@ pub enum AcquireResult {
 }
 
 /// Owns the bound-but-not-yet-accepting Unix socket for the primary instance.
+///
+/// The listener is stored as a std `UnixListener` so `init()` can run before
+/// the tokio reactor is active (it only binds a socket + signals a peer).
+/// `start_listener` converts it to a tokio listener, which requires a running
+/// runtime.
 pub struct IpcSubscriber {
-    listener: Option<TokioUnixListener>,
+    listener: Option<UnixListener>,
     socket_path: PathBuf,
 }
 
@@ -36,17 +42,24 @@ impl IpcSubscriber {
     }
 
     /// Starts the accept loop. Must be called from within a tokio runtime.
-    /// Returns a receiver that yields `()` once per received ping.
-    pub fn start_listener(&mut self) -> IpcReceiver {
-        let (sender, receiver) = mpsc::unbounded_channel();
+    /// Returns receivers that yield `()` once per received ping / toggle request.
+    pub fn start_listener(&mut self) -> (IpcReceiver, IpcToggleReceiver) {
+        let (ping_sender, ping_receiver) = mpsc::unbounded_channel();
+        let (toggle_sender, toggle_receiver) = mpsc::unbounded_channel();
 
-        if let Some(listener) = self.listener.take() {
-            tokio::spawn(async move {
-                accept_loop(listener, sender).await;
-            });
+        if let Some(std_listener) = self.listener.take() {
+            // `from_std` requires a running tokio reactor, which is active here.
+            match TokioUnixListener::from_std(std_listener) {
+                Ok(listener) => {
+                    tokio::spawn(async move {
+                        accept_loop(listener, ping_sender, toggle_sender).await;
+                    });
+                }
+                Err(e) => tracing::error!("Failed to convert IPC listener: {e}"),
+            }
         }
 
-        receiver
+        (ping_receiver, toggle_receiver)
     }
 }
 
@@ -91,13 +104,8 @@ pub fn acquire_at(path: &Path, payload: &str) -> AcquireResult {
         return AcquireResult::Error(format!("Failed to configure socket: {}", e));
     }
 
-    let tokio_listener = match TokioUnixListener::from_std(listener) {
-        Ok(l) => l,
-        Err(e) => return AcquireResult::Error(format!("Failed to create async listener: {}", e)),
-    };
-
     AcquireResult::Primary(IpcSubscriber {
-        listener: Some(tokio_listener),
+        listener: Some(listener),
         socket_path: path.to_path_buf(),
     })
 }
@@ -120,13 +128,18 @@ pub fn socket_path() -> PathBuf {
     socket_path_in(std::env::var("XDG_RUNTIME_DIR").ok().as_deref())
 }
 
-async fn accept_loop(listener: TokioUnixListener, sender: mpsc::UnboundedSender<()>) {
+async fn accept_loop(
+    listener: TokioUnixListener,
+    ping_sender: mpsc::UnboundedSender<()>,
+    toggle_sender: mpsc::UnboundedSender<()>,
+) {
     use tokio::io::AsyncReadExt;
 
     loop {
         match listener.accept().await {
             Ok((mut stream, _)) => {
-                let sender = sender.clone();
+                let ping_sender = ping_sender.clone();
+                let toggle_sender = toggle_sender.clone();
                 tokio::spawn(async move {
                     let mut buffer = Vec::with_capacity(16);
                     let read = tokio::time::timeout(
@@ -138,7 +151,9 @@ async fn accept_loop(listener: TokioUnixListener, sender: mpsc::UnboundedSender<
                     if let Ok(Ok(_)) = read {
                         let payload = String::from_utf8_lossy(&buffer).to_string();
                         if is_ping(&payload) {
-                            let _ = sender.send(());
+                            let _ = ping_sender.send(());
+                        } else if is_toggle_launcher(&payload) {
+                            let _ = toggle_sender.send(());
                         }
                     }
                 });

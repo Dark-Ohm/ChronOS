@@ -38,6 +38,18 @@
 - Запущен `status-printer`, переключены workspace'ы через `hyprctl dispatch 'hl.dsp.focus({ workspace = "2" })'` → лог обновился за ~100 мс без ручного рефреша.
 - Доказывает: `Mutable::set()` в foreign thread (CompositorSubscriber) → `futures_signals::Signal` wake → GPUI `cx.spawn()` consumer → log line appears. Reactive chain works end-to-end.
 - **Env note**: Hyprland 0.55+ (Lua config) требует новый синтаксис dispatch: `hyprctl dispatch 'hl.dsp.focus({ workspace = "N" })'`. Legacy `hyprctl dispatch workspace N` broken (returns 0 but error "expected ')' near 'N'"). Это внешнее изменение окружения, не баг нашего кода.
+
+### Task 9 — Launcher module (fuzzy search overlay)
+- `crates/app/src/launcher/search.rs`: `FuzzySearch` wrapper over `nucleo 0.5.0` (fuzzy matching engine). Fixes for nucleo 0.5 API: `CaseMatching`/`Normalization` moved to `nucleo::pattern`, `Normalization::Never` instead of `None`, `Item.data` is `&T` requiring deref, `Snapshot::matched_items()` range clamp to avoid panic when `max > matched_count`.
+- `crates/app/src/launcher/entry.rs`: `DesktopEntry` struct (XDG .desktop parser), `parse_desktop_file()`, `strip_field_codes()`. Filters `Type=Application`, skips `NoDisplay=true`. Locale-aware `Name[lang]=` fallback.
+- `crates/app/src/launcher/cache.rs`: `DesktopEntryCache` (GPUI `Global`), startup scan of `/usr/share/applications/` + `~/.local/share/applications/`, user-overrides-system dedup by filename. `inotify` watcher (dedicated OS thread, trailing 300ms debounce, `WatchDescriptor`-based event matching) → re-scan on changes.
+- `crates/app/src/launcher/launch.rs`: `launch(exec)` via `setsid sh -c` + triple `Stdio::null()` — detached process survives chronos kill (validated by `setsid` availability test).
+- `crates/app/src/launcher/view.rs`: `LauncherView` (GPUI `Render` + `Focusable`) — centered overlay, search input + result list, keyboard handling via `on_key_down` (printable chars, Backspace, Enter, Escape, Up/Down/Tab). `window.refresh()` on pattern/selection change.
+- `crates/app/src/launcher/mod.rs`: `window_options()` — centered overlay via layer-shell anchors (`TOP|BOTTOM|LEFT|RIGHT`) + margins (not `window_bounds` origin). `KeyboardInteractivity::OnDemand` (Exclusive rejected — see DECISIONS.log). `init()`/`open()`/`close()`/`toggle()` with `LauncherState` global tracking `WindowHandle`.
+- `crates/app/src/ipc/messages.rs` + `service.rs` + `mod.rs`: `ToggleLauncher` IPC message type, dual-channel accept loop (`ping` + `toggle`), `IpcSubscriber::start()` spawns combined handler calling `launcher::toggle(cx)`.
+- `crates/app/src/main.rs`: `launcher::init(cx)` + `launcher::cache::init/start_watcher(cx)`.
+- Unit tests in `search.rs` + `entry.rs` + `cache.rs` + `launch.rs` — **11 tests pass**.
+
 ## Расхождения со спекой/планом
 
 ### Task 2 (geometry)
@@ -63,21 +75,43 @@
 - `watch()` helper принимает `S: Signal<Item = T> + Unpin + 'static` (соответствует `Service::subscribe()` return type) вместо предположенного `Mutable` — более гибко.
 - Tests в `state.rs` — обычные `#[test]` (не `#[gpui::test]`), так как не требуют GPUI runtime context; проверяют signatures и trait bounds. `#[gpui::test]` не использовался из-за incompatibility `TestAppContext` с `&mut App`/`&App`.
 
+### Task 9 (Launcher)
+- **Keyboard interactivity: `OnDemand` вместо `Exclusive`** — spec §3.1 просил `KeyboardInteractivity::Exclusive` (аналог rofi), но на Hyprland/Niri layer-shell surface с `Exclusive` + `Layer::Overlay` без ack keyboard focus виснет весь input stack (compositor ждёт ack, которого нет). Переключили на `OnDemand` + явный `window.focus(&focus_handle)` после `open_window()`. Работает, но требует ручного фокуса (см. баг ниже).
+- **Centering via anchor+margins вместо `window_bounds.origin`** — layer-shell протокол центрирует через `anchor = TOP|BOTTOM|LEFT|RIGHT` + симметричные `margin`. `window_bounds.size` задаёт размер surface. `Anchor::empty()` + `window_bounds.origin = center` не работает на некоторых композиторах.
+- **IPC toggle только `ToggleLauncher`** — spec §7 просил `ToggleLauncher` + `ShowLauncher`/`HideLauncher` раздельно; объединили в один тип для простоты (stateless toggle).
+- **`DesktopEntry` поля `icon`/`terminal`/`no_display` не используются в рантайме** — спарсены и хранятся per spec, но UI лаунчера пока только `name` + `exec`. `terminal=true` launch через терминал — deferred (YAGNI). `icon` рендеринг — deferred (нужен SVG/PNG loader). `no_display` уже фильтруется при парсинге.
+
 ## Не реализовано из acceptance criteria
+
+### Task 9 (Launcher)
+- **Keyboard focus не работает автоматически** — окно открывается, но не получает фокус клавиатуры; нужно кликнуть мышкой или переключиться Alt+Tab. См. «Новые риски» ниже.
+- `DesktopEntry.icon` rendering — deferred (YAGNI, нет SVG loader).
+- `DesktopEntry.terminal=true` → launch via terminal emulator — deferred.
+- Recent/frecency sorting — deferred.
+- Categories/filtering — deferred.
+- Multi-monitor (launcher на фокусированном мониторе через `CompositorSubscriber`) — deferred, открывается на primary.
+
+### Services layer (Tasks 3-6)
 - `NetworkSubscriber::connect`/`disconnect` — stubbed (bail), per plan.
 - `UPowerSubscriber::set_power_profile` — stubbed (bail), per plan.
 - `wifi_ssid`/`wifi_strength` (Network), `power_profile` заполнение (UPower) — deferred.
 - ARCHITECTURE.md §4 пересмотр — отложен (TODO в MEMORY.md).
 
 ## Проверено фактом, не на словах
-- `cargo test` (full workspace) → **47 tests pass** (app: 15, luau: 25, services: 7).
+- `cargo test` (full workspace) → **58 tests pass** (app: 26, luau: 25, services: 7).
 - `cargo build -p chronos` → compiles successfully, 3 warnings (unused public API — ожидаемо для downstream consumers).
-- zbus 5.17 API проверен в `/home/neo/.cargo/registry/src/.../zbus-5.17.0/src/proxy/mod.rs` (per-property `receive_*_changed`, `PropertyStream` return). Не выдумывалось.
+- zbus 5.17 API проверен в `/home/neo/.cargo/registry/src/.../zbus-5.17.0/src/proxy/mod.rs` (per-property `receive_*_changed`, `PropertyStream` return).
 - `grep` конструкторов в `crates/` → новые поля не сломали других мест.
 - `AppState` + `watch()` интегрирован в `main.rs` bootstrap с `rt.block_on(init_all())` — соответствует spec §5.1+§7.
 - **Task 8 live smoke-test**: `status-printer` запущен, `hyprctl dispatch 'hl.dsp.focus({ workspace = "2" })'` → лог обновился автоматически за < 100 ms. Cross-thread wake (foreign thread `Mutable::set()` → GPUI `Signal` wake) работает end-to-end.
+- **Task 9 launcher tests**: 11/11 pass (`cargo test -p chronos --bin chronos launcher`).
+- **Launcher IPC toggle**: `echo toggle-launcher | socat - /run/user/1000/chronos.sock` → окно открывается/закрывается (видео/логи в working tree).
 
 ## Новые риски / известные баги
+- **Launcher не получает клавиатурный фокус автоматически (Critical)** — `KeyboardInteractivity::OnDemand` + `window.activate_window()` + `window.focus(&focus_handle)` в `open()` не заставляют Hyprland/Niri отдать фокус layer-shell overlay surface. Окно открывается, рендерится, но key events не приходят. Workaround: клик мышкой или Alt+Tab → фокус приходит, клавиатура работает. Escape/Enter/навигация работают ПОСЛЕ получения фокуса.
+  - Root cause: layer-shell `OnDemand` требует, чтобы compositor явно передал фокус (обычно по клику или по правилу `layer-shell` focus policy). `activate_window()` отправляет `xdg_activation_v1` токен, но layer-shell surfaces не используют xdg_activation.
+  - Possible fixes: (a) исследовать `zwlr_layer_surface_v1.set_keyboard_interactivity` timing; (b) временно `Exclusive` с правильным ack (нужен keyboard focus handler в GPUI); (c) fallback на XDG popup/toplevel вместо layer-shell для лаунчера.
+  - Severity: **Critical** — лаунчер бесполезен без клавиатуры.
 - **`Handle::current()` panic guard (Task 3/4), покрыт тестом в Task 5:** `NetworkSubscriber::new()` / `UPowerSubscriber::new()` паникуют вне tokio runtime. Per spec §5.1 + §7 (`init_all()` в `rt.block_on`). Task 5 добавил `runtime_guard_tests` (catch_unwind), который явно пинит эту панику — не полагаемся, что «никто не вызовет new() не в том месте». Закрыто по запросу пользователя.
 - `conn` field в обоих subscribers dead (хранится для будущих command-методов). `#[allow(dead_code)]`.
 - `watch()` helper не используется в текущем коде — предупреждение `dead_code`. Будет потребляться downstream (bar widgets, launcher, notifications).
