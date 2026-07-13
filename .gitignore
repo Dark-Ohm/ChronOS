@@ -15,3 +15,4 @@ System prompts/
 # Subagent-driven-development scratch (progress ledger, task briefs/reports)
 
 # Git worktrees (isolated workspaces, not part of the repo).worktrees
+.env
