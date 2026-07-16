@@ -7,6 +7,7 @@
 pub mod compositor;
 pub mod network;
 pub mod notification;
+pub mod tray;
 pub mod upower;
 
 pub use compositor::{
@@ -17,6 +18,7 @@ pub use network::{ConnectivityState, NetworkData, NetworkSubscriber};
 pub use notification::{
     CloseReason, Notification, NotificationCommand, NotificationState, NotificationSubscriber, Urgency,
 };
+pub use tray::{TrayCommand, TrayIcon, TrayItem, TrayState, TraySubscriber};
 pub use upower::{BatteryState, PowerProfile, UPowerData, UPowerSubscriber};
 
 /// Container holding all system-integration subscribers.
@@ -25,6 +27,7 @@ pub struct Services {
     pub compositor: CompositorSubscriber,
     pub network: NetworkSubscriber,
     pub notification: NotificationSubscriber,
+    pub tray: TraySubscriber,
     pub upower: UPowerSubscriber,
 }
 
@@ -37,6 +40,7 @@ pub fn init_all() -> Services {
         compositor: CompositorSubscriber::new(),
         network: NetworkSubscriber::new(),
         notification: NotificationSubscriber::new(),
+        tray: TraySubscriber::new(),
         upower: UPowerSubscriber::new(),
     }
 }
@@ -223,6 +227,17 @@ mod runtime_guard_tests {
         assert!(
             result.is_err(),
             "UPowerSubscriber::new() must panic outside a tokio runtime (Handle::current guard)"
+        );
+    }
+
+    #[test]
+    fn tray_new_panics_outside_runtime() {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let _ = TraySubscriber::new();
+        }));
+        assert!(
+            result.is_err(),
+            "TraySubscriber::new() must panic outside a tokio runtime (Handle::current guard)"
         );
     }
 }
