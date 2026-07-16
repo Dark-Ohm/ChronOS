@@ -109,6 +109,16 @@ impl LauncherView {
 
 impl Render for LauncherView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Focus hygiene: after the first click the window owns keyboard focus
+        // (OnDemand path), but some compositors (Hyprland/Niri) can drop it
+        // on relayout. Re-assert focus every frame if we don't already hold it.
+        // NOTE: this deliberately keeps `KeyboardInteractivity::OnDemand` in
+        // `mod.rs` — we never switch to `Exclusive`, which wedges the input
+        // stack on those compositors (see window_options()).
+        if !self.focus.is_focused(_window) {
+            self.focus.focus(_window, cx);
+        }
+
         let pattern: SharedString = self.pattern.clone().into();
         let selected = self.selected;
         let results: Vec<(usize, SharedString)> = self
