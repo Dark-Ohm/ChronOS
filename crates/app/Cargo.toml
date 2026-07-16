@@ -22,6 +22,7 @@ futures-signals.workspace = true
 futures-util.workspace = true
 chronos-luau = { path = "../luau" }
 chronos-services = { path = "../services" }
+chronos-ui = { path = "../ui" }
 dirs = "6"
 inotify = "0.11"
 nucleo = "0.5.0"

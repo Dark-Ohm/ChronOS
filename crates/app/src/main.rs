@@ -1,6 +1,7 @@
 mod bar;
 mod ipc;
 mod launcher;
+mod notifications;
 mod plugin_bridge;
 pub mod state;
 
@@ -46,7 +47,9 @@ fn main() {
             state::AppState::init(services, cx);
 
             subscriber.start(cx);
+            chronos_ui::Theme::init(cx);
             bar::init(cx);
+            notifications::init(cx);
 
             // Initialize desktop entry cache before bar (bar may eventually show launcher toggle)
             launcher::cache::init(cx);

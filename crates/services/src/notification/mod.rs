@@ -554,4 +554,37 @@ mod tests {
             .await;
         assert_eq!(svc.get().by_id(id).unwrap().urgency, Urgency::Critical);
     }
+
+    /// `dispatch(InvokeAction)` is the path taken by a popup action button.
+    /// Per FDO, activating an action closes the notification — verify the
+    /// notification is removed and the action key matched before closing.
+    #[tokio::test]
+    async fn invoke_action_closes_notification() {
+        let svc = NotificationSubscriber::new();
+        let id = svc
+            .notify(
+                "A".into(),
+                0,
+                String::new(),
+                "s".into(),
+                String::new(),
+                vec!["ok".to_string(), "OK".to_string()],
+                std::collections::HashMap::new(),
+                0,
+            )
+            .await;
+        assert_eq!(svc.get().notifications.len(), 1);
+
+        // Only a matching action key is honored; a bogus key must be ignored.
+        svc.dispatch(NotificationCommand::InvokeAction(id, "bogus".into()))
+            .await
+            .unwrap();
+        assert_eq!(svc.get().notifications.len(), 1, "bogus action must be ignored");
+
+        // The real action key closes the notification (just like a click).
+        svc.dispatch(NotificationCommand::InvokeAction(id, "ok".into()))
+            .await
+            .unwrap();
+        assert_eq!(svc.get().notifications.len(), 0, "matching action must close");
+    }
 }

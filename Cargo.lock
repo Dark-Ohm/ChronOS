@@ -991,6 +991,7 @@ dependencies = [
  "anyhow",
  "chronos-luau",
  "chronos-services",
+ "chronos-ui",
  "dirs",
  "futures-signals",
  "futures-util",
@@ -1034,6 +1035,14 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zbus",
+]
+
+[[package]]
+name = "chronos-ui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gpui 0.2.2",
 ]
 
 [[package]]

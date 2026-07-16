@@ -1,12 +1,13 @@
 // crates/app/src/bar/mod.rs
-pub use chronos_luau::bar::{BarSection, BarWidget, BarWidgetRegistry, BAR_COLOR, BAR_HEIGHT};
+pub use chronos_luau::bar::{BAR_HEIGHT, BarSection, BarWidget, BarWidgetRegistry};
+
+use chronos_ui::Theme;
 
 use std::time::Duration;
 
 use gpui::{
-    App, AnyElement, Bounds, Context, DisplayId, Render, Size, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, layer_shell::*,
-    point, prelude::*, px, rgb,
+    AnyElement, App, Bounds, Context, DisplayId, Render, Size, Window, WindowBackgroundAppearance,
+    WindowBounds, WindowKind, WindowOptions, div, layer_shell::*, point, prelude::*, px,
 };
 
 struct Bar;
@@ -29,7 +30,7 @@ impl Render for Bar {
 
         div()
             .size_full()
-            .bg(rgb(BAR_COLOR))
+            .bg(Theme::global(cx).bg.primary)
             .flex()
             .items_center()
             .child(section_div(BarSection::Left, left))

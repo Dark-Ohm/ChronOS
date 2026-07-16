@@ -36,6 +36,11 @@ impl AppState {
     }
 
     #[inline(always)]
+    pub fn notification(cx: &App) -> &chronos_services::NotificationSubscriber {
+        &Self::global(cx).services.notification
+    }
+
+    #[inline(always)]
     pub fn upower(cx: &App) -> &chronos_services::UPowerSubscriber {
         &Self::global(cx).services.upower
     }
