@@ -9,6 +9,7 @@ tokio.workspace = true
 futures-signals.workspace = true
 futures-util.workspace = true
 zbus.workspace = true
+enumflags2 = "0.7"
 hyprland.workspace = true
 niri-ipc.workspace = true
 chrono.workspace = true
@@ -17,3 +18,4 @@ serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 # futures-util from workspace provides StreamExt for tests
+tracing-subscriber = { workspace = true }

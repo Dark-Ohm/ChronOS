@@ -1024,6 +1024,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "enumflags2",
  "futures-signals",
  "futures-util",
  "hyprland",
@@ -1031,6 +1032,7 @@ dependencies = [
  "serde",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "zbus",
 ]
 

@@ -6,6 +6,7 @@
 
 pub mod compositor;
 pub mod network;
+pub mod notification;
 pub mod upower;
 
 pub use compositor::{
@@ -13,6 +14,9 @@ pub use compositor::{
     Monitor, Workspace,
 };
 pub use network::{ConnectivityState, NetworkData, NetworkSubscriber};
+pub use notification::{
+    CloseReason, Notification, NotificationCommand, NotificationState, NotificationSubscriber, Urgency,
+};
 pub use upower::{BatteryState, PowerProfile, UPowerData, UPowerSubscriber};
 
 /// Container holding all system-integration subscribers.
@@ -20,6 +24,7 @@ pub use upower::{BatteryState, PowerProfile, UPowerData, UPowerSubscriber};
 pub struct Services {
     pub compositor: CompositorSubscriber,
     pub network: NetworkSubscriber,
+    pub notification: NotificationSubscriber,
     pub upower: UPowerSubscriber,
 }
 
@@ -31,6 +36,7 @@ pub fn init_all() -> Services {
     Services {
         compositor: CompositorSubscriber::new(),
         network: NetworkSubscriber::new(),
+        notification: NotificationSubscriber::new(),
         upower: UPowerSubscriber::new(),
     }
 }
