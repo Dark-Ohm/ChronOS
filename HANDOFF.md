@@ -42,38 +42,45 @@ DECISIONS.log. Отвечать по-русски, коммиты БЕЗ AI-тр
   Визуал подтверждён grim-скриншотом (пример `gpui/examples/blur.rs`).
   Все трое приняты — очередь свободна.
 
-## Состояние git
+## Состояние git (на 2026-07-17 вечер)
 
-- ChronOS master: `3b1a473` ← `0316de6` ← `03b0c87` (baseline).
-- Source master: `9c9b6f5` (blur) ← `8881d4d` (NOTICE-фикс) ← `ef6b4bd` (easing+spring) ←
-  `3ce3466` (skeleton). Дерево чистое.
-- git identity настроен локально (neo / mishabcbb@gmail.com).
+- ChronOS master (свежее сверху): 4aa3c10 (задания 5 агентам) ← 790554d ←
+  0bc770d ← bfb1503 (launcher focus trap снят) ← 7eaf6e1 ← 05ea4d1 ←
+  e40a4e6 (попапы+theme-миграция) ← 1387999 (crates/ui) ← 0cd18c1 ←
+  7af364e (toplevel) ← … ← 03b0c87 (baseline). `git log --oneline` — истина.
+- Source master: `9c9b6f5` (blur) ← `8881d4d` (NOTICE) ← `ef6b4bd`
+  (easing+spring) ← `3ce3466` (skeleton).
+- git identity локально: neo / mishabcbb@gmail.com.
 
-## Следующие шаги (по порядку)
+## СЕЙЧАС В ПОЛЕ: 5 агентов, bar-виджеты (задания от 2026-07-17)
 
-1. ~~Отчёт OMP → приёмка~~ СДЕЛАНО (9c9b6f5, визуал подтверждён). Следующий шаг —
-   пункт 2.
-2. **Launcher Critical focus fix** — вариант (c): миграция XDG toplevel
-   вместо layer-shell (рекомендация omp-report + моя; оверлейность через
-   windowrule). ЖДЁТ ПОДТВЕРЖДЕНИЯ пользователя, потом задание миньону.
-3. **Theme-вопрос → попапы UI нотификаций** (Hermes, задание №4):
-   ui-крейта нет — сначала мини-спека theme-API (паттерн color-math из
-   gpui-shell, rewrite-only).
-4. applications + wallpaper сервисы (оба S, без рисков).
-5. Bar-виджеты (clock/workspaces/battery/network через watch()) +
-   gradient borders (S-M, после блюра).
-6. Дальше: OSD (нужны audio+brightness), dock, tray (XL — в конце).
-7. Отложено (DECISIONS.log): FLIP/implicit transitions (нет transform-полей
-   в Style — XL-блокер), 8-stop градиенты, effect layers, color filter.
+- **Cline** (CLINE.md №5) — refresh-мост Bar + Clock. Владеет bar/mod.rs
+  и bar/widgets/mod.rs — фундамент остальных.
+- **Hermes** (HERMES.md №5) — Workspaces (widgets/workspaces.rs, может
+  тронуть compositor dispatch отдельным коммитом).
+- **Mimo** (MIMO.md №1, новичок) — Battery (widgets/battery.rs; десктоп —
+  без паники при отсутствии батареи).
+- **Autohand** (AUTOHAND.md №1, новичок) — Network (widgets/network.rs).
+- **OpenCode** (OPENCODE.md №1, XL) — tray: StatusNotifierWatcher-демон
+  (crates/services/src/tray/, zbus 5.17) + widgets/tray.rs.
+Правила у всех: свой файл + ровно 2 строки в widgets/mod.rs; поимённый
+git add; git checkout чужого запрещён.
 
-## Миньоны
+## Сделано ранее (все приняты)
 
-- **Hermes** — 3 чистых задания (recon, 2 аудита port-cost, демон).
-  Умеет делегировать субагентам. Свободен, следующий — попапы UI.
-- **Cline** — сделал хирургию форка (62/62) + easing/spring. Минус:
-  4 эрраты за историю (не читает что коммитит; откатывал чужой WIP —
-  запрещено в приёмке CLINE.md). Свободен.
-- **OMP** — исследование фокуса + backdrop blur (оба приняты, blur с первого захода под обстрелом Cline). Свободен.
+- Демон нотификаций + попапы UI (Hermes №3/№4), theme-крейт crates/ui.
+- Kael-порты в Source/: easing+spring (Cline), backdrop blur (OMP,
+  визуал подтверждён скриншотом).
+- Launcher: XDG toplevel + Critical focus trap снят (см. секцию ниже).
+
+## Очередь после виджетов
+
+1. Полировка попапов («выглядит криво» — уточнить у пользователя) и
+   лаунчера (остаточная «баговынность», монитор DP-1 vs HDMI).
+2. applications + wallpaper сервисы (S).
+3. Gradient borders (Source, после блюра), OSD (нужны audio+brightness), dock.
+4. Отложено (DECISIONS.log): FLIP/transitions (нет transform в Style),
+   8-stop градиенты, effect layers, color filter.
 
 ## Launcher Critical — ЗАКРЫТ (bfb1503, «немножко баговынно, но работает»)
 
