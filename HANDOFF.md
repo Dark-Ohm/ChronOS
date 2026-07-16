@@ -37,17 +37,16 @@ DECISIONS.log. Отвечать по-русски, коммиты БЕЗ AI-тр
   spring-интегратор из Kael (Apache-2.0) в Source/gpui. 21/21 тестов.
   Коммит Source: ef6b4bd. Эррата: закоммитил чужой NOTICE не глядя
   (битый URL, без easing/spring) — исправлено Архитектором: 8881d4d.
-- **OMP 🔄 В ПОЛЕ** — 2-pass backdrop blur из Kael в Source/gpui_wgpu +
-  scene.rs (`BlurRect`) + window.rs (`paint_blur`). WIP не закоммичен:
-  scene.rs modified, из-за этого Source/gpui временно НЕ компилируется
-  (E0599 PrimitiveKind::BlurRect, E0425 DevicePixels в scene.rs:563) —
-  это ЕГО транзиентное состояние, не баг. Ждём omp-report.md.
+- **OMP ✅ ПРИНЯТО** — 2-pass backdrop blur из Kael: `BlurRect` в scene.rs,
+  `paint_blur` в window.rs, пайплайны в gpui_wgpu. Коммит Source: 9c9b6f5.
+  Визуал подтверждён grim-скриншотом (пример `gpui/examples/blur.rs`).
+  Все трое приняты — очередь свободна.
 
 ## Состояние git
 
 - ChronOS master: `3b1a473` ← `0316de6` ← `03b0c87` (baseline).
-- Source master: `8881d4d` (NOTICE-фикс) ← `ef6b4bd` (easing+spring) ←
-  `3ce3466` (skeleton). Незакоммичен: scene.rs (WIP OMP — НЕ откатывать).
+- Source master: `9c9b6f5` (blur) ← `8881d4d` (NOTICE-фикс) ← `ef6b4bd` (easing+spring) ←
+  `3ce3466` (skeleton). Дерево чистое.
 - git identity настроен локально (neo / mishabcbb@gmail.com).
 
 ## Следующие шаги (по порядку)
