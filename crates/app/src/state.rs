@@ -44,6 +44,11 @@ impl AppState {
     pub fn upower(cx: &App) -> &chronos_services::UPowerSubscriber {
         &Self::global(cx).services.upower
     }
+
+    #[inline(always)]
+    pub fn tray(cx: &App) -> &chronos_services::TraySubscriber {
+        &Self::global(cx).services.tray
+    }
 }
 
 /// Watch a signal and apply updates to component state.
