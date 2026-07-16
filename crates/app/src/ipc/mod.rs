@@ -16,8 +16,7 @@ impl IpcSubscriber {
             let _ipc_guard = self;
             tracing::info!("IPC listener started");
 
-            let mut last_toggle_at =
-                std::time::Instant::now() - std::time::Duration::from_secs(1);
+            let mut last_toggle_at = std::time::Instant::now() - std::time::Duration::from_secs(1);
 
             loop {
                 tokio::select! {
@@ -37,6 +36,7 @@ impl IpcSubscriber {
                                 >= std::time::Duration::from_millis(200)
                             {
                                 last_toggle_at = now;
+                                tracing::info!("IPC toggle received, calling launcher::toggle");
                                 let _ = cx.update(|_cx| {
                                     crate::launcher::toggle(_cx);
                                 });

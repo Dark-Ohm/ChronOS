@@ -141,20 +141,27 @@ async fn accept_loop(
                 let ping_sender = ping_sender.clone();
                 let toggle_sender = toggle_sender.clone();
                 tokio::spawn(async move {
-                    let mut buffer = Vec::with_capacity(16);
+                    let mut buffer = Vec::with_capacity(64);
                     let read = tokio::time::timeout(
-                        std::time::Duration::from_millis(100),
+                        std::time::Duration::from_millis(500),
                         stream.read_to_end(&mut buffer),
                     )
                     .await;
 
-                    if let Ok(Ok(_)) = read {
+                    tracing::debug!(bytes = buffer.len(), ?read, "accept_loop read result");
+                    // Process buffer even if read timed out, as long as we have data
+                    if !buffer.is_empty() {
                         let payload = String::from_utf8_lossy(&buffer).to_string();
+                        tracing::debug!(%payload, "accept_loop payload");
                         if is_ping(&payload) {
                             let _ = ping_sender.send(());
+                            tracing::info!("IPC ping received");
                         } else if is_toggle_launcher(&payload) {
                             let _ = toggle_sender.send(());
+                            tracing::info!("IPC toggle-launcher received");
                         }
+                    } else if let Ok(Ok(_)) = read {
+                        // Read completed successfully but buffer is empty (shouldn't happen)
                     }
                 });
             }

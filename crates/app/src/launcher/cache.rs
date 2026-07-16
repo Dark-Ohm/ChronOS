@@ -5,7 +5,7 @@ use std::time::Duration;
 use gpui::{App, BorrowAppContext, Global};
 use inotify::{Inotify, WatchMask};
 
-use super::entry::{parse_desktop_file, DesktopEntry};
+use super::entry::{DesktopEntry, parse_desktop_file};
 
 /// Global cache of parsed desktop entries. Populated at startup, updated
 /// live via inotify.
@@ -32,9 +32,7 @@ impl Global for DesktopEntryCache {}
 /// XDG application directories to scan, in priority order.
 /// User directory overrides system when filename matches (XDG spec).
 fn desktop_dirs() -> Vec<PathBuf> {
-    let mut dirs = vec![
-        PathBuf::from("/usr/share/applications"),
-    ];
+    let mut dirs = vec![PathBuf::from("/usr/share/applications")];
     if let Some(data) = dirs::data_local_dir() {
         let user_dir = data.join("applications");
         dirs.push(user_dir);
@@ -89,10 +87,7 @@ const WATCH_MASK: WatchMask = WatchMask::CLOSE_WRITE
 /// Follows the same pattern as `crates/luau/src/watcher.rs`:
 /// OS thread does blocking read -> channel -> GPUI foreground debounce -> replace cache.
 pub fn start_watcher(cx: &mut App) {
-    let watch_dirs: Vec<PathBuf> = desktop_dirs()
-        .into_iter()
-        .filter(|d| d.is_dir())
-        .collect();
+    let watch_dirs: Vec<PathBuf> = desktop_dirs().into_iter().filter(|d| d.is_dir()).collect();
 
     if watch_dirs.is_empty() {
         tracing::warn!("No desktop directories to watch");
@@ -187,12 +182,14 @@ mod tests {
         // System version
         let sys_path = sys_dir.join("test-app.desktop");
         let mut f = std::fs::File::create(&sys_path).unwrap();
-        f.write_all(b"[Desktop Entry]\nType=Application\nName=System App\nExec=/usr/bin/system\n").unwrap();
+        f.write_all(b"[Desktop Entry]\nType=Application\nName=System App\nExec=/usr/bin/system\n")
+            .unwrap();
 
         // User override
         let user_path = user_dir.join("test-app.desktop");
         let mut f = std::fs::File::create(&user_path).unwrap();
-        f.write_all(b"[Desktop Entry]\nType=Application\nName=User App\nExec=/usr/bin/user\n").unwrap();
+        f.write_all(b"[Desktop Entry]\nType=Application\nName=User App\nExec=/usr/bin/user\n")
+            .unwrap();
 
         // Manually scan (not using desktop_dirs() since these are temp dirs)
         let mut seen: HashMap<String, DesktopEntry> = HashMap::new();

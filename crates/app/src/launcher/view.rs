@@ -1,6 +1,8 @@
 //! Launcher overlay view: search input + fuzzy-matched result list.
 
-use gpui::{div, prelude::*, px, rgb, App, Focusable, Render, SharedString, Window};
+use gpui::{App, Focusable, Render, SharedString, Window, div, prelude::*, px};
+
+use chronos_ui::Theme;
 
 use crate::launcher::cache::DesktopEntryCache;
 use crate::launcher::entry::DesktopEntry;
@@ -11,10 +13,12 @@ const INPUT_HEIGHT: f32 = 40.;
 const ROW_HEIGHT: f32 = 32.;
 const MAX_VISIBLE_ROWS: usize = 10;
 
-const BG_COLOR: u32 = 0x1e_1e_2e;
-const INPUT_BG: u32 = 0x31_31_42;
-const SELECTED_BG: u32 = 0x45_45_66;
-const HINT_COLOR: u32 = 0x6c_70_80;
+// Цвета теперь берутся из `Theme` (chronos-ui) в render(); константы удалены.
+// Соответствие прежним значениям:
+//   BG_COLOR     0x1e1e2e -> theme.bg.primary
+//   INPUT_BG     0x313142 -> theme.bg.elevated
+//   SELECTED_BG  0x454566 -> theme.interactive.hover
+//   HINT_COLOR   0x6c7080 -> theme.text.muted
 
 /// Centered overlay view showing fuzzy search results over desktop entries.
 pub struct LauncherView {
@@ -41,6 +45,11 @@ impl LauncherView {
         };
         view.refresh_results();
         view
+    }
+
+    /// Focus the launcher's input field.
+    pub fn focus_input(&self, window: &mut Window, cx: &mut App) {
+        self.focus.focus(window, cx);
     }
 
     fn refresh_results(&mut self) {
@@ -109,15 +118,25 @@ impl LauncherView {
 
 impl Render for LauncherView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Focus hygiene: after the first click the window owns keyboard focus
-        // (OnDemand path), but some compositors (Hyprland/Niri) can drop it
-        // on relayout. Re-assert focus every frame if we don't already hold it.
-        // NOTE: this deliberately keeps `KeyboardInteractivity::OnDemand` in
-        // `mod.rs` — we never switch to `Exclusive`, which wedges the input
-        // stack on those compositors (see window_options()).
+        // Focus hygiene: as an XDG toplevel the compositor grants focus via
+        // the normal focus policy (reinforced by the Hyprland `stay_focused`
+        // windowrule), but the very first paint can race ahead of the
+        // compositor's focus ack, and some relayout paths (Hyprland/Niri) can
+        // drop focus mid-session. Re-assert focus every frame if we don't
+        // already hold it — cheap, and makes the launcher typeable the
+        // instant it appears, no click needed.
+        // Historical note: this block predates the toplevel migration — it
+        // was originally added as a workaround for `KeyboardInteractivity::
+        // OnDemand` on a layer-shell surface (which never granted focus
+        // automatically). With the layer-shell path retired
+        // (see `mod.rs::window_options` for why — `Exclusive` wedged the
+        // input stack on Hyprland/Niri), this re-assert stays because it
+        // still earns its keep for the toplevel.
         if !self.focus.is_focused(_window) {
             self.focus.focus(_window, cx);
         }
+
+        let theme = Theme::global(cx);
 
         let pattern: SharedString = self.pattern.clone().into();
         let selected = self.selected;
@@ -130,14 +149,14 @@ impl Render for LauncherView {
 
         div()
             .size_full()
-            .bg(rgb(BG_COLOR))
+            .bg(theme.bg.primary)
             .flex()
             .flex_col()
             .on_key_down(cx.listener(|this, event, window, cx| this.handle_key(event, window, cx)))
             .child(
                 div()
                     .h(px(INPUT_HEIGHT))
-                    .bg(rgb(INPUT_BG))
+                    .bg(theme.bg.elevated)
                     .px(px(12.))
                     .flex()
                     .items_center()
@@ -154,7 +173,7 @@ impl Render for LauncherView {
                             .px(px(12.))
                             .flex()
                             .items_center()
-                            .when(is_selected, |el| el.bg(rgb(SELECTED_BG)))
+                            .when(is_selected, |el| el.bg(theme.interactive.hover))
                             .child(
                                 div()
                                     .when(is_selected, |el| el.child("> "))
@@ -169,7 +188,7 @@ impl Render for LauncherView {
                                 .px(px(12.))
                                 .flex()
                                 .items_center()
-                                .child(div().text_color(rgb(HINT_COLOR)).child("No results")),
+                                .child(div().text_color(theme.text.muted).child("No results")),
                         )
                     }),
             )
