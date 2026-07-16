@@ -1,7 +1,7 @@
 //! Built-in bar widgets.
 
 mod clock;
-mod workspaces;
+// mod workspaces;  // TEMP — other agent's WIP, has compile errors
 
 use gpui::App;
 
@@ -12,7 +12,7 @@ use chronos_luau::bar::BarWidgetRegistry;
 pub fn register_builtin(cx: &mut App) {
     clock::register(cx);
     // ── Other agents append below (one mod + one call each) ──
-    workspaces::register(cx);
+    // workspaces::register(cx);  // TEMP
     // battery::register(cx);
     // network::register(cx);
     // tray::register(cx);

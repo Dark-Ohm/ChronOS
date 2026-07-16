@@ -1,6 +1,9 @@
 // crates/app/src/bar/mod.rs
 pub use chronos_luau::bar::{BAR_HEIGHT, BarSection, BarWidget, BarWidgetRegistry};
 
+mod widgets;
+
+use chronos_services::Service;
 use chronos_ui::Theme;
 
 use std::time::Duration;
@@ -10,7 +13,41 @@ use gpui::{
     WindowBounds, WindowKind, WindowOptions, div, layer_shell::*, point, prelude::*, px,
 };
 
+use crate::state::{watch, AppState};
+
 struct Bar;
+
+impl Bar {
+    fn new(cx: &mut Context<Self>) -> Self {
+        // Subscribe to all service signals — any update repaints the bar.
+        watch(cx, AppState::compositor(cx).subscribe(), |_, _, cx| {
+            cx.notify();
+        });
+        watch(cx, AppState::network(cx).subscribe(), |_, _, cx| {
+            cx.notify();
+        });
+        watch(cx, AppState::upower(cx).subscribe(), |_, _, cx| {
+            cx.notify();
+        });
+        watch(cx, AppState::notification(cx).subscribe(), |_, _, cx| {
+            cx.notify();
+        });
+
+        // 1-second ticker for clock and other time-dependent widgets.
+        // Uses the background executor, not tokio.
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_secs(1))
+                    .await;
+                let _ = this.update(cx, |_, cx| cx.notify());
+            }
+        })
+        .detach();
+
+        Self
+    }
+}
 
 impl Render for Bar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -97,7 +134,7 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
 }
 
 fn open_on_display(display_id: Option<DisplayId>, cx: &mut App) -> bool {
-    match cx.open_window(window_options(display_id, cx), move |_, cx| cx.new(|_| Bar)) {
+    match cx.open_window(window_options(display_id, cx), move |_, cx| cx.new(|cx| Bar::new(cx))) {
         Ok(_) => true,
         Err(err) => {
             tracing::warn!("Failed to open bar window: {}", err);
@@ -110,6 +147,8 @@ fn open_on_display(display_id: Option<DisplayId>, cx: &mut App) -> bool {
 /// Called once at startup from `main.rs`.
 pub fn init(cx: &mut App) {
     cx.set_global(BarWidgetRegistry::default());
+    widgets::register_builtin(cx);
+    widgets::register_builtin(cx);
 
     cx.spawn(async move |cx| {
         // Small delay to allow Wayland to enumerate displays.
