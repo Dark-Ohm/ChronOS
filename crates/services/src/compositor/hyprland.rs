@@ -10,7 +10,6 @@ use anyhow::Result;
 use futures_signals::signal::Mutable;
 use hyprland::{
     data::{Client, Devices, Monitors, Workspace as HWorkspace, Workspaces},
-    dispatch::{Dispatch, DispatchType, WorkspaceIdentifierWithSpecial},
     event_listener::EventListener,
     prelude::*,
 };
@@ -26,31 +25,68 @@ pub fn is_available() -> bool {
     std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some()
 }
 
-/// Execute a compositor command via Hyprland.
+/// Execute a compositor command via the Hyprland control socket.
+///
+/// Lua-Hyprland (0.55+) wraps **everything** read from the socket in Lua, so
+/// the classic `dispatch workspace N` form written by `hyprland-rs`'s
+/// `Dispatch::call` is parsed as Lua and fails server-side
+/// (`'expected near '4'`), making every `hyprland-rs` dispatcher silently
+/// no-op. The working form is the Lua dispatcher table sent as a `/dispatch`
+/// line, e.g. `hl.dsp.focus({ workspace = 4 })`. We build that line and write
+/// it directly to `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket.sock`.
+///
+/// See `DECISIONS.log` (2026-07-17 — compositor dispatch via Lua socket).
 pub fn execute_command(cmd: CompositorCommand) -> Result<()> {
+    let line = command_to_socket_line(&cmd);
+    send_dispatch(&line)
+}
+
+/// Pure: render a `CompositorCommand` to the Lua-Hyprland `/dispatch` line.
+/// No I/O — unit-testable without a running compositor.
+///
+/// Workspace IDs are emitted as numbers; relative selectors (`+1`/`-1`) as
+/// Lua strings (Lua-Hyprland's workspace selector grammar).
+fn command_to_socket_line(cmd: &CompositorCommand) -> String {
     match cmd {
         CompositorCommand::FocusWorkspace(id) => {
-            Dispatch::call(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
-                id,
-            )))?;
+            format!("hl.dsp.focus({{ workspace = {id} }})")
         }
         CompositorCommand::NextWorkspace => {
-            Dispatch::call(DispatchType::Workspace(
-                WorkspaceIdentifierWithSpecial::Relative(1),
-            ))?;
+            "hl.dsp.focus({ workspace = \"+1\" })".to_string()
         }
         CompositorCommand::PrevWorkspace => {
-            Dispatch::call(DispatchType::Workspace(
-                WorkspaceIdentifierWithSpecial::Relative(-1),
-            ))?;
+            "hl.dsp.focus({ workspace = \"-1\" })".to_string()
         }
         CompositorCommand::MoveToWorkspace(id) => {
-            Dispatch::call(DispatchType::MoveToWorkspace(
-                WorkspaceIdentifierWithSpecial::Id(id),
-                None,
-            ))?;
+            format!("hl.dsp.move({{ workspace = {id} }})")
         }
     }
+}
+
+/// Path to the Hyprland control socket, or `None` if the compositor env is
+/// not present (not running under Hyprland).
+fn socket_path() -> Option<std::path::PathBuf> {
+    let signature = std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE")?;
+    let xdg_runtime = std::env::var_os("XDG_RUNTIME_DIR")?;
+    Some(
+        std::path::Path::new(&xdg_runtime)
+            .join("hypr")
+            .join(signature)
+            .join(".socket.sock"),
+    )
+}
+
+/// Write a `/dispatch <lua>` line to the Hyprland control socket.
+fn send_dispatch(line: &str) -> Result<()> {
+    let path = socket_path().ok_or_else(|| {
+        anyhow::anyhow!("Hyprland socket unavailable: HYPRLAND_INSTANCE_SIGNATURE / XDG_RUNTIME_DIR not set")
+    })?;
+    let mut stream = std::os::unix::net::UnixStream::connect(&path)
+        .map_err(|e| anyhow::anyhow!("connect Hyprland socket {}: {e}", path.display()))?;
+    use std::io::Write;
+    stream
+        .write_all(format!("/dispatch {line}\n").as_bytes())
+        .map_err(|e| anyhow::anyhow!("write Hyprland socket {}: {e}", path.display()))?;
     Ok(())
 }
 
@@ -161,4 +197,40 @@ fn run_listener(data: Mutable<CompositorState>) -> Result<()> {
     }
     listener.start_listener()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compositor::CompositorCommand;
+
+    #[test]
+    fn command_to_socket_line_formats_every_variant() {
+        assert_eq!(
+            command_to_socket_line(&CompositorCommand::FocusWorkspace(4)),
+            "hl.dsp.focus({ workspace = 4 })"
+        );
+        assert_eq!(
+            command_to_socket_line(&CompositorCommand::NextWorkspace),
+            "hl.dsp.focus({ workspace = \"+1\" })"
+        );
+        assert_eq!(
+            command_to_socket_line(&CompositorCommand::PrevWorkspace),
+            "hl.dsp.focus({ workspace = \"-1\" })"
+        );
+        assert_eq!(
+            command_to_socket_line(&CompositorCommand::MoveToWorkspace(7)),
+            "hl.dsp.move({ workspace = 7 })"
+        );
+    }
+
+    #[test]
+    fn negative_workspace_id_renders_as_number() {
+        // MoveToWorkspace with a negative/special id still emits a number,
+        // matching Lua-Hyprland's workspace selector grammar.
+        assert_eq!(
+            command_to_socket_line(&CompositorCommand::FocusWorkspace(-2)),
+            "hl.dsp.focus({ workspace = -2 })"
+        );
+    }
 }

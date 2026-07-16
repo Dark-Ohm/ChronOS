@@ -250,3 +250,15 @@ If its empty\not full - its a fresh log. - see previous log in /home/neo/Project
 - ОТЛОЖЕНО: OSD (код S-M, но как фича XL — требует audio+brightness сервисов), tray (XL: L-сервис + L-UI, зависит от panel/BarWidget-инфры), audio/bluetooth/mpris/privacy (FFI/C-бэкенды, L каждый), control_center (XL, преждевременно), ui-крейт целиком (привязан к upstream gpui; переиспользовать только InputBuffer-паттерн и theme color-math).
 - НЕ БРАТЬ: keybinds.rs как фикс фокуса (app-level bind_keys, Critical-баг не лечит), donor button.rs (0 байт).
 - Заметки: zbus 5.5→5.17 дрейф минорный (RequestNameFlags, OwnedValue::try_from); у ChronOS нет app-level config hot-reload (inotify покрыл только luau+launcher) — дыра, отдельная спека.
+
+## 2026-07-17 — Compositor dispatch: отказ от hyprland-rs Dispatch::call, пишем Lua-форму в сокет
+
+- Контекст: виджет bar Workspaces шлёт `CompositorCommand` через `CompositorSubscriber::dispatch` → `hyprland::execute_command`. Клик по бейджу МЁРТВ (живой смок Архитектора).
+- Расследовано: `hyprland-rs` `Dispatch::call` пишет в сокет классическую форму `dispatch workspace N`. Lua-Hyprland 0.55.4+ заворачивает ВСЁ, что приходит в сокет, в Lua: ответ `error: [string "return hl.dispatch(workspace 4)"]: ')' expected near '4'`. Чтение (события/workspaces через hyprland-rs) работает — только диспатчи молча падают. Проверено на голом сокете; рабочая форма: `/dispatch hl.dsp.focus({ workspace = 4 })`.
+- Отклонено: `hyprland::dispatch::Dispatch::call` (и вообще любой диспатч через hyprland-rs) — несовместим с Lua-Hyprland, сервер парсит как Lua и валится. Оставляем hyprland-rs ТОЛЬКО для чтения (data/event_listener), не для записи команд.
+- Решено: `execute_command` строит Lua-таблицу диспетчера и пишет `/dispatch <lua>\n` напрямую в `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket.sock` через `std::os::unix::net::UnixStream` (синхронно, без tokio — совместимо с sync-thread моделью сервиса; не будим панику реактора из MEMORY). Покрыты ВСЕ варианты `CompositorCommand`:
+  - `FocusWorkspace(id)` → `hl.dsp.focus({ workspace = N })` (N — число)
+  - `NextWorkspace`/`PrevWorkspace` → `hl.dsp.focus({ workspace = "+1" })` / `({ workspace = "-1" })` (relative selector — Lua-строка, по грамматике workspace selectors)
+  - `MoveToWorkspace(id)` → `hl.dsp.move({ workspace = N })` (двигает активное окно, follow по умолчанию false — совпадает с прежним `MoveToWorkspace(id, None)`)
+- Верификация: юнит-тест `command_to_socket_line_formats_every_variant` (pure, без Hyprland) + живой прогон Архитектора (клик переключает воркспейс реально). `cargo test -p chronos-services --lib` зелёный (25 passed).
+- Побочное: `cargo test -p chronos-services` (без --lib) падает на чужом WIP-примере `examples/tray-smoke.rs` (OpenCode: `tray.get()` без `use ... Service;` в scope) — не моё, не чинил.
