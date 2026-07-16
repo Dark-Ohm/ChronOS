@@ -1,6 +1,6 @@
-use chronos_luau::dsl::LuaWidgetAdapter;
 use chronos_luau::PluginManager;
 use chronos_luau::bar::{BarSection, BarWidgetRegistry};
+use chronos_luau::dsl::LuaWidgetAdapter;
 
 /// After loading plugins, register their bar widgets with the global registry.
 /// Uses replace_by_name for hot-reload safety.
@@ -46,17 +46,25 @@ mod tests {
         let dir = std::env::temp_dir().join("chronos_test_bridge_mismatch");
         let plugin_dir = dir.join("test-race-plugin");
         fs::create_dir_all(&plugin_dir).unwrap();
-        fs::write(plugin_dir.join("manifest.toml"), r#"[plugin]
+        fs::write(
+            plugin_dir.join("manifest.toml"),
+            r#"[plugin]
 name = "race"
-unsafe = true"#).unwrap();
-        fs::write(plugin_dir.join("init.luau"), r#"
+unsafe = true"#,
+        )
+        .unwrap();
+        fs::write(
+            plugin_dir.join("init.luau"),
+            r#"
 chronos.bar:register({
     name = "race-widget",
     section = "left",
     render = function()
         return { type = "text", content = "race" }
     end
-})"#).unwrap();
+})"#,
+        )
+        .unwrap();
 
         cx.update(|cx| {
             cx.set_global(BarWidgetRegistry::default());
