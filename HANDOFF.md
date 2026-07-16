@@ -88,6 +88,8 @@ was_active-гейт против ложного active=false первого Wayl
 
 ## Ключевые технические факты (кровью заработанные)
 
+- **Смоки производительности/UX — ТОЛЬКО release-сборка**: debug-gpui даёт
+  ощущение «пинг 300» на вводе (живой случай 2026-07-17).
 - **gpui-оконный код не верифицируется тестами** — только живой прогон
   (RUST_LOG=info, tracing в observer'ы, hyprctl clients/activewindow).
 - gpui: имена клавиш — lowercase ("escape"); `.track_focus(&handle)`
