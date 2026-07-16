@@ -148,7 +148,6 @@ fn open_on_display(display_id: Option<DisplayId>, cx: &mut App) -> bool {
 pub fn init(cx: &mut App) {
     cx.set_global(BarWidgetRegistry::default());
     widgets::register_builtin(cx);
-    widgets::register_builtin(cx);
 
     cx.spawn(async move |cx| {
         // Small delay to allow Wayland to enumerate displays.
