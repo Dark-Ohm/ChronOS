@@ -29,10 +29,9 @@ impl Global for LauncherState {}
 /// `app_id: "chronos-launcher"` is the surface's `xdg_toplevel.set_app_id`; on
 /// Hyprland it becomes the window's `initialClass`, which is what
 /// `hl.window_rule({ match = { class = "chronos-launcher" }, ... })` matches
-/// against. Centering, float, pin, stay-focused and decorations are the
-/// compositor's responsibility via these windowrules (shipped in
-/// `docs/hyprland/chronos-launcher.lua`) — we explicitly do NOT try to
-/// center via layer-shell margins anymore.
+/// against. Centering, float and decorations are the compositor's responsibility
+/// via these windowrules (shipped in `docs/hyprland/chronos-launcher.lua`) —
+/// we explicitly do NOT try to center via layer-shell margins anymore.
 ///
 /// Why not a layer shell anymore — blood-earned context:
 ///   * `KeyboardInteractivity::Exclusive` on `Layer::Overlay` wedges the
@@ -47,12 +46,12 @@ impl Global for LauncherState {}
 ///   * `xdg_activation_v1` for layer-shell surfaces is explicitly rejected
 ///     by GPUI's own backend comment.
 /// An ordinary XDG toplevel sidesteps all three: the compositor grants
-/// keyboard focus through the normal focus policy (filtered by our
-/// `stay_focused=true` windowrule) and the overlay look comes from
-/// `float + center + pin + dim_around` rules instead of the layer-shell
-/// protocol. The per-frame focus re-assert in `view.rs` stays — it's cheap
-/// and helpful for the rare toplevel that loses focus between open and
-/// first paint.
+/// keyboard focus through the normal focus policy and the overlay look comes
+/// from `float + center + dim_around` rules instead of the layer-shell
+/// protocol. Focus-lost-close is handled by `observe_window_activation` in
+/// `open()` — the launcher closes when it loses focus (click away, workspace
+/// switch), matching rofi/fuzzel UX. No `stay_focused` or `pin` windowrules;
+/// no per-frame focus re-assert.
 fn window_options(display_id: Option<DisplayId>) -> WindowOptions {
     WindowOptions {
         display_id,
@@ -71,11 +70,13 @@ fn window_options(display_id: Option<DisplayId>) -> WindowOptions {
 /// Open the launcher overlay. No-op if it is already open.
 pub fn open(cx: &mut App) {
     tracing::info!("launcher::open called");
-    let handle = cx.global::<LauncherState>().handle.clone();
-    let already_open = handle
-        .as_ref()
-        .map(|h| h.is_active(cx).unwrap_or(false))
-        .unwrap_or(false);
+    // "Open" == we hold a window handle. Every close path (Esc, Enter,
+    // focus-lost, toggle) goes through `close()`, which takes the handle, so
+    // `handle.is_some()` is authoritative. `is_active` (== focused) is the
+    // WRONG predicate here: an open-but-unfocused launcher would read as
+    // "closed", and a second open() would orphan the first window — an
+    // unclosable ghost that eats the session (seen live 2026-07-17).
+    let already_open = cx.global::<LauncherState>().handle.is_some();
     tracing::info!(already_open, "launcher::open check");
     if already_open {
         tracing::info!("launcher already open, returning");
@@ -88,8 +89,35 @@ pub fn open(cx: &mut App) {
         .or_else(|| cx.displays().into_iter().next().map(|d| d.id()));
     tracing::info!(?display_id, "launcher display_id");
 
-    match cx.open_window(window_options(display_id), |_, cx| {
-        cx.new(|cx| LauncherView::new(cx))
+    match cx.open_window(window_options(display_id), |window, cx| {
+        let entity = cx.new(|cx| LauncherView::new(cx));
+        // Focus-lost-close: close the launcher when it loses focus (click away,
+        // workspace switch, etc). Matches rofi/fuzzel UX — no focus fighting.
+        entity.update(cx, |_view, cx| {
+            // `was_active` gate: the very first Wayland configure reports the
+            // toplevel as not-activated (focus is still on the previous
+            // window), which fires a spurious active=false ~6ms after
+            // creation. Closing on that killed every launcher instantly and
+            // left a handle-less ghost on screen (seen live 2026-07-17).
+            // Only a true→false transition may close.
+            let mut was_active = false;
+            cx.observe_window_activation(window, move |view, window, cx| {
+                tracing::info!(active = window.is_window_active(), was_active, "launcher activation observer fired");
+                if window.is_window_active() {
+                    was_active = true;
+                    // Compositor just granted focus: only now can the input's
+                    // focus handle actually take it (focusing before activation
+                    // is a no-op, which left the keyboard dead).
+                    view.focus_input(window, cx);
+                } else if was_active {
+                    crate::launcher::close_this(window, cx);
+                }
+            })
+            // Dropping the Subscription cancels the observer immediately —
+            // it must outlive this scope for either branch to ever fire.
+            .detach();
+        });
+        entity
     }) {
         Ok(handle) => {
             tracing::info!("launcher window created successfully");
@@ -116,14 +144,33 @@ pub fn close(cx: &mut App) {
     }
 }
 
+/// Close the launcher, but only touch the tracked handle if `window` IS the
+/// tracked window. Wayland delivers activation events asynchronously: a
+/// deactivation queued for an already-removed window can arrive after toggle
+/// has opened a fresh one, and a blind global `close()` then steals the fresh
+/// window's handle, leaving an unclosable ghost (seen live 2026-07-17).
+/// Untracked callers just remove themselves.
+pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
+    let this = window.window_handle();
+    let tracked = cx
+        .global::<LauncherState>()
+        .handle
+        .as_ref()
+        .map(|h| **h == this)
+        .unwrap_or(false);
+    if tracked {
+        close(cx);
+    } else {
+        tracing::info!("launcher::close_this: untracked window, removing self only");
+        window.remove_window();
+    }
+}
+
 /// Toggle the launcher overlay open/closed.
 pub fn toggle(cx: &mut App) {
     tracing::info!("launcher::toggle called");
-    let handle = cx.global::<LauncherState>().handle.clone();
-    let is_open = handle
-        .as_ref()
-        .map(|h| h.is_active(cx).unwrap_or(false))
-        .unwrap_or(false);
+    // Same predicate as open(): holding a handle == open (see comment there).
+    let is_open = cx.global::<LauncherState>().handle.is_some();
     tracing::info!(is_open, "launcher::toggle state");
     if is_open {
         close(cx);

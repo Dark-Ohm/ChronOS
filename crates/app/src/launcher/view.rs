@@ -65,34 +65,36 @@ impl LauncherView {
         }
     }
 
-    fn handle_key(&mut self, event: &gpui::KeyDownEvent, window: &mut Window, _cx: &mut App) {
+    fn handle_key(&mut self, event: &gpui::KeyDownEvent, window: &mut Window, cx: &mut App) {
         let key = event.keystroke.key.as_str();
 
         match key {
-            "Escape" => {
-                window.remove_window();
+            // gpui key names are lowercase ("escape", not "Escape") — see
+            // gpui_linux platform.rs Keysym mapping.
+            "escape" => {
+                crate::launcher::close_this(window, cx);
             }
-            "Enter" => {
+            "enter" => {
                 if let Some(entry) = self.results.get(self.selected).cloned() {
                     if let Err(err) = launch(&entry.exec) {
                         tracing::error!("Failed to launch {}: {:#}", entry.name, err);
                     }
                 }
-                window.remove_window();
+                crate::launcher::close_this(window, cx);
             }
-            "Up" => {
+            "up" => {
                 if self.selected > 0 {
                     self.selected -= 1;
                     window.refresh();
                 }
             }
-            "Down" | "Tab" => {
+            "down" | "tab" => {
                 if self.selected + 1 < self.results.len() {
                     self.selected += 1;
                     window.refresh();
                 }
             }
-            "Backspace" => {
+            "backspace" => {
                 self.pattern.pop();
                 self.selected = 0;
                 self.refresh_results();
@@ -118,23 +120,12 @@ impl LauncherView {
 
 impl Render for LauncherView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Focus hygiene: as an XDG toplevel the compositor grants focus via
-        // the normal focus policy (reinforced by the Hyprland `stay_focused`
-        // windowrule), but the very first paint can race ahead of the
-        // compositor's focus ack, and some relayout paths (Hyprland/Niri) can
-        // drop focus mid-session. Re-assert focus every frame if we don't
-        // already hold it — cheap, and makes the launcher typeable the
-        // instant it appears, no click needed.
-        // Historical note: this block predates the toplevel migration — it
-        // was originally added as a workaround for `KeyboardInteractivity::
-        // OnDemand` on a layer-shell surface (which never granted focus
-        // automatically). With the layer-shell path retired
-        // (see `mod.rs::window_options` for why — `Exclusive` wedged the
-        // input stack on Hyprland/Niri), this re-assert stays because it
-        // still earns its keep for the toplevel.
-        if !self.focus.is_focused(_window) {
-            self.focus.focus(_window, cx);
-        }
+        // NOTE: Per-frame focus re-assert intentionally REMOVED.
+        // With `stay_focused` removed from the Lua windowrule, the compositor
+        // grants focus via normal focus policy. Re-asserting every frame would
+        // fight the compositor and recreate the focus trap. The initial
+        // `focus_input()` call in `open()` handles the "type immediately"
+        // requirement; after that, focus follows compositor policy.
 
         let theme = Theme::global(cx);
 
@@ -148,6 +139,10 @@ impl Render for LauncherView {
             .collect();
 
         div()
+            // Attach the focus handle to this element: key events dispatch
+            // along the focused element's ancestor path, so focusing an
+            // untracked handle sends keystrokes into the void.
+            .track_focus(&self.focus)
             .size_full()
             .bg(theme.bg.primary)
             .flex()

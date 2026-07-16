@@ -17,11 +17,11 @@
 --     so the user had to click before typing.
 --
 -- A regular toplevel sidesteps both: Hyprland's normal focus policy
--- drives the focus, and the rules below make it float, pin to every
--- workspace, hold focus, and dim everything behind it. The per-frame
--- focus re-assert in `crates/app/src/launcher/view.rs` makes the very
--- first paint typeable without waiting for the compositor's focus ack
--- to arrive (race condition window is small but real).
+-- drives the focus, and the rules below make it float and dim everything
+-- behind it. Focus-lost-close is handled by `observe_window_activation`
+-- in `crates/app/src/launcher/mod.rs::open()` — the launcher closes when
+-- it loses focus (click away, workspace switch), matching rofi/fuzzel UX.
+-- No `stay_focused` or `pin` windowrules; no per-frame focus re-assert.
 --
 -- USAGE — from your `~/.config/hypr/hyprland.lua`:
 --
@@ -43,8 +43,11 @@ hl.window_rule({
     -- Overlay feel, but via XDG toplevel rules (no layer-shell).
     float       = true,    -- float instead of tiling
     center      = true,    -- center on the current monitor
-    pin         = true,    -- visible on every workspace (overlay-like)
-    stay_focused = true,   -- keep keyboard focus while visible (no click needed)
+    -- NOTE: `stay_focused` intentionally REMOVED — incompatible with
+    -- focus-lost-close. The launcher closes when the user clicks away
+    -- or switches focus, matching rofi/fuzzel UX.
+    -- NOTE: `pin` intentionally REMOVED — useless with focus-lost-close;
+    -- switching workspaces loses focus and closes the launcher anyway.
 
     -- Visual: no compositor border + prominent rounding. Hyprland 0.55 Lua
     -- API has no `noborder` field; `border_size = 0` does the same thing.
