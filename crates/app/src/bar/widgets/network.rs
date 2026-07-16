@@ -28,7 +28,9 @@ enum NetworkView {
 fn describe(data: &NetworkData, status: ServiceStatus) -> NetworkView {
     if matches!(
         status,
-        ServiceStatus::Initializing | ServiceStatus::Failed(_)
+        ServiceStatus::Initializing
+            | ServiceStatus::Unavailable
+            | ServiceStatus::Degraded(_)
     ) || data.connectivity == ConnectivityState::Unknown
     {
         return NetworkView::Stub;
@@ -112,6 +114,12 @@ impl BarWidget for NetworkWidget {
     }
 }
 
+/// Register the network widget with the global bar registry.
+pub fn register(cx: &mut App) {
+    cx.global_mut::<chronos_luau::bar::BarWidgetRegistry>()
+        .register(Box::new(NetworkWidget));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,9 +134,14 @@ mod tests {
     }
 
     #[test]
-    fn stub_when_failed() {
+    fn stub_when_unavailable() {
+        assert_eq!(describe(&data(), ServiceStatus::Unavailable), NetworkView::Stub);
+    }
+
+    #[test]
+    fn stub_when_degraded() {
         assert_eq!(
-            describe(&data(), ServiceStatus::Failed("boom".into())),
+            describe(&data(), ServiceStatus::Degraded("no wifi hw".into())),
             NetworkView::Stub
         );
     }
