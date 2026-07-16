@@ -1,0 +1,252 @@
+# Chronos — Decisions Log
+
+Append-only. Each entry: what was considered, what was rejected and why, what
+was decided. Full rationale for the currently-approved architecture lives in
+`ARCHITECTURE.md`; this file is the history, including things ARCHITECTURE.md
+no longer needs to spell out because they're settled.
+
+If its empty\not full - its a fresh log. - see previous log in /home/neo/Projects/chronos/log-dump
+
+---
+  ## 2026-07-10 — Services layer: crate scaffolding + Service trait (Task 1)
+
+  - Considered: `niri-ipc = "=25.11.0"` per plan — does not exist on crates.io (available: 26.x only).
+  - Decided: use `niri-ipc = "26"` (latest 26.x). Scaffold only; Niri backend is stubbed (Task 2).
+  - Considered: `anyhow::Error` as `Service::Error` type — does not satisfy `std::error::Error` bound directly (impl via Deref only).
+  - Decided: **remove `std::error::Error` bound from `Service::Error`**, keep only `Send + Sync + 'static`.
+    - Rationale: trait doesn't invoke Error methods; errors are logged via `tracing::{warn,error}` in impls.
+    - Contract test uses `type Error = anyhow::Error` and passes.
+    - Future services (Compositor/Network/UPower) can use `anyhow::Error` or domain-specific errors.
+  - `hyprland = "0.4.0-beta.3"` — only available version (prerelease). API surface may shift; Task 2 will verify against this version.
+
+  ## 2026-07-10 — Compositor types: geometry fields added ahead of consumer, user-directed
+
+  - Context: the services-layer plan (Task 2) shipped a trimmed data model
+    (`Workspace`: `id/name/active`; `Monitor`: `name/active_workspace`;
+    `ActiveWindow`: `title/class`) vs. the fuller reference `gpui-shell`
+    types. Normally this project extends types only when a consumer appears
+    (YAGNI), but this is an **explicit user override** with named consumers.
+  - Reason for override: three plugins are already designed and will be
+    ported to Chronos, and they need geometry now:
+    - `plasminal` (github.com/Dark-Ohm/plasminal) — rewritten from scratch as
+      a LuaU plugin: a standalone desktop-widget with absolute on-screen
+      positioning (NOT a bar widget). Needs `Monitor.x/y/scale` as the global
+      origin for layout, independent of layer-shell `exclusive_zone`.
+    - `chronos-fm` (fork of noh-rs/nohrs) — WASM-plugin launcher moving to
+      LuaU (plugin-runtime convergence, not two parallel engines).
+    - `Alloy` — rewritten from Tauri+React to Rust+GPUI: a tray widget with a
+      menu (AUR helper: check updates/news/install packages).
+  - Added ahead of consumer: `Workspace.monitor_id`, `Monitor.id/x/y/scale`,
+    `ActiveWindow.address`. Remaining reference fields
+    (`Workspace.index/windows`, `Monitor.transform/dpms/vrr/make/model/serial`,
+    `ActiveWindow.workspace/floating/pinned/fullscreen/x/y/width/height`)
+    remain YAGNI — add on demand.
+  - **Type-fidelity deviation from the user's literal `task.md` spec** (must
+    be recorded, not silently absorbed):
+    - `task.md` asked for `Workspace.monitor_id: i32` and `Monitor.id: i32`.
+      The `hyprland` crate 0.4.0-beta.3 types these as `MonitorId = i128`
+      (and `Workspace.monitor_id: Option<MonitorId>`). Truncating `i128 → i32`
+      is silent data loss, so we store `Option<i64>` / `i64` instead — real
+      monitor IDs are small, `i64` round-trips losslessly for all practical
+      purposes.
+    - `ActiveWindow.address: String` — the crate's `Address` is an opaque
+      newtype (`pub struct Address(String)`) with no public accessor, but it
+      derives `derive_more::Display`, so `address.to_string()` yields the
+      inner hex string. This is the only safe way to extract it without
+      `unsafe`/reflection.
+    - `Monitor.scale: f32` forced dropping `Eq` from `Monitor` and
+      `CompositorState` derives (f32 is not `Eq`). `Service::Data` only
+      requires `Clone`, so this is safe — no consumer relied on `Eq`.
+  - **ARCHITECTURE.md §4 impact**: this changes the implicit assumption that
+    positioning happens only via layer-shell `exclusive_zone`/`display_id`.
+    Desktop-widget plugins position absolutely via `Monitor` geometry; §4 is
+    no longer the sole source of truth for plugin-window placement. §4 needs
+    a follow-up revision (NOT done in this task — tracked as TODO below).
+
+  ## 2026-07-10 (addendum) — monitor_id/id: i128, not i64 (no truncation at all)
+
+  - Follow-up to the geometry-fields entry above. Initially stored
+    `monitor_id: Option<i64>` / `id: i64` (reasoning: real Hyprland monitor
+    IDs are small, so `i64` round-trips). User correctly flagged that
+    `i128 → i64` is *also* a silent truncation, just less likely.
+  - Decided: use `i128` directly (matches `hyprland` crate `MonitorId = i128`
+    exactly). `Service::Data: Clone` imposes no size bound, and `i128` is
+    `Copy + Clone + PartialEq + Eq + Serialize + Deserialize` — so no derive
+    fallout beyond the already-required `Eq` drop on `Monitor`/`CompositorState`
+    (caused by `scale: f32`, independent of int width). Cost is one field type,
+    not an architectural change. Silent truncation removed entirely.
+
+  ## 2026-07-10 — NetworkSubscriber (Task 3): zbus 5.x API deviations from plan
+
+  - Plan (Task 3) was written as a template against an assumed zbus 5.x API.
+    Verified against the pinned `zbus 5.17.0` and corrected three mismatches:
+    - Plan used `mgr.receive_properties_changed()` (no await, returns stream).
+      Actual zbus 5.17 generates **per-property** streams: for the `connectivity`
+      property the method is `receive_connectivity_changed().await` and it
+      returns `PropertyStream<'_, u32>` directly (NOT a `Result`). Fixed.
+    - Plan used `data.get()` inside the async loop. `Mutable::get()` requires
+      `T: Copy`; `NetworkData` is not `Copy`, so it must be `data.get_cloned()`.
+    - Plan captured `Handle` and called `handle.enter()` around the sleep to
+      "ensure runtime context". But `tokio::spawn(run(...))` already runs the
+      future inside the runtime (new() is called from `init_all` inside
+      `rt.block_on`), so `EnterGuard` was redundant AND broke `Send` (the guard
+      is `!Send`, so the future failed `tokio::spawn`'s `Send` bound). Removed
+      `handle` from `run`; kept `Handle::current()` in `new()` only as the
+      documented guard that panics if called outside a runtime.
+    - `ConnectivityState` needed `#[derive(Default)]` (with `#[default]` on
+      `Unknown`) because `NetworkData` derives `Default`.
+  - `NetworkSubscriber::new()` panics if called outside a tokio runtime
+    (`Handle::current()`). This is intentional per spec §5.1; `init_all()`
+    (Task 5/6) provides the runtime via `rt.block_on`.
+
+  ## 2026-07-10 — UPowerSubscriber (Task 4): zbus 5.x API deviations + f64 Eq trap
+
+  - Same zbus 5.17 API corrections as Task 3 (NetworkSubscriber), applied to
+    the UPower DisplayDevice proxy:
+    - Plan used `dev.receive_properties_changed()` (no await). Actual zbus 5.17
+      generates per-property streams: `receive_percentage_changed().await` and
+      `receive_state_changed().await`, each returning `PropertyStream` directly
+      (not `Result`). Both streams merged via `tokio::select!` in the update
+      loop (re-read both properties on any change — cheap, keeps data
+      consistent).
+    - `data.get()` → `data.get_cloned()` (`Mutable::get` requires `T: Copy`;
+      `UPowerData` is not `Copy`).
+    - Removed `handle.enter()` around the sleep (same `!Send` `EnterGuard`
+      trap as Task 3). `Handle::current()` kept in `new()` as the runtime guard.
+  - **`f64` Eq trap (same class as `Monitor.scale: f32` in Task 2):** plan
+    derived `Eq` on `UPowerData`, but `battery_percent: f64` is not `Eq`.
+    Dropped `Eq` from `UPowerData` (only `Clone` required by `Service::Data`).
+    `BatteryState`/`PowerProfile` kept `Eq` (they are `Copy` enums, no float).
+  - Pattern confirmed: **any service data struct holding a float must NOT
+    derive `Eq`** — `Service::Data: Clone` is the only bound, so `PartialEq` is
+    sufficient. This is now the third hit (Monitor.scale, CompositorState,
+    UPowerData); future service types with floats should follow suit.
+
+  ## 2026-07-10 — Services container + init_all() + retry-loop tests (Task 5)
+
+  - Added `Services` struct (holds `compositor`/`network`/`upower` subscribers)
+    and `init_all() -> Services` to `crates/services/src/lib.rs`. `init_all()`
+    is sync, always succeeds (each constructor is non-failing, spawns its own
+    background task). MUST be called inside a tokio runtime (`rt.block_on`) so
+    `Handle::current()` resolves in the D-Bus constructors (spec §5.1 + §7).
+  - Retry-loop unit tests (`retry_tests` mod): `FakeRetryService` mirrors the
+    spec §5.1 backoff loop against an `AtomicU32` failure counter; asserts
+    `Initializing → Unavailable → … → Available` and that backoff grows.
+  - **Plan bug caught during implementation:** plan (Task 5, line ~1173)
+    asserted `attempts == 3` for `FakeRetryService::new(3)`. The loop guard
+    `if n >= failures_before_success` triggers success on the (N+1)-th attempt
+    (n=0,1,2 → 3 `Unavailable`, n=3 → `Available`), so `attempts == 4`, not 3.
+    Fixed the assertion to `4` with an explanatory comment. The plan's test
+    would have failed as-written.
+  - **Panic-guard edge-case test (user-demanded, not in plan):** `runtime_guard_tests`
+    mod with `network_new_panics_outside_runtime` + `upower_new_panics_outside_runtime`.
+    Plain `#[test]` (NOT tokio), wrap `Subscriber::new()` in
+    `catch_unwind(AssertUnwindSafe(...))`, assert `Err`. Pins the
+    `Handle::current()` panic so a future refactor cannot silently remove the
+    guard. Rationale: `init_all()` runs inside `rt.block_on` in normal flow, so
+    no panic there — but the guard must not be silently dropped if someone
+    later calls `new()` outside the runtime.
+  - Result: `cargo test -p chronos-services` → 7 tests pass (3 pre-existing +
+    2 retry + 2 panic-guard), 0 warnings. Verified independently after the
+    subagent run.
+
+  ## 2026-07-10 — AppState + watch() bridge + rt.block_on bootstrap (Task 6)
+
+  - Created `crates/app/src/state.rs` with `AppState` (GPUI `Global` holding
+    `Services`) and `watch()` helper. `AppState::init(services, cx)` stores the
+    services in `cx.set_global()`. Accessors: `AppState::global(cx)`,
+    `AppState::compositor(cx)`, `AppState::network(cx)`, `AppState::upower(cx)`.
+  - `watch<C, S, T, F>(cx, signal, on_update)` where `S: Signal<Item = T> +
+    Unpin + 'static`, `T: Clone + 'static`, `F: Fn(&mut C, T, &mut Context<C>)`.
+    Spawns on GPUI executor via `cx.spawn()`, converts signal to stream, applies
+    updates via `this.update()`. Detached — runs independently on UI thread.
+  - Modified `crates/app/src/main.rs`: bootstrap now creates dedicated
+    `tokio::runtime::Builder::new_multi_thread().enable_all().build()`, calls
+    `rt.block_on(async { chronos_services::init_all() })` to satisfy
+    `Handle::current()` in D-Bus constructors (spec §5.1 + §7), then passes
+    `Services` to `AppState::init()` inside `app.run()`.
+  - Updated `crates/app/Cargo.toml`: added `futures-signals.workspace = true`,
+    `futures-util.workspace = true`, `chronos-services = { path = "../services" }`.
+  - Unit tests in `state.rs`: `app_state_module_compiles`, `app_state_accessor_types`,
+    `service_status_variants`, `subscriber_types_accessible` — all pass.
+  - Full test suite: `cargo test` → 43 tests pass (11 app + 25 luau + 7 services).
+  - Build: `cargo check -p chronos` clean (3 warnings about unused public API
+    — expected, meant for downstream UI widgets).
+
+  ## 2026-07-11 — Launcher module (Task 9): nucleo 0.5, layer-shell overlay, IPC toggle
+
+  - **nucleo 0.5 API deviations:** `nucleo 0.5.0` moved `CaseMatching`/`Normalization`
+    to `nucleo::pattern` module, removed `Normalization::None` (use `Normalization::Never`),
+    `Item.data` is `&T` (requires deref), `Snapshot::matched_items(range)` panics if
+    range end > matched count. Fixed in `crates/app/src/launcher/search.rs`.
+  - **Fuzzy search engine:** `nucleo` chosen over custom/rapidfuzz — mature, MPL-2.0,
+    used by Helix editor. `Config::DEFAULT` fine for launcher (no custom scoring).
+  - **Layer-shell centering:** Spec §3.1 described centered overlay via `window_bounds`
+    origin. Layer-shell protocol centers via `anchor = TOP|BOTTOM|LEFT|RIGHT` +
+    symmetric `margin` (stretch to full output, inset by margin). `Anchor::empty()` +
+    `window_bounds.origin = center` is compositor-dependent and fails on Hyprland.
+    Implemented: `anchor = TOP|BOTTOM|LEFT|RIGHT`, `margin = (margin_y, margin_x, margin_y, margin_x)`.
+  - **Keyboard interactivity — Exclusive vs OnDemand (Critical):**
+    - Spec §3.1 requested `KeyboardInteractivity::Exclusive` (rofi-like capture-all).
+    - Tested: `Exclusive` on `Layer::Overlay` + `anchor=empty` on Hyprland/Niri → compositor
+       freezes entire input stack (session crash/reboot required). Root cause:
+       exclusive layer-shell surface never acks keyboard focus, compositor waits indefinitely.
+    - Fallback: `KeyboardInteractivity::OnDemand` + explicit `window.activate_window()` +
+       `window.focus(&focus_handle)` in `open()`. Window opens, but **does not receive
+       keyboard focus automatically** on Hyprland/Niri — requires click or Alt+Tab to
+       acquire focus. Once focused, key events work (Enter/Escape/navigation).
+    - Root cause: layer-shell `OnDemand` requires compositor to explicitly grant focus
+       (usually on click or focus policy). `activate_window()` sends `xdg_activation_v1`
+       token, but layer-shell surfaces don't participate in xdg_activation.
+    - **Deferred fix:** Investigate `zwlr_layer_surface_v1.set_keyboard_interactivity`
+       timing / proper focus ack in GPUI platform, or fallback to XDG popup/toplevel
+       for launcher. Marked Critical severity.
+  - **IPC ToggleLauncher:** Spec §7 proposed separate `ShowLauncher`/`HideLauncher`/`ToggleLauncher`.
+    Simplified to single `ToggleLauncher` payload (stateless toggle) — reduces message
+    surface, matches user workflow (single keybind).
+  - **IPC dual-channel accept loop:** `accept_loop` now merges `ping` + `toggle_launcher`
+    channels via `tokio::select!` — avoids head-of-line blocking if one channel stalls.
+  - **DesktopEntry fields `icon`/`terminal`/`no_display` parsed but unused:**
+    Parsed per XDG spec, `no_display` filters at parse time, `icon`/`terminal` stored
+    for future (icon rendering, terminal launch). YAGNI deferred.
+  - **Setsid launch:** `launch()` uses `setsid sh -c "exec"` + triple `Stdio::null()`
+    — detached process survives parent death. Validated by `setsid --version` test.
+  - **Setsid availability test:** Added compile-time check that `setsid` exists on host.
+    Fails fast if missing (non-POSIX environments).
+
+## 2026-07-16 — Переезд в chronos-ecosystem: констатация фактов (приёмка минион-отчётов)
+- Репо переехал копированием в /home/neo/projects/chronos-ecosystem/ChronOS ~2026-07-12. .git утерян БЕЗВОЗВРАТНО (find по всему /home/neo: единственный .git экосистемы — Chronos-Engine; d7ab5a7 не существует ни в одном репо). История = git log больше не источник; источники — ARCHITECTURE.md/DECISIONS.log/SESSION_REPORT.md.
+- gpui-ce расплющен в ../Source/ (9 крейтов siblings + gpui-component) БЕЗ workspace-корня → крейты не парсятся (все на .workspace=true). Path-deps ChronOS указывают на мёртвый /home/neo/Projects/SOURCE/gpui/gpui-ce-main. Сборка мертва двухуровнево. Fix поручен Cline (CLINE.md №2): workspace-корень Source/Cargo.toml (zed rev 876ec5a8 для internal deps, версии по Cargo.lock) + правка path-deps.
+- reference/gpui-shell пуст (код-стади копия не переехала) — ссылки ARCHITECTURE.md §11 на конкретные файлы gpui-shell временно непроверяемы.
+- Launcher keyboard focus (Critical, 2026-07-11): OMP-исследование показало — timing set_keyboard_interactivity в gpui_linux корректен (до commit, window.rs:170), wl_keyboard.enter обрабатывается пассивно, xdg_activation для layer-shell отклоняется (комментарий в самом gpui). Вариант (a) отпал. Рекомендация OMP: (c) XDG toplevel вместо layer-shell. РЕШЕНИЕ НЕ ПРИНЯТО — ждёт подтверждения Архитектора (моё мнение: принять (c), overlay-поведение добить windowrule pin/float).
+
+## 2026-07-16 (вечер) — Source/ = собственный форк «gpui-ce chronos edition»
+- Инвентаризация (проверено лично + cline-report №2): Source/ содержит 18 gpui-директорий — 9 базовых + 9 forked zed-internal (gpui_collections/scheduler/sum_tree/refineable/derive_refineable/media/zed_util/ce_util/elements, v0.2.2, датированы 14.07). Это fork-in-progress: код gpui уже использует TypeIdHashMap/SpawnTime, реализации в форках нет. ARCHITECTURE.md §2 (pinned rev 20340e14) устарел — зависимость теперь собственный форк, не пин апстрима.
+- Workspace-корень Source/Cargo.toml создан Cline (задание №2), path-deps ChronOS переведены на ../Source/*. chronos-services собирается; блокер — 5 missing API в форках.
+- Решения по завершению (задание №3): forked crates подключать по path с package-rename; util_macros/http_client/reqwest_client оставить на zed git 876ec5a8 (минимум хирургии); 5 API дописать в форки (~20 строк, образец zed main); Source/ взять под git. Отклонено: вырезание http_client-использований и форк util_macros — лишняя хирургия до зелёного билда.
+- Наблюдение: Source/ тасуется вне сессий (adk-rust исчез 16.07, крейты докопированы 15:07) — источник провенанса форка неизвестен, спросить Архитектора.
+
+## 2026-07-16 (ночь) — Реанимация завершена: сборка зелёная (cline-report №3, принят)
+- cargo build --workspace OK (Source/ + ChronOS), cargo test --workspace 62/62 pass — верифицировано Архитектором лично, не со слов миньона.
+- Хирургия форков: gpui_collections += TypeIdHashMap/TypeIdHashSet (на gpui_util::TypeIdHashBuilder) + re-export FxBuildHasher; gpui_scheduler += SpawnTime, RunnableMeta.spawned, new_with_callers_location (образец zed main).
+- Отклонение от плана, принято: gpui_util НЕ заменён на gpui_ce_util — в gpui_ce_util нет TypeIdHashBuilder, в старом gpui_util есть и он, и Deferred. Выбор по факту API, не по имени.
+- gpui_elements исключён из workspace (7 API-drift ошибок, никем не используется) — re-enable, когда Source/gpui догонит.
+- accesskit += feature "enumn" (иначе Action::n приватна, E0624).
+- Source/ взят под git: initial commit 3ce3466. ARCHITECTURE.md §2 переписан Архитектором (gpui-ce chronos edition вместо мёртвого пина 20340e14).
+- Хвост риска (medium): util_macros/http_client/reqwest_client на zed git rev 876ec5a8 — форкнуть при следующем обслуживании.
+
+## 2026-07-16 (поздний вечер) — Вырез из Kael: решение по hermes-report (принят, проверен грепами)
+- Kael (Apache-2.0, вырез легален с атрибуцией) НЕ замена gpui-ce — layer-shell зачаточный. Режем куски.
+- ПРИНЯТО к вырезу немедленно: (1) easing-кривые (~860 LOC, kael/animation.rs) + spring-интегратор (419 LOC, kael_ui/spring.rs) — S, чистая математика, фундамент motion-системы; (2) backdrop blur 2-pass (blade/shaders.wgsl:1074-1182 + renderer plumbing) — L, главный визуальный приз, linchpin для gradient borders и effect layers.
+- ОТЛОЖЕНО до субстрата: FLIP и implicit transitions (нет transform-полей в Style и Window::with_element_transform — XL-блокер, проверено: 0 hits в style.rs), DraggableSpring (нужны жесты), gradient borders (после 8-stop апгрейда в blur-задаче), color filter, effect layers (после blur).
+- НЕ БРАТЬ: erf box-shadows (уже идентично реализованы, shaders.wgsl:325), text_input (2987+243 LOC + отсутствующий undo_manager — overkill; launcher-ввод добить руками за S), kael_icons целиком (4 SVG, атласа нет — берём только паттерн svg()+include_str, Lucide-сет соберём сами).
+- Заметка: blend-mode фиксы Kael портировать только с Metal-пути; их WGSL-путь несёт старую аппроксимацию (ловушка).
+- Нарушение процесса: субагент Hermes записал SHADER_PORT_AUDIT.md в ChronOS вопреки read-only. Артефакт оставлен, правило ужесточить в следующих брифах.
+
+## 2026-07-17 — Вырез из gpui-shell: решение по hermes-report №2 (принят, проверен грепами)
+- gpui-shell БЕЗ лицензии (ни LICENSE, ни license-поля, ни SPDX; WIP-хобби) = all rights reserved. Дословный вырез ЗАПРЕЩЁН. Режим: rewrite-по-паттерну (наш код, их архитектура). Хорошо бы запросить лицензию у автора (andre-brandao).
+- ПРИНЯТО (порядок): (1) демон org.freedesktop.Notifications (донор-паттерн services/notification/mod.rs, 576 LOC, полный FDO) — rewrite под наш trait Service, первый server-side zbus в кодовой базе; (2) notification popups UI (M) — после демона; (3) applications + wallpaper сервисы (S, 0 deps) — параллельно.
+- ЧАСТИЧНО: launcher — steal только per-frame focus re-assert (донор mod.rs:336-338) поверх нашего OnDemand. Донорский Exclusive НЕ копировать — краш Hyprland/Niri доказан (DECISIONS 2026-07-11).
+- ОТЛОЖЕНО: OSD (код S-M, но как фича XL — требует audio+brightness сервисов), tray (XL: L-сервис + L-UI, зависит от panel/BarWidget-инфры), audio/bluetooth/mpris/privacy (FFI/C-бэкенды, L каждый), control_center (XL, преждевременно), ui-крейт целиком (привязан к upstream gpui; переиспользовать только InputBuffer-паттерн и theme color-math).
+- НЕ БРАТЬ: keybinds.rs как фикс фокуса (app-level bind_keys, Critical-баг не лечит), donor button.rs (0 байт).
+- Заметки: zbus 5.5→5.17 дрейф минорный (RequestNameFlags, OwnedValue::try_from); у ChronOS нет app-level config hot-reload (inotify покрыл только luau+launcher) — дыра, отдельная спека.

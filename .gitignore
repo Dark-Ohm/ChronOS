@@ -1,0 +1,22 @@
+# Rust / GPUI build output
+target/
+rust_out
+
+# Nix build outputs
+result*
+
+# direnv
+.direnv/
+
+# Local reference checkouts (study material, not a dependency; gpui-shell is unlicensed — must not be committed)
+reference/
+
+# Claude Code project state (settings, worktrees)
+System prompts/
+.claude/
+
+# Git worktrees (isolated workspaces, not part of the repo)
+.worktrees/
+
+# Session logs
+log-dump/
