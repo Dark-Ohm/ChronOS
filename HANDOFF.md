@@ -121,6 +121,9 @@ was_active-гейт против ложного active=false первого Wayl
 - Source/ активно шуршит и вне сессий (крейты появлялись, adk-rust
   исчезал) — провенанс июльского форка gpui-ce у пользователя НЕ выяснен
   (открытый вопрос).
+- Hindsight (банк chronos-ecosystem): с хоста живой порт — **:8888** (REST
+  /v1/default/banks/...); :8080 (nginx) может молчать при живых контейнерах
+  (pasta). Ретейн — POST .../memories, items[] с уникальными document_id.
 - Тесты Source: 3 падения svg_renderer — pre-existing (нет ассетов
   шрифтов), не блокер.
 
