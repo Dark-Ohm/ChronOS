@@ -1,7 +1,9 @@
 //! Built-in bar widgets.
 
+mod battery;
 mod clock;
-// mod workspaces;  // TEMP — other agent's WIP, has compile errors
+// mod network;  // выключено Архитектором: ServiceStatus::Failed не существует — фикс за Autohand
+mod workspaces;
 
 use gpui::App;
 
@@ -12,8 +14,9 @@ use chronos_luau::bar::BarWidgetRegistry;
 pub fn register_builtin(cx: &mut App) {
     clock::register(cx);
     // ── Other agents append below (one mod + one call each) ──
-    // workspaces::register(cx);  // TEMP
-    // battery::register(cx);
-    // network::register(cx);
+    workspaces::register(cx);
+    cx.global_mut::<chronos_luau::bar::BarWidgetRegistry>()
+        .register(Box::new(battery::BatteryWidget));
+    // network: выключено до фикса Autohand (см. выше)
     // tray::register(cx);
 }
