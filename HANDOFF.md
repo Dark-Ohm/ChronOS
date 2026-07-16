@@ -75,7 +75,26 @@ DECISIONS.log. Отвечать по-русски, коммиты БЕЗ AI-тр
   запрещено в приёмке CLINE.md). Свободен.
 - **OMP** — исследование фокуса + backdrop blur (оба приняты, blur с первого захода под обстрелом Cline). Свободен.
 
+## Launcher Critical — ЗАКРЫТ (bfb1503, «немножко баговынно, но работает»)
+
+XDG toplevel + windowrules (Lua). Пять фиксов Архитектора поверх хотфикса
+OMP — все найдены ТОЛЬКО живым прогоном с RUST_LOG=info (полный разбор —
+приёмка в OMP.md): detach() на Subscription; focus_input на активацию;
+track_focus на корневом div; lowercase-имена клавиш; предикат «открыт» =
+handle.is_some() + close_this() со сверкой окна (призраки, кража хендла,
+was_active-гейт против ложного active=false первого Wayland-configure).
+Остаточная «баговынность» — полировка отдельным заданием (спросить
+пользователя, что именно). Бинд: SUPER+L (hyprland.lua пользователя).
+
 ## Ключевые технические факты (кровью заработанные)
+
+- **gpui-оконный код не верифицируется тестами** — только живой прогон
+  (RUST_LOG=info, tracing в observer'ы, hyprctl clients/activewindow).
+- gpui: имена клавиш — lowercase ("escape"); `.track_focus(&handle)`
+  обязателен, иначе клавиши мимо; Subscription — `#[must_use]`, дроп =
+  отмена; фокус до активации окна — no-op; первый Wayland-configure шлёт
+  ложный active=false; события активации от умерших окон приходят
+  асинхронно ПОСЛЕ открытия нового — глобальный close() ворует хендлы.
 
 - **KeyboardInteractivity::Exclusive ЗАПРЕЩЁН** — фризит input-стек
   Hyprland/Niri. Только OnDemand + per-frame re-assert.
