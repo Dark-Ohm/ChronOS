@@ -77,6 +77,11 @@ pub struct TrayItem {
     pub icon_pixmap: Option<TrayPixmap>,
     /// Convenience derived label for the text fallback badge.
     pub label: String,
+    /// Object path to the `com.canonical.dbusmenu` interface
+    /// (`StatusNotifierItem.Menu` property), if the application exposes one.
+    pub menu_path: Option<String>,
+    /// Fetched menu tree (populated by `FetchMenu` command).
+    pub menu: Option<Vec<MenuNode>>,
 }
 
 impl TrayItem {
@@ -92,6 +97,56 @@ impl TrayItem {
             None => "?".into(),
         }
     }
+}
+
+/// Strip mnemonic underscores from a D-Bus menu label. The spec says labels
+/// may contain underscores as keyboard mnemonic markers (e.g. "_Quit",
+/// "E_xit"); the UI should display them without the leading underscore. A
+/// double underscore `__` represents a literal underscore.
+pub fn strip_mnemonic(label: &str) -> String {
+    let mut out = String::with_capacity(label.len());
+    let mut chars = label.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '_' {
+            if chars.peek() == Some(&'_') {
+                out.push('_');
+                chars.next();
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Toggle type for checkable menu items.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MenuToggleType {
+    /// Standard checkbox.
+    Checkmark,
+    /// Radio button (mutually exclusive within a group).
+    Radio,
+}
+
+/// A parsed node in a DBusMenu tree (result of `GetLayout`).
+///
+/// The tree is recursive: leaf nodes have an empty `children` vec.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MenuNode {
+    /// Menu item id (positive integer, unique within the menu).
+    pub id: i32,
+    /// Display label (mnemonic underscores already stripped).
+    pub label: String,
+    /// Whether the item can be activated.
+    pub enabled: bool,
+    /// Whether the item should be shown.
+    pub visible: bool,
+    /// If true, this item is a visual separator (label/children are ignored).
+    pub separator: bool,
+    /// Toggle state for checkable items: `(toggle_type, checked)`.
+    pub toggle: Option<(MenuToggleType, bool)>,
+    /// Child items (empty for leaf nodes).
+    pub children: Vec<MenuNode>,
 }
 
 /// The reactive snapshot exposed via the `Service` trait (`Data`).
@@ -124,4 +179,9 @@ impl TrayState {
 pub enum TrayCommand {
     /// Left-click activation: `StatusNotifierItem.Activate(0, 0)`.
     ActivateItem { service: String },
+    /// Fetch the menu tree from the item's `com.canonical.dbusmenu` interface.
+    /// The result is written to `TrayItem.menu` in reactive state.
+    FetchMenu { service: String },
+    /// Activate a menu item by id (`com.canonical.dbusmenu.Event(clicked)`).
+    MenuClicked { service: String, id: i32 },
 }

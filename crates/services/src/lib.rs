@@ -24,7 +24,10 @@ pub use network::{ConnectivityState, NetworkData, NetworkSubscriber};
 pub use notification::{
     CloseReason, Notification, NotificationCommand, NotificationState, NotificationSubscriber, Urgency,
 };
-pub use tray::{TrayCommand, TrayIcon, TrayItem, TrayPixmap, TrayState, TraySubscriber};
+pub use tray::{
+    MenuNode, MenuToggleType, TrayCommand, TrayIcon, TrayItem, TrayPixmap, TrayState,
+    TraySubscriber, strip_mnemonic,
+};
 pub use upower::{BatteryState, PowerProfile, UPowerData, UPowerSubscriber};
 
 /// Container holding all system-integration subscribers.
