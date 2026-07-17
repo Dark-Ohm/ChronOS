@@ -59,7 +59,7 @@ Commands are concrete methods (`dispatch`), **not** on the trait.
 | `osd/` | volume OSD overlay (soft-hide, no Exclusive keyboard) |
 | `notifications/` | fdo popup stack (rubber-band height — see `gpui-layer-shell`) |
 | `launcher/` | app launcher — **uses `AppState::applications(cx)` via `state::watch`** (no more local cache); `launch.rs` re-uses `strip_field_codes` from services |
-| `dock/` | pinned launch panel (not a live taskbar) — icon resolver + PINNED_IDS hardcoded |
+| `dock/` | pinned launch panel (not a live taskbar) — icon resolver + PINNED_IDS hardcoded. **As of 2026-07-17 NOT accepted** — `on_click` calls `window.remove_window()`, destroying the (persistent, bar-like) surface after the first click; see gotchas |
 | `tray_menu/` | DBusMenu popup UI (paired with tray right-click) |
 | `ipc/` | single-instance Unix socket + wallpaper-next/set payloads |
 | `wallpaper_ctl.rs` | IPC wallpaper-next / wallpaper-set — scan `~/Pictures/Wallpapers`, round-robin |
@@ -211,6 +211,16 @@ appear. See `osd/mod.rs` after f4edb88.
   that didn't get committed. False claims cost a full re-work cycle.
 - **Watch handlers need `cx.notify()`.** Data update without notify = stale UI.
   Pattern: `state::watch(cx, signal, |this, state, cx| { this.update(state); cx.notify(); })`.
+- **Shared-file line contamination — FOUR incidents (OMP, Hermes, Autohand,
+  Mimo).** A minion's `git add <own files>` sweeps up ANOTHER agent's
+  uncommitted lines in a shared file (`main.rs`, `widgets/mod.rs`, `lib.rs`)
+  because those lines were sitting unstaged in the same working tree. Worst
+  case (Mimo dock, `d646406`): committed `mod tray_menu;` for a module that
+  was never itself committed — broke `cargo build` on a clean checkout.
+  `git diff --staged` alone doesn't catch this if you don't recognize the
+  extra lines as not-yours — **check `git status` for OTHER modified files
+  before you `git add`, and read every line of your own diff against what
+  you actually wrote this session.**
 
 ## Verification (before claiming done)
 
@@ -232,6 +242,13 @@ Package name is **`chronos`** (`-p chronos`), not `chronos-app`.
   parallel minions share them.
 - Do not confuse with siblings: `Chronos-IDE` (Hermes/ACP), `chronos-fm`
   (`gpui-component`). Name overlap is not code overlap.
+- **`remove_window()` on a PERSISTENT surface (bar/dock) is a different bug
+  flavor than the OSD popup race** (§ Layer-shell windowing above) — it's
+  not a re-open race, it's calling `remove_window` from an ordinary click
+  handler on a surface that's supposed to outlive the click (dock bug,
+  2026-07-17). Reserve `remove_window` for actual transient popups
+  (tray_menu, notifications) that are MEANT to close; a bar/dock window
+  should never call it from inside its own content's event handlers.
 
 ## Related skills
 
