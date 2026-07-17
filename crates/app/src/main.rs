@@ -5,6 +5,7 @@ mod notifications;
 mod osd;
 mod plugin_bridge;
 pub mod state;
+mod wallpaper_ctl;
 
 use chronos_luau::PluginManager;
 use chronos_services;

@@ -31,8 +31,8 @@ pub use tray::{
 };
 pub use upower::{BatteryState, PowerProfile, UPowerData, UPowerSubscriber};
 pub use wallpaper::{
-    AWWW_BIN, AWWW_DAEMON_BIN, Backend, WallpaperCommand, WallpaperState, WallpaperSubscriber,
-    command_to_awww_args, parse_query,
+    AWWW_BIN, AWWW_DAEMON_BIN, Backend, IMAGE_EXTENSIONS, WallpaperCommand, WallpaperState,
+    WallpaperSubscriber, command_to_awww_args, is_image, parse_query,
 };
 
 /// Container holding all system-integration subscribers.
