@@ -20,6 +20,10 @@ pub struct LauncherView {
     selected: usize,
     results: Vec<AppEntry>,
     focus: gpui::FocusHandle,
+    /// Set `true` when user clicks on a result row (handled by click handler
+    /// before activation observer fires). Observer checks this gate and skips
+    /// close — the explicit click handler already calls close_this.
+    pub interacted: bool,
 }
 
 impl LauncherView {
@@ -37,6 +41,7 @@ impl LauncherView {
             selected: 0,
             results: Vec::new(),
             focus: cx.focus_handle(),
+            interacted: false,
         };
         view.refresh_results();
 
@@ -135,12 +140,13 @@ impl Render for LauncherView {
 
         let pattern: SharedString = self.pattern.clone().into();
         let selected = self.selected;
-        let results: Vec<(usize, SharedString)> = self
+        let results: Vec<(usize, SharedString, chronos_services::AppEntry)> = self
             .results
             .iter()
             .enumerate()
-            .map(|(i, e)| (i, SharedString::from(e.name.clone())))
+            .map(|(i, e)| (i, SharedString::from(e.name.clone()), e.clone()))
             .collect();
+        let view_handle = cx.entity();
 
         div()
             // Attach the focus handle to this element: key events dispatch
@@ -165,13 +171,17 @@ impl Render for LauncherView {
                 div()
                     .flex_1()
                     .flex_col()
-                    .children(results.into_iter().map(|(i, name)| {
+                    .children(results.into_iter().map(|(i, name, entry)| {
                         let is_selected = i == selected;
+                        let entry_for_click = entry.clone();
+                        let vh = view_handle.clone();
                         div()
+                            .id(format!("launcher-row-{i}"))
                             .h(px(ROW_HEIGHT))
                             .px(px(12.))
                             .flex()
                             .items_center()
+                            .cursor_pointer()
                             .when(is_selected, |el| el.bg(theme.interactive.hover))
                             .child(
                                 div()
@@ -179,6 +189,13 @@ impl Render for LauncherView {
                                     .when(!is_selected, |el| el.child("  ")),
                             )
                             .child(name)
+                            .on_click(move |_event, window, cx: &mut App| {
+                                vh.update(cx, |view, _| view.interacted = true);
+                                if let Err(err) = launch(&entry_for_click.exec) {
+                                    tracing::error!("Failed to launch {}: {:#}", entry_for_click.name, err);
+                                }
+                                crate::launcher::close_this(window, cx);
+                            })
                     }))
                     .when(self.results.is_empty(), |el| {
                         el.child(

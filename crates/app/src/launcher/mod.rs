@@ -100,14 +100,18 @@ pub fn open(cx: &mut App) {
             // Only a true→false transition may close.
             let mut was_active = false;
             cx.observe_window_activation(window, move |view, window, cx| {
-                tracing::info!(active = window.is_window_active(), was_active, "launcher activation observer fired");
+                tracing::info!(active = window.is_window_active(), was_active, interacted = view.interacted, "launcher activation observer fired");
                 if window.is_window_active() {
                     was_active = true;
-                    // Compositor just granted focus: only now can the input's
-                    // focus handle actually take it (focusing before activation
-                    // is a no-op, which left the keyboard dead).
                     view.focus_input(window, cx);
                 } else if was_active {
+                    // Если клик произошёл ВНУТРИ лаунчера (по строке результата),
+                    // то click handler уже выставил interacted=true и вызвал
+                    // close_this сам. Пропускаем — не закрываем повторно.
+                    if view.interacted {
+                        view.interacted = false; // сбросить гейт
+                        return;
+                    }
                     crate::launcher::close_this(window, cx);
                 }
             })
