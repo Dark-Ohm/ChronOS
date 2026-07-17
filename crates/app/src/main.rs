@@ -4,7 +4,6 @@ mod ipc;
 mod launcher;
 mod notifications;
 mod osd;
-mod tray_menu;
 mod plugin_bridge;
 pub mod state;
 mod wallpaper_ctl;
@@ -56,7 +55,6 @@ fn main() {
             dock::init(cx);
             notifications::init(cx);
             osd::init(cx);
-            tray_menu::init(cx);
 
             // Initialize launcher global state (desktop entries come from AppState::applications)
             launcher::init(cx);
