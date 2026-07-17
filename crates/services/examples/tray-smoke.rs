@@ -89,16 +89,23 @@ fn main() -> anyhow::Result<()> {
         let fake_service = fake_conn.unique_name().map(|n| n.to_string()).unwrap();
         println!("[smoke] fake item bus name: {fake_service}");
 
-        // 3) Register the fake item with our watcher.
+        // 3) Register the fake item with our watcher using the AYATANA form:
+        //    a bare object path with NO bus name (exactly what udiskie /
+        //    nm-applet / blueman send). The watcher must fall back to the
+        //    sender's unique name as the D-Bus destination.
         let watcher = StatusNotifierWatcherProxy::new(&fake_conn).await?;
-        watcher.register_status_notifier_item(&fake_service).await?;
-        println!("[smoke] RegisterStatusNotifierItem sent");
+        watcher
+            .register_status_notifier_item("/StatusNotifierItem")
+            .await?;
+        // Canonical key the watcher should produce: {sender unique name}/StatusNotifierItem
+        let ayatana_key = format!("{fake_service}/StatusNotifierItem");
+        println!("[smoke] RegisterStatusNotifierItem(bare path) sent; expect key {ayatana_key}");
 
         // 4) Wait for the watcher to pick it up.
         let mut found = false;
         for _ in 0..50 {
             let state = tray.get();
-            if let Some(item) = state.find(&fake_service) {
+            if let Some(item) = state.find(&ayatana_key) {
                 assert_eq!(item.title.as_deref(), Some("SmokeItem"));
                 assert_eq!(item.icon_name.as_deref(), Some("smoke-icon"));
                 println!(
@@ -110,17 +117,17 @@ fn main() -> anyhow::Result<()> {
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        assert!(found, "tray watcher never registered the fake item");
+        assert!(found, "tray watcher never registered the ayatana-form item");
         let registered = watcher.registered_status_notifier_items().await?;
         assert!(
-            registered.iter().any(|s| s == &fake_service),
-            "RegisteredStatusNotifierItems missing our item"
+            registered.iter().any(|s| s == &ayatana_key),
+            "RegisteredStatusNotifierItems missing our ayatana-form item"
         );
         println!("[smoke] RegisteredStatusNotifierItems OK: {registered:?}");
 
-        // 5) Activate the item and confirm delivery.
+        // 5) Activate the item (via the ayatana key) and confirm delivery.
         tray.dispatch(TrayCommand::ActivateItem {
-            service: fake_service.clone(),
+            service: ayatana_key.clone(),
         });
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert!(

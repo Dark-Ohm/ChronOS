@@ -225,6 +225,9 @@ impl TraySubscriber {
             });
 
         let label = TrayItem::derive_label(&title, &icon_name);
+        // Clone for the log line (the originals are moved into `item` below).
+        let log_title = title.clone();
+        let log_icon = icon_name.clone();
         let item = TrayItem {
             id: service.to_string(),
             title,
@@ -239,8 +242,10 @@ impl TraySubscriber {
             let mut guard = self.data.lock_mut();
             if let Some(existing) = guard.items.iter_mut().find(|i| i.id == service) {
                 *existing = item;
+                info!("tray: item refreshed: {service} (title={log_title:?}, icon={log_icon:?})");
             } else {
                 guard.items.push(item);
+                info!("tray: item added: {service} (title={log_title:?}, icon={log_icon:?})");
             }
         }
 
@@ -313,27 +318,31 @@ impl Service for TraySubscriber {
 /// this `TraySubscriber` instance.
 #[interface(name = "org.kde.StatusNotifierWatcher")]
 impl TraySubscriber {
-    /// FDO `RegisterStatusNotifierItem`. `service` identifies the item (its bus
-    /// name, e.g. `:1.234` or `org.kde.StatusNotifierItem-1234-1`).
+    /// FDO `RegisterStatusNotifierItem`. `service` identifies the item.
+    ///
+    /// Three real-world forms are handled (see `normalize_registration`):
+    /// 1. a bus name, e.g. `:1.234` or `org.kde.StatusNotifierItem-1234-1`;
+    /// 2. a bus name with a path suffix, e.g. `org.kde.StatusNotifierItem-1/Menu`;
+    /// 3. a **bare object path** with no bus name (ayatana / libappindicator,
+    ///    e.g. `udiskie`, `nm-applet`, `blueman`) — here the destination is the
+    ///    sender's unique name from the `Header`.
     async fn register_status_notifier_item(
         &mut self,
         service: String,
         #[zbus(header)] header: Header<'_>,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) {
-        // Apps normally pass their own bus name; fall back to the sender's
-        // unique name if the argument is empty.
         let sender = header.sender().map(|s| s.to_string());
-        let service = if service.is_empty() {
-            match sender {
-                Some(s) => s,
-                None => {
-                    warn!("tray: RegisterStatusNotifierItem with no service and no sender");
-                    return;
-                }
+        // Normalize the incoming argument into the canonical item key. ayatana
+        // apps pass a bare object path, so fall back to the sender's unique
+        // name as the D-Bus destination (and keep the path in the key so the
+        // proxy can reach it and NameOwnerChanged can still match the owner).
+        let service = match normalize_registration(&service, sender.as_deref()) {
+            Some(s) => s,
+            None => {
+                warn!("tray: RegisterStatusNotifierItem with no service and no sender");
+                return;
             }
-        } else {
-            service
         };
 
         // Dedup: already tracked → no-op (still re-emit harmless signal).
@@ -399,15 +408,40 @@ impl TraySubscriber {
     async fn status_notifier_host_unregistered(emitter: &SignalEmitter<'_>) -> zbus::Result<()>;
 }
 
-/// Split a `service` string into (destination, object-path). If the string
-/// contains a `/`, the part before it is the destination and the rest is the
-/// path; otherwise the whole string is the destination and the default item
-/// path is used.
+/// Split a canonical item key into (destination, object-path). A key always
+/// carries its destination prefix (a bus name, possibly the sender's unique
+/// name for ayatana path-form). If the key contains a `/`, the part before it
+/// is the destination and the rest is the path; otherwise the whole key is the
+/// destination and the default item path is used.
 fn split_service(service: &str) -> (String, String) {
     if let Some(idx) = service.find('/') {
         (service[..idx].to_string(), service[idx..].to_string())
     } else {
         (service.to_string(), DEFAULT_ITEM_PATH.to_string())
+    }
+}
+
+/// Normalize the `RegisterStatusNotifierItem` argument into the canonical item
+/// key (which also encodes the destination for proxy building + removal).
+///
+/// Forms seen in the wild:
+/// - empty string → the sender's unique name (fallback);
+/// - bare object path (starts with `/`, ayatana/libappindicator: `udiskie`,
+///   `nm-applet`, `blueman`) → `{sender}{path}` so the sender's unique name is
+///   the D-Bus destination and the path is preserved for the proxy;
+/// - bus name (optionally with a `/path` suffix) → kept as-is.
+///
+/// Returns `None` only when even the sender is unknown (should not happen for a
+/// real D-Bus call).
+fn normalize_registration(service: &str, sender: Option<&str>) -> Option<String> {
+    if service.is_empty() {
+        sender.map(|s| s.to_string())
+    } else if service.starts_with('/') {
+        // Bare object path without a bus name (ayatana / libappindicator).
+        let sender = sender?;
+        Some(format!("{sender}{service}"))
+    } else {
+        Some(service.to_string())
     }
 }
 
@@ -581,6 +615,41 @@ mod tests {
                 "/Menu".to_string()
             )
         );
+        // Canonical ayatana key (sender unique name + bare path) splits into a
+        // real destination + path (this is what add_item/activate_item receive).
+        assert_eq!(
+            split_service(":1.50/org/ayatana/NotificationItem/udiskie"),
+            (
+                ":1.50".to_string(),
+                "/org/ayatana/NotificationItem/udiskie".to_string()
+            )
+        );
+    }
+
+    /// `normalize_registration` covers the three real-world forms, including the
+    /// ayatana/libappindicator bare-object-path form where the sender's unique
+    /// name becomes the D-Bus destination.
+    #[test]
+    fn normalize_registration_forms() {
+        // 1) empty arg → sender unique name.
+        assert_eq!(
+            normalize_registration("", Some(":1.7")),
+            Some(":1.7".to_string())
+        );
+        // 2) bare bus name (with optional path suffix) kept as-is.
+        assert_eq!(
+            normalize_registration("org.kde.StatusNotifierItem-1234-1/Menu", Some(":1.7")),
+            Some("org.kde.StatusNotifierItem-1234-1/Menu".to_string())
+        );
+        // 3) ayatana bare object path → {sender}{path}, so the sender is the
+        //    destination and the path is preserved in the canonical key.
+        assert_eq!(
+            normalize_registration("/org/ayatana/NotificationItem/udiskie", Some(":1.50")),
+            Some(":1.50/org/ayatana/NotificationItem/udiskie".to_string())
+        );
+        // No sender and empty/unresolvable arg → None (rejected by handler).
+        assert_eq!(normalize_registration("", None), None);
+        assert_eq!(normalize_registration("/some/path", None), None);
     }
 
     /// `TrayItem::derive_label` prefers title then icon_name then `?`.
