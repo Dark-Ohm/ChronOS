@@ -54,6 +54,11 @@ impl AppState {
     pub fn audio(cx: &App) -> &chronos_services::AudioSubscriber {
         &Self::global(cx).services.audio
     }
+
+    #[inline(always)]
+    pub fn applications(cx: &App) -> &chronos_services::ApplicationsSubscriber {
+        &Self::global(cx).services.applications
+    }
 }
 
 /// Watch a signal and apply updates to component state.
@@ -99,6 +104,7 @@ mod tests {
         let _ = AppState::compositor;
         let _ = AppState::network;
         let _ = AppState::upower;
+        let _ = AppState::applications;
 
         assert!(true);
     }

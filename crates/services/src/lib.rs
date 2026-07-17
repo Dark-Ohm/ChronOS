@@ -4,6 +4,7 @@
 //! implements the lightweight `Service` trait. Commands are concrete methods
 //! on each subscriber (NOT part of the trait).
 
+pub mod applications;
 pub mod audio;
 pub mod compositor;
 pub mod network;
@@ -11,6 +12,9 @@ pub mod notification;
 pub mod tray;
 pub mod upower;
 
+pub use applications::{
+    ApplicationsCommand, ApplicationsState, ApplicationsSubscriber, AppEntry,
+};
 pub use audio::{AudioCommand, AudioState, AudioSubscriber, EndpointState};
 pub use compositor::{
     ActiveWindow, CompositorBackend, CompositorCommand, CompositorState, CompositorSubscriber,
@@ -26,6 +30,7 @@ pub use upower::{BatteryState, PowerProfile, UPowerData, UPowerSubscriber};
 /// Container holding all system-integration subscribers.
 #[derive(Clone)]
 pub struct Services {
+    pub applications: ApplicationsSubscriber,
     pub audio: AudioSubscriber,
     pub compositor: CompositorSubscriber,
     pub network: NetworkSubscriber,
@@ -40,6 +45,7 @@ pub struct Services {
 /// in the D-Bus constructors.
 pub fn init_all() -> Services {
     Services {
+        applications: ApplicationsSubscriber::new(),
         audio: AudioSubscriber::new(),
         compositor: CompositorSubscriber::new(),
         network: NetworkSubscriber::new(),
@@ -220,6 +226,17 @@ mod runtime_guard_tests {
         assert!(
             result.is_err(),
             "NetworkSubscriber::new() must panic outside a tokio runtime (Handle::current guard)"
+        );
+    }
+
+    #[test]
+    fn applications_new_panics_outside_runtime() {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let _ = ApplicationsSubscriber::new();
+        }));
+        assert!(
+            result.is_err(),
+            "ApplicationsSubscriber::new() must panic outside a tokio runtime (Handle::current guard)"
         );
     }
 
