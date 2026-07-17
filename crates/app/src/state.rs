@@ -59,6 +59,11 @@ impl AppState {
     pub fn applications(cx: &App) -> &chronos_services::ApplicationsSubscriber {
         &Self::global(cx).services.applications
     }
+
+    #[inline(always)]
+    pub fn wallpaper(cx: &App) -> &chronos_services::WallpaperSubscriber {
+        &Self::global(cx).services.wallpaper
+    }
 }
 
 /// Watch a signal and apply updates to component state.

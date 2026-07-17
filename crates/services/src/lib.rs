@@ -11,6 +11,7 @@ pub mod network;
 pub mod notification;
 pub mod tray;
 pub mod upower;
+pub mod wallpaper;
 
 pub use applications::{
     ApplicationsCommand, ApplicationsState, ApplicationsSubscriber, AppEntry, strip_field_codes,
@@ -29,6 +30,10 @@ pub use tray::{
     TraySubscriber, strip_mnemonic,
 };
 pub use upower::{BatteryState, PowerProfile, UPowerData, UPowerSubscriber};
+pub use wallpaper::{
+    AWWW_BIN, AWWW_DAEMON_BIN, Backend, WallpaperCommand, WallpaperState, WallpaperSubscriber,
+    command_to_awww_args, parse_query,
+};
 
 /// Container holding all system-integration subscribers.
 #[derive(Clone)]
@@ -40,6 +45,7 @@ pub struct Services {
     pub notification: NotificationSubscriber,
     pub tray: TraySubscriber,
     pub upower: UPowerSubscriber,
+    pub wallpaper: WallpaperSubscriber,
 }
 
 /// Construct all subscribers. Always succeeds (spec §6): each constructor is
@@ -55,6 +61,7 @@ pub fn init_all() -> Services {
         notification: NotificationSubscriber::new(),
         tray: TraySubscriber::new(),
         upower: UPowerSubscriber::new(),
+        wallpaper: WallpaperSubscriber::new(),
     }
 }
 
