@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use std::process::{Command, Stdio};
 
-use crate::launcher::entry::strip_field_codes;
+use chronos_services::strip_field_codes;
 
 /// Launch a desktop entry's `Exec=` value as a detached process.
 ///

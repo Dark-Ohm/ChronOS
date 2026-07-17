@@ -2,39 +2,34 @@
 
 use gpui::{App, Focusable, Render, SharedString, Window, div, prelude::*, px};
 
+use chronos_services::{AppEntry, Service};
 use chronos_ui::Theme;
 
-use crate::launcher::cache::DesktopEntryCache;
-use crate::launcher::entry::DesktopEntry;
 use crate::launcher::launch::launch;
 use crate::launcher::search::FuzzySearch;
+use crate::state;
 
 const INPUT_HEIGHT: f32 = 40.;
 const ROW_HEIGHT: f32 = 32.;
 const MAX_VISIBLE_ROWS: usize = 10;
-
-// Цвета теперь берутся из `Theme` (chronos-ui) в render(); константы удалены.
-// Соответствие прежним значениям:
-//   BG_COLOR     0x1e1e2e -> theme.bg.primary
-//   INPUT_BG     0x313142 -> theme.bg.elevated
-//   SELECTED_BG  0x454566 -> theme.interactive.hover
-//   HINT_COLOR   0x6c7080 -> theme.text.muted
 
 /// Centered overlay view showing fuzzy search results over desktop entries.
 pub struct LauncherView {
     search: FuzzySearch,
     pattern: String,
     selected: usize,
-    results: Vec<DesktopEntry>,
+    results: Vec<AppEntry>,
     focus: gpui::FocusHandle,
 }
 
 impl LauncherView {
-    /// Build a launcher view seeded with the current desktop entry cache.
-    pub fn new(cx: &mut App) -> Self {
-        let cache = cx.global::<DesktopEntryCache>();
+    /// Build a launcher view seeded with the current desktop entries from the
+    /// applications service.
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        let svc = state::AppState::applications(cx);
+        let entries = svc.get().entries;
         let mut search = FuzzySearch::new();
-        search.set_items(cache.entries.clone());
+        search.set_items(entries);
 
         let mut view = Self {
             search,
@@ -44,6 +39,14 @@ impl LauncherView {
             focus: cx.focus_handle(),
         };
         view.refresh_results();
+
+        // Subscribe to desktop entry changes — live updates without restart.
+        let signal = state::AppState::applications(cx).subscribe();
+        state::watch(cx, signal, |this, state, _cx| {
+            this.search.set_items(state.entries);
+            this.refresh_results();
+        });
+
         view
     }
 

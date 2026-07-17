@@ -53,9 +53,7 @@ fn main() {
             notifications::init(cx);
             osd::init(cx);
 
-            // Initialize desktop entry cache before bar (bar may eventually show launcher toggle)
-            launcher::cache::init(cx);
-            launcher::cache::start_watcher(cx);
+            // Initialize launcher global state (desktop entries come from AppState::applications)
             launcher::init(cx);
 
             let plugin_dirs = vec![

@@ -1,7 +1,5 @@
-//! Launcher module: desktop entry cache, fuzzy search, overlay view, launch.
+//! Launcher module: fuzzy search, overlay view, launch.
 
-pub mod cache;
-pub mod entry;
 pub mod launch;
 pub mod search;
 pub mod view;

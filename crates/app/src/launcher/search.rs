@@ -1,12 +1,12 @@
 use nucleo::pattern::{CaseMatching, Normalization};
 use nucleo::{Config, Nucleo, Utf32String};
 
-use super::entry::DesktopEntry;
+use chronos_services::AppEntry;
 use std::sync::Arc;
 
 pub struct FuzzySearch {
     nucleo: Nucleo<u32>,
-    items: Vec<DesktopEntry>,
+    items: Vec<AppEntry>,
 }
 
 impl FuzzySearch {
@@ -17,7 +17,7 @@ impl FuzzySearch {
         }
     }
 
-    pub fn set_items(&mut self, entries: Vec<DesktopEntry>) {
+    pub fn set_items(&mut self, entries: Vec<AppEntry>) {
         self.items = entries;
         self.nucleo.restart(true);
         for (i, entry) in self.items.iter().enumerate() {
@@ -33,7 +33,7 @@ impl FuzzySearch {
             .reparse(0, pattern, CaseMatching::Smart, Normalization::Never, false);
     }
 
-    pub fn results(&mut self, max: usize) -> Vec<&DesktopEntry> {
+    pub fn results(&mut self, max: usize) -> Vec<&AppEntry> {
         self.nucleo.tick(10);
 
         let snapshot = self.nucleo.snapshot();
@@ -54,31 +54,28 @@ impl FuzzySearch {
 mod tests {
     use super::*;
 
-    fn make_entries() -> Vec<DesktopEntry> {
+    fn make_entries() -> Vec<AppEntry> {
         vec![
-            DesktopEntry {
+            AppEntry {
                 id: "firefox".into(),
                 name: "Firefox".into(),
                 exec: "/usr/bin/firefox".into(),
                 icon: None,
                 terminal: false,
-                no_display: false,
             },
-            DesktopEntry {
+            AppEntry {
                 id: "thunderbird".into(),
                 name: "Thunderbird".into(),
                 exec: "/usr/bin/thunderbird".into(),
                 icon: None,
                 terminal: false,
-                no_display: false,
             },
-            DesktopEntry {
+            AppEntry {
                 id: "files".into(),
                 name: "Files".into(),
                 exec: "/usr/bin/nautilus".into(),
                 icon: None,
                 terminal: false,
-                no_display: false,
             },
         ]
     }
