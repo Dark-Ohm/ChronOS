@@ -26,6 +26,17 @@ pub mod types;
 trait NetworkManager {
     #[zbus(property)]
     fn connectivity(&self) -> zbus::Result<u32>;
+    #[zbus(property)]
+    fn active_connections(&self) -> zbus::Result<Vec<zbus::zvariant::OwnedObjectPath>>;
+}
+
+#[proxy(
+    interface = "org.freedesktop.NetworkManager.Connection.Active",
+    default_service = "org.freedesktop.NetworkManager"
+)]
+trait ActiveConnection {
+    #[zbus(property)]
+    fn type_(&self) -> zbus::Result<String>;
 }
 
 fn map_connectivity(c: u32) -> ConnectivityState {
@@ -36,6 +47,39 @@ fn map_connectivity(c: u32) -> ConnectivityState {
         1 => ConnectivityState::None,
         _ => ConnectivityState::Unknown,
     }
+}
+
+/// Honest wired-ethernet detection.
+///
+/// An active NetworkManager connection whose `Type` equals `"802-3-ethernet"`
+/// means a real wired link is up. This replaces the bar widget's guess
+/// (`Full && ssid.is_none()`), which falsely fired whenever Wi-Fi was absent
+/// but connectivity was full (e.g. a disabled/never-configured radio).
+async fn detect_wired(conn: &Connection) -> bool {
+    let Ok(mgr) = NetworkManagerProxy::new(conn).await else {
+        return false;
+    };
+    let Ok(active_paths) = mgr.active_connections().await else {
+        return false;
+    };
+    for path in active_paths {
+        let Some(builder) = ActiveConnectionProxy::builder(conn)
+            .destination("org.freedesktop.NetworkManager")
+            .ok()
+            .and_then(|b| b.path(path).ok())
+        else {
+            continue;
+        };
+        let Ok(proxy) = builder.build().await else {
+            continue;
+        };
+        if let Ok(t) = proxy.type_().await {
+            if t == "802-3-ethernet" {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 #[derive(Clone)]
@@ -112,6 +156,10 @@ async fn run(
 ) {
     const MAX_BACKOFF: Duration = Duration::from_secs(60);
     const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+    /// Quiet-network heartbeat: a still-alive bus that emits no connectivity
+    /// changes is NORMAL and must not trigger a reconnect. We only treat the
+    /// connection as dead if an explicit ping fails.
+    const HEARTBEAT: Duration = Duration::from_secs(30);
     let mut backoff = Duration::from_secs(1);
 
     loop {
@@ -128,33 +176,46 @@ async fn run(
 
         match tokio::time::timeout(CONNECT_TIMEOUT, connect).await {
             Ok(Ok((conn, mgr, connectivity))) => {
+                let wired = detect_wired(&conn).await;
                 data.set(NetworkData {
                     connectivity,
+                    wired,
                     ..NetworkData::default()
                 });
                 status.set(ServiceStatus::Available);
-                conn_slot.set(Some(conn));
+                conn_slot.set(Some(conn.clone()));
                 info!("NetworkSubscriber connected");
 
-                // Subscribe to connectivity property changes; on stream error, break to retry.
+                // Subscribe to connectivity property changes. A quiet network
+                // emits no changes — that is NORMAL, so there is NO idle
+                // timeout here (the previous ~60s timeout made the subscriber
+                // flap: "signal timeout; retrying" every minute on a silent
+                // bus). The heartbeat below pings the bus periodically; only a
+                // failed ping counts as a real disconnect.
                 let stream = mgr.receive_connectivity_changed().await;
-                let stream = std::pin::pin!(stream);
                 let mut stream = std::pin::pin!(stream);
                 loop {
-                    match tokio::time::timeout(CONNECT_TIMEOUT, stream.next()).await {
-                        Ok(Some(_)) => {
-                            if let Ok(c) = mgr.connectivity().await {
-                                let connectivity = map_connectivity(c);
-                                data.set(NetworkData {
-                                    connectivity,
-                                    ..data.get_cloned()
-                                });
+                    tokio::select! {
+                        changed = stream.next() => {
+                            match changed {
+                                Some(_) => {
+                                    if let Ok(c) = mgr.connectivity().await {
+                                        let connectivity = map_connectivity(c);
+                                        let wired = detect_wired(&conn).await;
+                                        let mut d = data.get_cloned();
+                                        d.connectivity = connectivity;
+                                        d.wired = wired;
+                                        data.set(d);
+                                    }
+                                }
+                                None => break, // stream ended cleanly
                             }
                         }
-                        Ok(None) => break, // stream ended cleanly
-                        Err(_) => {
-                            warn!("NetworkSubscriber signal timeout; retrying");
-                            break;
+                        _ = tokio::time::sleep(HEARTBEAT) => {
+                            if mgr.connectivity().await.is_err() {
+                                warn!("NetworkSubscriber heartbeat failed; reconnecting");
+                                break;
+                            }
                         }
                     }
                 }
