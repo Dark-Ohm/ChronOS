@@ -4,6 +4,31 @@
 
 use std::process::Command;
 
+/// Build `wpctl set-volume -l 1.5 <id> <N>%` argv (without the binary name).
+///
+/// Volume is linear 0.0–1.5 (clamped); emitted as integer percent so
+/// WirePlumber's limit flag applies cleanly.
+pub fn format_set_volume_args(id: &str, volume: f64) -> Vec<String> {
+    let v = clamp_volume(volume);
+    let percent = (v * 100.0).round().clamp(0.0, 150.0) as u32;
+    vec![
+        "set-volume".into(),
+        "-l".into(),
+        "1.5".into(),
+        id.to_string(),
+        format!("{percent}%"),
+    ]
+}
+
+/// Build `wpctl set-mute <id> toggle` argv (without the binary name).
+pub fn format_set_mute_toggle_args(id: &str) -> Vec<String> {
+    vec![
+        "set-mute".into(),
+        id.to_string(),
+        "toggle".into(),
+    ]
+}
+
 /// Parse `wpctl get-volume` stdout.
 ///
 /// Examples:
@@ -128,5 +153,41 @@ id 53, type PipeWire:Interface:Node
         assert_eq!(clamp_volume(-1.0), 0.0);
         assert_eq!(clamp_volume(2.0), 1.5);
         assert_eq!(clamp_volume(0.35), 0.35);
+    }
+
+    #[test]
+    fn format_set_volume_uses_limit_and_percent() {
+        assert_eq!(
+            format_set_volume_args("@DEFAULT_AUDIO_SINK@", 0.40),
+            vec![
+                "set-volume".to_string(),
+                "-l".to_string(),
+                "1.5".to_string(),
+                "@DEFAULT_AUDIO_SINK@".to_string(),
+                "40%".to_string(),
+            ]
+        );
+        // clamp to 150%
+        assert_eq!(
+            format_set_volume_args("@DEFAULT_AUDIO_SOURCE@", 2.0).last().unwrap(),
+            "150%"
+        );
+        // zero
+        assert_eq!(
+            format_set_volume_args("@DEFAULT_AUDIO_SINK@", 0.0).last().unwrap(),
+            "0%"
+        );
+    }
+
+    #[test]
+    fn format_set_mute_toggle_argv() {
+        assert_eq!(
+            format_set_mute_toggle_args("@DEFAULT_AUDIO_SOURCE@"),
+            vec![
+                "set-mute".to_string(),
+                "@DEFAULT_AUDIO_SOURCE@".to_string(),
+                "toggle".to_string(),
+            ]
+        );
     }
 }

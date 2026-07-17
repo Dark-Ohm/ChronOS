@@ -21,7 +21,10 @@ use tracing::{info, warn};
 use crate::Service;
 use crate::ServiceStatus;
 pub use types::{AudioCommand, AudioState, EndpointState};
-pub use wpctl::{clamp_volume, parse_get_volume, parse_node_description};
+pub use wpctl::{
+    clamp_volume, format_set_mute_toggle_args, format_set_volume_args, parse_get_volume,
+    parse_node_description,
+};
 
 pub mod types;
 mod wpctl;
@@ -164,39 +167,20 @@ fn read_endpoint(id: &str) -> anyhow::Result<EndpointState> {
     })
 }
 
+/// Pure mapping of [`AudioCommand`] → `wpctl` argv (no binary name).
+///
+/// Unit-tested; `apply_command` only shells out.
+pub fn command_to_wpctl_args(cmd: &AudioCommand) -> Vec<String> {
+    match cmd {
+        AudioCommand::SetSinkVolume(v) => format_set_volume_args(DEFAULT_SINK, *v),
+        AudioCommand::SetSourceVolume(v) => format_set_volume_args(DEFAULT_SOURCE, *v),
+        AudioCommand::ToggleSinkMute => format_set_mute_toggle_args(DEFAULT_SINK),
+        AudioCommand::ToggleSourceMute => format_set_mute_toggle_args(DEFAULT_SOURCE),
+    }
+}
+
 async fn apply_command(cmd: &AudioCommand) -> anyhow::Result<()> {
-    let args: Vec<String> = match cmd {
-        AudioCommand::SetSinkVolume(v) => {
-            let v = clamp_volume(*v);
-            vec![
-                "set-volume".into(),
-                DEFAULT_SINK.into(),
-                format!("{v:.4}"),
-            ]
-        }
-        AudioCommand::SetSourceVolume(v) => {
-            let v = clamp_volume(*v);
-            vec![
-                "set-volume".into(),
-                DEFAULT_SOURCE.into(),
-                format!("{v:.4}"),
-            ]
-        }
-        AudioCommand::ToggleSinkMute => {
-            vec![
-                "set-mute".into(),
-                DEFAULT_SINK.into(),
-                "toggle".into(),
-            ]
-        }
-        AudioCommand::ToggleSourceMute => {
-            vec![
-                "set-mute".into(),
-                DEFAULT_SOURCE.into(),
-                "toggle".into(),
-            ]
-        }
-    };
+    let args = command_to_wpctl_args(cmd);
 
     tokio::task::spawn_blocking(move || {
         let str_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -259,5 +243,29 @@ mod tests {
         let mut c = a.clone();
         c.sink.volume = f64::NAN;
         assert_ne!(a, c);
+    }
+
+    #[test]
+    fn command_to_wpctl_args_set_sink_volume() {
+        let args = command_to_wpctl_args(&AudioCommand::SetSinkVolume(0.40));
+        assert_eq!(
+            args,
+            vec![
+                "set-volume",
+                "-l",
+                "1.5",
+                "@DEFAULT_AUDIO_SINK@",
+                "40%",
+            ]
+        );
+    }
+
+    #[test]
+    fn command_to_wpctl_args_toggle_source_mute() {
+        let args = command_to_wpctl_args(&AudioCommand::ToggleSourceMute);
+        assert_eq!(
+            args,
+            vec!["set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"]
+        );
     }
 }
