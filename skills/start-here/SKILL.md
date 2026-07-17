@@ -77,7 +77,7 @@ Routing only — open the skill and follow it.
 
 | Your task | Skill |
 |---|---|
-| `crates/app`, `crates/services`, `crates/luau`, `crates/ui`, bar/dock/launcher/osd/notifications/tray_menu, `Service` trait, subscribers, Lua hot-reload | **`chronos-shell`** |
+| `crates/app`, `crates/services`, `crates/luau`, `crates/ui`, bar/dock/launcher/osd/notifications/tray_menu, `Service` trait, subscribers, Lua hot-reload, wallpaper_ctl, IPC payloads | **`chronos-shell`** |
 | Layer-shell popup height / clipped content / `window.resize` | **`gpui-layer-shell`** |
 | Generic GPUI API (Element, entities, focus, layout) | `gpui` |
 | Rust ownership / error / perf idioms | `rust-skills-master` |
