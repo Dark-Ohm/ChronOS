@@ -4,6 +4,7 @@ mod battery;
 mod clock;
 mod network;
 mod tray;
+mod volume;
 mod workspaces;
 
 use gpui::App;
@@ -18,4 +19,5 @@ pub fn register_builtin(cx: &mut App) {
         .register(Box::new(battery::BatteryWidget));
     network::register(cx);
     tray::register(cx);
+    volume::register(cx);
 }
