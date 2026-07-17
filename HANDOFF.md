@@ -52,19 +52,24 @@ DECISIONS.log. Отвечать по-русски, коммиты БЕЗ AI-тр
   (easing+spring) ← `3ce3466` (skeleton).
 - git identity локально: neo / mishabcbb@gmail.com.
 
-## СЕЙЧАС В ПОЛЕ: 5 агентов, bar-виджеты (задания от 2026-07-17)
+## СЕЙЧАС В ПОЛЕ (обновлено 2026-07-17 поздний вечер)
 
-- **Cline** (CLINE.md №5) — refresh-мост Bar + Clock. Владеет bar/mod.rs
-  и bar/widgets/mod.rs — фундамент остальных.
-- **Hermes** (HERMES.md №5) — Workspaces (widgets/workspaces.rs, может
-  тронуть compositor dispatch отдельным коммитом).
-- **Mimo** (MIMO.md №1, новичок) — Battery (widgets/battery.rs; десктоп —
-  без паники при отсутствии батареи).
-- **Autohand** (AUTOHAND.md №1, новичок) — Network (widgets/network.rs).
-- **OpenCode** (OPENCODE.md №1, XL) — tray: StatusNotifierWatcher-демон
-  (crates/services/src/tray/, zbus 5.17) + widgets/tray.rs.
-Правила у всех: свой файл + ровно 2 строки в widgets/mod.rs; поимённый
-git add; git checkout чужого запрещён.
+**Bar-волна ЗАВЕРШЕНА и принята**: clock ✅ (Cline, эррата №2 — дубль
+register_builtin, снят e2845bd), workspaces ✅ (Hermes, клик работает —
+подтверждено пользователем), network ✅ (Autohand со 2-й попытки, 1f508d6),
+battery ✅ (Mimo со 2-й попытки, ba78b70), tray ⚠️ хвост (см. ниже).
+
+Открытые задания:
+- **OpenCode** (OPENCODE.md №2) — ayatana path-форма регистрации SNI:
+  udiskie/nm-applet передают голый object path, split_service даёт пустой
+  destination → прокси не строится, бейдж не появляется. Fix: destination =
+  sender unique name. Инфраструктура (watcher, tray-smoke, 92 теста) принята.
+- **Grok** (GROK.md №1, НОВИЧОК — grok CLI, подписка 7 дней) — audio-сервис
+  PipeWire (crates/services/src/audio/): фундамент OSD и ползунков громкости.
+- Hermes/Cline/Mimo/Autohand — свободны, ждут заданий.
+
+Микрофонные бинды-времянка в hyprland.lua пользователя: SUPER+equal/minus →
+wpctl @DEFAULT_AUDIO_SOURCE@ ±5% (заменить на OSD, когда audio-сервис будет).
 
 ## Сделано ранее (все приняты)
 
@@ -73,14 +78,29 @@ git add; git checkout чужого запрещён.
   визуал подтверждён скриншотом).
 - Launcher: XDG toplevel + Critical focus trap снят (см. секцию ниже).
 
-## Очередь после виджетов
+## Очередь после tray-хвоста и audio
 
-1. Полировка попапов («выглядит криво» — уточнить у пользователя) и
+1. OSD + ползунки громкости (после audio-сервиса Grok; brightness — потом).
+2. Полировка попапов («выглядит криво» — уточнить у пользователя) и
    лаунчера (остаточная «баговынность», монитор DP-1 vs HDMI).
-2. applications + wallpaper сервисы (S).
-3. Gradient borders (Source, после блюра), OSD (нужны audio+brightness), dock.
-4. Отложено (DECISIONS.log): FLIP/transitions (нет transform в Style),
+3. applications + wallpaper сервисы (S). Мелкие follow-ups: has_battery в
+   UPowerData, wired:bool в NetworkData, network «signal timeout» флап
+   раз в минуту, SVG/icon-theme иконки виджетов вместо юникода.
+4. Gradient borders (Source, после блюра), dock.
+5. Отложено (DECISIONS.log): FLIP/transitions (нет transform в Style),
    8-stop градиенты, effect layers, color filter.
+
+## Lua-Hyprland: диспатчи (кровью, 2026-07-17)
+
+hyprland-rs `Dispatch::call` НЕСОВМЕСТИМ с Lua-Hyprland — сервер заворачивает
+всё из сокета в Lua и падает парсером. Чтение (events/data) работает. Команды —
+только Lua-формой: `/dispatch hl.dsp.focus({ workspace = N })` в
+`$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket.sock`
+(compositor/hyprland.rs::command_to_socket_line, 2a076a3 + эррата df65f42:
+`hl.dsp.move` не существует, надо `hl.dsp.window.move`). Wiki описывает
+классический Hyprland — истина для форка ТОЛЬКО живой сокет
+(`hyprctl dispatch '<lua>'` для проверки). Полный разбор — DECISIONS.log
+2026-07-17.
 
 ## Launcher Critical — ЗАКРЫТ (bfb1503, «немножко баговынно, но работает»)
 
