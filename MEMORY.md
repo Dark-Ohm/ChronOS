@@ -87,6 +87,13 @@ _Cross-task facts that survive across sessions. Promoted from session checkpoint
 - **Процесс миньонов (инциденты 2026-07-17):** `git stash`/`mv`/`checkout` чужого WIP запрещены (Grok воскресил удалённые доки и запер чужой код; Mimo унёс чужой menu.rs в /tmp); изоляция — `git worktree add` соседом ChronOS (в /tmp ломаются path-deps на ../Source); `cargo clean` на общем дереве не делать (−40ГБ target, все ждут пересборку); `pkill -x`, не `-f` (убивает шелл смока); отчёты после приёмки Архитектор сам переносит в report-log/ Гит-коммитом (незакоммиченные удаления воскресают).
 - **Hindsight cold-start:** после ребута руками: 9router (`systemctl --user start app-9router@autostart.service`, :20128) → `podman start hindsight-embeddings hindsight-reranker hindsight` → health :8888; hindsight-контейнер ловит OOM (exit 137); 401 = протух ключ в 9router.
 
+### 2026-07-17 (волна №4: wallpaper IPC, volume-виджет)
+
+- **Mimo №5 (e278a58) принят с первого захода** — первый чисто-сквозной прогон без доработки. wallpaper_ctl.rs (скан ~/Pictures/Wallpapers, round-robin next, set) + IPC payload'ы `wallpaper-next`/`wallpaper-set:<abs-path>` (crates/app/src/ipc/messages.rs, classify_wallpaper). Живой смок Архитектора (python-сокет вместо отсутствующего socat) подтвердил round-robin и прямую установку через `awww query`.
+- **Grok №4 (d361ec2) принят, с однострочной эрратой Архитектора.** Виджет громкости `bar/widgets/volume.rs` (иконка+процент, клик=ToggleSinkMute, скролл=±5%) готов, но зона `bar/mod.rs` была ему запрещена — сам честно указал в отчёте, что audio не в watch-списке бара (лаг до 1с через тикер). Архитектор добавил `watch(cx, AppState::audio(cx).subscribe(), …)` сам (разрешённое исключение — однострочная механика после приёмки). Живой смок: `wpctl set-volume` извне → бар обновился МГНОВЕННО, не по тикеру.
+- **Правило зон подтверждено полезным:** когда миньон честно пишет «эта зона не моя, нужна строка от Архитектора» вместо того чтобы либо молчать, либо лезть в чужое — это ровно то поведение, которого требует SESSION_REPORT-формат («Расхождения со спекой»). Поощрять явно в приёмках.
+- **Аномалия, не разобрана:** в рабочем дереве на момент приёмки волны №4 обнаружены незакоммиченные модификации `crates/services/src/tray/menu.rs` (похоже на WIP OpenCode №3-rework — не трогать, чужой WIP) и `report-log/grok-report-3.md` (уже заархивированный отчёт перезаписан новым содержимым без коммита — источник неясен, не тронуто, зафиксировать при следующей находке).
+
 ## На горизонте (known gaps / follow-up specs, not yet built)
 
 _Cross-session durable: these are explicitly deferred, each tied to a named future consumer. Do not start them without the linked spec._

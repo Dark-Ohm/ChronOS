@@ -1,7 +1,8 @@
 # HANDOFF — контекст для новой сессии Архитектора
 
-**Обновлено: 2026-07-17, ночь. Волны №2 и №3 закрыты (кроме хвоста OpenCode).
-Читать сверху вниз. При расхождении с ARCHITECTURE.md/DECISIONS.log побеждают они.**
+**Обновлено: 2026-07-17, ночь-2. Волны №2-№4 закрыты (кроме хвоста OpenCode
+№3-доработка-3). Читать сверху вниз. При расхождении с ARCHITECTURE.md/
+DECISIONS.log побеждают они.**
 
 ## Кто ты и как работаешь
 
@@ -73,31 +74,47 @@ Identity (оба репо): **dark-ohm / dohm.labs@proton.me** (орг dohm-labs
 системный юзер neo; сегодняшние ранние коммиты за neo/mishabcbb — так
 и оставить, пользователь решил). Без AI-трейлеров, `область : что
 сделано`, поимённый add, `git diff --staged` глазами.
-`git log --oneline` — истина; вехи: de17aba (wallpaper) ← acad3b3
-(доработка Mimo №4) ← 6782337 (DBusMenu сервис) ← 47d1101 (launcher
-миграция) ← f4edb88/6f24bb3 (Grok №3) ← 8e7052a/b25dc97 (tray-иконки) ←
-b4c72a8 (upower эррата) ← 0352e2a (applications) ← 653ae57 (OSD).
+`git log --oneline` — истина; вехи: b47f060 (audio-watch эррата + приёмка
+Grok №4) ← d361ec2 (volume-виджет) ← 7ec2c8f (приёмка Mimo №5) ← e278a58
+(wallpaper IPC) ← 1d54ffd (DBusMenu десериализация фикс) ← 6782337
+(DBusMenu сервис) ← 47d1101 (launcher миграция) ← f4edb88/6f24bb3
+(Grok №3) ← 8e7052a/b25dc97 (tray-иконки) ← b4c72a8 (upower эррата) ←
+0352e2a (applications) ← 653ae57 (OSD).
 
-## ВОЛНА №4 РОЗДАНА (2026-07-17 ночь; брифы в файлах миньонов)
+## ВОЛНА №4 — статус (2026-07-17 ночь-2)
 
-- **Autohand №3** — UI-попап DBusMenu (crates/app/src/tray_menu/ новая +
-  правый клик в tray.rs). Зависимость: лейблы детей чинит OpenCode —
-  промежуточный смок на структуре допустим.
-- **Grok №4** — виджет громкости (bar/widgets/volume.rs, клик-mute +
-  скролл ±5% через audio dispatch).
-- **Mimo №5** — wallpaper_ctl.rs + IPC payload'ы wallpaper-next/set
-  (циклер ~/Pictures/Wallpapers).
-- **OpenCode** — всё ещё доработка №2 по DBusMenu (лейблы детей,
-  вариант-развёртка a{sv}; вердикт в OPENCODE.md).
-- Общая точка конфликта: bar/widgets/mod.rs (Grok +2 строки) и
-  widgets/tray.rs (Autohand, только правый клик) — зоны расписаны.
+- **Mimo №5 ✅** (e278a58) — wallpaper_ctl.rs (скан ~/Pictures/Wallpapers,
+  round-robin next, set) + IPC payload'ы wallpaper-next/wallpaper-set.
+  Принят с первого захода, живой смок Архитектора (python-сокет вместо
+  socat) подтвердил циклер и прямую установку.
+- **Grok №4 ✅** (d361ec2 + эррата b47f060) — виджет громкости
+  bar/widgets/volume.rs (иконка+процент, клик=mute, скролл=±5%). Честно
+  указал в отчёте: bar/mod.rs — не его зона, audio не в watch-списке.
+  Архитектор добавил 1 строку сам. Живой смок: внешний `wpctl set-volume`
+  → бар обновился мгновенно (не по тикеру).
+- **Autohand №3 — В ПОЛЕ**: UI-попап DBusMenu (crates/app/src/tray_menu/
+  новая + правый клик в tray.rs). Зависимость: лейблы детей чинит
+  OpenCode — промежуточный смок на структуре допустим. Ждём отчёт.
+- **OpenCode — доработка №3 В ПОЛЕ**: лейблы детей DBusMenu-меню
+  (вариант-развёртка a{sv}), честная фикстура, safe-клик. Вердикт —
+  хвост OPENCODE.md. При приёмке проверить: в дереве СЕЙЧАС (до отчёта)
+  уже есть незакоммиченный WIP `crates/services/src/tray/menu.rs` —
+  скорее всего его текущая правка, не трогать до отчёта.
+- **АНОМАЛИЯ (не разобрана):** `report-log/grok-report-3.md` —
+  заархивированный отчёт оказался незакоммиченно перезаписан новым
+  содержимым (другой текст, тот же файл). Источник не установлен,
+  файл не тронут. Проверить при следующей сессии, не резолвить
+  автоматически (может быть чей-то WIP, может — глюк тулинга миньона).
 
-## Очередь после волны №4
+## Очередь
 
-1. Полировка попапов и лаунчера — СНАЧАЛА спросить пользователя, что
+1. Принять Autohand №3 (tray-меню UI) и OpenCode доработку №3 (лейблы
+   детей) когда придут отчёты.
+2. Полировка попапов и лаунчера — СНАЧАЛА спросить пользователя, что
    именно криво (Cline/Hermes свободны под это).
-2. dock, gradient borders (Source), MPRIS/медиа-виджет.
-3. Разрулить stash@{1} (live-тесты Hermes — единственная копия).
+3. dock, gradient borders (Source), MPRIS/медиа-виджет.
+4. Разрулить stash@{1} (live-тесты Hermes — единственная копия).
+5. Разобрать аномалию report-log/grok-report-3.md (см. волна №4 выше).
 
 ## Пользовательское окружение (не ломать)
 
@@ -143,5 +160,5 @@ b4c72a8 (upower эррата) ← 0352e2a (applications) ← 653ae57 (OSD).
   udiskie --appindicator / сокет-toggle лаунчера → grim.
 - Примеры-смоки (debug ок): applications-smoke, audio-dispatch-smoke,
   wallpaper-smoke (вернёт обои сам), tray-menu-smoke (нужен udiskie).
-- Тесты: `cargo test --workspace --lib --bins` (137 зелёных на ночь
-  2026-07-17). target/ пересобирается после чистки OpenCode.
+- Тесты: `cargo test --workspace --lib --bins` (146 зелёных на ночь-2
+  2026-07-17, после волны №4). target/ пересобирается после чистки OpenCode.
