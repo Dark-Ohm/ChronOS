@@ -58,7 +58,7 @@ fn command_to_socket_line(cmd: &CompositorCommand) -> String {
             "hl.dsp.focus({ workspace = \"-1\" })".to_string()
         }
         CompositorCommand::MoveToWorkspace(id) => {
-            format!("hl.dsp.move({{ workspace = {id} }})")
+            format!("hl.dsp.window.move({{ workspace = {id} }})")
         }
     }
 }
@@ -220,7 +220,7 @@ mod tests {
         );
         assert_eq!(
             command_to_socket_line(&CompositorCommand::MoveToWorkspace(7)),
-            "hl.dsp.move({ workspace = 7 })"
+            "hl.dsp.window.move({ workspace = 7 })"
         );
     }
 
