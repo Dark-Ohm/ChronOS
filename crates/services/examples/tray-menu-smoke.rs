@@ -134,7 +134,7 @@ fn print_menu(nodes: &[chronos_services::MenuNode], depth: usize) {
 
 fn find_safe_node<'a>(nodes: &'a [chronos_services::MenuNode]) -> Option<&'a chronos_services::MenuNode> {
     for node in nodes {
-        if node.separator || !node.enabled || !node.visible {
+        if node.separator || !node.enabled || !node.visible || node.label.is_empty() {
             continue;
         }
         let label_lower = node.label.to_lowercase();

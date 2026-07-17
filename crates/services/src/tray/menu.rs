@@ -64,49 +64,54 @@ pub async fn fetch_tree(
 
 fn flatten_children(values: Vec<Value<'static>>) -> Vec<MenuNode> {
     values
-        .iter()
-        .filter_map(|child_val| {
-            match child_val.clone() {
-                Value::Structure(s) => {
-                    let fields = s.into_fields();
-                    if fields.len() < 3 {
-                        return None;
-                    }
-                    let id = match &fields[0] {
-                        Value::I32(i) => *i,
-                        _ => return None,
-                    };
-                    let props = match &fields[1] {
-                        Value::Dict(d) => {
-                            d.iter()
-                                .filter_map(|(k, v)| {
-                                    if let Value::Str(s) = k {
-                                        Some((s.to_string(), v.clone()))
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect()
-                        }
-                        _ => return None,
-                    };
-                    let children_values = match &fields[2] {
-                        Value::Array(arr) => {
-                            arr.iter()
-                                .filter_map(|v| match v {
-                                    Value::Value(boxed) => Some(boxed.as_ref().clone()),
-                                    other => Some(other.clone()),
-                                })
-                                .collect()
-                        }
-                        _ => return None,
-                    };
-                    Some(build_node(id, props, children_values))
+        .into_iter()
+        .filter_map(|child_val| match child_val {
+            Value::Structure(s) => {
+                let mut fields = s.into_fields();
+                if fields.len() < 3 {
+                    return None;
                 }
-                _ => None,
+                let id = match fields.remove(0) {
+                    Value::I32(i) => i,
+                    _ => return None,
+                };
+                let props = match fields.remove(0) {
+                    Value::Dict(d) => d
+                        .iter()
+                        .filter_map(|(k, v)| {
+                            if let Value::Str(s) = k {
+                                Some((s.to_string(), v.clone()))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                    _ => return None,
+                };
+                let children_values: Vec<Value<'static>> = match fields.remove(0) {
+                    Value::Array(arr) => arr
+                        .iter()
+                        .filter_map(|v| match v {
+                            Value::Value(boxed) => Some(boxed.as_ref().clone()),
+                            other => Some(other.clone()),
+                        })
+                        .collect(),
+                    _ => return None,
+                };
+                Some(build_node(id, props, children_values))
             }
+            _ => None,
         })
         .collect()
+}
+
+/// Unwrap a single-layer `Value::Value(boxed)` variant wrapper.
+/// D-Bus `av` (array of variants) wraps each child in a variant (`v`).
+fn unwrap_variant(v: Value<'static>) -> Value<'static> {
+    match v {
+        Value::Value(boxed) => *boxed,
+        other => other,
+    }
 }
 
 fn build_node(id: i32, properties: Vec<(String, Value<'static>)>, child_values: Vec<Value<'static>>) -> MenuNode {
@@ -118,8 +123,8 @@ fn build_node(id: i32, properties: Vec<(String, Value<'static>)>, child_values: 
     let label = props
         .get("label")
         .and_then(|v| {
-            if let Value::Str(s) = v {
-                Some(strip_mnemonic(s))
+            if let Value::Str(s) = unwrap_variant((*v).clone()) {
+                Some(strip_mnemonic(&*s))
             } else {
                 None
             }
@@ -129,8 +134,8 @@ fn build_node(id: i32, properties: Vec<(String, Value<'static>)>, child_values: 
     let enabled = props
         .get("enabled")
         .and_then(|v| {
-            if let Value::Bool(b) = v {
-                Some(*b)
+            if let Value::Bool(b) = unwrap_variant((*v).clone()) {
+                Some(b)
             } else {
                 None
             }
@@ -140,8 +145,8 @@ fn build_node(id: i32, properties: Vec<(String, Value<'static>)>, child_values: 
     let visible = props
         .get("visible")
         .and_then(|v| {
-            if let Value::Bool(b) = v {
-                Some(*b)
+            if let Value::Bool(b) = unwrap_variant((*v).clone()) {
+                Some(b)
             } else {
                 None
             }
@@ -151,7 +156,7 @@ fn build_node(id: i32, properties: Vec<(String, Value<'static>)>, child_values: 
     let separator = props
         .get("type")
         .and_then(|v| {
-            if let Value::Str(s) = v {
+            if let Value::Str(s) = unwrap_variant((*v).clone()) {
                 Some(s.as_str() == "separator")
             } else {
                 None
@@ -162,26 +167,28 @@ fn build_node(id: i32, properties: Vec<(String, Value<'static>)>, child_values: 
     let toggle = if separator {
         None
     } else {
-        match props
+        let toggle_type = props
             .get("toggle-type")
             .and_then(|v| {
-                if let Value::Str(s) = v {
-                    Some(s.as_str())
+                if let Value::Str(s) = unwrap_variant((*v).clone()) {
+                    Some(s.to_string())
                 } else {
                     None
                 }
-            }) {
+            });
+
+        match toggle_type {
             None => None,
             Some(t) => {
-                let kind = match t {
+                let kind = match t.as_str() {
                     "radio" => MenuToggleType::Radio,
                     _ => MenuToggleType::Checkmark,
                 };
                 let checked = props
                     .get("toggle-state")
                     .and_then(|v| {
-                        if let Value::Bool(b) = v {
-                            Some(*b)
+                        if let Value::Bool(b) = unwrap_variant((*v).clone()) {
+                            Some(b)
                         } else {
                             None
                         }
@@ -233,6 +240,7 @@ pub async fn send_clicked(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zbus::zvariant::{Array, Str, StructureBuilder};
 
     #[test]
     fn strip_mnemonic_basic() {
@@ -254,5 +262,70 @@ mod tests {
         assert_eq!(strip_mnemonic("_"), "");
         assert_eq!(strip_mnemonic("__"), "_");
         assert_eq!(strip_mnemonic("___"), "_");
+    }
+
+    /// Test that variant-wrapped dict values (`Value::Value(Box::new(...))`)
+    /// are correctly unwrapped by `unwrap_variant` in `build_node`.
+    /// This simulates real D-Bus `a{sv}` where dict values are variants.
+    #[test]
+    fn parse_variant_wrapped_dict_values() {
+        // Build a MenuNode directly with variant-wrapped property values.
+        // This is what real D-Bus data looks like: dict values are variants (v).
+        let props = vec![
+            ("label".into(), Value::Value(Box::new(Value::Str("Browse /dev/sdb1".into())))),
+            ("enabled".into(), Value::Value(Box::new(Value::Bool(true)))),
+            ("visible".into(), Value::Value(Box::new(Value::Bool(true)))),
+        ];
+        let node = build_node(1, props, vec![]);
+
+        assert_eq!(node.id, 1);
+        assert_eq!(node.label, "Browse /dev/sdb1");
+        assert!(node.enabled);
+        assert!(node.visible);
+    }
+
+    #[test]
+    fn parse_recursive_variant_wrapped() {
+        let mut gc_props: HashMap<String, OwnedValue> = HashMap::new();
+        gc_props.insert("label".into(), Str::from("Browse /dev/sdb1").into());
+        gc_props.insert("enabled".into(), true.into());
+        gc_props.insert("visible".into(), true.into());
+
+        let gc_val = Value::Structure(
+            StructureBuilder::new()
+                .append_field(Value::I32(3))
+                .append_field(Value::Dict(gc_props.into()))
+                .append_field(Value::Array(Array::from(vec![] as Vec<Value<'static>>)))
+                .build()
+                .unwrap(),
+        );
+
+        let mut child_props: HashMap<String, OwnedValue> = HashMap::new();
+        child_props.insert("label".into(), Str::from("Managed devices").into());
+        child_props.insert("enabled".into(), true.into());
+        child_props.insert("visible".into(), true.into());
+
+        let child_val = Value::Structure(
+            StructureBuilder::new()
+                .append_field(Value::I32(2))
+                .append_field(Value::Dict(child_props.into()))
+                .append_field(Value::Array(Array::from(vec![gc_val])))
+                .build()
+                .unwrap(),
+        );
+
+        let children = flatten_children(vec![child_val]);
+        assert_eq!(children.len(), 1);
+
+        let child = &children[0];
+        assert_eq!(child.id, 2);
+        assert_eq!(child.label, "Managed devices");
+        assert_eq!(child.children.len(), 1);
+
+        let gc = &child.children[0];
+        assert_eq!(gc.id, 3);
+        assert_eq!(gc.label, "Browse /dev/sdb1");
+        assert!(gc.enabled);
+        assert!(gc.visible);
     }
 }
