@@ -52,24 +52,32 @@ DECISIONS.log. Отвечать по-русски, коммиты БЕЗ AI-тр
   (easing+spring) ← `3ce3466` (skeleton).
 - git identity локально: neo / mishabcbb@gmail.com.
 
-## СЕЙЧАС В ПОЛЕ (обновлено 2026-07-17 поздний вечер)
+## СЕЙЧАС В ПОЛЕ (обновлено 2026-07-17, перед ребутом/yay -Syyu)
 
-**Bar-волна ЗАВЕРШЕНА и принята**: clock ✅ (Cline, эррата №2 — дубль
-register_builtin, снят e2845bd), workspaces ✅ (Hermes, клик работает —
-подтверждено пользователем), network ✅ (Autohand со 2-й попытки, 1f508d6),
-battery ✅ (Mimo со 2-й попытки, ba78b70), tray ⚠️ хвост (см. ниже).
+**Bar-волна ПОЛНОСТЬЮ ЗАВЕРШЕНА и принята** (все виджеты живьём на release):
+clock ✅ (Cline, e415718+эррата e2845bd), workspaces ✅ (Hermes, cfcef99, клик
+работает после Lua-socket фикса), network ✅ (Autohand, 1f508d6), battery ✅
+(Mimo, ba78b70), tray ✅ (OpenCode, 435af47+5b31628+75a1061 — ayatana-фикс,
+udiskie-бейдж виден живьём). **Audio-сервис ✅** (Grok №1, 079f1d4 — MVP wpctl
++ 250ms poll, внешние изменения доезжают за ~400мс; DECISIONS.log 2026-07-17).
+104 теста workspace зелёные. Всё закоммичено, дерево чистое.
 
-Открытые задания:
-- **OpenCode** (OPENCODE.md №2) — ayatana path-форма регистрации SNI:
-  udiskie/nm-applet передают голый object path, split_service даёт пустой
-  destination → прокси не строится, бейдж не появляется. Fix: destination =
-  sender unique name. Инфраструктура (watcher, tray-smoke, 92 теста) принята.
-- **Grok** (GROK.md №1, НОВИЧОК — grok CLI, подписка 7 дней) — audio-сервис
-  PipeWire (crates/services/src/audio/): фундамент OSD и ползунков громкости.
-- Hermes/Cline/Mimo/Autohand — свободны, ждут заданий.
+Раздача НОВОЙ волны (задания в файлах, самодостаточные для свежих сессий):
+- **Grok** (GROK.md №2) — OSD громкости (crates/app/src/osd/).
+- **Cline** (CLINE.md №6) — иконки tray: icon-theme lookup + pixmap.
+- **Hermes** (HERMES.md №7) — services follow-ups: wired:bool, has_battery,
+  network-флап.
+- **Mimo** (MIMO.md №3) — wallpaper-сервис.
+- Autohand, OpenCode — резерв (кандидаты: DBusMenu контекст-меню трея,
+  полировка лаунчера после уточнений пользователя).
 
-Микрофонные бинды-времянка в hyprland.lua пользователя: SUPER+equal/minus →
-wpctl @DEFAULT_AUDIO_SOURCE@ ±5% (заменить на OSD, когда audio-сервис будет).
+Пользовательские времянки в hyprland.lua (НЕ ломать, потом заменим на ChronOS):
+- SUPER+equal/minus → wpctl @DEFAULT_AUDIO_SOURCE@ ±5% (уйдёт в OSD).
+- Автостарт easyeffects --gapplication-service (шумодав микрофона; дефолтный
+  source = easyeffects_source, записан в WirePlumber state).
+- 2026-07-17 запущен полный апгрейд системы (yay -Syyu с --overwrite по npm) —
+  после ребута возможны новые версии ядра/тулчейна; если сборка странно падает,
+  сначала `cargo clean -p <crate>` и проверь rustc --version.
 
 ## Сделано ранее (все приняты)
 
