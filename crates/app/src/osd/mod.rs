@@ -5,10 +5,11 @@
 //!     open window handle, hide-timer generation.
 //!   * `OsdWatcher` — tiny entity hosting `state::watch()` on
 //!     `AppState::audio(cx).subscribe()`.
-//!   * First `AudioState` snapshot is swallowed (no flash at shell start).
-//!   * Subsequent sink/source volume or mute diffs open / refresh the
-//!     bottom-centre overlay and restart a ~1.5s auto-hide timer
-//!     (`cx.spawn` + `background_executor().timer`, not tokio).
+//!   * Baseline: first **non-default** `AudioState` is seeded only (no show).
+//!     Only subsequent sink/source diffs open/refresh the overlay.
+//!   * Hide is soft: clear display + empty input region, **no** `remove_window`
+//!     (destroy races Wayland frame callbacks → pair of `ERROR : window not
+//!     found` from gpui `.log_err()`). Surface is reused on the next show.
 
 pub mod view;
 
@@ -67,7 +68,7 @@ impl OsdDisplay {
 pub struct OsdPopupState {
     handle: Option<WindowHandle<OsdView>>,
     watcher: Option<Entity<OsdWatcher>>,
-    /// `None` until the first (suppressed) snapshot arrives.
+    /// `None` until the first non-default snapshot is seeded (still suppressed).
     last_audio: Option<AudioState>,
     /// Content of the open window; `None` when hidden.
     display: Option<OsdDisplay>,
@@ -120,11 +121,21 @@ fn window_options(display_id: Option<DisplayId>) -> WindowOptions {
     }
 }
 
-fn close_window(cx: &mut App) {
-    if let Some(handle) = cx.global_mut::<OsdPopupState>().handle.take() {
-        let _ = handle.update(cx, |_, window: &mut gpui::Window, _| window.remove_window());
-    }
+/// Soft-hide: clear content + empty input region. Do **not** `remove_window`.
+///
+/// Destroying the layer-shell surface races Wayland frame callbacks in gpui
+/// (`handle.update(...).log_err()`), which emit a pair of
+/// `ERROR : window not found` on every hide. Reusing the surface avoids that.
+fn hide_window(cx: &mut App) {
     cx.global_mut::<OsdPopupState>().display = None;
+    let handle = cx.global::<OsdPopupState>().handle.clone();
+    if let Some(handle) = handle {
+        let _ = handle.update(cx, |_, window, view_cx| {
+            // Empty region → no input at all (pass-through while surface lives).
+            window.set_input_region(Some(&[]));
+            view_cx.notify();
+        });
+    }
 }
 
 /// Open or repaint the OSD with `display`, then (re)start the hide timer.
@@ -134,7 +145,10 @@ fn show(display: OsdDisplay, cx: &mut Context<OsdWatcher>) {
     let handle = cx.global::<OsdPopupState>().handle.clone();
     match handle {
         Some(existing) => {
-            let _ = existing.update(cx, |_, _window, view_cx| {
+            let _ = existing.update(cx, |_, window, view_cx| {
+                // OSD is display-only; keep input empty so the strip never
+                // steals clicks under the card.
+                window.set_input_region(Some(&[]));
                 view_cx.notify();
             });
         }
@@ -144,6 +158,9 @@ fn show(display: OsdDisplay, cx: &mut Context<OsdWatcher>) {
                 app_cx.new(|view_cx| OsdView::new(view_cx))
             }) {
                 Ok(new_handle) => {
+                    let _ = new_handle.update(cx, |_, window, _| {
+                        window.set_input_region(Some(&[]));
+                    });
                     cx.global_mut::<OsdPopupState>().handle = Some(new_handle);
                 }
                 Err(err) => tracing::warn!("Failed to open OSD window: {err}"),
@@ -167,20 +184,33 @@ fn schedule_hide(cx: &mut Context<OsdWatcher>) {
             if cx.global::<OsdPopupState>().hide_generation != hide_token {
                 return;
             }
-            close_window(cx);
+            hide_window(cx);
         });
     })
     .detach();
 }
 
 fn on_audio(state: AudioState, cx: &mut Context<OsdWatcher>) {
-    let prev = cx.global_mut::<OsdPopupState>().last_audio.replace(state.clone());
-
-    // First snapshot after start — seed baseline, never flash OSD.
-    let Some(prev) = prev else {
-        tracing::debug!("OSD: initial audio snapshot suppressed");
+    // --- Baseline gate (erratum #2): ignore default until first real poll ---
+    // AudioSubscriber starts as AudioState::default(); if OSD subscribes
+    // before the first wpctl poll, that default is the first signal emission.
+    // Treating it as "seed" made the *second* (real) snapshot look like a
+    // user change → flash on shell start. Wait for non-default, seed only.
+    if cx.global::<OsdPopupState>().last_audio.is_none() {
+        if state == AudioState::default() {
+            tracing::debug!("OSD: waiting for first non-default audio snapshot");
+            return;
+        }
+        cx.global_mut::<OsdPopupState>().last_audio = Some(state);
+        tracing::debug!("OSD: baseline audio snapshot seeded (suppressed)");
         return;
-    };
+    }
+
+    let prev = cx
+        .global_mut::<OsdPopupState>()
+        .last_audio
+        .replace(state.clone())
+        .expect("last_audio set above");
 
     let sink_changed = prev.sink != state.sink;
     let source_changed = prev.source != state.source;
@@ -207,7 +237,15 @@ fn on_audio(state: AudioState, cx: &mut Context<OsdWatcher>) {
 
 /// Wire OSD to the live audio stream. Called once from `main.rs`.
 pub fn init(cx: &mut App) {
-    cx.set_global(OsdPopupState::default());
+    let mut state = OsdPopupState::default();
+    // If audio already has a real snapshot (poll won the race), seed now so
+    // the first watch emission is treated as a no-op or a real user change.
+    let current = AppState::audio(cx).get();
+    if current != AudioState::default() {
+        state.last_audio = Some(current);
+        tracing::debug!("OSD: seeded last_audio from service.get() at init");
+    }
+    cx.set_global(state);
 
     let signal = AppState::audio(cx).subscribe();
 
