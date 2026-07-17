@@ -14,7 +14,7 @@
 //! A click dispatches `TrayCommand::ActivateItem` (left-click activation,
 //! `StatusNotifierItem.Activate(0,0)`) — unchanged from the MVP widget.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
@@ -100,9 +100,9 @@ fn render_icon(item: &TrayItem) -> AnyElement {
         }
     }
 
-    // 2. icon_pixmap → GPUI RenderImage from raw RGBA (RGBA→BGRA for GPU).
+    // 2. icon_pixmap → cached GPUI RenderImage (RGBA→BGRA for GPU).
     if let Some(pm) = item.icon_pixmap.as_ref() {
-        if let Some(rendered) = pixmap_render_image(pm) {
+        if let Some(rendered) = cached_pixmap_render_image(&item.id, pm) {
             return img(rendered)
                 .w(px(ICON_PX))
                 .h(px(ICON_PX))
@@ -130,6 +130,31 @@ fn pixmap_render_image(pm: &TrayPixmap) -> Option<Arc<RenderImage>> {
     let buffer = RgbaImage::from_raw(pm.width, pm.height, data)?;
     let frame = Frame::new(buffer);
     Some(Arc::new(RenderImage::new(SmallVec::from_elem(frame, 1))))
+}
+
+/// Pixmap `RenderImage` cache keyed by `item.id`. Invalidation by
+/// `(data_len, width, height)` — avoids rebuilding RenderImage on every
+/// render tick (the bar redraws every second via the clock ticker).
+thread_local! {
+    static PIXMAP_CACHE: std::cell::RefCell<HashMap<String, (usize, u32, u32, Arc<RenderImage>)>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+fn cached_pixmap_render_image(item_id: &str, pm: &TrayPixmap) -> Option<Arc<RenderImage>> {
+    let meta = (pm.data.len(), pm.width, pm.height);
+    if let Some((old_len, old_w, old_h, cached)) =
+        PIXMAP_CACHE.with(|c| c.borrow().get(item_id).cloned())
+    {
+        if (old_len, old_w, old_h) == meta {
+            return Some(cached);
+        }
+    }
+    let rendered = pixmap_render_image(pm)?;
+    PIXMAP_CACHE.with(|c| {
+        c.borrow_mut()
+            .insert(item_id.to_string(), (meta.0, meta.1, meta.2, rendered.clone()));
+    });
+    Some(rendered)
 }
 
 // ── icon-theme resolution ──────────────────────────────────────────────
@@ -163,9 +188,10 @@ fn resolve_icon_path(icon_name: &str) -> Option<PathBuf> {
     if as_path.is_absolute() {
         return as_path.exists().then(|| as_path.to_path_buf());
     }
-    let theme = current_icon_theme();
-    for base in icon_search_dirs() {
-        for theme_name in [theme.as_str(), "hicolor"] {
+    let bases = icon_search_dirs();
+    let chain = theme_chain(&bases);
+    for base in &bases {
+        for theme_name in &chain {
             if theme_name.is_empty() { continue; }
             for size in ICON_SIZES {
                 for ctx in ICON_CONTEXTS {
@@ -194,13 +220,95 @@ fn icon_search_dirs() -> Vec<PathBuf> {
     search_dirs
 }
 
-fn current_icon_theme() -> String {
-    static THEME: OnceLock<String> = OnceLock::new();
-    THEME
-        .get_or_init(|| read_gtk_icon_theme().unwrap_or_else(|| "hicolor".to_string()))
-        .clone()
+/// Build the icon theme inheritance chain: `[main_theme, …inherited…, hicolor]`.
+///
+/// If `gtk-icon-theme-name` is set in `~/.config/gtk-3.0/settings.ini`, that's
+/// the starting theme. Otherwise we read `Inherits=` from
+/// `/usr/share/icons/default/index.theme` (CachyOS/Arch: `Inherits=Adwaita`).
+/// Each theme's own `index.theme` is walked for `Inherits=` (depth ≤ 4, no
+/// cycles). `hicolor` is always appended if not already present (FDO spec
+/// fallback root).
+///
+/// `bases` is injected so tests can supply temp dirs.
+fn theme_chain(bases: &[PathBuf]) -> Vec<String> {
+    // Caches the chain for the process lifetime (icon theme rarely changes mid-session).
+    static CHAIN: OnceLock<Vec<String>> = OnceLock::new();
+    CHAIN.get_or_init(|| build_theme_chain(bases)).clone()
 }
 
+fn build_theme_chain(bases: &[PathBuf]) -> Vec<String> {
+    let mut chain = Vec::new();
+    let mut visited = HashSet::new();
+
+    let start = read_gtk_icon_theme()
+        .or_else(|| read_default_theme(bases))
+        .unwrap_or_else(|| "hicolor".to_string());
+
+    collect_inherits(&start, &mut chain, &mut visited, 0, bases);
+
+    if !chain.iter().any(|t| t == "hicolor") {
+        chain.push("hicolor".to_string());
+    }
+    chain
+}
+
+/// Read `Inherits=` from each theme's `index.theme`, depth-first, ≤ 4 levels.
+fn collect_inherits(
+    theme: &str,
+    chain: &mut Vec<String>,
+    visited: &mut HashSet<String>,
+    depth: u32,
+    bases: &[PathBuf],
+) {
+    if depth > 4 || theme.is_empty() || visited.contains(theme) {
+        return;
+    }
+    visited.insert(theme.to_string());
+    chain.push(theme.to_string());
+
+    for base in bases {
+        let index = base.join(theme).join("index.theme");
+        if let Ok(content) = std::fs::read_to_string(&index) {
+            if let Some(inherits) = parse_inherits(&content) {
+                for parent in inherits.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    collect_inherits(parent, chain, visited, depth + 1, bases);
+                }
+            }
+            return; // found index.theme in this base; stop searching other bases
+        }
+    }
+}
+
+/// `Inherits=` value from an `index.theme` file's `[Icon Theme]` section.
+fn parse_inherits(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let l = line.trim();
+        if let Some(rest) = l.strip_prefix("Inherits") {
+            let rest = rest.trim_start_matches([' ', '=']);
+            let value = rest.split('#').next().unwrap_or(rest).trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Read the system default theme from `/usr/share/icons/default/index.theme`.
+/// The first value of `Inherits=` is the main fallback (e.g. "Adwaita").
+fn read_default_theme(bases: &[PathBuf]) -> Option<String> {
+    for base in bases {
+        let index = base.join("default").join("index.theme");
+        if let Ok(content) = std::fs::read_to_string(&index) {
+            if let Some(inherits) = parse_inherits(&content) {
+                return Some(inherits.split(',').next()?.trim().to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Parse `gtk-icon-theme-name` out of the GTK3 settings.ini.
 fn read_gtk_icon_theme() -> Option<String> {
     let path = dirs::config_dir()?.join("gtk-3.0/settings.ini");
     let content = std::fs::read_to_string(&path).ok()?;
@@ -249,5 +357,83 @@ mod tests {
     fn pixmap_render_image_bad_length_yields_none() {
         let pm = TrayPixmap { width: 2, height: 2, data: vec![0; 4] };
         assert!(pixmap_render_image(&pm).is_none());
+    }
+
+    /// `collect_inherits` follows `Inherits=` fields in index.theme files.
+    #[test]
+    fn collect_inherits_walks_chain() {
+        let dir = std::env::temp_dir().join(format!("chronos-icons-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        std::fs::create_dir_all(dir.join("main")).unwrap();
+        std::fs::write(dir.join("main/index.theme"), "[Icon Theme]\nInherits=parent\n").unwrap();
+        std::fs::create_dir_all(dir.join("parent")).unwrap();
+        std::fs::write(dir.join("parent/index.theme"), "[Icon Theme]\nName=Parent\n").unwrap();
+
+        let bases = vec![dir.clone()];
+        let mut chain = Vec::new();
+        let mut visited = HashSet::new();
+        collect_inherits("main", &mut chain, &mut visited, 0, &bases);
+        collect_inherits("hicolor", &mut chain, &mut visited, 0, &bases);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(chain, vec!["main", "parent", "hicolor"]);
+    }
+
+    /// Cycle A→B→A is broken by the visited-set (no infinite recursion).
+    #[test]
+    fn collect_inherits_handles_cycles() {
+        let dir = std::env::temp_dir().join(format!("chronos-cycle-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        std::fs::create_dir_all(dir.join("a")).unwrap();
+        std::fs::write(dir.join("a/index.theme"), "[Icon Theme]\nInherits=b\n").unwrap();
+        std::fs::create_dir_all(dir.join("b")).unwrap();
+        std::fs::write(dir.join("b/index.theme"), "[Icon Theme]\nInherits=a\n").unwrap();
+
+        let bases = vec![dir.clone()];
+        let mut chain = Vec::new();
+        let mut visited = HashSet::new();
+        collect_inherits("a", &mut chain, &mut visited, 0, &bases);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(chain, vec!["a", "b"]);
+    }
+
+    /// Depth ≤ 4: chain of d0→d1→…→d5 stops at d4 (depth 5 is > 4).
+    #[test]
+    fn collect_inherits_respects_depth_limit() {
+        let dir = std::env::temp_dir().join(format!("chronos-depth-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        for i in 0..6u32 {
+            let d = dir.join(format!("d{i}"));
+            std::fs::create_dir_all(&d).unwrap();
+            if i < 5 {
+                std::fs::write(d.join("index.theme"), format!("[Icon Theme]\nInherits=d{}\n", i + 1)).unwrap();
+            } else {
+                std::fs::write(d.join("index.theme"), "[Icon Theme]\nName=Last\n").unwrap();
+            }
+        }
+
+        let bases = vec![dir.clone()];
+        let mut chain = Vec::new();
+        let mut visited = HashSet::new();
+        collect_inherits("d0", &mut chain, &mut visited, 0, &bases);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(chain, vec!["d0", "d1", "d2", "d3", "d4"]);
+    }
+
+    /// `read_default_theme` reads `Inherits=` from default/index.theme.
+    #[test]
+    fn read_default_theme_from_index_theme() {
+        let dir = std::env::temp_dir().join(format!("chronos-default-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        std::fs::create_dir_all(dir.join("default")).unwrap();
+        std::fs::write(dir.join("default/index.theme"), "[Icon Theme]\nInherits=Adwaita\n").unwrap();
+
+        let bases = vec![dir.clone()];
+        let theme = read_default_theme(&bases);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(theme, Some("Adwaita".to_string()));
     }
 }
