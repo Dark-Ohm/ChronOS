@@ -23,10 +23,13 @@ impl BarWidget for BatteryWidget {
         let upower = AppState::upower(cx);
         let data = upower.get();
 
-        // Desktop without battery: render empty, don't panic.
-        // UPower daemon is alive on desktops (DisplayDevice always exists),
-        // but data shows percent=0.0, state=Unknown — that's "no battery".
-        if upower.status() == chronos_services::ServiceStatus::Unavailable
+        // Desktop without battery: render empty div, don't show a fake 0% icon.
+        // The honest `has_battery` flag comes from UPower
+        // (EnumerateDevices finds a Battery device, or DisplayDevice.IsPresent).
+        // The old heuristic (Unknown + 0%) is kept as a second line of defence
+        // in case the DBus detection ever regresses to Unknown/0 on a real box.
+        if !data.has_battery
+            || upower.status() == chronos_services::ServiceStatus::Unavailable
             || (data.state == chronos_services::BatteryState::Unknown
                 && data.battery_percent == 0.0)
         {

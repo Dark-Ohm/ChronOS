@@ -40,7 +40,7 @@ fn describe(data: &NetworkData, status: ServiceStatus) -> NetworkView {
         return NetworkView::Disconnected;
     }
 
-    if data.connectivity == ConnectivityState::Full && data.wifi_ssid.is_none() {
+    if data.connectivity == ConnectivityState::Full && data.wired {
         return NetworkView::Wired;
     }
 
@@ -159,10 +159,24 @@ mod tests {
     }
 
     #[test]
-    fn wired_on_full_without_ssid() {
+    fn wired_on_full_with_wired_flag() {
         let mut d = data();
         d.connectivity = ConnectivityState::Full;
+        d.wired = true;
         assert_eq!(describe(&d, ServiceStatus::Available), NetworkView::Wired);
+    }
+
+    #[test]
+    fn full_without_wired_flag_is_wifi() {
+        // Regression guard: Full connectivity with no SSID but `wired == false`
+        // must NOT be reported as Wired (this is exactly the false-positive the
+        // old `Full && ssid.is_none()` heuristic produced).
+        let mut d = data();
+        d.connectivity = ConnectivityState::Full;
+        assert_eq!(describe(&d, ServiceStatus::Available), NetworkView::Wifi {
+            ssid: "wifi".into(),
+            strength: 0,
+        });
     }
 
     #[test]
