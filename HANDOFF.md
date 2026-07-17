@@ -78,14 +78,26 @@ Identity (оба репо): **dark-ohm / dohm.labs@proton.me** (орг dohm-labs
 миграция) ← f4edb88/6f24bb3 (Grok №3) ← 8e7052a/b25dc97 (tray-иконки) ←
 b4c72a8 (upower эррата) ← 0352e2a (applications) ← 653ae57 (OSD).
 
-## Очередь после хвоста OpenCode
+## ВОЛНА №4 РОЗДАНА (2026-07-17 ночь; брифы в файлах миньонов)
 
-1. UI-попап DBusMenu (по данным сервиса; правый клик по трею).
-2. Ползунки громкости / интерактивный OSD (audio dispatch готов).
-3. Wallpaper UI (сервис готов; выбор картинок — applications-паттерн).
-4. Полировка попапов и лаунчера — СНАЧАЛА спросить пользователя, что
-   именно криво. dock, gradient borders (Source).
-5. Разрулить stash@{1} (live-тесты Hermes).
+- **Autohand №3** — UI-попап DBusMenu (crates/app/src/tray_menu/ новая +
+  правый клик в tray.rs). Зависимость: лейблы детей чинит OpenCode —
+  промежуточный смок на структуре допустим.
+- **Grok №4** — виджет громкости (bar/widgets/volume.rs, клик-mute +
+  скролл ±5% через audio dispatch).
+- **Mimo №5** — wallpaper_ctl.rs + IPC payload'ы wallpaper-next/set
+  (циклер ~/Pictures/Wallpapers).
+- **OpenCode** — всё ещё доработка №2 по DBusMenu (лейблы детей,
+  вариант-развёртка a{sv}; вердикт в OPENCODE.md).
+- Общая точка конфликта: bar/widgets/mod.rs (Grok +2 строки) и
+  widgets/tray.rs (Autohand, только правый клик) — зоны расписаны.
+
+## Очередь после волны №4
+
+1. Полировка попапов и лаунчера — СНАЧАЛА спросить пользователя, что
+   именно криво (Cline/Hermes свободны под это).
+2. dock, gradient borders (Source), MPRIS/медиа-виджет.
+3. Разрулить stash@{1} (live-тесты Hermes — единственная копия).
 
 ## Пользовательское окружение (не ломать)
 
