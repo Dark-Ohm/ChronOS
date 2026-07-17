@@ -7,6 +7,7 @@
 pub mod applications;
 pub mod audio;
 pub mod compositor;
+pub mod mpris;
 pub mod network;
 pub mod notification;
 pub mod tray;
@@ -21,6 +22,7 @@ pub use compositor::{
     ActiveWindow, CompositorBackend, CompositorCommand, CompositorState, CompositorSubscriber,
     Monitor, Workspace,
 };
+pub use mpris::{MprisCommand, MprisState, MprisSubscriber};
 pub use network::{ConnectivityState, NetworkData, NetworkSubscriber};
 pub use notification::{
     CloseReason, Notification, NotificationCommand, NotificationState, NotificationSubscriber, Urgency,
@@ -41,6 +43,7 @@ pub struct Services {
     pub applications: ApplicationsSubscriber,
     pub audio: AudioSubscriber,
     pub compositor: CompositorSubscriber,
+    pub mpris: MprisSubscriber,
     pub network: NetworkSubscriber,
     pub notification: NotificationSubscriber,
     pub tray: TraySubscriber,
@@ -57,6 +60,7 @@ pub fn init_all() -> Services {
         applications: ApplicationsSubscriber::new(),
         audio: AudioSubscriber::new(),
         compositor: CompositorSubscriber::new(),
+        mpris: MprisSubscriber::new(),
         network: NetworkSubscriber::new(),
         notification: NotificationSubscriber::new(),
         tray: TraySubscriber::new(),
@@ -280,6 +284,17 @@ mod runtime_guard_tests {
         assert!(
             result.is_err(),
             "AudioSubscriber::new() must panic outside a tokio runtime (Handle::current guard)"
+        );
+    }
+
+    #[test]
+    fn mpris_new_panics_outside_runtime() {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let _ = MprisSubscriber::new();
+        }));
+        assert!(
+            result.is_err(),
+            "MprisSubscriber::new() must panic outside a tokio runtime (Handle::current guard)"
         );
     }
 }

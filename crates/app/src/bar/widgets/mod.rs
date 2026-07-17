@@ -2,6 +2,7 @@
 
 mod battery;
 mod clock;
+mod mpris;
 mod network;
 mod tray;
 mod volume;
@@ -20,4 +21,5 @@ pub fn register_builtin(cx: &mut App) {
     network::register(cx);
     tray::register(cx);
     volume::register(cx);
+    mpris::register(cx);
 }
