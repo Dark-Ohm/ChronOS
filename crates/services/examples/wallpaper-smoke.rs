@@ -153,5 +153,5 @@ fn main() {
         }
     });
     // Best-effort cleanup: never leave an orphan daemon.
-    let _ = Command::new("pkill").arg("-f").arg(AWWW_DAEMON_BIN).status();
+    let _ = Command::new("pkill").arg("-x").arg(AWWW_DAEMON_BIN).status();
 }
