@@ -15,8 +15,11 @@ use std::time::Duration;
 
 use chronos_services::{Service, TraySubscriber};
 use tokio::runtime::Runtime;
+use tracing_subscriber;
 
 fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt::init();
+
     let rt = Runtime::new()?;
     rt.block_on(async {
         let tray = TraySubscriber::new();
@@ -45,11 +48,11 @@ fn main() -> anyhow::Result<()> {
             .collect();
 
         if with_menu.is_empty() {
-            println!("[menu-smoke] No SNI items with Menu found on the bus.");
-            println!(
+            eprintln!("[menu-smoke] No SNI items with Menu found on the bus.");
+            eprintln!(
                 "[menu-smoke] Start `udiskie --appindicator` and re-run."
             );
-            process::exit(0);
+            process::exit(1);
         }
 
         println!(

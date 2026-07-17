@@ -11,11 +11,17 @@
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tracing::{info, warn};
+use serde::Deserialize;
+use tracing::info;
 use zbus::Connection;
 use zbus::zvariant::{OwnedValue, Value};
 
 use crate::tray::types::{MenuNode, MenuToggleType, strip_mnemonic};
+
+/// Typed D-Bus struct matching the `GetLayout` reply signature `(ia{sv}av)`.
+/// Fields are positional to match the D-Bus struct layout.
+#[derive(Deserialize, zbus::zvariant::Type, Debug)]
+struct MenuLayoutRaw(i32, HashMap<String, OwnedValue>, Vec<OwnedValue>);
 
 /// Fetch the full menu tree for the given destination + menu path. `dest` is
 /// the item's unique-name or well-known bus name (same convention as the
@@ -30,76 +36,30 @@ pub async fn fetch_tree(
         "toggle-type", "toggle-state", "children-display",
     ];
 
-    let conn_dest = dest.to_string();
-    let conn_path = path.to_string();
-    let conn_names = names.clone();
-
     let msg = conn
         .call_method(
-            Some(conn_dest.as_str()),
-            conn_path.as_str(),
+            Some(dest),
+            path,
             Some("com.canonical.dbusmenu"),
             "GetLayout",
-            &(&(0i32), &(-1i32), &conn_names),
+            &(&(0i32), &(-1i32), &names),
         )
         .await?;
 
     let body = msg.body();
-    let (_, root_val): (u32, OwnedValue) = body
+    let (_, raw): (u32, MenuLayoutRaw) = body
         .deserialize()
         .map_err(|e| anyhow::anyhow!("deserialize GetLayout reply: {e}"))?;
 
-    let val: Value<'static> = root_val.into();
-    parse_layout(val).ok_or_else(|| anyhow::anyhow!("failed to parse layout tree"))
-}
+    let props: Vec<(String, Value<'static>)> = raw.1.into_iter()
+        .map(|(k, v)| (k, v.into()))
+        .collect();
+    let children: Vec<Value<'static>> = raw.2.into_iter()
+        .map(|v| v.into())
+        .collect();
 
-fn parse_layout(val: Value<'static>) -> Option<Vec<MenuNode>> {
-    let (id, props, children) = structure_to_row(val)?;
-    let node = build_node(id, props, children);
-    Some(vec![node])
-}
-
-fn structure_to_row(val: Value<'static>) -> Option<(i32, Vec<(String, Value<'static>)>, Vec<Value<'static>>)> {
-    match val {
-        Value::Structure(s) => {
-            let fields = s.into_fields();
-            if fields.len() < 3 {
-                return None;
-            }
-            let id = match &fields[0] {
-                Value::I32(i) => *i,
-                _ => return None,
-            };
-            let props = match &fields[1] {
-                Value::Dict(d) => {
-                    d.iter()
-                        .filter_map(|(k, v)| {
-                            if let Value::Str(s) = k {
-                                Some((s.to_string(), v.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect()
-                }
-                _ => return None,
-            };
-            let children = match &fields[2] {
-                Value::Array(arr) => {
-                    arr.iter()
-                        .filter_map(|v| match v {
-                            Value::Value(boxed) => Some(boxed.as_ref().clone()),
-                            other => Some(other.clone()),
-                        })
-                        .collect()
-                }
-                _ => return None,
-            };
-            Some((id, props, children))
-        }
-        Value::Value(boxed) => structure_to_row(*boxed),
-        _ => None,
-    }
+    let node = build_node(raw.0, props, children);
+    Ok(vec![node])
 }
 
 fn flatten_children(values: Vec<Value<'static>>) -> Vec<MenuNode> {

@@ -1028,7 +1028,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "crossbeam-channel",
  "enumflags2",
  "futures-signals",
  "futures-util",
@@ -1434,15 +1433,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "crossbeam-channel"
-version = "0.5.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d85363c37faeca707aef026efa9f3b34d077bce547e48f770770625c6013679e"
-dependencies = [
- "crossbeam-utils",
 ]
 
 [[package]]
@@ -4062,7 +4052,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d3d07927151ff8575b7087f245456e549fea62edf0ec4e565a5ee50c8402bc3"
 dependencies = [
  "bitflags 2.13.0",
- "crossbeam-channel",
  "fsevent-sys",
  "inotify",
  "kqueue",
