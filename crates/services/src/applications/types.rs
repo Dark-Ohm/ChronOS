@@ -119,7 +119,7 @@ pub fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
 
     let id = path.file_stem()?.to_str()?.to_string();
     let name = name?;
-    let exec = exec?;
+    let exec = strip_field_codes(&exec?);
 
     Some(AppEntry {
         id,
@@ -231,6 +231,20 @@ mod tests {
         let entry = parse_desktop_file(&path).unwrap();
         assert_eq!(entry.icon.as_deref(), Some("htop"));
         assert!(entry.terminal);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_strips_field_codes_from_exec() {
+        let dir = std::env::temp_dir().join("app-service-test-fieldcodes");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = write_desktop_file(
+            &dir,
+            "fieldcodes",
+            "[Desktop Entry]\nType=Application\nName=FieldCodes\nExec=/usr/bin/app %u --flag %f\n",
+        );
+        let entry = parse_desktop_file(&path).unwrap();
+        assert_eq!(entry.exec, "/usr/bin/app --flag", "field codes must be stripped at parse time");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

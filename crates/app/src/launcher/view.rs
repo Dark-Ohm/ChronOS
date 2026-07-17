@@ -42,9 +42,10 @@ impl LauncherView {
 
         // Subscribe to desktop entry changes — live updates without restart.
         let signal = state::AppState::applications(cx).subscribe();
-        state::watch(cx, signal, |this, state, _cx| {
+        state::watch(cx, signal, |this, state, cx| {
             this.search.set_items(state.entries);
             this.refresh_results();
+            cx.notify();
         });
 
         view

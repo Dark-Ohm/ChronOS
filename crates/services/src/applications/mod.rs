@@ -7,12 +7,12 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures_signals::signal::{Mutable, Signal};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::runtime::Handle;
+use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use crate::Service;
@@ -127,7 +127,8 @@ impl Service for ApplicationsSubscriber {
 }
 
 /// Background task: inotify thread sends events via channel, tokio task
-/// debounces and rescan.
+/// debounces and rescan. Uses `tokio::sync::mpsc` so the recv is cancellable
+/// via `select!` — no spawned_blocking leaking when the debounce timer fires.
 async fn run_watcher(data: Mutable<ApplicationsState>, status: Mutable<ServiceStatus>) {
     let watch_dirs: Vec<PathBuf> = desktop_dirs().into_iter().filter(|d| d.is_dir()).collect();
 
@@ -136,18 +137,19 @@ async fn run_watcher(data: Mutable<ApplicationsState>, status: Mutable<ServiceSt
         return;
     }
 
-    let (tx, rx) = crossbeam_channel::unbounded::<notify::Result<Event>>();
-    let rx = Arc::new(Mutex::new(rx));
+    let (tx, mut rx) = mpsc::unbounded_channel::<notify::Result<Event>>();
 
-    // Spawn inotify watcher on a dedicated thread (notify's RecommendedWatcher
-    // uses inotify internally on Linux, but we need a thread for the blocking
-    // event loop).
+    // Spawn inotify watcher on a dedicated thread. The thread owns the
+    // `RecommendedWatcher` (drops it on exit) and forwards events through
+    // the mpsc channel.
     let watch_dirs_clone = watch_dirs.clone();
     std::thread::Builder::new()
         .name("app-entries-inotify".into())
         .spawn(move || {
             let mut watcher = match RecommendedWatcher::new(
-                tx,
+                move |result: notify::Result<Event>| {
+                    let _ = tx.send(result);
+                },
                 notify::Config::default()
                     .with_poll_interval(Duration::from_millis(200)),
             ) {
@@ -171,7 +173,10 @@ async fn run_watcher(data: Mutable<ApplicationsState>, status: Mutable<ServiceSt
         })
         .expect("failed to spawn inotify thread");
 
-    // Debounced rescan loop.
+    // Debounced rescan loop. `rx.recv()` is cancellable — when the debounce
+    // timer fires, `select!` drops the pending recv future, losing nothing
+    // because inotify events are level-triggered and the next recv will pick
+    // up any new event.
     let mut debounce_deadline: Option<tokio::time::Instant> = None;
 
     loop {
@@ -182,18 +187,8 @@ async fn run_watcher(data: Mutable<ApplicationsState>, status: Mutable<ServiceSt
             }
         };
 
-        let rx_clone = rx.clone();
-        let event = async move {
-            tokio::task::spawn_blocking(move || {
-                rx_clone.lock().unwrap().recv()
-            })
-            .await
-            .ok()
-            .and_then(|r| r.ok())
-        };
-
         tokio::select! {
-            evt = event => {
+            evt = rx.recv() => {
                 match evt {
                     Some(Ok(event)) => {
                         // Only rescan on file-create/delete/modify events.
