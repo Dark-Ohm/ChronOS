@@ -1,8 +1,10 @@
 mod bar;
+mod dock;
 mod ipc;
 mod launcher;
 mod notifications;
 mod osd;
+mod tray_menu;
 mod plugin_bridge;
 pub mod state;
 mod wallpaper_ctl;
@@ -51,8 +53,10 @@ fn main() {
             subscriber.start(cx);
             chronos_ui::Theme::init(cx);
             bar::init(cx);
+            dock::init(cx);
             notifications::init(cx);
             osd::init(cx);
+            tray_menu::init(cx);
 
             // Initialize launcher global state (desktop entries come from AppState::applications)
             launcher::init(cx);
