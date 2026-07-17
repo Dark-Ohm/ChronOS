@@ -2,6 +2,7 @@ mod bar;
 mod ipc;
 mod launcher;
 mod notifications;
+mod osd;
 mod plugin_bridge;
 pub mod state;
 
@@ -50,6 +51,7 @@ fn main() {
             chronos_ui::Theme::init(cx);
             bar::init(cx);
             notifications::init(cx);
+            osd::init(cx);
 
             // Initialize desktop entry cache before bar (bar may eventually show launcher toggle)
             launcher::cache::init(cx);
