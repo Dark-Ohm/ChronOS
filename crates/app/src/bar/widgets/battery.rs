@@ -24,7 +24,12 @@ impl BarWidget for BatteryWidget {
         let data = upower.get();
 
         // Desktop without battery: render empty, don't panic.
-        if upower.status() == chronos_services::ServiceStatus::Unavailable {
+        // UPower daemon is alive on desktops (DisplayDevice always exists),
+        // but data shows percent=0.0, state=Unknown — that's "no battery".
+        if upower.status() == chronos_services::ServiceStatus::Unavailable
+            || (data.state == chronos_services::BatteryState::Unknown
+                && data.battery_percent == 0.0)
+        {
             return div().into_any_element();
         }
 
