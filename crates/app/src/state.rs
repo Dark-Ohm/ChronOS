@@ -49,6 +49,11 @@ impl AppState {
     pub fn tray(cx: &App) -> &chronos_services::TraySubscriber {
         &Self::global(cx).services.tray
     }
+
+    #[inline(always)]
+    pub fn audio(cx: &App) -> &chronos_services::AudioSubscriber {
+        &Self::global(cx).services.audio
+    }
 }
 
 /// Watch a signal and apply updates to component state.

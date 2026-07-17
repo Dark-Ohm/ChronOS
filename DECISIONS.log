@@ -262,3 +262,24 @@ If its empty\not full - its a fresh log. - see previous log in /home/neo/Project
   - `MoveToWorkspace(id)` → `hl.dsp.move({ workspace = N })` (двигает активное окно, follow по умолчанию false — совпадает с прежним `MoveToWorkspace(id, None)`)
 - Верификация: юнит-тест `command_to_socket_line_formats_every_variant` (pure, без Hyprland) + живой прогон Архитектора (клик переключает воркспейс реально). `cargo test -p chronos-services --lib` зелёный (25 passed).
 - Побочное: `cargo test -p chronos-services` (без --lib) падает на чужом WIP-примере `examples/tray-smoke.rs` (OpenCode: `tray.get()` без `use ... Service;` в scope) — не моё, не чинил.
+
+## 2026-07-17 — Audio service backend: MVP `wpctl` poll (not native pipewire yet)
+
+- Context: GROK.md assignment №1 — `AudioSubscriber` implements `Service` for default
+  sink + source (volume/mute/name) with commands Set*Volume / Toggle*Mute. Criterion:
+  external volume change (pavucontrol / second-terminal wpctl) must reach Data and
+  wake subscribers.
+- Considered: (1) `pipewire` crate 0.10 native FFI — correct long-term path, dedicated
+  mainloop thread, registry/node props for volumes; (2) MVP WirePlumber CLI `wpctl`
+  for get/set + 250 ms poll for events.
+- Decided: **MVP (2) for the first cut.** Rationale: CachyOS always has `wpctl` with
+  WirePlumber; zero new cargo deps; pure parsers unit-testable without a PW session;
+  external changes verified live (smoke saw sink 0.40→0.33 in ~300 ms via raw wpctl
+  bypassing dispatch). Native FFI deferred: larger surface (mainloop threading vs
+  tokio Service template, SPA/pod API churn) for zero extra product value until OSD
+  lands.
+- Explicit temporary: replace `audio/mod.rs` body with native backend when OSD
+  latency / multi-device enumeration demands it; keep `types.rs` (`AudioState` /
+  `AudioCommand` / `EndpointState`) stable. Do NOT pin an old pipewire crate.
+- Rejected now: permanent reliance on subprocess — poll is good enough for bar/OSD
+  foundation but not for 144 FPS-adjacent continuous metering.
