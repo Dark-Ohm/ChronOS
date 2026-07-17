@@ -28,6 +28,28 @@ trait DisplayDevice {
     fn percentage(&self) -> zbus::Result<f64>;
     #[zbus(property)]
     fn state(&self) -> zbus::Result<i32>;
+    /// True when a battery is physically present. On desktops the
+    /// DisplayDevice exists but reports `IsPresent == false` → no battery.
+    #[zbus(property)]
+    fn is_present(&self) -> zbus::Result<bool>;
+}
+
+#[proxy(
+    interface = "org.freedesktop.UPower",
+    default_service = "org.freedesktop.UPower",
+    default_path = "/org/freedesktop/UPower"
+)]
+trait UPower {
+    fn enumerate_devices(&self) -> zbus::Result<Vec<zbus::zvariant::OwnedObjectPath>>;
+}
+
+#[proxy(
+    interface = "org.freedesktop.UPower.Device",
+    default_service = "org.freedesktop.UPower"
+)]
+trait UPowerDevice {
+    #[zbus(property)]
+    fn type_(&self) -> zbus::Result<u32>;
 }
 
 fn map_state(s: i32) -> BatteryState {
@@ -38,6 +60,53 @@ fn map_state(s: i32) -> BatteryState {
         4 => BatteryState::Full,
         _ => BatteryState::Unknown,
     }
+}
+
+/// UPower device Type values (from the spec's `PowerSource` enum).
+const UPOWER_DEVICE_TYPE_BATTERY: u32 = 2;
+
+/// Honest "a battery is present" detection.
+///
+/// Preferred signal: any UPower device enumerated with Type=Battery.
+/// Fallback: the DisplayDevice's `IsPresent` property (false on a desktop
+/// whose DisplayDevice is a synthetic stub). This replaces the bar widget's
+/// fragile guess (`state == Unknown && percent == 0.0`).
+async fn detect_has_battery(conn: &Connection) -> bool {
+    // Fallback check first (cheap, single property read on a path we already
+    // hold a proxy for): DisplayDevice.IsPresent.
+    if let Ok(dev) = DisplayDeviceProxy::new(conn).await {
+        if let Ok(present) = dev.is_present().await {
+            if present {
+                return true;
+            }
+        }
+    }
+
+    // Primary check: enumerate devices and look for a real battery.
+    let Ok(up) = UPowerProxy::new(conn).await else {
+        return false;
+    };
+    let Ok(devices) = up.enumerate_devices().await else {
+        return false;
+    };
+    for path in devices {
+        let Some(builder) = UPowerDeviceProxy::builder(conn)
+            .destination("org.freedesktop.UPower")
+            .ok()
+            .and_then(|b| b.path(path).ok())
+        else {
+            continue;
+        };
+        let Ok(proxy) = builder.build().await else {
+            continue;
+        };
+        if let Ok(t) = proxy.type_().await {
+            if t == UPOWER_DEVICE_TYPE_BATTERY {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 #[derive(Clone)]
@@ -122,9 +191,11 @@ async fn run(
 
         match tokio::time::timeout(CONNECT_TIMEOUT, connect).await {
             Ok(Ok((conn, dev, percentage, state))) => {
+                let has_battery = detect_has_battery(&conn).await;
                 data.set(UPowerData {
                     battery_percent: percentage,
                     state,
+                    has_battery,
                     ..UPowerData::default()
                 });
                 status.set(ServiceStatus::Available);
@@ -153,6 +224,8 @@ async fn run(
                         .await
                         .map(map_state)
                         .unwrap_or(BatteryState::Unknown);
+                    // has_battery is static for the lifetime of the machine; no
+                    // need to re-poll it on every property change.
                     data.set(UPowerData {
                         battery_percent: percentage,
                         state,
