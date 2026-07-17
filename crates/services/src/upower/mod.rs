@@ -19,7 +19,7 @@ pub use types::{BatteryState, PowerProfile, UPowerData};
 pub mod types;
 
 #[proxy(
-    interface = "org.freedesktop.UPower.DisplayDevice",
+    interface = "org.freedesktop.UPower.Device",
     default_service = "org.freedesktop.UPower",
     default_path = "/org/freedesktop/UPower/devices/DisplayDevice"
 )]
