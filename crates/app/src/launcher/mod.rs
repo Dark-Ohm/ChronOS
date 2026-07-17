@@ -151,7 +151,12 @@ pub fn close(cx: &mut App) {
 /// deactivation queued for an already-removed window can arrive after toggle
 /// has opened a fresh one, and a blind global `close()` then steals the fresh
 /// window's handle, leaving an unclosable ghost (seen live 2026-07-17).
-/// Untracked callers just remove themselves.
+///
+/// When called from inside a window callback (activation observer, key press,
+/// click handler), we already have `&mut Window` for this window — calling
+/// `handle.update` on it would be a reentrant call that fails silently.
+/// Instead: clear the handle directly and call `remove_window()` on the live
+/// reference.
 pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
     let this = window.window_handle();
     let tracked = cx
@@ -161,7 +166,9 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
         .map(|h| **h == this)
         .unwrap_or(false);
     if tracked {
-        close(cx);
+        tracing::info!("launcher::close_this: clearing handle and removing window");
+        cx.global_mut::<LauncherState>().handle.take(); // clear handle BEFORE remove
+        window.remove_window(); // direct, no reentrant handle.update
     } else {
         tracing::info!("launcher::close_this: untracked window, removing self only");
         window.remove_window();
