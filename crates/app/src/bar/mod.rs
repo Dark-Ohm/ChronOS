@@ -32,6 +32,9 @@ impl Bar {
         watch(cx, AppState::notification(cx).subscribe(), |_, _, cx| {
             cx.notify();
         });
+        watch(cx, AppState::audio(cx).subscribe(), |_, _, cx| {
+            cx.notify();
+        });
 
         // 1-second ticker for clock and other time-dependent widgets.
         // Uses the background executor, not tokio.
