@@ -13,7 +13,7 @@ pub mod tray;
 pub mod upower;
 
 pub use applications::{
-    ApplicationsCommand, ApplicationsState, ApplicationsSubscriber, AppEntry,
+    ApplicationsCommand, ApplicationsState, ApplicationsSubscriber, AppEntry, strip_field_codes,
 };
 pub use audio::{AudioCommand, AudioState, AudioSubscriber, EndpointState};
 pub use compositor::{

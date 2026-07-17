@@ -17,7 +17,7 @@ use tracing::{debug, info, warn};
 
 use crate::Service;
 use crate::ServiceStatus;
-pub use types::{AppEntry, ApplicationsCommand, ApplicationsState};
+pub use types::{AppEntry, ApplicationsCommand, ApplicationsState, strip_field_codes};
 
 pub mod types;
 
