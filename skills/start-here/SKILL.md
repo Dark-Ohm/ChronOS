@@ -1,160 +1,135 @@
 ---
 name: start-here
-description: Use at the very start of a new session in the chronos repo, before any other action — establishes which project docs to read in order, how to avoid confusing this repo with its two same-named sibling projects, and which of this repo's skills to invoke for the task at hand.
+description: >
+  Use at the very start of a new session in the chronos repo, before any other
+  action — establishes which project docs to read in order, how to avoid
+  confusing this repo with its same-named siblings, and which skills to invoke.
 ---
 
 # Start Here — Chronos Session Orientation
 
 ## Overview
 
-This repo's skill set was pruned to be self-contained: every skill here either
-covers this project specifically or is genuinely reusable and self-contained.
-This skill is the router — it tells you what to read and which of the other
-skills applies, so you don't rediscover the same facts every session or reach
-for the wrong tool.
+`skills/` is the project's self-contained knowledge graph. This skill is the
+**entry router** — what to read, which skill applies. When a skill points
+elsewhere, follow the link; do not re-derive.
 
-`skills/` is the project's self-contained knowledge graph — the "bible."
-Each skill is a node; skills cross-reference and route to one another. When a
-skill points you to another, follow the link instead of re-deriving the answer.
-This skill is the entry node.
+### Memory layers (order of authority)
 
-### ⚠️ MANDATORY: Acknowledge `mcp-memory-workflow` IMMEDIATELY
+1. Repo docs: `HANDOFF.md` / `ARCHITECTURE.md` / `DECISIONS.log` / `MEMORY.md` /
+   `AGENTS.md` — **win on conflict**.
+2. Self-hosted **Hindsight** (podman, bank `chronos-ecosystem`, REST `:8888`) —
+   long-term supplementary memory. Live skill: **`hindsight-self-hosted`**
+   (often under `~/.agents/skills/`). Skills `hindsight-local` /
+   `hindsight-cloud` describing `uvx hindsight-embed` are **STALE** for this
+   machine.
+3. Dialogue memory — never overrides (1).
 
-**Before doing ANY coding work**, you MUST acknowledge and start the
-`mcp-memory-workflow` protocol. This is NOT optional — it is the memory
-layer protocol for this repo.
-
-Execute in order:
-```
-lean-ctx:    ctx_session(action="load")     → restore previous session state
-lean-ctx:    ctx_knowledge(action="recall") → load project-specific knowledge
-engram:      mem_session_start(directory, id, project)  → register session
-engram:      mem_search(query="<project name>")         → recall prior context
-codebase:    index_status(project) → if stale, index_repository(project)
-```
-
-**Do NOT start coding before completing these calls.** The mcp-memory-workflow
-skill contains the full protocol, automatic save triggers, and tool reference.
-You MUST follow its protocol for the entire session.
+If MCP tools (lean-ctx / engram / codebase-tools) are available this session,
+follow `mcp-memory-workflow` for session start/end. Engram `project` scopes:
+`chronos` | `Chronos-IDE` | `chronos-fm` | `hyprland` — **not** `chronos-shell`
+as a standalone project name.
 
 ---
+
 ## Step 0 — Read Project Docs, In This Order
 
-Do this before writing code, answering an architecture question, or claiming
-anything is "done." Dialogue memory does not replace these — they win on
-conflict.
+Do this before coding, architecture answers, or "done" claims.
 
-1. **`AGENTS.md`** (repo root) — persona, house rules, working-space facts
-   (stack, hardware), module scope. Read first, every session.
-2. **`MEMORY.md`** (repo root) — durable cross-session facts and hard rules
-   (e.g. no `Co-Authored-By: Claude` in commits, respond in Russian by
-   default, `SESSION_REPORT.md` format). Check the "Rules" section
-   specifically before doing anything that might touch git or session
-   reporting.
-3. **`ARCHITECTURE.md`** (repo root) — accepted architectural decisions and
-   why. Canonical. If it disagrees with what you remember from a prior chat,
-   `ARCHITECTURE.md` wins.
-4. **`DECISIONS.log`** (repo root) — alternatives that were considered and
-   rejected, and why. Read it **in full, not just grep** — a rejected
-   alternative is easy to miss with a targeted search. Read before proposing
-   something that sounds obvious — it may already be a rejected alternative
-   with a documented reason (e.g. "why not tokio for the tick timer").
-5. **`SESSION_REPORT.md` / `fixplan.md`** (repo root, if present) — the
-   actual, fact-checked state of the last work session (not aspirational).
-   These use a strict format defined in `MEMORY.md`'s Rules section — read
-   it before writing a new one.
-6. **`docs/superpowers/specs/` and `docs/superpowers/plans/`** — historical
-   spec/plan records. `specs/` is not edited after the fact; corrections go
-   in `ARCHITECTURE.md` instead. Check `plans/done/` vs `plans/` (active) to
-   know what's still in flight.
+1. **`HANDOFF.md`** (repo root) — **first every Architect/minion session**: who
+   is in the field, queue, blood technical facts, field rules (stash ban,
+   worktree isolation, pkill -x, single-instance, release-only UX smokes).
+2. **`AGENTS.md`** — persona, house rules, stack/hardware, module scope.
+3. **`MEMORY.md`** — durable rules (no AI commit trailers, Russian by default,
+   strict `SESSION_REPORT` / report format).
+4. **`ARCHITECTURE.md`** — accepted decisions (canonical).
+5. **`DECISIONS.log`** — rejected alternatives; read in full, not only grep.
+6. **Minion file if you are one** — `GROK.md` / `CLINE.md` / … last section =
+   current assignment; report → `<name>-report.md` **at repo root**.
+7. **`docs/superpowers/specs/` + `plans/`** — historical; corrections go to
+   `ARCHITECTURE.md`, not back into frozen specs.
 
-**Completion criterion:** you can state, in one sentence each, what this repo
-is, what the last session actually finished (not planned), and whether any
-open decision in `DECISIONS.log` bears on your current task.
+**Completion criterion:** one sentence each — what this repo is, what the last
+accepted wave finished, whether an open field rule or DECISIONS item bites your
+task.
+
+---
 
 ## Step 1 — Don't Confuse This Repo With Its Siblings
 
-Three unrelated projects on this machine share the "chronos" name. Mixing
-them up produces confidently-wrong answers — this has happened before (see
-`chronos-shell` skill's own writeup of `hermes-gpui-ide` content that turned
-out to belong to a different repo entirely).
-
-| Repo | What it is | Dependency tell |
+| Repo / skill | What it is | Dependency tell |
 |---|---|---|
-| `chronos` (this repo) | Hyprland/Niri desktop shell — bar/dock/launcher/notifications/osd | `gpui` + `gpui_platform` as **path** deps, `mlua`, `hyprland`, `niri-ipc`, `zbus`. No `gpui_component`. |
-| `Chronos-IDE` | Hermes Agent GPUI IDE (`chronos-agent`, `vessel-core`, ACP protocol) | `tokio-tungstenite`, `html2text`, `rusqlite`, `chronos-codegraph` |
-| `chronos-fm` | GPUI file manager | `gpui-component`, `gpui-component-macros` |
+| **ChronOS** (this repo) | Hyprland/Niri desktop shell — bar/dock/launcher/notifications/osd/mpris/… | path `../Source/gpui`, `mlua`, `hyprland`, `niri-ipc`, `zbus`. **No** `gpui_component`. |
+| `Chronos-IDE` | Hermes Agent GPUI IDE | `tokio-tungstenite`, ACP, `chronos-agent` |
+| `chronos-fm` | GPUI file manager | `gpui-component`, `h_flex()` / `v_flex()` |
+| `chronos-shell` (**skill**, not a repo) | Project skill for **this** tree (`skills/chronos-shell/`) | — |
 
-If a doc, memory, or skill mentions `chronos-agent`, `vessel-core`, ACP, MCP
-tool-building, `gpui_component`/`h_flex()`/`v_flex()`, or `tokio-tungstenite`
-— it is not about this repo. Treat it as evidence you're looking at
-sibling-project content that leaked in.
+If a doc mentions `chronos-agent`, ACP tool registries, or `gpui_component` —
+wrong tree. Confirm against **this** `Cargo.lock` / `crates/`.
 
-**Completion criterion:** before citing any fact that smells generic-GPUI
-("use `gpui_component::Button`", "the agent's tool registry does X"), confirm
-it's grounded in *this* repo's `Cargo.lock`/`crates/`, not a sibling.
+**Completion criterion:** no generic-GPUI claim without a path in this repo.
+
+---
 
 ## Step 2 — Route To The Right Skill
 
-This skill is **routing only** — it tells you where to go, it does not contain
-implementation guidance. Once you've named the skill for your task, open it and
-follow it; don't stop here.
-
-Skills in this repo are either project-specific (grounded in this codebase)
-or intentionally project-agnostic. Use this table to pick one — per
-`using-superpowers`, if a skill applies, invoke it, don't wing it.
+Routing only — open the skill and follow it.
 
 | Your task | Skill |
 |---|---|
-| Anything touching `crates/app`, `crates/services`, `crates/luau`, `crates/plugins`, the bar/dock/launcher, `Service` trait, `CompositorSubscriber`, Lua plugin hot-reload | `chronos-shell` |
-| A GPUI API question not specific to this repo's usage (Element trait, entities, focus, async, layout primitives) | `gpui` |
-| A generic Rust idiom/ownership/error-handling/perf question | `rust-skills-master` |
-| Starting any creative/feature work — before design or implementation | `brainstorming` |
-| A bug, test failure, or unexpected behavior | `systematic-debugging` |
-| Implementing any feature or bugfix — before writing implementation code | `test-driven-development` |
-| You have a spec/requirements for multi-step work, before touching code | `writing-plans` |
-| You have a written plan to execute across a session with review checkpoints | `executing-plans` |
-| Executing a plan whose tasks are independent | `subagent-driven-development` |
-| 2+ independent tasks with no shared state | `dispatching-parallel-agents` |
-| Starting feature work that needs isolation from the current workspace | `using-git-worktrees` |
-| Finished a task/feature, before merge — need review | `requesting-code-review` |
-| Got review feedback and it's unclear or questionable | `receiving-code-review` |
-| About to claim something is done, fixed, or passing | `verification-before-completion` |
-| Implementation complete, tests pass, deciding how to merge/PR/cleanup | `finishing-a-development-branch` |
-| Investigating/extracting technical documentation across a codebase | `documentation-investigation` |
-| Writing, auditing, or rewriting docs (README/API/architecture/runbook) from code evidence | `philip` (dir: `philip-main`) |
-| Starting/continuing/ending a session with MCP memory tools (lean-ctx / engram / codebase-tools) available | `mcp-memory-workflow` |
-| Creating or editing a skill in this repo | `writing-skills` |
-| Exploratory QA of a **web app** | `dogfood` — almost certainly not applicable here (this is a desktop shell, not a web app); confirm before invoking |
+| `crates/app`, `crates/services`, `crates/luau`, `crates/ui`, bar/dock/launcher/osd/notifications/tray_menu, `Service` trait, subscribers, Lua hot-reload | **`chronos-shell`** |
+| Layer-shell popup height / clipped content / `window.resize` | **`gpui-layer-shell`** |
+| Generic GPUI API (Element, entities, focus, layout) | `gpui` |
+| Rust ownership / error / perf idioms | `rust-skills-master` |
+| Creative feature before design | `brainstorming` |
+| Bug / unexpected behavior | `systematic-debugging` |
+| Feature or bugfix before implementation | `test-driven-development` |
+| Spec → plan before code | `writing-plans` |
+| Execute a written plan with checkpoints | `executing-plans` |
+| Independent plan tasks | `subagent-driven-development` |
+| 2+ independent tasks | `dispatching-parallel-agents` |
+| Isolated workspace (ChronOS: **sibling of repo**, not `/tmp`) | `using-git-worktrees` + `chronos-shell` field rules |
+| Pre-merge review | `requesting-code-review` |
+| Review feedback unclear | `receiving-code-review` |
+| About to claim done / green | **`verification-before-completion`** (+ release UX smoke per HANDOFF) |
+| Merge/PR/cleanup choice | `finishing-a-development-branch` |
+| Doc investigation | `documentation-investigation` |
+| Write/audit docs from code evidence | `philip` (`philip-main`) |
+| MCP memory session protocol | `mcp-memory-workflow` |
+| Hindsight retain/recall on this machine | `hindsight-self-hosted` |
+| Create/edit a skill here | `writing-skills` |
+| Web-app exploratory QA | `dogfood` — almost never this repo |
 
-**Completion criterion:** you named the skill you're about to invoke (or
-explicitly noted none applies) before starting the task, not after.
+**Completion criterion:** named skill before work starts, not after.
+
+---
 
 ## Step 3 — Session-End Habits
 
-- Before claiming anything works: `verification-before-completion` — run the
-  actual command, show the output, don't assert from memory.
-- If `MEMORY.md`'s `SESSION_REPORT.md` format applies to your task (it's
-  strict — see `MEMORY.md`'s Rules section), produce it before ending.
-- If MCP memory tools (lean-ctx/engram/codebase-tools) are available in this
-  session, follow `mcp-memory-workflow`'s session-end protocol — but note its
-  project-scope convention: engram `project` values are strictly `chronos`,
-  `Chronos-IDE`, `chronos-fm`, or `hyprland`. `chronos-shell` is **not** a
-  valid standalone scope — it's part of `chronos`.
+- Claims of "works": run the command, show output (`verification-before-completion`).
+- Window/UX work: **release binary** + grim / live log — unit green is not enough.
+- Minion reports: root `<name>-report.md`, SESSION_REPORT sections from MEMORY.md.
+- Architect archives accepted reports to `report-log/` with an explicit commit
+  (uncommitted deletes resurrect under foreign git ops).
+- MCP/Hindsight session-end if those tools were used.
+
+---
 
 ## Common Pitfalls
 
-1. **Trusting remembered architecture over `ARCHITECTURE.md`/`DECISIONS.log`.**
-   Dialogue memory is not project documentation — this is stated explicitly
-   in `AGENTS.md`. Re-check before asserting a design decision.
-2. **Citing generic GPUI-ecosystem patterns (`gpui_component`, `h_flex()`) as
-   if they apply here.** They don't — see Step 1.
-3. **Skipping the skill-routing check because a task "seems simple."** Simple
-   tasks are exactly where `using-superpowers`' rationalization list applies
-   — check the table in Step 2 anyway.
-5. **Skipping `AGENTS.md` because you "know the stack."** It carries
-   working-space facts and house rules that change; read it first every
-   session, per Step 0.
-6. **Naming the routed skill but not invoking it.** The Step 2 completion
-   criterion is meaningless if you then wing the task — open the skill and
-   follow it.
+1. **Remembered architecture over HANDOFF / ARCHITECTURE / DECISIONS.**
+2. **`gpui_component` / sibling IDE patterns** as if they apply here.
+3. Skipping skill routing because the task "seems small."
+4. Skipping **HANDOFF** / AGENTS because you "know the stack."
+5. Naming a skill without opening it.
+6. Trusting stale hindsight-local/cloud skills (`uvx hindsight-embed`).
+7. **`git stash` / checkout of foreign WIP** — forbidden; worktree sibling only.
+8. **`pkill -f chronos`** — kills the controlling shell; use **`pkill -x chronos`**.
+9. Second `chronos` without kill — single-instance exits; fake "restarts."
+10. Worktree under `/tmp` — breaks `path = "../Source"`.
+
+## Related entry points
+
+- Deep code layout: **`chronos-shell`**
+- Popup sizing: **`gpui-layer-shell`**
+- Operational queue: **`HANDOFF.md`**

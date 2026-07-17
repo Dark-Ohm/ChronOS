@@ -200,3 +200,19 @@ Ready to implement <feature-name>
 - Verify directory is ignored for project-local
 - Auto-detect and run project setup
 - Verify clean test baseline
+
+## ChronOS project note (this monorepo tree)
+
+Path deps point at **`../Source/gpui`** (sibling of the ChronOS checkout).
+Isolation for verification / foreign WIP:
+
+```bash
+# GOOD — sibling of ChronOS so ../Source still resolves
+git worktree add ../ChronOS-wt-<name> <commit>
+
+# BAD — /tmp alone breaks path deps; BAD — git stash of others' WIP (forbidden)
+```
+
+Do **not** use `git stash` to clear foreign uncommitted work (HANDOFF field
+rule). Prefer a clean worktree on a known commit. Details: `chronos-shell`
+skill + `HANDOFF.md`.

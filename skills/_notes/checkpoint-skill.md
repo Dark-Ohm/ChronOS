@@ -1,54 +1,59 @@
 # Checkpoint — Skill Index (chronos/skills)
 
-> Index skill. Every other skill in this vault should link here so an agent
-> entering any skill can find the full map. Companion to [[start-here]].
+> Index note. Companion to [[start-here]] (session router). Updated 2026-07-17
+> after waves audio/OSD/volume/MPRIS + field rules.
 
 ## Purpose
 
-`start-here` is the session-entry router (what to read, which skill to invoke).
-`checkpoint` is the **static index** — a durable list of every skill with a
-one-line comment, so navigation doesn't depend on reading `start-here`'s
-routing table. An agent in any leaf skill can jump here and see the whole graph.
+`start-here` routes a session. This file is a **static map** of skills in
+`skills/` so a leaf skill can be placed in the graph without re-reading the
+router.
 
-## Status
+## Project-specific (ChronOS)
 
-- [ ] Not yet created. This is Task 1 of the skills-graph hardening.
-- [ ] Every skill needs a reverse wikilink to this note (or to `start-here`).
+| Skill | Role |
+|---|---|
+| [[start-here]] | Session entry: docs order, siblings, skill table |
+| [[chronos-shell]] | Layout/wiring: crates, services, bar widgets, field rules |
+| [[gpui-layer-shell]] | Layer-shell popup height / `window.resize` / clip bugs |
+| [[gpui]] | Generic GPUI API (fork APIs, not ChronOS product logic) |
 
-## Skill list (with comments)
+## Process
 
-### Project-specific (chronos)
-- [[chronos-shell]] — how the code is actually laid out/wired (crates/app, services, luau, plugins)
-- [[gpui]] — generic GPUI framework API knowledge (upstream gpui-ce, not chronos-specific usage)
-- [[start-here]] — session orientation router + sibling-disambiguation
+| Skill | Role |
+|---|---|
+| brainstorming | Design before implementation |
+| writing-plans / executing-plans | Spec → plan → execute |
+| subagent-driven-development | Independent tasks same session |
+| dispatching-parallel-agents | 2+ independent tasks |
+| test-driven-development | Tests before code |
+| systematic-debugging | Root cause before fix |
+| using-git-worktrees | Isolation (**ChronOS: sibling of repo**, not `/tmp`) |
+| requesting-code-review / receiving-code-review | Review gate |
+| verification-before-completion | Evidence before “done” (+ release UX) |
+| finishing-a-development-branch | Merge/PR/cleanup |
+| writing-skills / editing-skills | Author skills |
+| using-superpowers | Invoke skills before winging |
 
-### Process (superpowers family)
-- [[brainstorming]] — design before implementation
-- [[writing-plans]] — write the plan
-- [[executing-plans]] — execute a written plan with checkpoints
-- [[subagent-driven-development]] — parallel same-session execution
-- [[dispatching-parallel-agents]] — 2+ independent tasks, no shared state
-- [[test-driven-development]] — tests before code
-- [[systematic-debugging]] — root-cause before fixes
-- [[using-git-worktrees]] — isolated workspace
-- [[requesting-code-review]] / [[receiving-code-review]] — review gate
-- [[verification-before-completion]] — prove it works before claiming
-- [[finishing-a-development-branch]] — merge/PR/cleanup
-- [[writing-skills]] — author/edit skills (TDD for docs)
-- [[using-superpowers]] — invoke skills before any response
+## Docs / memory / other
 
-### Reference / cross-cutting
-- [[mcp-memory-workflow]] — 3 MCP memory layers, universal + chronos scopes
-- [[documentation-investigation]] — extract technical docs across a codebase
-- [[philip-main]] — audit/rewrite docs from code evidence
-- [[rust-skills-master]] — Rust coding guidelines
-- [[dogfood]] — web-app QA (almost never applicable here)
+| Skill | Role |
+|---|---|
+| philip-main | Docs from code evidence |
+| documentation-investigation | Doc extraction across a tree |
+| mcp-memory-workflow | lean-ctx / engram session protocol |
+| dogfood | Web QA — rarely ChronOS |
+| fable-discipline/* | fable-method / loop / judge / domain |
+| rust-skills-master | Generic Rust rules |
+| engram/* | **Sibling Engram product** skills — not ChronOS shell architecture |
 
-### Isolated island (needs wiring)
-- `engram/*` (21 skills) — see [[engram-island]] — currently `related_skills: []`, no graph participation
+## Outside `skills/` but live on this machine
 
-## Related
-- [[start-here]] — the entry router this index complements
-- [[engram-island]] — Task 2
-- [[architecture-crates-ui-discrepancy]] — Task 3
-- [[documentation-investigation-dead-links]] — Task 4
+- `hindsight-self-hosted` — real Hindsight stack (bank `chronos-ecosystem`);
+  do **not** use stale hindsight-local/cloud (`uvx hindsight-embed`).
+- Repo canon: `HANDOFF.md`, `ARCHITECTURE.md`, `DECISIONS.log`, `MEMORY.md`,
+  `AGENTS.md`.
+
+## Authority
+
+On conflict: repo docs > skills > dialogue memory > Hindsight RAG.

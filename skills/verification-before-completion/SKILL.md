@@ -1,6 +1,10 @@
 ---
 name: verification-before-completion
-description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+description: >
+  Use when about to claim work is complete, fixed, or passing, before committing
+  or creating PRs — requires running verification commands and confirming output
+  before success claims; evidence before assertions always. In ChronOS: unit
+  green is not enough for window/UX — release binary + live grim/log (HANDOFF).
 ---
 
 # Verification Before Completion
@@ -129,6 +133,15 @@ From 24 failure memories:
 - Paraphrases and synonyms
 - Implications of success
 - ANY communication suggesting completion/correctness
+
+## ChronOS (this repo)
+
+Window / OSD / bar / tray UI claims additionally need:
+
+1. `cargo build --release -p chronos` (debug is not a UX smoke)
+2. `pkill -x chronos` then run the release binary (`RUST_LOG=info`)
+3. Live action + **grim** (or log line that can fail) — unit green alone is
+   **nothing** for layer-shell UX (HANDOFF / `chronos-shell`)
 
 ## The Bottom Line
 
