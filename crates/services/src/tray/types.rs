@@ -45,6 +45,21 @@ impl TrayIcon {
     }
 }
 
+/// Raw RGBA icon pixmap carried by `StatusNotifierItem.IconPixmap`
+/// (wire signature `(iiay)`): width, height, and pixel data. ARGB→RGBA is
+/// already applied in [`crate::tray::TraySubscriber::add_item`]; the widget
+/// converts RGBA→BGRA when building a GPUI `RenderImage` (gpui stores decoded
+/// images in BGRA — see `Source/gpui/src/assets.rs`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct TrayPixmap {
+    /// Pixmap width in pixels.
+    pub width: u32,
+    /// Pixmap height in pixels.
+    pub height: u32,
+    /// RGBA pixel data (`width * height * 4` bytes).
+    pub data: Vec<u8>,
+}
+
 /// A single live system tray item (a registered `StatusNotifierItem`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct TrayItem {
@@ -56,9 +71,10 @@ pub struct TrayItem {
     pub title: Option<String>,
     /// Icon name (`StatusNotifierItem.IconName`), if provided.
     pub icon_name: Option<String>,
-    /// Icon pixmap (`StatusNotifierItem.IconPixmap`), if provided (render
-    /// deferred — see OPENCODE report). Holds the largest available pixmap.
-    pub icon_pixmap: Option<Vec<u8>>,
+    /// Icon pixmap (`StatusNotifierItem.IconPixmap`), if provided. Holds the
+    /// largest available pixmap as ready-for-GPU RGBA (`TrayPixmap`: ARGB→RGBA
+    /// conversion already done in `TraySubscriber::add_item`).
+    pub icon_pixmap: Option<TrayPixmap>,
     /// Convenience derived label for the text fallback badge.
     pub label: String,
 }

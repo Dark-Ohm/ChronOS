@@ -35,7 +35,7 @@ use zbus::{Connection, interface, proxy};
 
 use crate::Service;
 use crate::ServiceStatus;
-pub use types::{TrayCommand, TrayIcon, TrayItem, TrayState};
+pub use types::{TrayCommand, TrayIcon, TrayItem, TrayPixmap, TrayState};
 pub mod types;
 
 /// Well-known name we claim on the session bus (the StatusNotifierWatcher).
@@ -52,6 +52,25 @@ pub struct IconPixmap {
     pub width: i32,
     pub height: i32,
     pub bytes: Vec<u8>,
+}
+
+/// Convert a wire [`IconPixmap`] (ARGB bytes, `(iiay)`) into a [`TrayPixmap`]
+/// (RGBA bytes), preserving dimensions. Pure, unit-tested.
+///
+/// ARGB `[A,R,G,B]` → RGBA `[R,G,B,A]` via `rotate_left(1)` (the alpha byte
+/// moves to the end). The widget later converts RGBA→BGRA for GPUI's GPU
+/// upload format (gpui stores decoded images in BGRA — see
+/// `Source/gpui/src/assets.rs`).
+fn convert_icon_pixmap(mut p: IconPixmap) -> TrayPixmap {
+    for pixel in p.bytes.chunks_exact_mut(4) {
+        // [A, R, G, B] -> [R, G, B, A]
+        pixel.rotate_left(1);
+    }
+    TrayPixmap {
+        width: p.width.max(0) as u32,
+        height: p.height.max(0) as u32,
+        data: p.bytes,
+    }
 }
 
 /// Client-side proxy to a registered `org.kde.StatusNotifierItem`.
@@ -214,14 +233,7 @@ impl TraySubscriber {
             .and_then(|pix| {
                 pix.into_iter()
                     .max_by_key(|p| (p.width, p.height))
-                    .map(|mut p| {
-                        // Convert ARGB → RGBA so the buffer is ready for GPU upload
-                        // later (pixmap rendering is deferred — see OPENCODE report).
-                        for pixel in p.bytes.chunks_exact_mut(4) {
-                            pixel.rotate_left(1);
-                        }
-                        p.bytes
-                    })
+                    .map(convert_icon_pixmap)
             });
 
         let label = TrayItem::derive_label(&title, &icon_name);
@@ -695,5 +707,39 @@ mod tests {
         svc.dispatch(TrayCommand::ActivateItem {
             service: ":1.99".into(),
         });
+    }
+
+    /// `convert_icon_pixmap` preserves width/height and does ARGB→RGBA.
+    #[test]
+    fn convert_icon_pixmap_preserves_dims_and_argb_to_rgba() {
+        // Two 2x1 ARGB pixels: [A,R,G,B] each.
+        let p = IconPixmap {
+            width: 2,
+            height: 1,
+            bytes: vec![0xFF, 0x10, 0x20, 0x30, 0xFF, 0x40, 0x50, 0x60],
+        };
+        let tp = convert_icon_pixmap(p);
+        assert_eq!(tp.width, 2);
+        assert_eq!(tp.height, 1);
+        assert_eq!(tp.data.len(), 8);
+        // [A,R,G,B] rotate_left(1) -> [R,G,B,A]
+        assert_eq!(
+            tp.data,
+            vec![0x10, 0x20, 0x30, 0xFF, 0x40, 0x50, 0x60, 0xFF]
+        );
+    }
+
+    /// Negative i32 dims clamp to 0 (defensive — spec says i32, but never negative).
+    #[test]
+    fn convert_icon_pixmap_clamps_negative_dims() {
+        let p = IconPixmap {
+            width: -1,
+            height: -1,
+            bytes: vec![],
+        };
+        let tp = convert_icon_pixmap(p);
+        assert_eq!(tp.width, 0);
+        assert_eq!(tp.height, 0);
+        assert!(tp.data.is_empty());
     }
 }
