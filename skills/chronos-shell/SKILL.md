@@ -43,7 +43,7 @@ Worktrees must be a **sibling of ChronOS** (so `../Source` resolves) — never
 | `notification` | fdo Notifications (session) | server |
 | `tray` | StatusNotifierWatcher (session) | + `tray/menu.rs` DBusMenu client |
 | `audio` | `wpctl` MVP poll 250ms | `dispatch` + immediate re-read |
-| `applications` | `.desktop` scan + inotify | launcher data |
+| `applications` | `.desktop` scan + inotify | launcher data, **mpsc** debounce (not crossbeam), `strip_field_codes` in parser |
 | `wallpaper` | awww MVP + multi-backend enum | 5 engines on host |
 | `mpris` | session `org.mpris.MediaPlayer2.*` | ListNames + NameOwnerChanged |
 
@@ -58,19 +58,19 @@ Commands are concrete methods (`dispatch`), **not** on the trait.
 | `bar/widgets/` | clock, workspaces, battery, network, tray, **volume**, **mpris** |
 | `osd/` | volume OSD overlay (soft-hide, no Exclusive keyboard) |
 | `notifications/` | fdo popup stack (rubber-band height — see `gpui-layer-shell`) |
-| `launcher/` | app launcher + IPC toggle |
-| `dock/` | pinned launch panel (not a live taskbar) |
+| `launcher/` | app launcher — **uses `AppState::applications(cx)` via `state::watch`** (no more local cache); `launch.rs` re-uses `strip_field_codes` from services |
+| `dock/` | pinned launch panel (not a live taskbar) — icon resolver + PINNED_IDS hardcoded |
 | `tray_menu/` | DBusMenu popup UI (paired with tray right-click) |
-| `ipc/` | single-instance Unix socket |
-| `wallpaper_ctl.rs` | IPC wallpaper-next / wallpaper-set |
+| `ipc/` | single-instance Unix socket + wallpaper-next/set payloads |
+| `wallpaper_ctl.rs` | IPC wallpaper-next / wallpaper-set — scan `~/Pictures/Wallpapers`, round-robin |
 | `state.rs` | `AppState` global + `watch()` signal bridge |
 | `plugin_bridge.rs` | Lua → `BarWidget` |
 
 ### Bar widgets + watches
 
-`Bar::new` subscribes (via `watch`) so service updates repaint the bar. As of
-Grok №4 erratum the list includes **compositor, network, upower, notification,
-audio**. Adding a new reactive widget usually needs a matching
+`Bar::new` subscribes (via `watch`) so service updates repaint the bar. The
+list includes **compositor, network, upower, notification, audio**. Adding a
+new reactive widget usually needs a matching
 `watch(cx, AppState::<svc>(cx).subscribe(), …)` line — if `bar/mod.rs` is
 outside your zone, **ask**; do not freestyle. Clock still has a 1s ticker.
 
@@ -85,8 +85,9 @@ outside your zone, **ask**; do not freestyle. Clock still has a 1s ticker.
 
 ### 1. Layer-shell windowing
 Surfaces use `WindowKind::LayerShell(LayerShellOptions { … })`, not plain
-windows. Bar: `Layer::Top`, TOP|LEFT|RIGHT, exclusive zone. OSD /
-notifications / tray_menu: `Layer::Overlay`. **`KeyboardInteractivity::Exclusive`
+windows. Bar: `Layer::Top`, TOP|LEFT|RIGHT, exclusive zone. Dock: `Layer::Top`,
+BOTTOM, exclusive zone (independent of bar). OSD / notifications / tray_menu:
+`Layer::Overlay`. **`KeyboardInteractivity::Exclusive`
 is FORBIDDEN forever** — freezes Hyprland input stack. Use `None` (or
 `OnDemand` only if you have a proven need). Soft-hide pattern (OSD): keep the
 window, empty content / empty input region — do **not** `remove_window` if
@@ -136,6 +137,49 @@ fixtures have failed twice.
    reorder others' lines.
 3. Click: `on_click` + `AppState::…(cx).dispatch(...)` (tray / volume pattern).
 4. Scroll: `on_scroll_wheel` + `ScrollDelta` (volume pattern).
+5. Icon-theme lookup (tray pattern):
+   - Check `icon_name` for absolute path first.
+   - Build theme chain: `[gtk-icon-theme, ...Inherits, hicolor]` from
+     `settings.ini` and `default/index.theme` (read at most once via `OnceLock`).
+   - Walk bases × themes × `{scalable, 16x16, ...}` × `{devices, apps, ...}` × exts.
+   - Cache resolved paths in `thread_local! RefCell<HashMap<String, Option<PathBuf>>>`.
+   - Fallback chain: icon_name → icon_pixmap → letter badge.
+
+### Launcher (migrated to applications service)
+
+Launcher no longer has its own desktop entry cache. `view.rs` uses
+`AppState::applications(cx)` + `state::watch()` for live updates. The old
+`cache.rs` and `entry.rs` are deleted. `launch.rs` imports
+`strip_field_codes` from `chronos_services`.
+
+### New launcher widget
+
+If the widget is focusable (text input) or reacts to mouse clicks, the activation
+observer must be gated to avoid race conditions:
+
+```rust
+// In view struct:
+pub interacted: bool,  // set by click handler
+
+// In activation observer (mod.rs):
+if window.is_window_active() {
+    was_active = true;
+} else if was_active {
+    if view.interacted {
+        view.interacted = false; // reset gate
+        return;                  // click handler already closed
+    }
+    close_this(window, cx);
+}
+
+// In click handler on result rows:
+vh.update(cx, |view, _| view.interacted = true);
+launch(&entry.exec);
+close_this(window, cx);
+```
+
+This prevents a click inside the launcher from triggering `active=false` (Wayland
+spurious deactivation) before the handler runs.
 
 ### Soft-hide / popup lifecycle
 Prefer empty render + kept surface over remove/recreate when Hyprland races
@@ -162,6 +206,11 @@ appear. See `osd/mod.rs` after f4edb88.
 - Named `git add` + `git diff --staged` before commit; no AI trailers.
 - **`reference/gpui-shell` unlicensed** — rewrite-by-pattern, 0 copied lines.
   **`reference/waytrogen-main` Unlicense** — copy OK (NOTICE in `../Source`).
+- **Claims must match tree.** If you say "I did X", `grep`/`read` the file
+  to confirm X is actually in the working copy, not in a stash or a branch
+  that didn't get committed. False claims cost a full re-work cycle.
+- **Watch handlers need `cx.notify()`.** Data update without notify = stale UI.
+  Pattern: `state::watch(cx, signal, |this, state, cx| { this.update(state); cx.notify(); })`.
 
 ## Verification (before claiming done)
 
