@@ -18,9 +18,14 @@ IPC-open, мышь не трогал) доказано, что окно теря
 разобран
 ПОЛНОСТЬЮ отдельно от этого — см. раздел ниже, читать ОБЯЗАТЕЛЬНО,
 если трогаешь окна. Autohand СНЯТ С ПРОЕКТА (решение пользователя) —
-tray_menu передан Hermes №10. Открытые хвосты: Cline №9, Hermes №10 и
-№11. Читать сверху вниз. При расхождении с ARCHITECTURE.md/DECISIONS.log
-побеждают они.**
+tray_menu передан Hermes №10. `gpui`/`gpui_platform` теперь git-деп на
+`github.com/Dark-Ohm/Chronos-GPUI` (общий тулкит с Chronos-FM/
+Chronos-IDE, не путь-деп на `../Source` — путь-деп ломался вне этой
+машины). Открытые хвосты: Cline №9, Hermes №10 и №11, **Grok №11**
+(спайк desktop-widget терминала, `Layer::Background`+PTY+VT100,
+вдохновлён Plasminal — деталь в GROK.md, зона `desktop_terminal/` не
+пересекается с остальными). Читать сверху вниз. При расхождении с
+ARCHITECTURE.md/DECISIONS.log побеждают они.**
 
 ## Кто ты и как работаешь
 
