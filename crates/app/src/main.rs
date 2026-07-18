@@ -7,6 +7,8 @@ mod notifications;
 mod osd;
 mod plugin_bridge;
 pub mod state;
+mod tray_menu;
+mod updates_popup;
 mod wallpaper_ctl;
 
 use chronos_luau::PluginManager;
@@ -56,6 +58,8 @@ fn main() {
             dock::init(cx);
             notifications::init(cx);
             osd::init(cx);
+            tray_menu::init(cx);
+            updates_popup::init(cx);
             desktop_terminal::init(cx);
 
             // Initialize launcher global state (desktop entries come from AppState::applications)

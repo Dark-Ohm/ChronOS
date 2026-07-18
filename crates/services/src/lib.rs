@@ -6,6 +6,7 @@
 
 pub mod applications;
 pub mod audio;
+pub mod aur;
 pub mod compositor;
 pub mod mpris;
 pub mod network;
@@ -15,9 +16,10 @@ pub mod upower;
 pub mod wallpaper;
 
 pub use applications::{
-    ApplicationsCommand, ApplicationsState, ApplicationsSubscriber, AppEntry, strip_field_codes,
+    AppEntry, ApplicationsCommand, ApplicationsState, ApplicationsSubscriber, strip_field_codes,
 };
 pub use audio::{AudioCommand, AudioState, AudioSubscriber, EndpointState};
+pub use aur::{AurCommand, AurSubscriber, PackageUpdate, UpdateSource, UpdatesState};
 pub use compositor::{
     ActiveWindow, CompositorBackend, CompositorCommand, CompositorState, CompositorSubscriber,
     Monitor, Workspace,
@@ -25,7 +27,8 @@ pub use compositor::{
 pub use mpris::{MprisCommand, MprisState, MprisSubscriber};
 pub use network::{ConnectivityState, NetworkData, NetworkSubscriber};
 pub use notification::{
-    CloseReason, Notification, NotificationCommand, NotificationState, NotificationSubscriber, Urgency,
+    CloseReason, Notification, NotificationCommand, NotificationState, NotificationSubscriber,
+    Urgency,
 };
 pub use tray::{
     MenuNode, MenuToggleType, TrayCommand, TrayIcon, TrayItem, TrayPixmap, TrayState,
@@ -41,6 +44,7 @@ pub use wallpaper::{
 #[derive(Clone)]
 pub struct Services {
     pub applications: ApplicationsSubscriber,
+    pub aur: AurSubscriber,
     pub audio: AudioSubscriber,
     pub compositor: CompositorSubscriber,
     pub mpris: MprisSubscriber,
@@ -58,6 +62,7 @@ pub struct Services {
 pub fn init_all() -> Services {
     Services {
         applications: ApplicationsSubscriber::new(),
+        aur: AurSubscriber::new(),
         audio: AudioSubscriber::new(),
         compositor: CompositorSubscriber::new(),
         mpris: MprisSubscriber::new(),

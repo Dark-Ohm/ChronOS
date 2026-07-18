@@ -69,6 +69,11 @@ impl AppState {
     pub fn mpris(cx: &App) -> &chronos_services::MprisSubscriber {
         &Self::global(cx).services.mpris
     }
+
+    #[inline(always)]
+    pub fn aur(cx: &App) -> &chronos_services::AurSubscriber {
+        &Self::global(cx).services.aur
+    }
 }
 
 /// Watch a signal and apply updates to component state.

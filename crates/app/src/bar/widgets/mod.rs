@@ -5,6 +5,7 @@ mod clock;
 mod mpris;
 mod network;
 mod tray;
+mod updates;
 mod volume;
 mod workspaces;
 
@@ -22,4 +23,5 @@ pub fn register_builtin(cx: &mut App) {
     tray::register(cx);
     volume::register(cx);
     mpris::register(cx);
+    updates::register(cx);
 }
