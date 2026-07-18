@@ -1,4 +1,5 @@
 mod bar;
+mod desktop_terminal;
 mod dock;
 mod ipc;
 mod launcher;
@@ -55,6 +56,7 @@ fn main() {
             dock::init(cx);
             notifications::init(cx);
             osd::init(cx);
+            desktop_terminal::init(cx);
 
             // Initialize launcher global state (desktop entries come from AppState::applications)
             launcher::init(cx);
