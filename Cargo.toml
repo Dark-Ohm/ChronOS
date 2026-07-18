@@ -17,6 +17,13 @@ niri-ipc = "26"
 chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+
 [profile.release]
 codegen-units = 1
 lto = true

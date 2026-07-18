@@ -32,3 +32,6 @@ smallvec = "1.6"
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true

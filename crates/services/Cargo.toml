@@ -20,3 +20,6 @@ serde = { workspace = true, features = ["derive"] }
 [dev-dependencies]
 # futures-util from workspace provides StreamExt for tests
 tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true

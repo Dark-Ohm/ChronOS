@@ -131,6 +131,9 @@ pub fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
 }
 
 #[cfg(test)]
+// `set_var`/`remove_var` are process-global and unsafe since Rust 2024 edition;
+// confined to single-threaded test-only LANG fiddling for locale-fallback coverage.
+#[allow(unsafe_code)]
 mod tests {
     use super::*;
     use std::io::Write;
