@@ -1,6 +1,6 @@
 # AGENTS.md
 
-.rules
+<!-- shared agent ruleset: orchestration/agents/rules.md -->
 
 # проект Chronos
 Chronos — desktop shell для Hyprland 0.55.4+. Конфиг Hyprland с версии 0.55.0 переехал на Lua (hyprlang deprecated, но сам композитор как был на C++, так и остался — на Lua переписан только конфиг-слой, не ядро). Это важно не путать при формулировке задач агентам.

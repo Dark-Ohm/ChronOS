@@ -1,5 +1,13 @@
 # HANDOFF — контекст для новой сессии Архитектора
 
+> **Переезд (2026-07-19):** оркестрация уехала из корня в `orchestration/`.
+> Брифы — `orchestration/agents/<ИМЯ>.md`, активные отчёты —
+> `orchestration/reports/<имя>-report.md`, архив — `orchestration/report-log/`.
+> Агент-стейт (`.cline/`, `.autohand/`, `.mimocode/`, `.clinerules/`, `contexts/`)
+> теперь в `.gitignore`. Корень несёт только профильные доки + скелет (README,
+> LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
+> дорелокационные, читать с этой поправкой.
+
 **Обновлено: 2026-07-18. Cline №8 (launcher реентерабельный close)
 ПРИНЯТ (build+177 тестов зелёные, изолированный worktree). Cline №9
 (follow_mouse debounce 300мс) — ❌ НЕ ПРИНЯТ: живым смоком (один чистый
