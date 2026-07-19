@@ -36,18 +36,8 @@ _Hard constraints from user that every session must respect._
 ## Architecture decisions
 _Major design choices with rationale. The "why" matters more than the "what" for future sessions._
 
-> **STALE NOTICE (2026-07-19, поздний вечер):** entry below ("widgets
-> deferred") describes an early scaffold stage — since then the bar has
-> shipped real widgets (clock, mpris, network, tray, volume, workspaces,
-> cava) via this exact registry pattern; a full Top Bar redesign wave
-> (cava done, workspace-dots/dock-relocation/project-switcher/
-> notification-history in flight) is under way. Canonical current state
-> lives in `HANDOFF.md`/`ARCHITECTURE.md`/`roadmap.md`, not here — this
-> file's "Architecture decisions"/"Discovered durable knowledge" sections
-> below are historical rationale, still true as *why* but not *current
-> state*. Left un-rewritten (31KB, out of scope for a point-fix); the
-> stale "widgets deferred" framing directly below is the one actively
-> misleading claim, hence this notice.
+- **Мульти-монитор: пультовый монитор + холст.** Один монитор — «пультовый» (top bar, side panels, попапы, лаунчер — вся управляющая поверхность). Второй — «рабочий холст» под окна (Hyprland рулит) + desktop-виджеты (абсолютное позиционирование, `Layer::Background`). Назначение пультового по UUID в конфиге (`~/.config/chronos/`), т.к. `cx.primary_display()` на Wayland/Hyprland возвращает `None` (нет канонического primary). Побочный выигрыш: consolidation убирает долг по 8 попапам (Zed №3 баг). DECISIONS.log 2026-07-19.
+- **Светлая тема: собственная айдентика.** Не Latte-инверсия. Направление: атом · киберпанк · микрочип-трассы · сигилы/сакральная геометрия · Хронос. Неон живёт в линиях/деталях (бордеры, glow-рёбра, акцентные штрихи), НЕ в заливке фона. Поверхность — спокойная holodная сине-лавандовая база (`#dde0f2`/`#e6e9fa`, текст `#2c2e4a` индиго). Эталон: `design/Project Switcher.dc.html` вариант "Light C". DECISIONS.log 2026-07-19.
 
 - **Bar = scaffold + dyn-safe widget contract (widgets deferred).** The top bar ships as a plain strip now; structure delivered: left/center/right sections, `trait BarWidget` (`section() -> BarSection` + `render(&self, &mut Window, &App) -> AnyElement`), and a runtime `BarWidgetRegistry` (GPUI global, `Vec<Box<dyn BarWidget>>`, `register()` + `widgets_for(section)`). Deliberately diverges from the `reference/gpui-shell` pattern (`trait BarWidget: Sized` chrome + static `enum Widget`/`match` dispatch): we make the trait itself dyn-safe and use it as the dispatch mechanism so adding a widget needs NO core recompile. Spec: `docs/superpowers/specs/2026-07-09-bar-scaffold-widget-contract-design.md`. (User-confirmed 2026-07-09.)
 - `BarWidget::render` is `&self` (not `&mut self`) so the bar can call it through a shared `&dyn BarWidget` borrowed immutably from the global registry during `Bar::render`; it also takes `&App` (not `&mut App`) for the same borrow reason — `Bar::render` already holds an immutable `cx.global()` borrow of the registry, so two immutable borrows coexist. Reactivity later via interior mutability / global `AppState`, not `&mut self`/`&mut App`.
@@ -86,6 +76,9 @@ _Cross-task facts that survive across sessions. Promoted from session checkpoint
 - **Float `Eq` trap:** `Monitor.scale: f32`, `UPowerData.battery_percent: f64` — `Eq` not derivable. Dropped `Eq` from those structs (`Service::Data` only requires `Clone`). Pattern: any service data struct with float must NOT derive `Eq`. Third hit (Monitor.scale, CompositorState, UPowerData).
 - **`i128` monitor IDs:** `hyprland` crate uses `MonitorId = i128`. Stored directly (no `i64`/`i32` truncation). `Service::Data: Clone` has no size bound.
 - **`hyprland` crate `Address` opaque newtype:** No public accessor, but derives `Display`. Used `address.to_string()` to extract inner hex string safely.
+- **Launcher focus trap: три корневые причины, все исправлены.** (1) `stay_focused=true` в Lua не отпускал фокус — удалён. (2) `pin=true` бесполезен при focus-lost-close — удалён. (3) Per-frame re-assert в view.rs — удалён. Esc/Enter теперь вызывают `launcher::close()` (не `window.remove_window()`). Activation observer регистрируется в `open()` window closure (не `new()`), т.к. `observe_window_activation` требует `&mut Window`. Хронология: `stay_focused`/`pin` удалены из `docs/hyprland/chronos-launcher.lua`, re-assert удалён из view.rs, observer добавлен в mod.rs:101. ses_093b03fffffe8TdDXLOzJlzapQ.
+- **Dock миграция в BarWidget завершена (задания #7 и #8).** DockConfig持久化 (#7): `dock/config.rs` с `load()`/`save()`/`unpin()`, toml-сериализация, глобальный кэш `CONFIG_CACHE: OnceLock<Mutex<DockConfig>>` (без disk I/O в render). Context menu: `dock/context_menu.rs`, `DockConfigSignal` через `Mutable<()>`. Dock → bar widget (#8): `bar/widgets/dock.rs` — stateless `DockWidget` implementing `BarSection::Left`, Start button → `launcher::toggle()`, app icons → `launch()`, right-click → `context_menu::open()`. Старый dock window lifecycle удалён из `dock/mod.rs`, `dock/view.rs` удалён, `dock::init(cx)` удалён из main.rs. ses_085a6d5ebffeNiXiNLSJE9Y1Bm.
+- **GPUI `observe_window_activation`**: Метод на `Context<T>` (не `App`). Сигнатура: `fn observe_window_activation(&mut self, window: &mut Window, callback: impl FnMut(&mut T, &mut Window, &mut Context<T>) + 'static)`. Регистрирует на `window.activation_observers`. Fires when window active state changes. **Важно**: требует `&mut Window` из внешнего scope — observer нужно регистрировать в `open_window` closure (не в `new()`), т.к. `Context<T>` не экспонирует окно напрямую. ses_093b03fffffe8TdDXLOzJlzapQ.
 
 ### 2026-07-17 (волны №2–3: bar-виджеты, audio/OSD, tray-иконки+DBusMenu, applications+launcher, wallpaper)
 
@@ -119,8 +112,10 @@ _Cross-task facts that survive across sessions. Promoted from session checkpoint
 
 _Cross-session durable: these are explicitly deferred, each tied to a named future consumer. Do not start them without the linked spec._
 
-- ~~Tray-сервис отсутствует~~ **ЗАКРЫТО 2026-07-17:** StatusNotifierWatcher-сервис (`crates/services/src/tray/`) + иконки в баре (icon-theme + pixmap) живут; сервисная часть DBusMenu — в доработке OpenCode №3; UI-попап меню — следующее задание.
 - **Desktop-widget plugin API отсутствует.** Текущий `chronos.bar:register(spec)` (crates/luau design §7) привязан только к `BarWidgetRegistry` (left/center/right внутри одного bar-окна). `plasminal` (standalone desktop-widget с абсолютным позиционированием) требует отдельный layer-shell surface (`Layer::Background`, не `Layer::Top`) и новый API-namespace (например `chronos.desktop:register(...)`). Точки опоры уже добавлены: `Monitor.x/y/scale/id` (geometry, 2026-07-10) — но сам API и surface ещё не спроектированы. Отдельная спека, отдельная сессия.
 - **ARCHITECTURE.md §4 устарел частично.** Добавление `Monitor` geometry (2026-07-10) делает §4 не единственным источником truth для позиционирования плагин-окон — desktop-widget плагины позиционируются абсолютно через `Monitor`, не через layer-shell `exclusive_zone`. §4 нужно пересмотреть/дополнить отдельной правкой (зафиксировано в DECISIONS.log 2026-07-10, НЕ сделано).
 - ~~Launcher keyboard focus (Critical)~~ **ЗАКРЫТО** (bfb1503, XDG toplevel + windowrules; остаточная «баговынность» — полировка отдельным заданием, спросить пользователя что именно).
+- ~~Launcher focus trap~~ **ЗАКРЫТО** (stay_focused/pin удалены, re-assert удалён, activation observer добавлен). Остаточная полировка — отдельное задание.
 - **Launcher deferred features:** icon rendering (лаунчеру; в tray уже есть — переиспользовать резолвер), terminal launch (`Terminal=true`), frecency, categories, multi-monitor (DP-1 vs HDMI centering). Лаунчер с 2026-07-17 сидит на applications-сервисе (hot-reload работает) — старый кэш удалён.
+- **Dock persistent config (задание #7):** Готово — `dock/config.rs` (load/save/unpin), `dock/context_menu.rs` (Unpin popup), `dock/signal.rs` (DockConfigSignal). Кэш `OnceLock<Mutex<DockConfig>>` для render без disk I/O. ses_085a6d5ebffeNiXiNLSJE9Y1Bm.
+- **Dock → bar widget (задание #8):** Готово — `bar/widgets/dock.rs` (stateless DockWidget, BarSection::Left). Старый dock window lifecycle удалён. ses_085a6d5ebffeNiXiNLSJE9Y1Bm.
