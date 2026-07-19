@@ -88,10 +88,15 @@ picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
   (`cx.primary_display()==None` на Wayland; форк даёт стабильный
   across-reboot `uuid()` из имени вывода). Скоуп СЕЙЧАС: точим шелл
   под пультовый; роль второго (виджет-холст) — ОТЛОЖЕНА до готовности
-  пультовой части. **Consolidation — следующий такт** (после клик-
-  конфирма system popup): designation по uuid + `bar/mod.rs` только на
-  пультовом. Первый шаг брифа — живая проверка `uuid()`. Бриф ещё НЕ
-  написан. Закрывает дисплейный хвост system popup разом.
+  пультовой части. **Consolidation — БРИФ НАПИСАН (Mimo №10, MIMO.md,
+  исполнять ПЕРЕД №9).** Гейт `uuid()` пройден живьём (2026-07-20):
+  оба дисплея дают `uuid()==Ok`, стабильный UUIDv5. **Пультовый DP-1
+  (2560×1440) uuid=`09e7b298-aad0-546d-a4de-adcb9106fd7d`**; HDMI-A-1
+  (1920×1200) uuid=`56f01978-2d1e-5e26-bbe4-cc5fd992f8af`. Скоуп: конфиг
+  `~/.config/chronos/monitor.toml` (chrome_monitor uuid, fallback самый
+  большой) + общий `pult_display(cx)` + бар только на пультовом + свап
+  `pick_display`→`pult_display` в 9 chrome-попапах (desktop_terminal НЕ
+  трогать). Закрывает дисплейный хвост system popup разом.
 - **Светлая тема** — порт `light_scheme()` под Light C **не начат**
   (`crates/ui/src/theme/schemes.rs` всё ещё Latte-hex).
 - **Финальная сборка порядка** в bar registry / `bar/mod.rs` —
