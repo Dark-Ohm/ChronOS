@@ -79,6 +79,11 @@ impl AppState {
     pub fn cava(cx: &App) -> &chronos_services::CavaSubscriber {
         &Self::global(cx).services.cava
     }
+
+    #[inline(always)]
+    pub fn brightness(cx: &App) -> &chronos_services::BrightnessSubscriber {
+        &Self::global(cx).services.brightness
+    }
 }
 
 /// Watch a signal and apply updates to component state.

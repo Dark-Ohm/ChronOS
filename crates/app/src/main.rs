@@ -7,6 +7,7 @@ mod notifications;
 mod osd;
 mod plugin_bridge;
 pub mod state;
+mod system_popup;
 mod tray_menu;
 mod updates_popup;
 mod volume_popup;
@@ -62,6 +63,7 @@ fn main() {
             tray_menu::init(cx);
             updates_popup::init(cx);
             volume_popup::init(cx);
+            system_popup::init(cx);
             desktop_terminal::init(cx);
 
             // Initialize launcher global state (desktop entries come from AppState::applications)

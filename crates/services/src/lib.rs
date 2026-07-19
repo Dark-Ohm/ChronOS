@@ -7,6 +7,7 @@
 pub mod applications;
 pub mod audio;
 pub mod aur;
+pub mod brightness;
 pub mod cava;
 pub mod compositor;
 pub mod mpris;
@@ -21,6 +22,10 @@ pub use applications::{
 };
 pub use audio::{AudioCommand, AudioDevice, AudioState, AudioSubscriber, EndpointState};
 pub use aur::{AurCommand, AurSubscriber, PackageUpdate, UpdateSource, UpdatesState};
+pub use brightness::{
+    BrightnessCommand, BrightnessState, BrightnessSubscriber, DDCUTIL_BIN, detect_displays,
+    get_brightness, parse_getvcp_stdout, read_primary, set_brightness, write_all,
+};
 pub use cava::{CavaState, CavaSubscriber, BAR_COUNT as CAVA_BAR_COUNT};
 pub use compositor::{
     ActiveWindow, CompositorBackend, CompositorCommand, CompositorState, CompositorSubscriber,
@@ -50,6 +55,7 @@ pub struct Services {
     pub applications: ApplicationsSubscriber,
     pub aur: AurSubscriber,
     pub audio: AudioSubscriber,
+    pub brightness: BrightnessSubscriber,
     pub cava: CavaSubscriber,
     pub compositor: CompositorSubscriber,
     pub mpris: MprisSubscriber,
@@ -69,6 +75,7 @@ pub fn init_all() -> Services {
         applications: ApplicationsSubscriber::new(),
         aur: AurSubscriber::new(),
         audio: AudioSubscriber::new(),
+        brightness: BrightnessSubscriber::new(),
         cava: CavaSubscriber::new(),
         compositor: CompositorSubscriber::new(),
         mpris: MprisSubscriber::new(),
