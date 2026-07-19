@@ -257,57 +257,41 @@ stays UI-only.
 - Remote/network plugin loading (local files only).
 - Custom shaders (`runtime_shaders`) — not needed for MVP.
 
-## 14. Top Bar redesign wave (decided 2026-07-19, IN PROGRESS — see per-item status)
+## 14. Top Bar redesign wave — DONE (2026-07-19…20)
 
-Decided against Claude Design mockups (`design/*.dc.html`), full rationale
-in `DECISIONS.log` 2026-07-19 "Top Bar redesign wave". Live status per
-piece (updated 2026-07-19 EOD — check `HANDOFF.md` top block for anything
-newer):
+All wave pieces landed (rationale per piece in `DECISIONS.log`
+2026-07-19/20; live status of anything newer — `HANDOFF.md` top block):
+cava visualizer (`c519e2e`), popup border/hover/badge polish (`8d74583`),
+dock absorbed into the bar's left cluster + Start button (`07df942`,
+standalone `dock/` window is gone; `dock/config.rs` persistence re-hosted
+as-is), workspace dots (`8457bbc`), notification history + bell
+(`f4ddd72`), system popup (`f7de445`), chrome consolidation onto the pult
+display (`0a99a67`, see `monitor.rs`), token foundation (`3e04264`),
+mockup-parity layout + separators (`c7ccc02`), SVG icon assets
+(`f370618`), project switcher (`6061736`).
 
-- **DONE — Audio visualizer.** `cava`-backed bar widget, `BarSection::
-  Center`, shells to the real `cava` binary (raw ascii-output mode,
-  soft-fail if not installed). Commit `c519e2e` + errata `eb043fd`
-  (missing `bar/mod.rs` watch, now wired at 30fps).
-- **IN PROGRESS — per-popup border/hover/badge polish.** Not a wave item
-  on its own but the same visual-parity push: `.border_1().border_color
-  (theme.border.subtle)` etc. on `updates_popup`/`volume_popup`/
-  `notifications`/`tray_menu`. Confirmed live-observed in
-  `updates_popup/view.rs` (border applied). Full completion tracked in
-  `orchestration/agents/HERMES.md` №13.
-- **PLANNED, not started — Dock is absorbed into the bar.** The
-  standalone bottom-panel `dock/` window (§1 module list) goes away;
-  pinned-app icons become an ordinary `BarWidget` in the bar's left
-  cluster. `dock/config.rs`'s persistence (`~/.config/chronos/
-  dock.toml`, load/save/unpin) is reused as-is, only re-hosted.
-  `crates/app/src/dock/` as a standalone module is deprecated once this
-  lands — update this doc's module list then, not before.
-- **PLANNED, not started — Start button**: leftmost bar icon opens the
-  launcher (`launcher::toggle(cx)`, already-accepted code, no new logic)
-  — a Plasma-Kickoff-style UX pattern, pure GPUI implementation. Bundled
-  with the dock-relocation piece above (same bar cluster).
-- **PLANNED, not started — Workspace indicators**: bar switches from
-  text/number workspace labels to small dots (active = accent + glow,
-  inactive = muted).
-- **PLANNED, not started, depends on dock-relocation landing first —
-  Project switcher** (replaces the plain "git branch" idea): a
-  persistent project registry (`~/.config/chronos/projects.toml`), "Add
-  project" via the real `org.freedesktop.portal.FileChooser` D-Bus portal,
-  bar pill shows the *active* project's current git branch, click opens a
-  picker popup (same lifecycle pattern as §4.1).
-- **PLANNED, not started — Notification history**: no inbox/history
-  concept exists anywhere in the tree today (notifications are purely
-  ephemeral). New: persistent history list + unread-count badge on a bar
-  bell icon, click opens a history popup reusing `notifications/view.rs`
-  card rendering. Depends on the border/hover/badge polish item landing
-  first (same file, `notifications/view.rs`).
-- **PLANNED, brief not yet written — System popup** (replaces the
-  battery-widget slot, which renders an empty div and is unclickable on
-  desktops without a physical battery): brightness slider + 3-way
-  power-profile switch + a "gaming mode" toggle (forces performance
-  profile, disables compositor animations/blur, DND, hides bar/dock,
-  forces no screen tearing). Visual spec in `design.md` §6. Needs exact
-  `hyprctl` command verification for the animation/blur/tearing toggles
-  before a code brief can be written — not guesswork.
+Durable architecture introduced by the wave:
+
+- **`crates/app/src/monitor.rs`** — `pult_display(cx)` is the single
+  source of display choice for ALL chrome windows (bar, launcher, every
+  popup). Config `~/.config/chronos/monitor.toml` keyed by display
+  `uuid()`; largest-display fallback auto-designates on first run.
+- **`crates/app/src/assets.rs`** — GPUI `AssetSource` over
+  `include_bytes!` (`crates/app/assets/icons/*.svg`), wired via
+  `application().with_assets(...)`. Icons are single-color line-art;
+  the SVG renderer uses them as an alpha mask tinted by `text_color`.
+  New icon = file in `assets/icons/` + one line in the `icons!` macro.
+- **`crates/app/src/project_switcher/`** — persistent project registry
+  (`~/.config/chronos/projects.toml`, dock.toml pattern), bar pill with
+  the active project's git branch (direct `.git/HEAD` parse on the bar's
+  1s ticker — no subprocess, no inotify; worktrees + detached handled),
+  picker popup (§4.1 lifecycle), "Add project" through the real
+  `org.freedesktop.portal.FileChooser` via `ashpd` (feature `async-io`,
+  NOT `tokio` — unification conflict with the gpui fork; portal runs on
+  `async_io::block_on` in a dedicated thread).
+- **Bar widget order = registration order** in
+  `bar/widgets/mod.rs::register_builtin` — separators are positional
+  widgets, the comment there is normative.
 
 ## Module scope
 
