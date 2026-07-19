@@ -1,18 +1,20 @@
-//! Workspaces widget for the bar — clickable badges that switch Hyprland
-//! workspaces. The active workspace is highlighted via the theme.
+//! Workspaces widget for the bar — clickable dots that switch Hyprland
+//! workspaces. The active workspace is highlighted via theme.accent.primary.
 //!
 //! Data comes from `AppState::compositor(cx)` (live `CompositorState`); a click
 //! dispatches `CompositorCommand::FocusWorkspace(id)` straight to the
-//! compositor service. No extra `services` surface is needed — `FocusWorkspace`
-//! was already wired through `hyprland::execute_command`.
+//! compositor service.
 
-use gpui::{div, prelude::*, px, AnyElement, App, InteractiveElement, Window, rgba};
+use gpui::{AnyElement, App, Window, div, prelude::*, px};
 
 use chronos_luau::bar::{BarSection, BarWidget, BarWidgetRegistry};
 use chronos_services::{CompositorCommand, Service};
 use chronos_ui::Theme;
 
 use crate::state::AppState;
+
+/// Dot diameter in px (design/Top Bar.dc.html shows ~7px dots).
+const DOT_SIZE: f32 = 7.0;
 
 pub struct WorkspacesWidget;
 
@@ -35,42 +37,29 @@ impl BarWidget for WorkspacesWidget {
         }
 
         let theme = Theme::global(cx);
-        let active_bg = theme.accent.primary;
-        let active_fg = rgba(0xffffffff).into();
-        let idle_bg = theme.bg.secondary;
-        let idle_fg = theme.text.muted;
-        let focus_border = theme.border.focused;
 
-        let badges: Vec<AnyElement> = state
+        let dots: Vec<AnyElement> = state
             .workspaces
             .iter()
             .map(|ws| {
                 let id = ws.id;
-                let label = if ws.name.is_empty() {
-                    id.to_string()
+                let bg = if ws.active {
+                    theme.accent.primary
                 } else {
-                    ws.name.clone()
-                };
-                let (bg, fg) = if ws.active {
-                    (active_bg, active_fg)
-                } else {
-                    (idle_bg, idle_fg)
+                    theme.text.disabled
                 };
 
                 div()
-                    .id(format!("workspace-badge-{id}"))
+                    .id(format!("workspace-dot-{id}"))
                     .cursor_pointer()
-                    .px(px(8.))
-                    .py(px(2.))
-                    .rounded(theme.radius)
+                    .w(px(DOT_SIZE))
+                    .h(px(DOT_SIZE))
+                    .rounded_full()
                     .bg(bg)
-                    .text_color(fg)
-                    .when(ws.active, |el| el.border_l_2().border_color(focus_border))
                     .on_click(move |_event, _window, cx: &mut App| {
                         let _ = AppState::compositor(cx)
                             .dispatch(CompositorCommand::FocusWorkspace(id));
                     })
-                    .child(label)
                     .into_any_element()
             })
             .collect();
@@ -78,8 +67,8 @@ impl BarWidget for WorkspacesWidget {
         div()
             .flex()
             .items_center()
-            .gap(px(4.))
-            .children(badges)
+            .gap(px(5.))
+            .children(dots)
             .into_any_element()
     }
 }
