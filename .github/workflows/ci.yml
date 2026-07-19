@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  fmt:
+    name: rustfmt (advisory)
+    runs-on: ubuntu-latest
+    # Advisory until the tree is formatted in a dedicated pass — does not gate.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  build-test:
+    name: clippy + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # GPUI / Wayland build dependencies.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libvulkan-dev vulkan-validationlayers \
+            libfontconfig-1-dev libfreetype-dev \
+            libasound2-dev libdbus-1-dev pkg-config
+      # unwrap_used / expect_used are workspace `warn` and cleaned incrementally,
+      # so clippy is advisory rather than `-D warnings` for now.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
+        continue-on-error: true
+      - name: Test
+        run: cargo test --workspace --lib --bins

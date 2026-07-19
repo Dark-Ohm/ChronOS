@@ -1,0 +1,17 @@
+ChronOS — License TBD
+=====================
+
+The license for this project has not yet been finalized.
+
+Until a license is chosen and committed here, **all rights are reserved** by the
+copyright holder (dohm-labs / Dark-Ohm). No permission is granted to use, copy,
+modify, or distribute this software except as explicitly agreed in writing.
+
+Notes:
+- Ported third-party code retains its own upstream license and is attributed in
+  `Source/NOTICE` (e.g. Kael is Apache-2.0).
+- The `reference/` directory contains unlicensed study material and is never
+  committed to this repository.
+
+This file is a placeholder and will be replaced once the license decision is
+made. See the "License" section of README.md.
