@@ -72,9 +72,13 @@ impl Render for Bar {
             .map(|w| w.render(window, cx))
             .collect();
 
+        let theme = Theme::global(cx);
         div()
             .size_full()
-            .bg(Theme::global(cx).bg.tertiary)
+            .bg(theme.bg.tertiary)
+            .border_b_1()
+            .border_color(theme.bg.elevated)
+            .px(px(10.))
             .flex()
             .items_center()
             .child(section_div(BarSection::Left, left))
@@ -86,16 +90,19 @@ impl Render for Bar {
 /// Wrap a section's widgets in a flex container aligned per section.
 fn section_div(section: BarSection, widgets: Vec<AnyElement>) -> AnyElement {
     match section {
+        // Gaps follow the mockup: left groups 12px apart, right controls 4px.
         BarSection::Left => div()
             .flex()
             .flex_1()
+            .items_center()
             .justify_start()
-            .gap(px(8.))
+            .gap(px(12.))
             .children(widgets)
             .into_any_element(),
         BarSection::Center => div()
             .flex()
             .flex_none()
+            .items_center()
             .justify_center()
             .gap(px(8.))
             .children(widgets)
@@ -103,8 +110,9 @@ fn section_div(section: BarSection, widgets: Vec<AnyElement>) -> AnyElement {
         BarSection::Right => div()
             .flex()
             .flex_1()
+            .items_center()
             .justify_end()
-            .gap(px(8.))
+            .gap(px(4.))
             .children(widgets)
             .into_any_element(),
     }

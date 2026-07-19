@@ -1,4 +1,4 @@
-//! Center-section clock widget — `HH:MM · dd мес` in Russian.
+//! Clock widget — `HH:MM · dd мес` in Russian, rightmost in the right cluster.
 //! Updates every second via the bar refresh-bridge (1-second ticker).
 
 use chrono::{Datelike, Local};
@@ -24,7 +24,7 @@ const MONTHS_RU: [&str; 12] = [
     "\u{0434}\u{0435}\u{043A}", // дек
 ];
 
-/// Bar clock widget — center section.
+/// Bar clock widget — right section, registered last (rightmost edge).
 pub struct ClockWidget;
 
 impl BarWidget for ClockWidget {
@@ -33,7 +33,7 @@ impl BarWidget for ClockWidget {
     }
 
     fn section(&self) -> BarSection {
-        BarSection::Center
+        BarSection::Right
     }
 
     fn render(&self, _window: &mut Window, cx: &App) -> AnyElement {
