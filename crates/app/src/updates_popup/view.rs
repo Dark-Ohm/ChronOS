@@ -14,7 +14,7 @@ use gpui::{
 use chronos_services::{PackageUpdate, Service, UpdateSource};
 
 use crate::state::AppState;
-use crate::updates_popup::{close_this, upgrade_all};
+use crate::updates_popup::{LIST_MAX_H, close_this, max_visible_rows, upgrade_all};
 
 use chronos_ui::Theme;
 
@@ -84,11 +84,42 @@ impl Render for UpdatesPopupView {
                 .child("System is up to date")
                 .into_any_element()
         } else {
-            let rows: Vec<AnyElement> = updates
+            // Truncate so the footer's "Upgrade all" button always stays
+            // within the window's visible bounds (see MAX_POPUP_H comment in
+            // mod.rs) — losing rows off the bottom is acceptable, losing the
+            // only way to trigger an upgrade is not.
+            let max_rows = max_visible_rows();
+            let (shown, hidden) = if count > max_rows && max_rows > 0 {
+                (max_rows - 1, count - (max_rows - 1))
+            } else {
+                (count, 0)
+            };
+            let mut rows: Vec<AnyElement> = updates[..shown]
                 .iter()
                 .map(|u| render_row(u, text_primary, text_muted, radius))
                 .collect();
-            div().w_full().flex_col().children(rows).into_any_element()
+            if hidden > 0 {
+                rows.push(
+                    div()
+                        .w_full()
+                        .px(px(ROW_PAD_X))
+                        .py(px(ROW_PAD_Y))
+                        .text_color(text_muted)
+                        .child(format!("+{hidden} more (run checkupdates for the full list)"))
+                        .into_any_element(),
+                );
+            }
+            // Hard pixel clip: even if the truncation above under- or
+            // over-estimates real row height, this guarantees the list can
+            // never grow past LIST_MAX_H and push the footer out of the
+            // window (see mod.rs `HEADER_BUDGET_H` comment).
+            div()
+                .w_full()
+                .max_h(px(LIST_MAX_H))
+                .overflow_hidden()
+                .flex_col()
+                .children(rows)
+                .into_any_element()
         };
 
         let footer: AnyElement = if updates.is_empty() {
