@@ -89,7 +89,8 @@ impl BarWidget for BatteryWidget {
                         Ok(()) => tracing::info!("battery widget: set power profile to {:?}", next),
                         Err(e) => tracing::error!("battery widget: failed to set power profile: {e:?}"),
                     }
-                });
+                })
+                .detach();
             })
             .into_any_element()
     }
