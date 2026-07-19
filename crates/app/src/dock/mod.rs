@@ -2,19 +2,22 @@
 //!
 //! Opens as a layer-shell surface (like the bar, not a popup). Shows a
 //! horizontal row of icons from `ApplicationsSubscriber` filtered to a
-//! hardcoded pinned list. Click launches the app via `launcher::launch`.
+//! persistent pinned list (`~/.config/chronos/dock.toml`). Click launches
+//! the app via `launcher::launch`. Right-click opens an "Unpin" context menu.
 
+pub mod config;
+pub mod context_menu;
+pub mod signal;
 mod view;
 
 use std::time::Duration;
 
 use gpui::{
-    App, Bounds, DisplayId, Render, Size, Window, WindowBackgroundAppearance, WindowBounds,
-    WindowKind, WindowOptions, div, layer_shell::*, point, prelude::*, px,
+    App, Bounds, DisplayId, Size, WindowBackgroundAppearance, WindowBounds, WindowKind,
+    WindowOptions, layer_shell::*, point, prelude::*, px,
 };
 
 use crate::dock::view::DockView;
-use crate::state::{watch, AppState};
 
 const DOCK_HEIGHT: f32 = 56.;
 
@@ -68,6 +71,10 @@ fn open_on_display(display_id: Option<DisplayId>, cx: &mut App) -> bool {
 
 /// Opens one dock window per display. Called once at startup from `main.rs`.
 pub fn init(cx: &mut App) {
+    // Init context menu and config change signal globals.
+    cx.set_global(context_menu::DockMenuState::default());
+    cx.set_global(signal::DockConfigSignal::default());
+
     cx.spawn(async move |cx| {
         // Small delay to allow Wayland to enumerate displays.
         cx.background_executor()

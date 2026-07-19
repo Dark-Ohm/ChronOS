@@ -31,6 +31,8 @@ image = "0.25"
 smallvec = "1.6"
 portable-pty = "0.9"
 alacritty_terminal = "0.26"
+toml = "0.8"
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }

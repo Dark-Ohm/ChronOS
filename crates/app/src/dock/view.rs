@@ -4,14 +4,15 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use gpui::{
-    App, Context, Focusable, InteractiveElement, IntoElement, Render, Styled,
-    Window, div, img, prelude::*, px,
-};
-use gpui::ImageSource;
 use chronos_services::{AppEntry, Service};
 use chronos_ui::Theme;
+use gpui::ImageSource;
+use gpui::{
+    App, Context, Focusable, InteractiveElement, IntoElement, MouseButton, Render, Styled, Window,
+    div, img, prelude::*, px,
+};
 
+use crate::dock::config::DockConfig;
 use crate::launcher::launch::launch;
 use crate::state;
 
@@ -19,15 +20,9 @@ const DOCK_HEIGHT: f32 = 56.;
 const ICON_SIZE: f32 = 40.;
 const ICON_PADDING: f32 = 8.;
 
-/// Pinned application IDs. Only these are shown in the dock.
-/// A pinned ID is matched against `AppEntry.id` (filename stem without .desktop).
-/// Items that don't resolve in ApplicationsState are silently skipped.
-const PINNED_IDS: &[&str] = &["kitty", "thunar", "firefox", "code", "vivaldi"];
-
 /// Cached icon path resolutions. Populated lazily, never invalidated
 /// (icon themes rarely change mid-session).
-static ICON_CACHE: OnceLock<std::sync::Mutex<HashMap<String, Option<PathBuf>>>> =
-    OnceLock::new();
+static ICON_CACHE: OnceLock<std::sync::Mutex<HashMap<String, Option<PathBuf>>>> = OnceLock::new();
 
 fn icon_cache() -> &'static std::sync::Mutex<HashMap<String, Option<PathBuf>>> {
     ICON_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
@@ -35,16 +30,19 @@ fn icon_cache() -> &'static std::sync::Mutex<HashMap<String, Option<PathBuf>>> {
 
 pub struct DockView {
     icons: Vec<(AppEntry, Option<PathBuf>)>,
+    entries: Vec<AppEntry>,
     focus: gpui::FocusHandle,
 }
 
 impl DockView {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let entries = state::AppState::applications(cx).get().entries;
-        let icons = build_dock_icons(&entries);
+        let config = DockConfig::load();
+        let entries = state::AppState::applications(cx).get().entries.clone();
+        let icons = build_dock_icons(&config.pinned, &entries);
 
-        let mut view = Self {
+        let view = Self {
             icons,
+            entries,
             focus: cx.focus_handle(),
         };
 
@@ -52,7 +50,19 @@ impl DockView {
         // when packages are installed/removed.
         let signal = state::AppState::applications(cx).subscribe();
         state::watch(cx, signal, |this, state, cx| {
-            this.icons = build_dock_icons(&state.entries);
+            this.entries = state.entries.clone();
+            let config = DockConfig::load();
+            this.icons = build_dock_icons(&config.pinned, &this.entries);
+            cx.notify();
+        });
+
+        // Subscribe to dock config changes (e.g. unpin from context menu).
+        let config_signal = cx.global::<crate::dock::signal::DockConfigSignal>()
+            .signal
+            .signal();
+        state::watch(cx, config_signal, |this, _, cx| {
+            let config = DockConfig::load();
+            this.icons = build_dock_icons(&config.pinned, &this.entries);
             cx.notify();
         });
 
@@ -76,6 +86,7 @@ impl Render for DockView {
                 let entry = entry.clone();
                 let icon_path = icon_path.clone();
                 let label = entry.name.clone();
+                let entry_id = entry.id.clone();
 
                 div()
                     .id(format!("dock-icon-{}", entry.id))
@@ -88,43 +99,45 @@ impl Render for DockView {
                     .rounded_lg()
                     .hover(|s| s.bg(theme.interactive.hover))
                     .cursor_pointer()
-                    .on_click(move |_event, window, _cx: &mut App| {
+                    .on_click(move |_event, _window, _cx: &mut App| {
                         if let Err(e) = launch(&entry.exec) {
                             tracing::error!("dock: failed to launch {}: {e:#}", entry.name);
                         }
-                        // Close dock after click (it's a launcher, not a taskbar).
-                        let _ = window.remove_window();
                     })
-                    .child(
-                        match icon_path {
-                            Some(path) => {
-                                let src: ImageSource = path.into();
-                                img(src)
-                                    .w(px(ICON_SIZE))
-                                    .h(px(ICON_SIZE))
-                                    .into_any_element()
-                            }
-                            None => {
-                                // Fallback: first letter of name as text icon.
-                                let letter = label.chars().next().unwrap_or('?').to_uppercase().to_string();
-                                div()
-                                    .w(px(ICON_SIZE))
-                                    .h(px(ICON_SIZE))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .rounded_md()
-                                    .bg(theme.bg.elevated)
-                                    .child(
-                                        div()
-                                            .text_lg()
-                                            .text_color(theme.text.primary)
-                                            .child(letter),
-                                    )
-                                    .into_any_element()
-                            }
-                        }
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        move |_event, _window, cx: &mut App| {
+                            crate::dock::context_menu::open(cx, entry_id.clone());
+                        },
                     )
+                    .child(match icon_path {
+                        Some(path) => {
+                            let src: ImageSource = path.into();
+                            img(src)
+                                .w(px(ICON_SIZE))
+                                .h(px(ICON_SIZE))
+                                .into_any_element()
+                        }
+                        None => {
+                            // Fallback: first letter of name as text icon.
+                            let letter = label
+                                .chars()
+                                .next()
+                                .unwrap_or('?')
+                                .to_uppercase()
+                                .to_string();
+                            div()
+                                .w(px(ICON_SIZE))
+                                .h(px(ICON_SIZE))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded_md()
+                                .bg(theme.bg.elevated)
+                                .child(div().text_lg().text_color(theme.text.primary).child(letter))
+                                .into_any_element()
+                        }
+                    })
             }))
     }
 }
@@ -136,8 +149,8 @@ impl Focusable for DockView {
 }
 
 /// Build the list of pinned icons with resolved paths from the full entries list.
-fn build_dock_icons(entries: &[AppEntry]) -> Vec<(AppEntry, Option<PathBuf>)> {
-    PINNED_IDS
+fn build_dock_icons(pinned: &[String], entries: &[AppEntry]) -> Vec<(AppEntry, Option<PathBuf>)> {
+    pinned
         .iter()
         .filter_map(|pin_id| {
             let entry = entries.iter().find(|e| e.id == *pin_id)?;
@@ -183,14 +196,20 @@ fn resolve_icon_uncached(name: &str) -> Option<PathBuf> {
 
     for base in &bases {
         for theme in &chain {
-            if theme.is_empty() { continue; }
+            if theme.is_empty() {
+                continue;
+            }
             for size in &sizes {
                 for ctx in &contexts {
                     for ext in &exts {
                         let path = if ctx.is_empty() {
                             base.join(theme).join(size).join(name).with_extension(ext)
                         } else {
-                            base.join(theme).join(size).join(ctx).join(name).with_extension(ext)
+                            base.join(theme)
+                                .join(size)
+                                .join(ctx)
+                                .join(name)
+                                .with_extension(ext)
                         };
                         if path.exists() {
                             return Some(path);
@@ -241,7 +260,11 @@ fn collect_inherits(
         let index = base.join(theme).join("index.theme");
         if let Ok(content) = std::fs::read_to_string(&index) {
             if let Some(inherits) = parse_inherits(&content) {
-                for parent in inherits.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                for parent in inherits
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                {
                     collect_inherits(parent, chain, visited, depth + 1, bases);
                 }
             }
@@ -334,8 +357,9 @@ mod tests {
                 terminal: false,
             },
         ];
-        let icons = build_dock_icons(&entries);
-        // Only kitty should be in the dock (it's in PINNED_IDS).
+        let pinned = vec!["kitty".to_string()];
+        let icons = build_dock_icons(&pinned, &entries);
+        // Only kitty should be in the dock (it's in pinned).
         assert!(icons.iter().any(|(e, _)| e.id == "kitty"));
         assert!(!icons.iter().any(|(e, _)| e.id == "notpinned"));
     }
