@@ -1037,8 +1037,10 @@ dependencies = [
  "inotify",
  "nucleo",
  "portable-pty",
+ "serde",
  "smallvec",
  "tokio",
+ "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1071,6 +1073,7 @@ dependencies = [
  "niri-ipc",
  "notify",
  "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",

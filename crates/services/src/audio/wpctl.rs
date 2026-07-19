@@ -29,6 +29,11 @@ pub fn format_set_mute_toggle_args(id: &str) -> Vec<String> {
     ]
 }
 
+/// Build `wpctl set-default <id>` argv (without the binary name).
+pub fn format_set_default_args(id: u32) -> Vec<String> {
+    vec!["set-default".into(), id.to_string()]
+}
+
 /// Parse `wpctl get-volume` stdout.
 ///
 /// Examples:
@@ -188,6 +193,14 @@ id 53, type PipeWire:Interface:Node
                 "@DEFAULT_AUDIO_SOURCE@".to_string(),
                 "toggle".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn format_set_default_argv() {
+        assert_eq!(
+            format_set_default_args(70),
+            vec!["set-default".to_string(), "70".to_string()]
         );
     }
 }

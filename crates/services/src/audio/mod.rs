@@ -20,13 +20,14 @@ use tracing::{info, warn};
 
 use crate::Service;
 use crate::ServiceStatus;
-pub use types::{AudioCommand, AudioState, EndpointState};
+pub use types::{AudioCommand, AudioDevice, AudioState, EndpointState};
 pub use wpctl::{
-    clamp_volume, format_set_mute_toggle_args, format_set_volume_args, parse_get_volume,
-    parse_node_description,
+    clamp_volume, format_set_default_args, format_set_mute_toggle_args, format_set_volume_args,
+    parse_get_volume, parse_node_description,
 };
 
 pub mod types;
+mod pw_dump;
 mod wpctl;
 
 const DEFAULT_SINK: &str = "@DEFAULT_AUDIO_SINK@";
@@ -142,8 +143,19 @@ async fn run(data: Mutable<AudioState>, status: Mutable<ServiceStatus>) {
 
 async fn read_state() -> anyhow::Result<AudioState> {
     tokio::task::spawn_blocking(|| {
-        let sink = read_endpoint(DEFAULT_SINK)?;
-        let source = read_endpoint(DEFAULT_SOURCE)?;
+        let mut sink = read_endpoint(DEFAULT_SINK)?;
+        let mut source = read_endpoint(DEFAULT_SOURCE)?;
+        // Device list from pw-dump (same poll tick). Soft-fail: empty lists if
+        // dump is missing/broken — volume/mute still work.
+        match pw_dump::run_pw_dump().and_then(|j| pw_dump::parse_pw_dump_devices(&j)) {
+            Ok((sinks, sources)) => {
+                sink.available = sinks;
+                source.available = sources;
+            }
+            Err(e) => {
+                warn!("audio: pw-dump device list failed: {e:?}");
+            }
+        }
         Ok(AudioState { sink, source })
     })
     .await
@@ -164,6 +176,7 @@ fn read_endpoint(id: &str) -> anyhow::Result<EndpointState> {
         volume,
         muted,
         name,
+        available: Vec::new(),
     })
 }
 
@@ -176,6 +189,9 @@ pub fn command_to_wpctl_args(cmd: &AudioCommand) -> Vec<String> {
         AudioCommand::SetSourceVolume(v) => format_set_volume_args(DEFAULT_SOURCE, *v),
         AudioCommand::ToggleSinkMute => format_set_mute_toggle_args(DEFAULT_SINK),
         AudioCommand::ToggleSourceMute => format_set_mute_toggle_args(DEFAULT_SOURCE),
+        AudioCommand::SetDefaultSink(id) | AudioCommand::SetDefaultSource(id) => {
+            format_set_default_args(*id)
+        }
     }
 }
 
@@ -234,6 +250,7 @@ mod tests {
                 volume: 0.5,
                 muted: false,
                 name: "a".into(),
+                available: Vec::new(),
             },
             source: EndpointState::default(),
         };
@@ -267,5 +284,17 @@ mod tests {
             args,
             vec!["set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"]
         );
+    }
+
+    #[test]
+    fn command_to_wpctl_args_set_default_sink() {
+        let args = command_to_wpctl_args(&AudioCommand::SetDefaultSink(70));
+        assert_eq!(args, vec!["set-default", "70"]);
+    }
+
+    #[test]
+    fn command_to_wpctl_args_set_default_source() {
+        let args = command_to_wpctl_args(&AudioCommand::SetDefaultSource(46));
+        assert_eq!(args, vec!["set-default", "46"]);
     }
 }

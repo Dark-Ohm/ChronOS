@@ -3,6 +3,19 @@
 //! Float volumes → **no `Eq`** (HANDOFF / MEMORY: float-in-Data trap, third hit
 //! was UPower; do not reintroduce).
 
+/// One selectable PipeWire endpoint (sink or source) from `pw-dump`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AudioDevice {
+    /// PipeWire object id — argument to `wpctl set-default <id>`.
+    pub id: u32,
+    /// Human-readable `node.description`.
+    pub name: String,
+    /// Technical `node.name` — matched against metadata default.
+    pub node_name: String,
+    /// Whether this device is the current session default.
+    pub is_default: bool,
+}
+
 /// One PipeWire endpoint (default sink or default source).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EndpointState {
@@ -12,6 +25,8 @@ pub struct EndpointState {
     pub muted: bool,
     /// Human-readable name (`node.description`), empty when unknown.
     pub name: String,
+    /// All sinks or sources of this kind, from `pw-dump` (refreshed on poll).
+    pub available: Vec<AudioDevice>,
 }
 
 /// Reactive snapshot of the default sink + default source.
@@ -23,11 +38,15 @@ pub struct AudioState {
     pub source: EndpointState,
 }
 
-/// Commands issued by UI (OSD / bar sliders) against the default devices.
+/// Commands issued by UI (OSD / bar / volume popup) against devices.
 #[derive(Clone, Debug)]
 pub enum AudioCommand {
     SetSinkVolume(f64),
     SetSourceVolume(f64),
     ToggleSinkMute,
     ToggleSourceMute,
+    /// `wpctl set-default <id>` for a sink node id from `pw-dump`.
+    SetDefaultSink(u32),
+    /// `wpctl set-default <id>` for a source node id from `pw-dump`.
+    SetDefaultSource(u32),
 }

@@ -18,7 +18,7 @@ pub mod wallpaper;
 pub use applications::{
     AppEntry, ApplicationsCommand, ApplicationsState, ApplicationsSubscriber, strip_field_codes,
 };
-pub use audio::{AudioCommand, AudioState, AudioSubscriber, EndpointState};
+pub use audio::{AudioCommand, AudioDevice, AudioState, AudioSubscriber, EndpointState};
 pub use aur::{AurCommand, AurSubscriber, PackageUpdate, UpdateSource, UpdatesState};
 pub use compositor::{
     ActiveWindow, CompositorBackend, CompositorCommand, CompositorState, CompositorSubscriber,

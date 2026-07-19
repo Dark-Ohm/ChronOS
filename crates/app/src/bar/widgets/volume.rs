@@ -1,8 +1,7 @@
-//! Volume widget for the bar — sink icon + percent, click mute, scroll ±5%.
+//! Volume widget for the bar — sink icon + percent, click opens volume popup,
+//! scroll ±5%.
 
-use gpui::{
-    AnyElement, App, ScrollDelta, ScrollWheelEvent, Window, div, prelude::*, px,
-};
+use gpui::{AnyElement, App, ScrollDelta, ScrollWheelEvent, Window, div, prelude::*, px};
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{AudioCommand, EndpointState, Service, audio::clamp_volume};
@@ -103,8 +102,8 @@ impl BarWidget for VolumeWidget {
             .py(px(2.))
             .rounded(theme.radius)
             .child(div().child(label).text_color(color))
-            .on_click(|_event, _window, cx: &mut App| {
-                AppState::audio(cx).dispatch(AudioCommand::ToggleSinkMute);
+            .on_click(|_event, window, cx: &mut App| {
+                crate::volume_popup::toggle(window, cx);
             })
             .on_scroll_wheel(|event: &ScrollWheelEvent, _window, cx: &mut App| {
                 let step = scroll_volume_delta(&event.delta);
@@ -136,6 +135,7 @@ mod tests {
             volume,
             muted,
             name: "Speakers".into(),
+            available: Vec::new(),
         }
     }
 

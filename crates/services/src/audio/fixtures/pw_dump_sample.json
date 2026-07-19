@@ -1,0 +1,79 @@
+[
+  {
+    "id": 40,
+    "type": "PipeWire:Interface:Metadata",
+    "metadata": [
+      {
+        "subject": 0,
+        "key": "default.audio.sink",
+        "type": "Spa:String:JSON",
+        "value": {
+          "name": "alsa_output.pci-0000_00_1f.3.analog-stereo"
+        }
+      },
+      {
+        "subject": 0,
+        "key": "default.audio.source",
+        "type": "Spa:String:JSON",
+        "value": {
+          "name": "easyeffects_source"
+        }
+      }
+    ]
+  },
+  {
+    "id": 45,
+    "type": "PipeWire:Interface:Node",
+    "info": {
+      "props": {
+        "media.class": "Audio/Sink",
+        "node.description": "Easy Effects Sink",
+        "node.name": "easyeffects_sink"
+      }
+    }
+  },
+  {
+    "id": 46,
+    "type": "PipeWire:Interface:Node",
+    "info": {
+      "props": {
+        "media.class": "Audio/Source/Virtual",
+        "node.description": "Easy Effects Source",
+        "node.name": "easyeffects_source"
+      }
+    }
+  },
+  {
+    "id": 69,
+    "type": "PipeWire:Interface:Node",
+    "info": {
+      "props": {
+        "media.class": "Audio/Sink",
+        "node.description": "GA104 High Definition Audio Controller Digital Stereo (HDMI)",
+        "node.name": "alsa_output.pci-0000_01_00.1.hdmi-stereo"
+      }
+    }
+  },
+  {
+    "id": 70,
+    "type": "PipeWire:Interface:Node",
+    "info": {
+      "props": {
+        "media.class": "Audio/Sink",
+        "node.description": "Built-in Audio Analog Stereo",
+        "node.name": "alsa_output.pci-0000_00_1f.3.analog-stereo"
+      }
+    }
+  },
+  {
+    "id": 71,
+    "type": "PipeWire:Interface:Node",
+    "info": {
+      "props": {
+        "media.class": "Audio/Source",
+        "node.description": "Built-in Audio Analog Stereo",
+        "node.name": "alsa_input.pci-0000_00_1f.3.analog-stereo"
+      }
+    }
+  }
+]
