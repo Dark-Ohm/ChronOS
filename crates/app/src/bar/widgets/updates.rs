@@ -3,7 +3,7 @@
 //!
 //! Data comes from `AppState::aur(cx)` (`UpdatesState`, `crates/services/src/aur/`).
 
-use gpui::{AnyElement, App, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Window, div, prelude::*, px, svg};
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{Service, UpdatesState};
@@ -23,7 +23,7 @@ struct UpdatesView {
 fn describe(state: &UpdatesState) -> UpdatesView {
     let count = state.count();
     UpdatesView {
-        icon: "⬆",
+        icon: "icons/arrow-up.svg",
         count_label: if count > 0 {
             count.to_string()
         } else {
@@ -56,13 +56,7 @@ impl BarWidget for UpdatesWidget {
             theme.text.muted
         };
 
-        let label = if view.has_updates {
-            format!("{} {}", view.icon, view.count_label)
-        } else {
-            view.icon.to_string()
-        };
-
-        div()
+        let mut row = div()
             .id("bar-updates")
             .flex()
             .items_center()
@@ -71,7 +65,17 @@ impl BarWidget for UpdatesWidget {
             .px(px(6.))
             .py(px(2.))
             .rounded(theme.radius)
-            .child(div().child(label).text_color(color))
+            .child(svg().path(view.icon).size(px(13.)).text_color(color));
+        if view.has_updates {
+            row = row.child(
+                div()
+                    .child(view.count_label)
+                    .text_color(color)
+                    .font_family(theme.font_mono)
+                    .text_size(theme.font_sizes.sm),
+            );
+        }
+        row
             .on_click(|_event, window, cx: &mut App| {
                 crate::updates_popup::toggle(window, cx);
             })

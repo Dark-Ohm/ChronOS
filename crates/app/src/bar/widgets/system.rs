@@ -1,4 +1,4 @@
-//! System widget for the bar — ⚙ icon, click opens the system popup
+//! System widget for the bar — hexagon-sigil icon, click opens the system popup
 //! (brightness + power profile + gaming mode).
 //!
 //! Always visible (desktop or laptop, with or without a battery). On a
@@ -8,7 +8,7 @@
 //! removed by this module; both can coexist (battery shows on laptops,
 //! system shows everywhere).
 
-use gpui::{AnyElement, App, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Window, div, prelude::*, px, svg};
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_ui::Theme;
@@ -26,10 +26,8 @@ impl BarWidget for SystemWidget {
 
     fn render(&self, _window: &mut Window, cx: &App) -> AnyElement {
         let theme = Theme::global(cx);
-        let color = theme.text.secondary;
 
-        // Glyph icon (⚙) — simpler than SVG hexagon line-art, and the brief
-        // explicitly allows a glyph when SVG in GPUI is a hassle.
+        // Hexagon sigil with core node (mockup: system entry in accent).
         div()
             .id("bar-system")
             .flex()
@@ -38,7 +36,12 @@ impl BarWidget for SystemWidget {
             .px(px(6.))
             .py(px(2.))
             .rounded(theme.radius)
-            .child(div().child("⚙").text_color(color))
+            .child(
+                svg()
+                    .path("icons/hexagon-core.svg")
+                    .size(px(13.))
+                    .text_color(theme.accent.primary),
+            )
             .on_click(|_event, window, cx: &mut App| {
                 crate::system_popup::toggle(window, cx);
             })

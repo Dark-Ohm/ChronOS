@@ -1,3 +1,4 @@
+mod assets;
 mod bar;
 mod desktop_terminal;
 mod dock;
@@ -48,7 +49,7 @@ fn main() {
         let services = chronos_services::init_all();
 
         // services is Send + Sync (Mutable + zbus::Connection) -> crosses to GPUI thread
-        let app = application();
+        let app = application().with_assets(assets::Assets);
         app.run(move |cx| {
             tracing::info!("GPUI application context ready");
 

@@ -5,7 +5,7 @@
 //! `crates/services/src/notification/`). The unread badge is shown only when
 //! `unread > 0`; opening the popup dispatches `MarkAllRead`, clearing it.
 
-use gpui::{AnyElement, App, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Window, div, prelude::*, px, svg};
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{NotificationState, Service};
@@ -24,7 +24,7 @@ struct BellView {
 
 fn describe(state: &NotificationState) -> BellView {
     BellView {
-        icon: "🔔",
+        icon: "icons/bell.svg",
         unread: state.unread,
     }
 }
@@ -48,8 +48,9 @@ impl BarWidget for NotificationBellWidget {
         let muted = theme.text.muted;
         let badge_color = theme.status.error; // red dot for unread
 
-        let glyph = div()
-            .child(view.icon)
+        let glyph = svg()
+            .path(view.icon)
+            .size(px(13.))
             .text_color(if view.unread > 0 { theme.text.primary } else { muted });
 
         // Bell + optional red badge (count, capped at 99 for the label).
@@ -108,7 +109,7 @@ mod tests {
     fn describe_no_unread() {
         let v = describe(&NotificationState::default());
         assert_eq!(v.unread, 0);
-        assert_eq!(v.icon, "🔔");
+        assert_eq!(v.icon, "icons/bell.svg");
     }
 
     #[test]

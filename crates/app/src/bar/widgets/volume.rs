@@ -1,7 +1,7 @@
 //! Volume widget for the bar — sink icon + percent, click opens volume popup,
 //! scroll ±5%.
 
-use gpui::{AnyElement, App, ScrollDelta, ScrollWheelEvent, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, ScrollDelta, ScrollWheelEvent, Window, div, prelude::*, px, svg};
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{AudioCommand, EndpointState, Service, audio::clamp_volume};
@@ -32,13 +32,13 @@ fn describe(sink: &EndpointState) -> VolumeView {
 /// Icon buckets matching OSD (`osd/view.rs`): mute / near-zero / mid / high.
 fn volume_icon(muted: bool, volume: f64) -> &'static str {
     if muted {
-        "🔇"
+        "icons/speaker-mute.svg"
     } else if volume < 0.01 {
-        "🔈"
+        "icons/speaker-none.svg"
     } else if volume < 0.5 {
-        "🔉"
+        "icons/speaker-low.svg"
     } else {
-        "🔊"
+        "icons/speaker-high.svg"
     }
 }
 
@@ -90,8 +90,6 @@ impl BarWidget for VolumeWidget {
             theme.text.secondary
         };
 
-        let label = format!("{} {}%", view.icon, view.percent);
-
         div()
             .id("bar-volume")
             .flex()
@@ -101,7 +99,14 @@ impl BarWidget for VolumeWidget {
             .px(px(6.))
             .py(px(2.))
             .rounded(theme.radius)
-            .child(div().child(label).text_color(color))
+            .child(svg().path(view.icon).size(px(13.)).text_color(color))
+            .child(
+                div()
+                    .child(format!("{}%", view.percent))
+                    .text_color(color)
+                    .font_family(theme.font_mono)
+                    .text_size(theme.font_sizes.sm),
+            )
             .on_click(|_event, window, cx: &mut App| {
                 crate::volume_popup::toggle(window, cx);
             })
@@ -141,19 +146,19 @@ mod tests {
 
     #[test]
     fn icon_mute() {
-        assert_eq!(volume_icon(true, 0.8), "🔇");
-        assert_eq!(volume_icon(true, 0.0), "🔇");
+        assert_eq!(volume_icon(true, 0.8), "icons/speaker-mute.svg");
+        assert_eq!(volume_icon(true, 0.0), "icons/speaker-mute.svg");
     }
 
     #[test]
     fn icon_level_buckets() {
-        assert_eq!(volume_icon(false, 0.0), "🔈");
-        assert_eq!(volume_icon(false, 0.009), "🔈");
-        assert_eq!(volume_icon(false, 0.01), "🔉");
-        assert_eq!(volume_icon(false, 0.49), "🔉");
-        assert_eq!(volume_icon(false, 0.5), "🔊");
-        assert_eq!(volume_icon(false, 1.0), "🔊");
-        assert_eq!(volume_icon(false, 1.5), "🔊");
+        assert_eq!(volume_icon(false, 0.0), "icons/speaker-none.svg");
+        assert_eq!(volume_icon(false, 0.009), "icons/speaker-none.svg");
+        assert_eq!(volume_icon(false, 0.01), "icons/speaker-low.svg");
+        assert_eq!(volume_icon(false, 0.49), "icons/speaker-low.svg");
+        assert_eq!(volume_icon(false, 0.5), "icons/speaker-high.svg");
+        assert_eq!(volume_icon(false, 1.0), "icons/speaker-high.svg");
+        assert_eq!(volume_icon(false, 1.5), "icons/speaker-high.svg");
     }
 
     #[test]
@@ -168,7 +173,7 @@ mod tests {
     #[test]
     fn describe_muted() {
         let v = describe(&sink(0.4, true));
-        assert_eq!(v.icon, "🔇");
+        assert_eq!(v.icon, "icons/speaker-mute.svg");
         assert_eq!(v.percent, "40");
         assert!(v.muted);
     }
@@ -176,7 +181,7 @@ mod tests {
     #[test]
     fn describe_loud() {
         let v = describe(&sink(0.8, false));
-        assert_eq!(v.icon, "🔊");
+        assert_eq!(v.icon, "icons/speaker-high.svg");
         assert_eq!(v.percent, "80");
         assert!(!v.muted);
     }

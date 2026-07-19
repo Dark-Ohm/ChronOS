@@ -70,10 +70,10 @@ impl BarWidget for DockWidget {
                 crate::launcher::toggle(cx);
             })
             .child(
-                div()
-                    .child("⏻")
-                    .text_color(theme.accent.primary)
-                    .text_base(),
+                gpui::svg()
+                    .path("icons/hexagon-sigil.svg")
+                    .size(px(15.))
+                    .text_color(theme.accent.primary),
             );
 
         // Divider after start button.
