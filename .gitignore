@@ -21,8 +21,9 @@ System prompts/
 # Session logs
 log-dump/
 
-# Agent orchestration runtime state (per-agent caches/config, not source).
-# The human-readable briefs and reports live in orchestration/ and ARE tracked.
+# Agent orchestration — the whole working kitchen (briefs, reports, archive,
+# per-agent caches/config). Local-only, never published.
+orchestration/
 .autohand/
 .cline/
 .clinerules/
