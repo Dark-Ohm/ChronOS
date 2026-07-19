@@ -8,7 +8,45 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-20 (после приёмки Grok №14 + Mimo №10 + уборки).**
+**Обновлено: 2026-07-20 ночь-2 (бар-редизайн своими руками — сделано).**
+
+### Бар-редизайн 2026-07-20 (Архитектор сам, по разовому мандату пользователя)
+
+Пользователь единоразово снял запрет «архитектор не кодит» на остаток
+сессии — бар доведён до мокапа руками Архитектора. Все с live grim-смоком:
+
+- **`3e04264` Hermes №15 (принят)** — токен-фундамент: status.* →
+  Catppuccin (правка в `theme/mod.rs` — там реальный источник, НЕ
+  DEFAULT_BASE16; base16 синхронизирован на будущее), `font_mono:
+  &'static str` («JetBrains Mono», SharedString нельзя — Theme derive Copy),
+  BAR_HEIGHT 30, бар на `bg.tertiary`. Отчёт: `report-log/hermes-report-15.md`.
+- **`c7ccc02` лэйаут** — часы → правый край (Right, регистрируются
+  последними), MPRIS левее CAVA в центре, `widgets/separator.rs`
+  (1×14 `bg.elevated`, регистрируется В ПОЗИЦИИ — порядок в
+  `widgets/mod.rs::register_builtin` = порядок рендера!), паддинг бара
+  10px, border-b `bg.elevated`, гапы Left 12 / Right 4.
+- **`f370618` SVG-иконки** — НОВАЯ ИНФРА: `crates/app/src/assets.rs`
+  (AssetSource, include_bytes-макрос) + `application().with_assets(...)`
+  в main.rs + `crates/app/assets/icons/*.svg` (8 шт, line-art, тонируются
+  text_color как альфа-маска). Эмодзи выпилены: Пуск = hexagon-sigil
+  accent, system = hexagon-core accent, volume = 4 speaker-бакета
+  (пути в `volume_icon()`, тесты обновлены), updates = arrow-up,
+  bell = bell.svg. Network оставлен на Nerd-глифах (норм line-стиль).
+  Новые иконки класть в `assets/icons/` + строку в макрос `icons!`.
+
+**Хвосты бара:** project-switcher пилюля (Mimo №9, слот в правом
+кластере перед сепаратором), battery-иконка (эмодзи, но на десктопе
+скрыта — низкий приоритет), MPRIS «Unknown» при мёртвом плеере
+(данные, не стиль), tray/popups ещё на старой палитре местами.
+
+**Иконная система экосистемы:** Claude Design выдал полный комплект
+(`~/projects/chronos-ecosystem/Art/*-sigil-{ornate,icon}.svg`, 5 приложений
++ skeleton-темплейт). Ornate принят; циан заменён на `#5fd3e8` (sed, как
+старый арт). Дистилляты на 32px схлопываются — итерационный промпт выдан
+пользователю (core-глиф 45-55% холста, кольцо убрать). FM-иконка годна
+для обкатки уже сейчас.
+
+**Ниже — история.**
 Всё датированное 2026-07-17/18 и «Приёмка-разведка» ниже — ИСТОРИЯ.
 Актуальное поле — **этот блок** + «ВОЛНА Top Bar» (решения) + field
 rules внизу файла. `git log` — истина по коммитам.
