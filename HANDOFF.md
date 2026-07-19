@@ -8,74 +8,130 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-19 (поздний вечер). Всё из блока ниже (датировано
-2026-07-17/18) — ЗАКРЫТО, читай как историю, не как текущее поле.
-Актуальное состояние — секции «ВОЛНА «Top Bar редизайн»» и «Живая
-приёмка 2026-07-19» ниже, плюс этот абзац.**
+**Обновлено: 2026-07-19 (ночь, после приёмки Cline/Mimo/Hermes).**
+Всё датированное 2026-07-17/18 и «Приёмка-разведка» ниже — ИСТОРИЯ.
+Актуальное поле — **этот блок** + «ВОЛНА Top Bar» (решения) + field
+rules внизу файла. `git log` — истина по коммитам.
 
-**Живьём принято и запушено (git log — истина, последний ЗАПУШЕННЫЙ
-коммит `ea77f4b`; `8d74583` и `9119edd` ниже закоммичены локально, НЕ
-запушены — ждут отдельного добро):** tray_menu (`67ca90a`), launcher
-close-on-focus-loss убран навсегда (`fba8697`), updates_popup жёсткий
-клип (`67f7d10`, стандарт в ARCHITECTURE.md §4.1), power-profiles
-реально подключены (`2522018`), volume-попап с пикером устройств
-через pw-dump/wpctl (`66d66c3`), dock персистентный конфиг+unpin
-(`8929f12` → `dock.toml`), notifications тот же клип-паттерн
-(`af4e348`), cava-визуализатор в баре (`c519e2e`+эррата `eb043fd`).
-GitHub Pages лендинг живой: dark-ohm.github.io/ChronOS.
+### Git (2026-07-19 ночь)
 
-**Локально (не запушено):**
-- `8d74583` — **Hermes №13 ПРИНЯТО**: border(`#313244`)+hover+AUR-
-  бейдж на 4 попапах (updates/volume/tray/notifications). Диффы
-  сверены поимённо, cargo check --workspace чистый. Живой смок:
-  volume-попап подтверждён скриншотом (рамка видна), tray/updates-
-  AUR-бейдж/notifications-клип — НЕ подтверждены живьём отдельно,
-  доверие на диффе+компиляции. Отчёт архивирован
-  `orchestration/report-log/hermes-report-13.md`.
-- `9119edd` — дизайн-волна: `design.md` §7 (Top Bar project-switcher,
-  заменяет git-branch пилюлю) и §8 (светлая тема — айдентика вместо
-  Catppuccin Latte), плюс сами мокапы `design/*.dc.html` закоммичены
-  в репо (пользователь подтвердил явно — НЕ как `orchestration/`).
-  Рационализация — `DECISIONS.log`, запись «Светлая тема: айдентика
-  вместо Latte». Подробности и статус портирования — см. `MEMORY.md`
-  (auto-memory, вне репо) `light-theme-identity` и
-  `dark-ohm-design-workflow`, если нужен полный контекст воркфлоу.
+| | |
+|---|---|
+| **origin/master** | `897c084` (запушено: Hermes №13 `8d74583` + design `9119edd` + doc-sync) |
+| **local master HEAD** | `f7de445` — **ahead 4**, не пушено без отдельного добро |
+| ahead | `8457bbc` Cline №11 → `07df942` Mimo №8 → `f4ddd72` Hermes №14 → `f7de445` Zed system popup |
 
-**Открыто прямо сейчас** (брифы в `orchestration/agents/`, розданы,
-не все начаты):
-- **Hermes №14** (история уведомлений, bell+бейдж+инбокс) —
-  разблокирована (№13 принят), не начата.
-- **Cline №11** (workspace-точки вместо номеров) — не начато, низкий
-  риск, изолированный файл.
-- **Mimo №8** (dock → в левый кластер бара + кнопка «Пуск») — не
-  начато. **Mimo №9** (project switcher — переключатель проектов
-  вместо git-branch пилюли, через `org.freedesktop.portal.FileChooser`)
-  — СТРОГО после №8 (тот же кластер бара). Визуальный эталон теперь
-  есть — `design/Project Switcher.dc.html` (тёмный + светлый "Light C"
-  принят живьём) — сверяться с ним при кодовом брифе.
-- **Grok №13 (cava)** — ✅ ПРИНЯТО, коммит `c519e2e`+эррата `eb043fd`.
-- **System-popup**: дизайн-мокап ГОТОВ и принят живьём
-  (`design/System Popup.dc.html` — power-profile сегмент, gaming-mode
-  toggle с эффект-строкой, brightness fill-bar, сигил вместо battery-
-  иконки). КОДОВЫЙ бриф ещё НЕ написан — нужна предварительная сверка
-  точных `hyprctl`-команд для анимаций/blur/tearing, прежде чем
-  отдавать агенту.
-- **Светлая тема (`light_scheme()`)**: визуальный язык зафиксирован
-  живьём (`design/Project Switcher.dc.html`, вариант "Light C" —
-  холодная сине-лавандовая база, неон только в линиях/glow/watermark,
-  НЕ в заливке). Порт в `crates/ui/src/theme/schemes.rs` НЕ начат —
-  отдельная кодовая задача, не всё из мокапа переносимо 1:1
-  (watermark/glow-рёбра могут не лечь дёшево на GPUI-слои).
-- **Финальная сборка `bar/mod.rs`** (порядок секций Top Bar-волны)
-  — делает Архитектор лично после того, как все куски приняты по
-  отдельности, НЕ отдаётся узкозонному агенту.
+Ранее запушено и живо: tray_menu `67ca90a`, launcher no-focus-loss
+`fba8697`, updates clip `67f7d10`, power-profiles `2522018`, volume
+picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
+`c519e2e`+`eb043fd`. Лендинг: dark-ohm.github.io/ChronOS.
 
-Полный контекст решений волны — `DECISIONS.log` 2026-07-19 «Top Bar
-redesign wave», канон — `ARCHITECTURE.md` §14. Одностраничный обзор —
-`roadmap.md` в корне.
+### Принято локально (не на origin) — 2026-07-19 вечер/ночь
 
-Читать сверху вниз. При расхождении с ARCHITECTURE.md/DECISIONS.log
-побеждают они.
+- **`8457bbc` Cline №11** — workspace-точки (7px, accent/disabled,
+  `FocusWorkspace`). Зона только `workspaces.rs`. Live grim: точки +
+  активная синяя. Отчёт: `orchestration/report-log/cline-report-11.md`.
+- **`07df942` Mimo №8** — dock → `bar/widgets/dock.rs` + «Пуск»→
+  `launcher::toggle`; оконный dock lifecycle снят; cache
+  `config::cached`; context_menu `Anchor::TOP`. Live: **нет**
+  `namespace: dock` в layers; ⏻ + pinned в левом кластере. Оговорки:
+  `DockConfigSignal` без watch в bar (lag ~1s на unpin); menu по
+  центру, не под иконкой. Отчёт:
+  `orchestration/report-log/mimo-report-8.md`.
+- **`f4ddd72` Hermes №14** — history ring 100 + unread +
+  `MarkAllRead`; `render_notification_card`; `history_popup/`
+  lifecycle; bell+числовой бейдж. Live: 3×`notify-send` → grim
+  `🔔 3`. Open попапа ydotool-ом не дожат — MarkAllRead unit-тесты.
+  Отчёт: `orchestration/report-log/hermes-report-14.md`.
+- **`f7de445` Zed №2/№3 System popup** — brightness (ddcutil, оба
+  дисплея, soft-fail) + power-profile 3-сегмент (UPower) + gaming mode
+  (hyprctl eval). Приёмка: хирургический перенос Phase 2 из worktree
+  `ChronOS-zed2` (3 файла `system_popup/*`), сборка release зелёная,
+  код сверен с отчётом (detach/thread+oneshot/repaint/window.display
+  все на месте). Живой смок Zed'а с внешней верификацией (ddcutil/
+  powerprofilesctl/hyprctl getoption) по всем 5 элементам — прошёл.
+  **Финальный клик-конфирм на master-бинаре за пользователем** (ydotool
+  ненадёжен). **Известный хвост:** попап открывается на первом дисплее,
+  не на кликнутом (`window.display()==None`) — чинится консолидацией,
+  не блокер. Отчёт: `orchestration/report-log/zed-report-2.md`.
+- **Уже на origin:** Hermes №13 visual parity `8d74583`; design-волна
+  `9119edd` (`design/*.dc.html` в репо — user explicit; Light C
+  принят; System Popup мокап принят).
+
+Активные отчёты после приёмки **переносятся** в
+`orchestration/report-log/` (не копиями-дублями — active
+`orchestration/reports/` держать пустым/только WIP).
+
+### Открыто прямо сейчас
+
+- **Mimo №9** (project switcher) — **разблокирован** (№8 принят).
+  Пилюля = **имя проекта** + сигил/шеврон (не git-ветка — design
+  drift vs старый текст брифа). Эталон:
+  `design/Project Switcher.dc.html` (dark + Light C). Portal
+  FileChooser / `projects.toml`. Бриф в MIMO.md (после №8).
+- **Zed №2/№3 (System popup) — ПРИНЯТО функционально, `f7de445`**
+  (детали в блоке «Принято локально» выше). Bug 2 (кнопки не работали)
+  оказался двойным: `background_spawn` без `.detach()` (Task drop=cancel)
+  + `spawn_blocking` вне tokio — оба в кровных фактах ниже. gaming
+  repaint добавлен. **Открытый хвост:** дисплей — `window.display()==None`
+  для layer-shell (моя гипотеза «попап на дисплее кликнутого бара» через
+  `window.display` НЕ сработала, форк его не заполняет). Роутится через
+  консолидацию (ниже), не через inheritance. Побочно:
+  `display.bounds().origin==(0,0)` в форке (локальные коорд).
+
+- **НАПРАВЛЕНИЕ: chrome → один «пультовый» монитор** (принято
+  2026-07-19 ночь, `DECISIONS.log`). Отход от традиционного DE: бар/
+  панели/попапы/лаунчер — на ОДНОМ пультовом мониторе; второй → холст
+  под окна (Hyprland) + desktop-виджеты (`plasminal`) + позже. Сейчас
+  `bar/mod.rs:174` открывает бар на всех дисплеях — это меняется.
+  Designation пультового — по **uuid** монитора в конфиге
+  (`cx.primary_display()==None` на Wayland; форк даёт стабильный
+  across-reboot `uuid()` из имени вывода). Скоуп СЕЙЧАС: точим шелл
+  под пультовый; роль второго (виджет-холст) — ОТЛОЖЕНА до готовности
+  пультовой части. **Consolidation — следующий такт** (после клик-
+  конфирма system popup): designation по uuid + `bar/mod.rs` только на
+  пультовом. Первый шаг брифа — живая проверка `uuid()`. Бриф ещё НЕ
+  написан. Закрывает дисплейный хвост system popup разом.
+- **Светлая тема** — порт `light_scheme()` под Light C **не начат**
+  (`crates/ui/src/theme/schemes.rs` всё ещё Latte-hex).
+- **Финальная сборка порядка** в bar registry / `bar/mod.rs` —
+  Архитектор лично, когда куски волны сядут.
+- **Grok №13 cava** — ✅ давно, `c519e2e`+`eb043fd`.
+
+### Кровные факты (System popup / железо, 2026-07-19)
+
+**Яркость — только `ddcutil`, не brightnessctl.**
+- `/sys/class/backlight` пуст (десктоп + RTX 3070).
+- `i2c-dev` loaded + `/etc/modules-load.d/i2c-dev.conf`; user ∈ `i2c`.
+- Display 1 Dell U2412M HDMI `/dev/i2c-2`; Display 2 Samsung LC32G5xT
+  DP `/dev/i2c-3` (**primary**). `getvcp`/`setvcp 10` write-smoke OK.
+- MVP: один слайдер → оба дисплея; soft-fail без ddcutil/i2c.
+
+**Gaming mode — `hyprctl eval`, НЕ `keyword`.**
+На Hyprland 0.55.4 + Lua (`hyprland.lua`):
+`hyprctl keyword …` → *«keyword can't work with non-legacy parsers»*.
+Рабочий toggle (проверено + restore):
+```bash
+# ON
+hyprctl eval 'hl.config({ animations = { enabled = false }, decoration = { blur = { enabled = false } }, general = { allow_tearing = true } })'
+# OFF
+hyprctl eval 'hl.config({ animations = { enabled = true }, decoration = { blur = { enabled = true } }, general = { allow_tearing = false } })'
+```
+Power profile — существующий UPower / power-profiles-daemon.
+Hide bar/dock в gaming MVP — **не** (chicken-egg для отладки).
+
+### Working tree hygiene (сейчас)
+
+Помимо uncommitted Zed №2: rustfmt/шум в clock/mpris/network/ipc/osd/
+wallpaper_ctl/applications/types — **не коммитить** без осознанного
+диффа. `skills/*`, `_ds/` — untracked, не в git.  
+**Worktree sibling:** `ChronOS-zed2` — отдельный бинарь; при смоке
+проверяй `readlink /proc/$(pgrep -x chronos)/exe` — не перепутать с
+master `target/release/chronos`. `pkill -x chronos` (не `-f`).
+
+Полный контекст волны — `DECISIONS.log` 2026-07-19 «Top Bar redesign
+wave», канон — `ARCHITECTURE.md` §14, обзор — `roadmap.md`.
+При расхождении с ARCHITECTURE.md/DECISIONS.log побеждают они.
 
 ## Приёмка-разведка 2026-07-19 (сверка отчётов с деревом, БЕЗ билда/смока)
 
@@ -108,7 +164,13 @@ redesign wave», канон — `ARCHITECTURE.md` §14. Одностраничн
 — изолированный `git worktree` на нужном коммите, не верить «зелено» из чужого
 замеса. Канон при расхождении — ARCHITECTURE.md/DECISIONS.log.
 
-## ВОЛНА «Top Bar редизайн» — решения приняты 2026-07-19, брифы ещё НЕ написаны
+## ВОЛНА «Top Bar редизайн» — решения 2026-07-19
+
+> **Статус исполнения (ночь 2026-07-19):** A cava ✅ · B workspace-точки ✅
+> (`8457bbc`) · C dock→bar ✅ (`07df942`) · E history/bell ✅ (`f4ddd72`) ·
+> D project switcher — следующий (Mimo №9) · System popup — WIP Zed №2.
+> Брифы написаны в `orchestration/agents/{CLINE,MIMO,HERMES,ZED}.md`.
+> Ниже — **решения и рационализация**, не очередь «ещё не писали брифы».
 
 Пользователь оценил живой прогон против референс-мокапов Claude Design
 (`design/*.dc.html` — Updates/Volume/Notifications/Top Bar) жёстко:
@@ -160,10 +222,9 @@ redesign wave», канон — `ARCHITECTURE.md` §14. Одностраничн
   - Пилюля в баре кликабельна → попап со списком проектов + активная
     отметка (паттерн `tray_menu`/`updates_popup` — открыть/закрыть,
     клик по пункту делает его активным, персист в `projects.toml`).
-  - Ветка в пилюле = git-ветка ТЕКУЩЕГО активного проекта (не
-    хардкод) — `git rev-parse --abbrev-ref HEAD` в выбранном пути,
-    poll/inotify как у `startClipboardDaemon` в `hyprland.lua` (не
-    для этого файла, просто тот же принцип идемпотентного вотчера).
+  - **Пилюля = имя проекта** (не git-ветка — design drift после
+    `design/Project Switcher.dc.html` / Light C: сигил + `ChronOS` +
+    шеврон). Git-ветка в пилюле **отменена**.
 - **E. История уведомлений (bell + badge).** Подтверждено explicit:
   «строим историю» — сейчас в дереве НЕТ вообще никакого концепта
   инбокса (проверено грепом, только эфемерные попапы). Новая фича:
@@ -185,10 +246,8 @@ redesign wave», канон — `ARCHITECTURE.md` §14. Одностраничн
 Архитектор лично после того, как куски по отдельности приняты, не
 доверять финальную сборку agent-у с узкой зоной.
 
-**Брифы под A/B/C/D/E ещё НЕ написаны** — решения зафиксированы здесь,
-чтобы не растерять при компакте/новой сессии. Следующий шаг — написать
-конкретные `orchestration/agents/<ИМЯ>.md` секции по образцу
-HERMES.md №13 (полный контекст с нуля, зоны, верификация, коммит).
+Брифы A/B/C/E/System написаны и (кроме D/System) исполнены — см. верхний
+блок. D = Mimo №9; System = Zed №2.
 
 ## Живая приёмка 2026-07-19 (build+release+смок, все хвосты закрыты)
 
@@ -542,6 +601,31 @@ Top Bar-волны (те — в верхнем блоке + `orchestration/agent
 
 ## Ключевые технические факты (кровью)
 
+- **`cx.background_spawn(...)` БЕЗ `.detach()` — баг, не стиль**
+  (Zed №3, 2026-07-19). `gpui_scheduler::Task` — `#[must_use]`, **drop =
+  cancel**. Голый `cx.background_spawn(async {...});` или `let _ =
+  cx.background_spawn(...)` роняет Task сразу → async-тело **отменяется
+  racily**: быстрые футуры (in-proc channel) проскакивают до отмены,
+  медленные (zbus/hyprctl/subprocess) — дохнут молча. Симптом: `on_click`
+  логируется, async-эффект не наступает. **Всегда `.detach()`** (или
+  держи Task живым). В дереве на 2026-07-19 — 6/6 мест без detach:
+  `battery.rs:87` (скрыт — пустой div на десктопе, клик не исполняется),
+  `notifications/view.rs:56,166` (racy, «работает» на быстром dispatch),
+  system_popup ×3 (Zed чинит). **Follow-up:** аудит battery+notifications
+  на detach — латентный, не экстренный. Родня правилу `let _ =
+  handle.update()` ниже.
+- **`tokio::task::spawn_blocking` вне tokio-runtime виснет** (Zed №3).
+  `cx.background_spawn` = GPUI executor, НЕ tokio. `spawn_blocking` там
+  не паникует — просто не завершается. Для subprocess из GPUI-таски:
+  `std::thread::spawn` + `tokio::sync::oneshot` мост, не `spawn_blocking`.
+  (zbus работает — сам спавнит runtime.)
+- **`window.display(cx)` == None для layer-shell окон** (форк, Zed №3).
+  `self.display_id` берётся из `platform_window.display()` (`Source/
+  gpui/src/window.rs:2293`), wayland-backend его для layer-shell не
+  заполняет. Следствие: «попап на дисплее кликнутого окна» через
+  `window.display()` НЕ работает. НО `display_id` в `WindowOptions`
+  честится на `open_window` (доказано). Роутим через конфиг пультового
+  монитора (consolidation), не через inheritance. Grok НЕ нужен.
 - Lua-Hyprland: диспатчи ТОЛЬКО Lua-формой в сокет; `hl.dsp.move` нет —
   `hl.dsp.window.move`. Истина — живой сокет, не wiki.
 - zbus-прокси и D-Bus-структуры сверять с `busctl introspect`/живым
