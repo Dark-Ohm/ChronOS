@@ -61,7 +61,7 @@ Chronos — desktop shell для Hyprland 0.55.4+. Конфиг Hyprland с ве
 Диалоговая память не заменяет проектную документацию. Не дублируй архитектурные решения сюда — при расхождении с `ARCHITECTURE.md`/`DECISIONS.log` побеждают они.
 
 ## Лицензия
-TBD.
+Apache-2.0 (LICENSE + NOTICE в корне).
 
 ## Статус
 Work in progress. Всё подлежит пересмотру.

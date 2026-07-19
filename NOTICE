@@ -1,0 +1,24 @@
+ChronOS
+Copyright 2026 ChronOS Contributors (dohm-labs)
+
+Licensed under the Apache License, Version 2.0 (the "License"); see the LICENSE
+file. You may not use these files except in compliance with the License.
+
+This product includes and/or derives from the following works:
+
+- gpui and its sibling crates, via the "gpui-ce chronos edition" fork
+  (https://github.com/Dark-Ohm/Chronos-GPUI) — a fork of gpui by Zed
+  Industries, Inc. (https://github.com/zed-industries/zed),
+  Copyright 2022-2025 Zed Industries, Inc. Licensed under the Apache
+  License, Version 2.0. That fork also incorporates gpui-component
+  (https://github.com/longbridge/gpui-component), Copyright 2024-2025
+  Longbridge, Apache-2.0.
+
+- Code ported from Kael (https://github.com/Augani/kael),
+  licensed under the Apache License, Version 2.0.
+
+- Wallpaper handling informed by waytrogen, released into the public
+  domain (Unlicense).
+
+- pacman/AUR update-check logic adapted from Alloy. See the upstream
+  project for its license and attribution terms.

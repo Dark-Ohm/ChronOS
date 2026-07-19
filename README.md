@@ -7,7 +7,7 @@
 [![status](https://img.shields.io/badge/status-work%20in%20progress-orange)](#status)
 [![platform](https://img.shields.io/badge/platform-Wayland%20%2F%20Hyprland-blue)](#requirements)
 [![rust](https://img.shields.io/badge/rust-edition%202024-b7410e)](#building)
-[![license](https://img.shields.io/badge/license-TBD-lightgrey)](#license)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](#license)
 
 </div>
 
@@ -114,9 +114,10 @@ Project documents, in order of authority: `HANDOFF.md` (current state) →
 
 ## License
 
-**TBD.** See [`LICENSE`](LICENSE). Ported code retains its upstream terms and is
-attributed in `Source/NOTICE`; the unlicensed `reference/` study material is
-never committed.
+Licensed under the **Apache License, Version 2.0** — see [`LICENSE`](LICENSE).
+Ported and derived code retains its upstream terms and is attributed in
+[`NOTICE`](NOTICE) (the GPUI fork, Kael, waytrogen, Alloy). The unlicensed
+`reference/` study material is never committed.
 
 ## Related projects
 
