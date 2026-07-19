@@ -64,7 +64,14 @@ picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
 
 ### Открыто прямо сейчас
 
-- **Mimo №9** (project switcher) — **разблокирован** (№8 принят).
+- **В поле параллельно (2026-07-20):** Mimo №10 (consolidation, MIMO.md,
+  ПЕРЕД №9) + Grok №14 (MPRIS multi-player — список плееров + sticky +
+  scroll-цикл, GROK.md). Зоны не пересекаются: Mimo = `bar/mod.rs`+попапы+
+  `monitor.rs`, Grok = `services/mpris`+`bar/widgets/mpris.rs`. Приёмку
+  обоих делаю сам (release+живой смок). Оба агента в холодных сессиях —
+  брифы самодостаточны.
+- **Mimo №9** (project switcher) — **разблокирован** (№8 принят), но
+  ЖДЁТ №10 (project-switcher чище на консолидированный бар).
   Пилюля = **имя проекта** + сигил/шеврон (не git-ветка — design
   drift vs старый текст брифа). Эталон:
   `design/Project Switcher.dc.html` (dark + Light C). Portal
