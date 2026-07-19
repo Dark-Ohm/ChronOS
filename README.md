@@ -8,6 +8,9 @@
 [![platform](https://img.shields.io/badge/platform-Wayland%20%2F%20Hyprland-blue)](#requirements)
 [![rust](https://img.shields.io/badge/rust-edition%202024-b7410e)](#building)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](#license)
+[![site](https://img.shields.io/badge/site-dark--ohm.github.io%2FChronOS-0ea5e9)](https://dark-ohm.github.io/ChronOS/)
+
+**[Landing page →](https://dark-ohm.github.io/ChronOS/)**
 
 </div>
 

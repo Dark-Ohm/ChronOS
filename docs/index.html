@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ru" id="htmlRoot">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title id="pageTitle">ChronOS — desktop shell for Hyprland</title>
+<meta id="pageDesc" name="description" content="ChronOS — модульный GPU-ускоренный desktop shell для Hyprland и Niri. Rust + GPUI + Luau-плагины. 144 FPS, hot-reload без рестарта.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --base:      #1e1e2e;   /* фактический BAR_COLOR из bar.rs */
+    --surface:   #181825;
+    --overlay:   #11111b;
+    --edge:      #313244;
+    --text:      #cdd6f4;
+    --muted:     #7f849c;
+    --accent:    #fab387;   /* peach — HUD / курсор */
+    --accent-2:  #cba6f7;   /* violet — plugin layer */
+    --ok:        #a6e3a1;   /* signal green — perf/status */
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Inter', system-ui, sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--base);
+    color:var(--text);
+    font-family:var(--sans);
+    line-height:1.5;
+    overflow-x:hidden;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.01ms !important; transition-duration:0.01ms !important;}
+  }
+  a{color:inherit;}
+
+  .chrbar{
+    position:sticky; top:0; z-index:50;
+    display:flex; align-items:center; gap:18px;
+    height:36px; padding:0 14px;
+    background:var(--overlay);
+    border-bottom:1px solid var(--edge);
+    font-family:var(--mono);
+    font-size:12.5px;
+  }
+  .chrbar .glyph{
+    width:16px;height:16px;border-radius:3px;
+    background:conic-gradient(from 220deg, var(--accent), var(--accent-2), var(--ok), var(--accent));
+    flex:none;
+  }
+  .chrbar .ws{display:flex; gap:2px;}
+  .chrbar .ws a{
+    padding:5px 9px; color:var(--muted); text-decoration:none;
+    border-radius:4px; transition:.15s;
+  }
+  .chrbar .ws a:hover, .chrbar .ws a:focus-visible{color:var(--text); background:var(--surface); outline:1px solid var(--edge);}
+  .chrbar .ws a.active{color:var(--base); background:var(--accent);}
+  .chrbar .spacer{flex:1;}
+  .chrbar .module{color:var(--muted); display:flex; align-items:center; gap:6px;}
+  .chrbar .fps{color:var(--ok);}
+  .chrbar .dot{width:6px;height:6px;border-radius:50%;background:var(--ok); box-shadow:0 0 6px var(--ok); flex:none;}
+  .chrbar .clock{color:var(--text);}
+
+  .langsw{
+    display:flex; align-items:center; gap:0; border:1px solid var(--edge);
+    border-radius:6px; overflow:hidden; flex:none;
+  }
+  .langsw button{
+    font-family:var(--mono); font-size:11px; font-weight:600;
+    background:transparent; color:var(--muted); border:none;
+    padding:5px 9px; cursor:pointer; transition:.15s;
+  }
+  .langsw button:hover{color:var(--text);}
+  .langsw button.active{background:var(--accent); color:var(--overlay);}
+  .langsw button:focus-visible{outline:1px solid var(--accent); outline-offset:-1px;}
+
+  section{padding:96px 24px; max-width:1040px; margin:0 auto;}
+
+  .hero{padding-top:76px; padding-bottom:64px; position:relative;}
+  .badge{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.04em;
+    color:var(--accent); border:1px solid var(--edge); background:var(--surface);
+    padding:5px 10px; border-radius:20px; margin-bottom:28px;
+  }
+  .badge .dot{width:6px;height:6px;border-radius:50%;background:var(--accent); animation:pulse 2.4s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.35;}}
+  h1{
+    font-family:var(--mono); font-weight:800;
+    font-size:clamp(38px, 6.4vw, 74px);
+    letter-spacing:-0.02em; line-height:0.98;
+    color:#fff;
+  }
+  h1 .accent{color:var(--accent);}
+  .lede{
+    margin-top:26px; max-width:620px;
+    font-size:18px; color:var(--muted); line-height:1.65;
+  }
+  .lede code{font-family:var(--mono); color:var(--accent-2); background:var(--surface); padding:1px 6px; border-radius:4px; font-size:.92em;}
+  .hero-cta{display:flex; gap:14px; margin-top:38px; flex-wrap:wrap;}
+  .btn{
+    font-family:var(--mono); font-size:14px; font-weight:500;
+    padding:12px 20px; border-radius:6px; text-decoration:none;
+    display:inline-flex; align-items:center; gap:8px;
+    transition:.15s; border:1px solid transparent;
+  }
+  .btn-primary{background:var(--accent); color:var(--overlay);}
+  .btn-primary:hover{filter:brightness(1.08); transform:translateY(-1px);}
+  .btn-ghost{border-color:var(--edge); color:var(--text);}
+  .btn-ghost:hover{border-color:var(--muted); background:var(--surface);}
+
+  .stats{display:flex; gap:0; margin-top:56px; border-top:1px solid var(--edge); flex-wrap:wrap;}
+  .stat{flex:1; min-width:150px; padding:20px 0 0; border-right:1px solid var(--edge);}
+  .stat:last-child{border-right:none;}
+  .stat b{display:block; font-family:var(--mono); font-size:26px; color:#fff;}
+  .stat span{font-size:12.5px; color:var(--muted);}
+
+  .eyebrow{
+    font-family:var(--mono); font-size:12px; color:var(--accent-2);
+    letter-spacing:.08em; text-transform:uppercase; margin-bottom:10px;
+  }
+  h2{
+    font-family:var(--mono); font-size:clamp(24px,3.4vw,34px);
+    color:#fff; letter-spacing:-0.01em; margin-bottom:16px;
+  }
+  .section-lede{color:var(--muted); max-width:600px; font-size:15.5px; margin-bottom:44px;}
+
+  .modules{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:1px; background:var(--edge); border:1px solid var(--edge); border-radius:10px; overflow:hidden;}
+  .mod-card{background:var(--surface); padding:26px 22px; position:relative;}
+  .mod-card .tag{font-family:var(--mono); font-size:11px; color:var(--muted);}
+  .mod-card h3{font-family:var(--mono); font-size:17px; color:var(--text); margin:10px 0 8px;}
+  .mod-card p{font-size:13.5px; color:var(--muted); line-height:1.6;}
+
+  .arch-grid{display:grid; grid-template-columns:1.1fr 1fr; gap:44px; align-items:start;}
+  @media (max-width:760px){.arch-grid{grid-template-columns:1fr;}}
+  .arch-list{list-style:none;}
+  .arch-list li{
+    display:flex; gap:14px; padding:16px 0; border-top:1px solid var(--edge);
+  }
+  .arch-list li:last-child{border-bottom:1px solid var(--edge);}
+  .arch-list .k{font-family:var(--mono); font-size:12px; color:var(--accent); flex:none; width:108px; padding-top:2px;}
+  .arch-list .v{font-size:14px; color:var(--muted); line-height:1.6;}
+  .arch-list .v b{color:var(--text); font-weight:600;}
+
+  .code-panel{
+    background:var(--overlay); border:1px solid var(--edge); border-radius:10px;
+    overflow:hidden;
+  }
+  .code-panel .bar{
+    display:flex; align-items:center; gap:8px; padding:10px 14px;
+    border-bottom:1px solid var(--edge); font-family:var(--mono); font-size:11.5px; color:var(--muted);
+  }
+  .code-panel .bar .d{width:9px;height:9px;border-radius:50%; background:var(--edge);}
+  .code-panel pre{
+    padding:20px; font-family:var(--mono); font-size:12.8px; line-height:1.7;
+    color:var(--text); overflow-x:auto; white-space:pre;
+  }
+  .code-panel .c1{color:var(--muted);}
+  .code-panel .c2{color:var(--accent-2);}
+  .code-panel .c3{color:var(--accent);}
+  .code-panel .c4{color:var(--ok);}
+
+  .stack{
+    display:flex; flex-wrap:wrap; gap:10px; margin-top:44px;
+  }
+  .stack span{
+    font-family:var(--mono); font-size:12.5px; color:var(--muted);
+    border:1px solid var(--edge); padding:7px 12px; border-radius:20px;
+  }
+
+  .status-box{
+    border:1px dashed var(--edge); border-radius:10px; padding:26px 28px;
+    display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap;
+  }
+  .status-box .l{font-family:var(--mono); font-size:13px; color:var(--muted);}
+  .status-box .l b{color:var(--ok);}
+
+  footer{
+    border-top:1px solid var(--edge); padding:40px 24px;
+    display:flex; justify-content:space-between; align-items:center;
+    flex-wrap:wrap; gap:14px; max-width:1040px; margin:0 auto;
+    font-family:var(--mono); font-size:12px; color:var(--muted);
+  }
+  footer a{text-decoration:none; border-bottom:1px solid var(--edge);}
+  footer a:hover{color:var(--text); border-color:var(--muted);}
+</style>
+</head>
+<body>
+
+<nav class="chrbar" aria-label="Chronos navigation">
+  <div class="glyph" aria-hidden="true"></div>
+  <div class="ws">
+    <a href="#modules" class="active">bar</a>
+    <a href="#modules">dock</a>
+    <a href="#modules">launcher</a>
+    <a href="#modules">notifications</a>
+    <a href="#modules">osd</a>
+  </div>
+  <div class="spacer"></div>
+  <div class="module fps"><span class="dot" aria-hidden="true"></span>144 fps</div>
+  <div class="module clock" id="chrClock">--:--:--</div>
+  <div class="langsw" role="group" aria-label="Language / Язык">
+    <button type="button" data-lang="ru" id="langRu" aria-pressed="true">RU</button>
+    <button type="button" data-lang="en" id="langEn" aria-pressed="false">EN</button>
+  </div>
+</nav>
+
+<section class="hero">
+  <span class="badge"><span class="dot" aria-hidden="true"></span><span data-i18n="badge"></span></span>
+  <h1 data-i18n="h1"></h1>
+  <p class="lede" data-i18n="lede"></p>
+  <div class="hero-cta">
+    <a class="btn btn-primary" href="https://github.com/Dark-Ohm/ChronOS" data-i18n="ctaPrimary"></a>
+    <a class="btn btn-ghost" href="#architecture" data-i18n="ctaGhost"></a>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b>144</b><span data-i18n="stat1"></span></div>
+    <div class="stat"><b>0</b><span data-i18n="stat2"></span></div>
+    <div class="stat"><b>&lt;4ms</b><span data-i18n="stat3"></span></div>
+    <div class="stat"><b data-i18n="stat4b"></b><span data-i18n="stat4"></span></div>
+  </div>
+</section>
+
+<section id="modules">
+  <div class="eyebrow" data-i18n="modEyebrow"></div>
+  <h2 data-i18n="modH2"></h2>
+  <p class="section-lede" data-i18n="modLede"></p>
+  <div class="modules">
+    <div class="mod-card">
+      <div class="tag" data-i18n="mod1tag"></div>
+      <h3>bar</h3>
+      <p data-i18n="mod1p"></p>
+    </div>
+    <div class="mod-card">
+      <div class="tag" data-i18n="mod2tag"></div>
+      <h3>dock</h3>
+      <p data-i18n="mod2p"></p>
+    </div>
+    <div class="mod-card">
+      <div class="tag" data-i18n="mod3tag"></div>
+      <h3>launcher</h3>
+      <p data-i18n="mod3p"></p>
+    </div>
+    <div class="mod-card">
+      <div class="tag" data-i18n="mod4tag"></div>
+      <h3>notifications</h3>
+      <p data-i18n="mod4p"></p>
+    </div>
+    <div class="mod-card">
+      <div class="tag" data-i18n="mod5tag"></div>
+      <h3>osd</h3>
+      <p data-i18n="mod5p"></p>
+    </div>
+    <div class="mod-card">
+      <div class="tag" data-i18n="mod6tag"></div>
+      <h3 data-i18n="mod6h3"></h3>
+      <p data-i18n="mod6p"></p>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <div class="eyebrow" data-i18n="archEyebrow"></div>
+  <h2 data-i18n="archH2"></h2>
+  <p class="section-lede" data-i18n="archLede"></p>
+
+  <div class="arch-grid">
+    <ul class="arch-list">
+      <li>
+        <span class="k">rendering</span>
+        <span class="v" data-i18n="arch1"></span>
+      </li>
+      <li>
+        <span class="k">sandbox</span>
+        <span class="v" data-i18n="arch2"></span>
+      </li>
+      <li>
+        <span class="k">isolation</span>
+        <span class="v" data-i18n="arch3"></span>
+      </li>
+      <li>
+        <span class="k">runtime split</span>
+        <span class="v" data-i18n="arch4"></span>
+      </li>
+      <li>
+        <span class="k">reload</span>
+        <span class="v" data-i18n="arch5"></span>
+      </li>
+    </ul>
+
+    <div class="code-panel">
+      <div class="bar"><span class="d"></span><span class="d"></span><span class="d"></span>&nbsp;init.luau</div>
+      <pre data-i18n="codeblock"></pre>
+    </div>
+  </div>
+
+  <div class="stack">
+    <span>Rust</span><span>Chronos-GPUI</span><span>wgpu</span><span>mlua · LuauJIT</span>
+    <span>wlr-layer-shell</span><span>Hyprland · Niri</span><span>zbus (D-Bus)</span><span>nucleo</span>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow" data-i18n="statusEyebrow"></div>
+  <h2 data-i18n="statusH2"></h2>
+  <div class="status-box">
+    <div class="l" data-i18n="statusL"></div>
+    <a class="btn btn-ghost" href="https://github.com/Dark-Ohm/ChronOS/blob/main/DECISIONS.log" data-i18n="statusBtn"></a>
+  </div>
+</section>
+
+<footer>
+  <span data-i18n="footerL"></span>
+  <span><a href="https://github.com/Dark-Ohm/ChronOS">github.com/Dark-Ohm/ChronOS</a></span>
+</footer>
+
+<script>
+  var translations = {
+    badge: {
+      ru: 'work in progress — всё подлежит пересмотру',
+      en: 'work in progress — everything subject to change'
+    },
+    h1: {
+      ru: 'Твой Hyprland.<br>Без <span class="accent">чужих</span> тулов.',
+      en: 'Your Hyprland.<br>No <span class="accent">third-party</span> tools.'
+    },
+    lede: {
+      ru: 'ChronOS — модульный desktop shell для Hyprland 0.55.4+ и Niri: <code>bar</code>, <code>dock</code>, <code>launcher</code>, <code>notifications</code>, <code>osd</code> в одном рантайме, на Rust и GPUI, с Luau-плагинами, которые перезагружаются на лету — без перезапуска шелла.',
+      en: 'ChronOS is a modular desktop shell for Hyprland 0.55.4+ and Niri: <code>bar</code>, <code>dock</code>, <code>launcher</code>, <code>notifications</code>, <code>osd</code> in one runtime, built in Rust and GPUI, with Luau plugins that hot-reload — no shell restart required.'
+    },
+    ctaPrimary: { ru: 'Смотреть на GitHub →', en: 'View on GitHub →' },
+    ctaGhost:   { ru: 'Архитектура', en: 'Architecture' },
+    stat1: { ru: 'целевой FPS', en: 'target FPS' },
+    stat2: { ru: 'сторонних тулов в рантайме', en: 'third-party tools at runtime' },
+    stat3: { ru: 'бюджет Luau-вызова', en: 'Luau call budget' },
+    stat4b:{ ru: 'hot', en: 'hot' },
+    stat4: { ru: 'reload плагинов и конфига', en: 'reload for plugins & config' },
+
+    modEyebrow: { ru: 'Module scope', en: 'Module scope' },
+    modH2:      { ru: 'Пять модулей. Один рантайм.', en: 'Five modules. One runtime.' },
+    modLede:    {
+      ru: 'Полностью функциональный шелл без стороннего софта — и архитектура, позволяющая добавлять новые модули как плагины, без пересборки ядра.',
+      en: 'A fully functional shell with no third-party software — and an architecture that lets you add new modules as plugins, without rebuilding the core.'
+    },
+    mod1tag: { ru: '01 · layer top', en: '01 · layer top' },
+    mod1p: {
+      ru: 'Секции left/center/right, runtime-registry виджетов (<code style="font-family:var(--mono)">Vec&lt;Box&lt;dyn BarWidget&gt;&gt;</code>), порядок значим — не HashMap.',
+      en: 'Left/center/right sections, a runtime widget registry (<code style="font-family:var(--mono)">Vec&lt;Box&lt;dyn BarWidget&gt;&gt;</code>) — order matters, so not a HashMap.'
+    },
+    mod2tag: { ru: '02 · layer top', en: '02 · layer top' },
+    mod2p: {
+      ru: 'Тот же слой протокола, что и bar — без ручных <code style="font-family:var(--mono)">wl_surface</code>-вызовов, всё через GPUI.',
+      en: 'Same protocol layer as the bar — no manual <code style="font-family:var(--mono)">wl_surface</code> calls, all through GPUI.'
+    },
+    mod3tag: { ru: '03 · layer overlay', en: '03 · layer overlay' },
+    mod3p: {
+      ru: 'Fuzzy-поиск на nucleo, XDG desktop entries, inotify-кэш, detached-запуск через <code style="font-family:var(--mono)">setsid</code>.',
+      en: 'Fuzzy search via nucleo, XDG desktop entries, inotify-backed cache, detached launch via <code style="font-family:var(--mono)">setsid</code>.'
+    },
+    mod4tag: { ru: '04 · layer overlay', en: '04 · layer overlay' },
+    mod4p: {
+      ru: 'D-Bus подписчик, лениво открывается по событию — не держит окно постоянно.',
+      en: 'D-Bus subscriber, opens lazily on event — no window kept alive permanently.'
+    },
+    mod5tag: { ru: '05 · layer overlay', en: '05 · layer overlay' },
+    mod5p: {
+      ru: 'Громкость / яркость / прочие быстрые оверлеи, тот же паттерн keyboard_interactivity per use.',
+      en: 'Volume / brightness / other quick overlays, same per-use keyboard_interactivity pattern.'
+    },
+    mod6tag: { ru: '∞ · runtime', en: '∞ · runtime' },
+    mod6h3:  { ru: 'твой модуль', en: 'your module' },
+    mod6p: {
+      ru: 'Luau-плагин с <code style="font-family:var(--mono)">manifest.toml</code> — регистрируется в рантайме, ядро не трогает.',
+      en: 'A Luau plugin with <code style="font-family:var(--mono)">manifest.toml</code> — registers at runtime, never touches the core.'
+    },
+
+    archEyebrow: { ru: 'Architecture', en: 'Architecture' },
+    archH2:      { ru: 'Песочница на границе — не в рендере', en: 'Sandboxed at the boundary — not in the render path' },
+    archLede: {
+      ru: 'Luau никогда не в пути рендера: виджеты рисует Rust, Luau дергается только на события и конфиг.',
+      en: 'Luau is never in the render path: widgets are drawn by Rust, Luau only fires on events and config load.'
+    },
+    arch1: {
+      ru: '<b>Chronos-GPUI</b> — проектный форк GPUI (общий с Chronos-FM / Chronos-IDE), layer-shell, multi-monitor, Wayland.',
+      en: '<b>Chronos-GPUI</b> — project GPUI fork (shared with Chronos-FM / Chronos-IDE), layer-shell, multi-monitor, Wayland.'
+    },
+    arch2: {
+      ru: 'Свой <b>mlua::Lua</b> на плагин, <code style="font-family:var(--mono)">os/io/debug</code> вырезаны, capability-gated API (<code style="font-family:var(--mono)">fs/spawn/network/ipc</code>).',
+      en: 'A dedicated <b>mlua::Lua</b> instance per plugin, <code style="font-family:var(--mono)">os/io/debug</code> stripped, capability-gated API (<code style="font-family:var(--mono)">fs/spawn/network/ipc</code>).'
+    },
+    arch3: {
+      ru: 'Паника плагина не убивает <b>services</b> или <b>app</b> — физическая граница на уровне крейтов.',
+      en: 'A plugin panic can not take down <b>services</b> or <b>app</b> — a physical boundary at the crate level.'
+    },
+    arch4: {
+      ru: 'GPUI executor — только UI. Отдельный tokio-рантайм в своём потоке для D-Bus / Hyprland IPC, мост через <code style="font-family:var(--mono)">futures_signals::Mutable</code>.',
+      en: 'GPUI executor is UI-only. A separate tokio runtime on its own thread handles D-Bus / Hyprland IPC, bridged via <code style="font-family:var(--mono)">futures_signals::Mutable</code>.'
+    },
+    arch5: {
+      ru: 'inotify на конфиг и плагины, debounce 300ms. Упавшая новая VM → старые виджеты остаются.',
+      en: 'inotify watches config and plugins, 300ms debounce. A failed new VM → old widgets stay put.'
+    },
+
+    codeblock: {
+      ru: '<span class="c1">-- манифест декларирует capabilities,</span>\n<span class="c1">-- без него — только base chronos.* API</span>\n\n<span class="c2">chronos</span>.bar:<span class="c3">register</span>(<span class="c4">"clock"</span>, {\n  section = <span class="c4">"right"</span>,\n  render = <span class="k">function</span>()\n    <span class="k">return</span> <span class="c2">chronos</span>.time.<span class="c3">now</span>(<span class="c4">"%H:%M:%S"</span>)\n  <span class="k">end</span>,\n})\n\n<span class="c2">chronos</span>.on(<span class="c4">"workspace_changed"</span>, <span class="k">function</span>(ws)\n  <span class="c2">chronos</span>.log.<span class="c3">info</span>(<span class="c4">"ws -> "</span> .. ws.id)\n<span class="k">end</span>)',
+      en: '<span class="c1">-- manifest declares capabilities,</span>\n<span class="c1">-- without one you get only the base chronos.* API</span>\n\n<span class="c2">chronos</span>.bar:<span class="c3">register</span>(<span class="c4">"clock"</span>, {\n  section = <span class="c4">"right"</span>,\n  render = <span class="k">function</span>()\n    <span class="k">return</span> <span class="c2">chronos</span>.time.<span class="c3">now</span>(<span class="c4">"%H:%M:%S"</span>)\n  <span class="k">end</span>,\n})\n\n<span class="c2">chronos</span>.on(<span class="c4">"workspace_changed"</span>, <span class="k">function</span>(ws)\n  <span class="c2">chronos</span>.log.<span class="c3">info</span>(<span class="c4">"ws -> "</span> .. ws.id)\n<span class="k">end</span>)'
+    },
+
+    statusEyebrow: { ru: 'Status', en: 'Status' },
+    statusH2:      { ru: 'Куда смотреть прямо сейчас', en: 'Where to look right now' },
+    statusL: {
+      ru: 'Work in progress: bar / dock / launcher / notifications / osd живут. Открытые хвосты — focus/close edge-cases и desktop widgets. Канон: <b>ARCHITECTURE.md</b> + <b>DECISIONS.log</b>.',
+      en: 'Work in progress: bar / dock / launcher / notifications / osd are live. Open tails — focus/close edge-cases and desktop widgets. Canon: <b>ARCHITECTURE.md</b> + <b>DECISIONS.log</b>.'
+    },
+    statusBtn: { ru: 'DECISIONS.log →', en: 'DECISIONS.log →' },
+
+    footerL: { ru: 'ChronOS · Apache-2.0 · всё подлежит пересмотру', en: 'ChronOS · Apache-2.0 · everything subject to change' }
+  };
+
+  var pageMeta = {
+    ru: { title: 'ChronOS — desktop shell для Hyprland', desc: 'ChronOS — модульный GPU-ускоренный desktop shell для Hyprland и Niri. Rust + GPUI + Luau-плагины. 144 FPS, hot-reload без рестарта.' },
+    en: { title: 'ChronOS — desktop shell for Hyprland', desc: 'ChronOS is a modular, GPU-accelerated desktop shell for Hyprland and Niri. Rust + GPUI + Luau plugins. 144 FPS, hot-reload without a restart.' }
+  };
+
+  function applyLang(lang){
+    document.querySelectorAll('[data-i18n]').forEach(function(el){
+      var key = el.getAttribute('data-i18n');
+      var entry = translations[key];
+      if(!entry) return;
+      el.innerHTML = entry[lang] || entry.ru;
+    });
+    document.getElementById('htmlRoot').setAttribute('lang', lang);
+    document.getElementById('pageTitle').textContent = pageMeta[lang].title;
+    document.getElementById('pageDesc').setAttribute('content', pageMeta[lang].desc);
+    document.getElementById('langRu').classList.toggle('active', lang === 'ru');
+    document.getElementById('langEn').classList.toggle('active', lang === 'en');
+    document.getElementById('langRu').setAttribute('aria-pressed', lang === 'ru');
+    document.getElementById('langEn').setAttribute('aria-pressed', lang === 'en');
+    try{ localStorage.setItem('chronos-lang', lang); }catch(e){}
+  }
+
+  document.getElementById('langRu').addEventListener('click', function(){ applyLang('ru'); });
+  document.getElementById('langEn').addEventListener('click', function(){ applyLang('en'); });
+
+  var saved = 'ru';
+  try{ saved = localStorage.getItem('chronos-lang') || 'ru'; }catch(e){}
+  applyLang(saved);
+
+  function tick(){
+    var el = document.getElementById('chrClock');
+    if(!el) return;
+    var d = new Date();
+    var p = n => String(n).padStart(2,'0');
+    el.textContent = p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+  }
+  tick(); setInterval(tick, 1000);
+</script>
+
+</body>
+</html>
