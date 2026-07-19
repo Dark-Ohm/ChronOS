@@ -19,8 +19,8 @@ use crate::dock::signal::notify_config_changed;
 /// Context menu dimensions (px).
 const MENU_WIDTH: f32 = 140.;
 const MENU_HEIGHT: f32 = 40.;
-/// Bottom margin so the popup sits just above the dock.
-const MENU_MARGIN_BOTTOM: f32 = 60.;
+/// Top margin — bar height + small gap so popup sits below the bar.
+const MENU_MARGIN_TOP: f32 = 36.;
 
 /// Global state for the dock context menu popup.
 #[derive(Default)]
@@ -104,6 +104,9 @@ impl Render for DockMenuView {
                             tracing::error!("dock: failed to save config after unpin: {e}");
                         }
 
+                        // Update the cached config.
+                        crate::dock::config::update_cache(config);
+
                         // Notify dock views to rebuild.
                         notify_config_changed(cx);
 
@@ -122,7 +125,8 @@ fn pick_display(cx: &App) -> Option<DisplayId> {
         .or_else(|| cx.displays().into_iter().next().map(|d| d.id()))
 }
 
-/// Layer-shell options for the context menu: centered at the bottom, overlay.
+/// Layer-shell options for the context menu: centered horizontally,
+/// anchored TOP, positioned just below the bar.
 fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     let display_size = display_id
         .and_then(|id| cx.find_display(id))
@@ -136,7 +140,7 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: point(
                 (display_size.width - px(MENU_WIDTH)) / 2.,
-                display_size.height - px(MENU_MARGIN_BOTTOM),
+                px(MENU_MARGIN_TOP),
             ),
             size: Size::new(px(MENU_WIDTH), px(MENU_HEIGHT)),
         })),
@@ -145,7 +149,7 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
         kind: WindowKind::LayerShell(LayerShellOptions {
             namespace: "dock-menu".to_string(),
             layer: Layer::Overlay,
-            anchor: Anchor::BOTTOM,
+            anchor: Anchor::TOP,
             exclusive_zone: None,
             margin: None,
             keyboard_interactivity: KeyboardInteractivity::None,

@@ -7,10 +7,33 @@
 //! ```
 
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_PINNED: &[&str] = &["kitty", "thunar", "firefox", "code", "vivaldi"];
+
+/// Global config cache — loaded once, invalidated by unpin.
+static CONFIG_CACHE: OnceLock<Mutex<DockConfig>> = OnceLock::new();
+
+fn config_cache() -> &'static Mutex<DockConfig> {
+    CONFIG_CACHE.get_or_init(|| Mutex::new(DockConfig::default()))
+}
+
+/// Get the cached config (nanosecond read, no disk I/O).
+pub fn cached() -> DockConfig {
+    config_cache().lock().unwrap().clone()
+}
+
+/// Reload the cache from disk.
+pub fn reload_cache() {
+    *config_cache().lock().unwrap() = DockConfig::load();
+}
+
+/// Update the cache with a new config (after unpin).
+pub fn update_cache(config: DockConfig) {
+    *config_cache().lock().unwrap() = config;
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DockConfig {

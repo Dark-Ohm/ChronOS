@@ -1,104 +1,144 @@
-//! Dock view: horizontal row of pinned application icons.
+//! Dock bar widget — pinned application icons in the left cluster.
+//!
+//! Replaces the standalone dock window (removed in #8). Reads `DockConfig`
+//! from a Global cache (loaded once at init, invalidated by `DockConfigSignal`)
+//! and `ApplicationsState` from `AppState` on every render.
+//!
+//! Left cluster layout (per `Top Bar.dc.html`):
+//!   [Start] | [app icons...] | (then workspaces further right)
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
+use gpui::{
+    AnyElement, App, InteractiveElement, MouseButton, Window, div, img, prelude::*, px,
+};
+use gpui::ImageSource;
+
+use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{AppEntry, Service};
 use chronos_ui::Theme;
-use gpui::ImageSource;
-use gpui::{
-    App, Context, Focusable, InteractiveElement, IntoElement, MouseButton, Render, Styled, Window,
-    div, img, prelude::*, px,
-};
 
-use crate::dock::config::DockConfig;
+use crate::dock::config;
 use crate::launcher::launch::launch;
-use crate::state;
+use crate::state::AppState;
 
-const DOCK_HEIGHT: f32 = 56.;
-const ICON_SIZE: f32 = 40.;
-const ICON_PADDING: f32 = 8.;
+/// Cached icon path resolutions.
+static ICON_CACHE: OnceLock<Mutex<HashMap<String, Option<PathBuf>>>> = OnceLock::new();
 
-/// Cached icon path resolutions. Populated lazily, never invalidated
-/// (icon themes rarely change mid-session).
-static ICON_CACHE: OnceLock<std::sync::Mutex<HashMap<String, Option<PathBuf>>>> = OnceLock::new();
-
-fn icon_cache() -> &'static std::sync::Mutex<HashMap<String, Option<PathBuf>>> {
-    ICON_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+fn icon_cache() -> &'static Mutex<HashMap<String, Option<PathBuf>>> {
+    ICON_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-pub struct DockView {
-    icons: Vec<(AppEntry, Option<PathBuf>)>,
-    entries: Vec<AppEntry>,
-    focus: gpui::FocusHandle,
-}
+const ICON_PX: f32 = 18.0;
 
-impl DockView {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        let config = DockConfig::load();
-        let entries = state::AppState::applications(cx).get().entries.clone();
-        let icons = build_dock_icons(&config.pinned, &entries);
+pub struct DockWidget;
 
-        let view = Self {
-            icons,
-            entries,
-            focus: cx.focus_handle(),
-        };
-
-        // Subscribe to applications — pinned list may gain/lose entries
-        // when packages are installed/removed.
-        let signal = state::AppState::applications(cx).subscribe();
-        state::watch(cx, signal, |this, state, cx| {
-            this.entries = state.entries.clone();
-            let config = DockConfig::load();
-            this.icons = build_dock_icons(&config.pinned, &this.entries);
-            cx.notify();
-        });
-
-        // Subscribe to dock config changes (e.g. unpin from context menu).
-        let config_signal = cx.global::<crate::dock::signal::DockConfigSignal>()
-            .signal
-            .signal();
-        state::watch(cx, config_signal, |this, _, cx| {
-            let config = DockConfig::load();
-            this.icons = build_dock_icons(&config.pinned, &this.entries);
-            cx.notify();
-        });
-
-        view
+impl BarWidget for DockWidget {
+    fn name(&self) -> &str {
+        "dock"
     }
-}
 
-impl Render for DockView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn section(&self) -> BarSection {
+        BarSection::Left
+    }
+
+    fn render(&self, _window: &mut Window, cx: &App) -> AnyElement {
         let theme = Theme::global(cx);
 
-        div()
-            .track_focus(&self.focus)
-            .size_full()
+        // Read cached config (no disk I/O per render).
+        let pinned = config::cached().pinned;
+
+        // Read applications state.
+        let entries = AppState::applications(cx).get().entries.clone();
+
+        let icons = build_dock_icons(&pinned, &entries);
+
+        // Start button — ChronOS hexagon glyph.
+        let start_button = div()
+            .id("dock-start")
+            .h(px(24.))
+            .w(px(24.))
             .flex()
             .items_center()
             .justify_center()
-            .gap(px(ICON_PADDING))
-            .bg(theme.bg.primary)
-            .children(self.icons.iter().map(|(entry, icon_path)| {
+            .rounded_lg()
+            .cursor_pointer()
+            .hover(|s| s.bg(theme.interactive.hover))
+            .on_click(move |_event, _window, cx: &mut App| {
+                crate::launcher::toggle(cx);
+            })
+            .child(
+                div()
+                    .child("⏻")
+                    .text_color(gpui::Hsla {
+                        h: 0.56,
+                        s: 0.65,
+                        l: 0.65,
+                        a: 1.0,
+                    })
+                    .text_base(),
+            );
+
+        // Divider after start button.
+        let divider = div()
+            .w(px(1.))
+            .h(px(14.))
+            .bg(theme.bg.secondary);
+
+        // App icons.
+        let app_icons: Vec<AnyElement> = icons
+            .iter()
+            .map(|(entry, icon_path)| {
                 let entry = entry.clone();
                 let icon_path = icon_path.clone();
                 let label = entry.name.clone();
                 let entry_id = entry.id.clone();
 
+                let icon_elem = match icon_path {
+                    Some(path) => {
+                        let src: ImageSource = path.into();
+                        img(src)
+                            .w(px(ICON_PX))
+                            .h(px(ICON_PX))
+                            .into_any_element()
+                    }
+                    None => {
+                        let letter = label
+                            .chars()
+                            .next()
+                            .unwrap_or('?')
+                            .to_uppercase()
+                            .to_string();
+                        div()
+                            .w(px(ICON_PX))
+                            .h(px(ICON_PX))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_md()
+                            .bg(theme.bg.elevated)
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(theme.text.primary)
+                                    .child(letter),
+                            )
+                            .into_any_element()
+                    }
+                };
+
                 div()
                     .id(format!("dock-icon-{}", entry.id))
-                    .h(px(DOCK_HEIGHT))
-                    .w(px(DOCK_HEIGHT))
+                    .h(px(24.))
+                    .w(px(24.))
                     .flex()
-                    .flex_col()
                     .items_center()
                     .justify_center()
                     .rounded_lg()
-                    .hover(|s| s.bg(theme.interactive.hover))
                     .cursor_pointer()
+                    .hover(|s| s.bg(theme.interactive.hover))
                     .on_click(move |_event, _window, _cx: &mut App| {
                         if let Err(e) = launch(&entry.exec) {
                             tracing::error!("dock: failed to launch {}: {e:#}", entry.name);
@@ -110,45 +150,37 @@ impl Render for DockView {
                             crate::dock::context_menu::open(cx, entry_id.clone());
                         },
                     )
-                    .child(match icon_path {
-                        Some(path) => {
-                            let src: ImageSource = path.into();
-                            img(src)
-                                .w(px(ICON_SIZE))
-                                .h(px(ICON_SIZE))
-                                .into_any_element()
-                        }
-                        None => {
-                            // Fallback: first letter of name as text icon.
-                            let letter = label
-                                .chars()
-                                .next()
-                                .unwrap_or('?')
-                                .to_uppercase()
-                                .to_string();
-                            div()
-                                .w(px(ICON_SIZE))
-                                .h(px(ICON_SIZE))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .rounded_md()
-                                .bg(theme.bg.elevated)
-                                .child(div().text_lg().text_color(theme.text.primary).child(letter))
-                                .into_any_element()
-                        }
-                    })
-            }))
+                    .child(icon_elem)
+                    .into_any_element()
+            })
+            .collect();
+
+        div()
+            .flex()
+            .items_center()
+            .gap(px(3.))
+            .child(start_button)
+            .child(divider)
+            .children(app_icons)
+            .into_any_element()
     }
 }
 
-impl Focusable for DockView {
-    fn focus_handle(&self, _cx: &App) -> gpui::FocusHandle {
-        self.focus.clone()
-    }
+/// Register the dock widget with the global bar registry.
+pub fn register(cx: &mut App) {
+    // Init dock globals (context menu + config change signal).
+    cx.set_global(crate::dock::context_menu::DockMenuState::default());
+    cx.set_global(crate::dock::signal::DockConfigSignal::default());
+
+    // Load config cache from disk.
+    config::reload_cache();
+
+    cx.global_mut::<chronos_luau::bar::BarWidgetRegistry>()
+        .register(Box::new(DockWidget));
 }
 
-/// Build the list of pinned icons with resolved paths from the full entries list.
+// ── Icon resolution (ported from dock/view.rs) ──
+
 fn build_dock_icons(pinned: &[String], entries: &[AppEntry]) -> Vec<(AppEntry, Option<PathBuf>)> {
     pinned
         .iter()
@@ -160,8 +192,6 @@ fn build_dock_icons(pinned: &[String], entries: &[AppEntry]) -> Vec<(AppEntry, O
         .collect()
 }
 
-/// Resolve an icon name (from AppEntry.icon) to an absolute path.
-/// Caches results for the process lifetime.
 fn resolve_icon(name: &str) -> Option<PathBuf> {
     let mut cache = icon_cache().lock().unwrap();
     if let Some(cached) = cache.get(name) {
@@ -330,7 +360,7 @@ mod tests {
     #[test]
     fn resolve_icon_returns_cached() {
         let _ = resolve_icon("nonexistent-icon-xyz");
-        let _ = resolve_icon("nonexistent-icon-xyz"); // second call hits cache
+        let _ = resolve_icon("nonexistent-icon-xyz");
     }
 
     #[test]
@@ -359,7 +389,6 @@ mod tests {
         ];
         let pinned = vec!["kitty".to_string()];
         let icons = build_dock_icons(&pinned, &entries);
-        // Only kitty should be in the dock (it's in pinned).
         assert!(icons.iter().any(|(e, _)| e.id == "kitty"));
         assert!(!icons.iter().any(|(e, _)| e.id == "notpinned"));
     }

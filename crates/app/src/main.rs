@@ -56,7 +56,6 @@ fn main() {
             subscriber.start(cx);
             chronos_ui::Theme::init(cx);
             bar::init(cx);
-            dock::init(cx);
             notifications::init(cx);
             osd::init(cx);
             tray_menu::init(cx);
