@@ -31,7 +31,7 @@ pub use compositor::{
     ActiveWindow, CompositorBackend, CompositorCommand, CompositorState, CompositorSubscriber,
     Monitor, Workspace,
 };
-pub use mpris::{MprisCommand, MprisState, MprisSubscriber};
+pub use mpris::{CycleDirection, MprisCommand, MprisState, MprisSubscriber};
 pub use network::{ConnectivityState, NetworkData, NetworkSubscriber};
 pub use notification::{
     CloseReason, Notification, NotificationCommand, NotificationState, NotificationSubscriber,

@@ -1,9 +1,9 @@
-//! MPRIS media-player widget — track label + play/pause.
+//! MPRIS media-player widget — track label + play/pause + multi-player scroll.
 
-use gpui::{AnyElement, App, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, ScrollDelta, ScrollWheelEvent, Window, div, prelude::*, px};
 
 use chronos_luau::bar::{BarSection, BarWidget};
-use chronos_services::{MprisCommand, MprisState, Service};
+use chronos_services::{CycleDirection, MprisCommand, MprisState, Service};
 use chronos_ui::Theme;
 
 use crate::state::AppState;
@@ -21,6 +21,8 @@ enum MprisView {
         icon: &'static str,
         label: String,
         playing: bool,
+        /// Multi-player hint when `player_count > 1` (e.g. `‹2/3›`).
+        multi: Option<String>,
     },
 }
 
@@ -30,11 +32,22 @@ fn describe(state: &MprisState) -> MprisView {
     }
     let icon = if state.playing { "⏸" } else { "▶" };
     let label = format_track_label(&state.title, &state.artist, MAX_LABEL_CHARS);
+    let multi = multi_player_indicator(state.player_count, state.player_index);
     MprisView::Track {
         icon,
         label,
         playing: state.playing,
+        multi,
     }
+}
+
+/// `‹i/n›` when more than one player is live; otherwise hidden.
+pub fn multi_player_indicator(player_count: usize, player_index: usize) -> Option<String> {
+    if player_count <= 1 {
+        return None;
+    }
+    let idx = if player_index == 0 { 1 } else { player_index };
+    Some(format!("‹{idx}/{player_count}›"))
 }
 
 /// Build `title — artist` (or just title / just artist) and hard-truncate.
@@ -64,6 +77,21 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
     format!("{truncated}…")
 }
 
+/// Map scroll delta to cycle direction. Scroll up (negative y) → Next player.
+fn scroll_cycle_direction(delta: &ScrollDelta) -> Option<CycleDirection> {
+    let y = match delta {
+        ScrollDelta::Lines(p) => p.y as f64,
+        ScrollDelta::Pixels(p) => f64::from(p.y),
+    };
+    if y < 0.0 {
+        Some(CycleDirection::Next)
+    } else if y > 0.0 {
+        Some(CycleDirection::Prev)
+    } else {
+        None
+    }
+}
+
 pub struct MprisWidget;
 
 impl BarWidget for MprisWidget {
@@ -82,13 +110,18 @@ impl BarWidget for MprisWidget {
 
         match describe(&state) {
             MprisView::Hidden => div().into_any_element(),
-            MprisView::Track { icon, label, playing } => {
+            MprisView::Track {
+                icon,
+                label,
+                playing,
+                multi,
+            } => {
                 let color = if playing {
                     theme.text.secondary
                 } else {
                     theme.text.muted
                 };
-                div()
+                let mut row = div()
                     .id("bar-mpris")
                     .flex()
                     .items_center()
@@ -98,11 +131,24 @@ impl BarWidget for MprisWidget {
                     .py(px(2.))
                     .rounded(theme.radius)
                     .child(div().child(icon.to_string()).text_color(color))
-                    .child(div().child(label).text_color(color))
-                    .on_click(|_event, _window, cx: &mut App| {
-                        AppState::mpris(cx).dispatch(MprisCommand::PlayPause);
-                    })
-                    .into_any_element()
+                    .child(div().child(label).text_color(color));
+                if let Some(hint) = multi {
+                    row = row.child(
+                        div()
+                            .child(hint)
+                            .text_color(theme.text.muted)
+                            .text_xs(),
+                    );
+                }
+                row.on_click(|_event, _window, cx: &mut App| {
+                    AppState::mpris(cx).dispatch(MprisCommand::PlayPause);
+                })
+                .on_scroll_wheel(|event: &ScrollWheelEvent, _window, cx: &mut App| {
+                    if let Some(dir) = scroll_cycle_direction(&event.delta) {
+                        AppState::mpris(cx).dispatch(MprisCommand::CyclePlayer(dir));
+                    }
+                })
+                .into_any_element()
             }
         }
     }
@@ -117,6 +163,25 @@ pub fn register(cx: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::{point, px};
+
+    fn track_state(
+        title: &str,
+        artist: &str,
+        playing: bool,
+        player_count: usize,
+        player_index: usize,
+    ) -> MprisState {
+        MprisState {
+            title: title.into(),
+            artist: artist.into(),
+            playing,
+            has_player: true,
+            player_count,
+            player_index,
+            player_id: "mock".into(),
+        }
+    }
 
     #[test]
     fn hidden_without_player() {
@@ -125,17 +190,18 @@ mod tests {
 
     #[test]
     fn playing_shows_pause_icon() {
-        let state = MprisState {
-            title: "Track".into(),
-            artist: "Artist".into(),
-            playing: true,
-            has_player: true,
-        };
+        let state = track_state("Track", "Artist", true, 1, 1);
         match describe(&state) {
-            MprisView::Track { icon, label, playing } => {
+            MprisView::Track {
+                icon,
+                label,
+                playing,
+                multi,
+            } => {
                 assert_eq!(icon, "⏸");
                 assert!(playing);
                 assert_eq!(label, "Track — Artist");
+                assert!(multi.is_none());
             }
             other => panic!("expected Track, got {other:?}"),
         }
@@ -143,27 +209,38 @@ mod tests {
 
     #[test]
     fn paused_shows_play_icon() {
-        let state = MprisState {
-            title: "T".into(),
-            artist: String::new(),
-            playing: false,
-            has_player: true,
-        };
+        let state = track_state("T", "", false, 1, 1);
         match describe(&state) {
-            MprisView::Track { icon, playing, .. } => {
+            MprisView::Track { icon, playing, multi, .. } => {
                 assert_eq!(icon, "▶");
                 assert!(!playing);
+                assert!(multi.is_none());
             }
             other => panic!("expected Track, got {other:?}"),
         }
     }
 
     #[test]
+    fn multi_indicator_when_two_players() {
+        let state = track_state("A", "B", true, 2, 1);
+        match describe(&state) {
+            MprisView::Track { multi, .. } => {
+                assert_eq!(multi.as_deref(), Some("‹1/2›"));
+            }
+            other => panic!("expected Track, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn multi_indicator_hidden_for_single() {
+        assert_eq!(multi_player_indicator(0, 0), None);
+        assert_eq!(multi_player_indicator(1, 1), None);
+        assert_eq!(multi_player_indicator(3, 2).as_deref(), Some("‹2/3›"));
+    }
+
+    #[test]
     fn format_title_and_artist() {
-        assert_eq!(
-            format_track_label("Song", "Band", 40),
-            "Song — Band"
-        );
+        assert_eq!(format_track_label("Song", "Band", 40), "Song — Band");
     }
 
     #[test]
@@ -187,5 +264,37 @@ mod tests {
         let out = format_track_label(&long, "", 10);
         assert_eq!(out.chars().count(), 10);
         assert!(out.ends_with('…'));
+    }
+
+    #[test]
+    fn scroll_up_cycles_next() {
+        assert_eq!(
+            scroll_cycle_direction(&ScrollDelta::Lines(point(0.0, -1.0))),
+            Some(CycleDirection::Next)
+        );
+        assert_eq!(
+            scroll_cycle_direction(&ScrollDelta::Pixels(point(px(0.), px(-10.)))),
+            Some(CycleDirection::Next)
+        );
+    }
+
+    #[test]
+    fn scroll_down_cycles_prev() {
+        assert_eq!(
+            scroll_cycle_direction(&ScrollDelta::Lines(point(0.0, 1.0))),
+            Some(CycleDirection::Prev)
+        );
+        assert_eq!(
+            scroll_cycle_direction(&ScrollDelta::Pixels(point(px(0.), px(10.)))),
+            Some(CycleDirection::Prev)
+        );
+    }
+
+    #[test]
+    fn scroll_zero_is_noop() {
+        assert_eq!(
+            scroll_cycle_direction(&ScrollDelta::Lines(point(0.0, 0.0))),
+            None
+        );
     }
 }
