@@ -139,6 +139,7 @@ pub struct Theme {
     pub radius_lg: Pixels,
     pub transparent: Hsla,
     pub font_sizes: FontSizes,
+    pub font_mono: &'static str,
 }
 
 impl Default for Theme {
@@ -171,10 +172,10 @@ impl Default for Theme {
                 hover: parse_hex("1f9bdc").unwrap(),
             },
             status: StatusColors {
-                success: parse_hex("4ade80").unwrap(),
-                warning: parse_hex("fbbf24").unwrap(),
-                error: parse_hex("f87171").unwrap(),
-                info: parse_hex("60a5fa").unwrap(),
+                success: parse_hex("a6e3a1").unwrap(),
+                warning: parse_hex("f9e2af").unwrap(),
+                error: parse_hex("f38ba8").unwrap(),
+                info: parse_hex("89b4fa").unwrap(),
             },
             interactive: InteractiveColors {
                 default: border_default,
@@ -187,6 +188,7 @@ impl Default for Theme {
             radius_lg: px(12.0),
             transparent: rgba(0x00000000).into(),
             font_sizes: FontSizes::default(),
+            font_mono: "JetBrains Mono",
         }
     }
 }
@@ -253,8 +255,8 @@ mod tests {
     fn base16_roundtrip() {
         let hex = [
             "#1e1e2e", "#25253b", "#181825", "#313244", "#45475a", "#a6adc8",
-            "#cdd6f4", "#f8f8f2", "#f87171", "#fbbf24", "#60a5fa", "#4ade80",
-            "#89dceb", "#89b4fa", "#cba6f7", "#f38ba8",
+            "#cdd6f4", "#f8f8f2", "#f38ba8", "#f9e2af", "#89b4fa", "#a6e3a1",
+            "#94e2d5", "#89b4fa", "#cba6f7", "#f38ba8",
         ];
         let colors = Base16Colors::from_hex(&hex).expect("16 валидных hex");
         let theme = colors.to_theme();

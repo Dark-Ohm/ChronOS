@@ -72,12 +72,7 @@ impl BarWidget for DockWidget {
             .child(
                 div()
                     .child("⏻")
-                    .text_color(gpui::Hsla {
-                        h: 0.56,
-                        s: 0.65,
-                        l: 0.65,
-                        a: 1.0,
-                    })
+                    .text_color(theme.accent.primary)
                     .text_base(),
             );
 

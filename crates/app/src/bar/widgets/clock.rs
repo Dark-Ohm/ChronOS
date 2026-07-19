@@ -50,6 +50,7 @@ impl BarWidget for ClockWidget {
             .px(px(8.))
             .text_color(Theme::global(cx).text.primary)
             .text_size(Theme::global(cx).font_sizes.sm)
+            .font_family(Theme::global(cx).font_mono)
             .child(text!(label))
             .into_any_element()
     }

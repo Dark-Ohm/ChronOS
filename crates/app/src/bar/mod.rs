@@ -74,7 +74,7 @@ impl Render for Bar {
 
         div()
             .size_full()
-            .bg(Theme::global(cx).bg.primary)
+            .bg(Theme::global(cx).bg.tertiary)
             .flex()
             .items_center()
             .child(section_div(BarSection::Left, left))

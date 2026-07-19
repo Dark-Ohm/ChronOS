@@ -34,11 +34,11 @@ pub const DEFAULT_BASE16: [&str; 16] = [
     "6c7086", // base05 text.muted
     "a6adc8", // base06 text.secondary
     "cdd6f4", // base07 text.primary
-    "f87171", // base08 status.error
-    "fbbf24", // base09 status.warning
-    "89dceb", // base0a status.warning/alt
-    "4ade80", // base0b status.success
-    "60a5fa", // base0c status.info
+    "f38ba8", // base08 status.error (Catppuccin Mocha maroon/red)
+    "f9e2af", // base09 status.warning (Catppuccin Mocha yellow)
+    "94e2d5", // base0a status.warning/alt (Catppuccin Mocha teal)
+    "a6e3a1", // base0b status.success (Catppuccin Mocha green)
+    "89b4fa", // base0c status.info (Catppuccin Mocha blue)
     "007acc", // base0d accent.primary / border.focused
     "cba6f7", // base0e accent.hover / toggle_on_hover
     "f38ba8", // base0f active/emph

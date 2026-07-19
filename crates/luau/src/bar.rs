@@ -13,7 +13,7 @@ pub enum BarSection {
 }
 
 /// Bar thickness in logical pixels.
-pub const BAR_HEIGHT: f32 = 32.0;
+pub const BAR_HEIGHT: f32 = 30.0;
 
 /// Bar background color (0xRRGGBB).
 pub const BAR_COLOR: u32 = 0x1e1e2e;
