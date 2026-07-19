@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#11111b;font-family:'Inter',sans-serif}
+::selection{background:#cba6f7;color:#11111b}
+input[type=range].gpui-slider{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:3px;background:#313244;outline:none}
+input[type=range].gpui-slider::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:#cdd6f4;cursor:pointer;border:none}
+input[type=range].gpui-slider::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:#cdd6f4;cursor:pointer;border:none}
+input[type=range].gpui-slider:hover::-webkit-slider-thumb{background:#cba6f7}
+input[type=range].gpui-slider:hover::-moz-range-thumb{background:#cba6f7}
+</style>
+</helmet>
+<div style="position:relative;width:100vw;height:100vh;background:#11111b;overflow:hidden">
+  <div style="position:absolute;top:14px;right:24px;width:34px;height:34px;border-radius:6px;background:#313244;display:flex;align-items:center;justify-content:center;color:#a6adc8">
+    <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M155.51 24.81a8 8 0 00-8.42.88L77.25 80H32a16 16 0 00-16 16v64a16 16 0 0016 16h45.25l69.84 54.31A8 8 0 00160 224V32a8 8 0 00-4.49-7.19zM208 160a8 8 0 010-16 16 16 0 000-32 8 8 0 010-16 32 32 0 010 64z"/></svg>
+  </div>
+
+  <div style="position:absolute;top:56px;right:24px;width:360px;background:#1e1e2e;border:1px solid #313244;border-radius:10px;font-family:'Inter',sans-serif;color:#cdd6f4;display:flex;flex-direction:column">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #313244">
+      <div style="font-size:13px;font-weight:600;color:#cdd6f4">Sound</div>
+      <div style="width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer" style-hover="background:#313244;color:#cdd6f4">
+        <svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66 194.34a8 8 0 01-11.32 11.32L128 139.31l-66.34 66.35a8 8 0 01-11.32-11.32L116.69 128 50.34 61.66a8 8 0 0111.32-11.32L128 116.69l66.34-66.35a8 8 0 0111.32 11.32L139.31 128z"/></svg>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;padding:14px;gap:16px">
+
+      <div style="display:flex;flex-direction:column;gap:8px;position:relative">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:7px;cursor:pointer;border-radius:6px;padding:2px 4px;margin:-2px -4px" onclick="{{ toggleVolumeMenu }}" style-hover="background:#24243a">
+            <div style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:{{ volumeMuted }};cursor:pointer" onclick="{{ toggleVolumeMute }}" style-hover="background:#313244">
+              <sc-if value="{{ state.volumeMuted }}" hint-placeholder-val="{{ false }}">
+                <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor"><path d="M155.51 24.81a8 8 0 00-8.42.88L77.25 80H32a16 16 0 00-16 16v64a16 16 0 0016 16h45.25l69.84 54.31A8 8 0 00160 224V32a8 8 0 00-4.49-7.19zM224.49 103.51a8 8 0 00-11.31 11.31L228.69 130l-15.51 15.51a8 8 0 0011.31 11.31l15.51-15.51 15.51 15.51a8 8 0 0011.31-11.31L251.31 130l15.51-15.51a8 8 0 00-11.31-11.31L240 118.69z"/></svg>
+              </sc-if>
+              <sc-if value="{{ notMuted }}" hint-placeholder-val="{{ true }}">
+                <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor"><path d="M155.51 24.81a8 8 0 00-8.42.88L77.25 80H32a16 16 0 00-16 16v64a16 16 0 0016 16h45.25l69.84 54.31A8 8 0 00160 224V32a8 8 0 00-4.49-7.19zM208 160a8 8 0 010-16 16 16 0 000-32 8 8 0 010-16 32 32 0 010 64z"/></svg>
+              </sc-if>
+            </div>
+            <div style="display:flex;flex-direction:column;line-height:1.25">
+              <span style="font-size:12.5px;font-weight:500;color:#cdd6f4">Volume</span>
+              <span style="font-size:10px;color:#6c7086;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px">{{ state.outputDevice }}</span>
+            </div>
+            <svg width="10" height="10" viewBox="0 0 256 256" fill="#6c7086" style="flex:none;transform:rotate({{ volumeChevronRotate }})"><path d="M213.66 101.66l-80 80a8 8 0 01-11.32 0l-80-80a8 8 0 0111.32-11.32L128 164.69l74.34-74.35a8 8 0 0111.32 11.32z"/></svg>
+          </div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#a6adc8">{{ volumeLabel }}</span>
+        </div>
+        <input class="gpui-slider" type="range" min="0" max="100" value="{{ state.volume }}" onchange="{{ onVolumeChange }}" oninput="{{ onVolumeChange }}"/>
+        <sc-if value="{{ state.volumeMenuOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;top:36px;left:0;width:220px;background:#181825;border:1px solid #313244;border-radius:8px;padding:4px;z-index:10;display:flex;flex-direction:column">
+            <sc-for list="{{ outputDevices }}" as="dev" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#cdd6f4" onclick="{{ selectOutputDeviceHandler }}" data-dev="{{ dev.name }}" style-hover="background:#313244">
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ dev.name }}</span>
+                <sc-if value="{{ dev.selected }}" hint-placeholder-val="{{ false }}">
+                  <svg width="12" height="12" viewBox="0 0 256 256" fill="#007acc" style="flex:none"><path d="M229.66 77.66l-128 128a8 8 0 01-11.32 0l-56-56a8 8 0 0111.32-11.32L96 188.69 218.34 66.34a8 8 0 0111.32 11.32z"/></svg>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;position:relative">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:7px;cursor:pointer;border-radius:6px;padding:2px 4px;margin:-2px -4px" onclick="{{ toggleMicMenu }}" style-hover="background:#24243a">
+            <div style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer" onclick="{{ toggleMicMute }}" style-hover="background:#313244">
+              <sc-if value="{{ state.micMuted }}" hint-placeholder-val="{{ false }}">
+                <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor"><path d="M215.51 96.86a8 8 0 00-11-2.87L192 102.71V80a64.07 64.07 0 00-64-64c-16.2 0-30.9 6.5-41.6 17.1L52.24 4.23a8 8 0 00-9.9 12.56L192 132.28v.11a8 8 0 003.31 6.44l14.35 11.15a63.63 63.63 0 003.61-8.3l-.09.08a8 8 0 0011.28-11.36zM128 168a8 8 0 01-8-8v-13.72l-16-12.44V160a24 24 0 0024 24h.68a63.67 63.67 0 0026.5-6.16l-13.51-10.5A48 48 0 01128 168zm-88-8a8 8 0 00-16 0 88.1 88.1 0 0080 87.6V232H72a8 8 0 000 16h64a8 8 0 000-16h-16v-8.42a87.6 87.6 0 0035.86-13.44l-12.7-9.87A72.13 72.13 0 0140 160z"/></svg>
+              </sc-if>
+              <sc-if value="{{ micNotMuted }}" hint-placeholder-val="{{ true }}">
+                <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor"><path d="M128 176a48.05 48.05 0 0048-48V64a48 48 0 00-96 0v64a48.05 48.05 0 0048 48zM88 64a40 40 0 0180 0v64a40 40 0 01-80 0zm112 64a8 8 0 00-16 0 56.06 56.06 0 01-56 56 8 8 0 000 16 72 72 0 0072-72zm-64 88h-8a8 8 0 000 16h32a8 8 0 000-16h-8v-16.68a72 72 0 0056-72 8 8 0 00-16 0 56.06 56.06 0 01-56 56 56.06 56.06 0 01-56-56 8 8 0 00-16 0 72 72 0 0056 72z"/></svg>
+              </sc-if>
+            </div>
+            <div style="display:flex;flex-direction:column;line-height:1.25">
+              <span style="font-size:12.5px;font-weight:500;color:#cdd6f4">Microphone</span>
+              <span style="font-size:10px;color:#6c7086;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px">{{ state.inputDevice }}</span>
+            </div>
+            <svg width="10" height="10" viewBox="0 0 256 256" fill="#6c7086" style="flex:none;transform:rotate({{ micChevronRotate }})"><path d="M213.66 101.66l-80 80a8 8 0 01-11.32 0l-80-80a8 8 0 0111.32-11.32L128 164.69l74.34-74.35a8 8 0 0111.32 11.32z"/></svg>
+          </div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#a6adc8">{{ micLabel }}</span>
+        </div>
+        <input class="gpui-slider" type="range" min="0" max="100" value="{{ state.mic }}" onchange="{{ onMicChange }}" oninput="{{ onMicChange }}"/>
+        <sc-if value="{{ state.micMenuOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;top:36px;left:0;width:220px;background:#181825;border:1px solid #313244;border-radius:8px;padding:4px;z-index:10;display:flex;flex-direction:column">
+            <sc-for list="{{ inputDevices }}" as="dev" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#cdd6f4" onclick="{{ selectInputDeviceHandler }}" data-dev="{{ dev.name }}" style-hover="background:#313244">
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ dev.name }}</span>
+                <sc-if value="{{ dev.selected }}" hint-placeholder-val="{{ false }}">
+                  <svg width="12" height="12" viewBox="0 0 256 256" fill="#007acc" style="flex:none"><path d="M229.66 77.66l-128 128a8 8 0 01-11.32 0l-56-56a8 8 0 0111.32-11.32L96 188.69 218.34 66.34a8 8 0 0111.32 11.32z"/></svg>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+
+    </div>
+
+    <div style="padding:12px 14px;border-top:1px solid #313244;display:flex;gap:8px">
+      <div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;background:transparent;border:1px solid #45475a;color:{{ muteBtnColor }};font-size:12px;font-weight:600;cursor:pointer;transition:border-color .12s,color .12s" onclick="{{ toggleVolumeMute }}" style-hover="border-color:#cba6f7;color:#cba6f7">
+        {{ volumeMuteLabel }}
+      </div>
+      <div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;background:transparent;border:1px solid #45475a;color:{{ micBtnColor }};font-size:12px;font-weight:600;cursor:pointer;transition:border-color .12s,color .12s" onclick="{{ toggleMicMute }}" style-hover="border-color:#cba6f7;color:#cba6f7">
+        {{ micMuteLabel }}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:420,&quot;height&quot;:560}}">
+class Component extends DCLogic {
+  state = {
+    volume: 62, mic: 78, volumeMuted: false, micMuted: false,
+    volumeMenuOpen: false, micMenuOpen: false,
+    outputDevice: 'Speakers (Built-in)', inputDevice: 'Microphone (Built-in)',
+  };
+
+  outputDevices = ['Speakers (Built-in)', 'HyperX Cloud II', 'HDMI — LG UltraFine', 'Bluetooth — WF-1000XM4'];
+  inputDevices = ['Microphone (Built-in)', 'HyperX QuadCast', 'Webcam Mic', 'Bluetooth — WF-1000XM4'];
+
+  renderVals() {
+    const s = this.state;
+    return {
+      state: s,
+      notMuted: !s.volumeMuted,
+      micNotMuted: !s.micMuted,
+      volumeLabel: s.volumeMuted ? 'Muted' : `${s.volume}%`,
+      micLabel: s.micMuted ? 'Muted' : `${s.mic}%`,
+      volumeMuteLabel: s.volumeMuted ? 'Unmute output' : 'Mute output',
+      micMuteLabel: s.micMuted ? 'Unmute mic' : 'Mute mic',
+      muteBtnColor: s.volumeMuted ? '#cba6f7' : '#a6adc8',
+      micBtnColor: s.micMuted ? '#cba6f7' : '#a6adc8',
+      toggleVolumeMute: () => this.setState(s => ({ volumeMuted: !s.volumeMuted })),
+      toggleMicMute: () => this.setState(s => ({ micMuted: !s.micMuted })),
+      onVolumeChange: (e) => this.setState({ volume: Number(e.target.value), volumeMuted: false }),
+      onMicChange: (e) => this.setState({ mic: Number(e.target.value), micMuted: false }),
+      toggleVolumeMenu: (e) => { e.stopPropagation(); this.setState(s => ({ volumeMenuOpen: !s.volumeMenuOpen, micMenuOpen: false })); },
+      toggleMicMenu: (e) => { e.stopPropagation(); this.setState(s => ({ micMenuOpen: !s.micMenuOpen, volumeMenuOpen: false })); },
+      outputDevices: this.outputDevices.map(name => ({ name, selected: name === s.outputDevice })),
+      inputDevices: this.inputDevices.map(name => ({ name, selected: name === s.inputDevice })),
+      selectOutputDeviceHandler: (e) => this.setState({ outputDevice: e.currentTarget.dataset.dev, volumeMenuOpen: false }),
+      selectInputDeviceHandler: (e) => this.setState({ inputDevice: e.currentTarget.dataset.dev, micMenuOpen: false }),
+      volumeChevronRotate: s.volumeMenuOpen ? '180deg' : '0deg',
+      micChevronRotate: s.micMenuOpen ? '180deg' : '0deg',
+    };
+  }
+}
+</script>
+</body>
+</html>

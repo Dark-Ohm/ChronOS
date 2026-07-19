@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',sans-serif}
+::selection{background:#cba6f7;color:#11111b}
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap">
+  <sc-for list="{{ variants }}" as="v" hint-placeholder-count="4">
+    <div style="width:420px;height:480px;background:{{ v.pageBg }};position:relative;overflow:hidden;box-sizing:border-box;border-right:1px solid rgba(0,0,0,0.15);border-bottom:1px solid rgba(0,0,0,0.15)">
+
+      <div style="position:absolute;top:14px;left:16px;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:{{ v.labelColor }}">{{ v.label }}</div>
+
+      <div style="position:absolute;top:44px;right:24px;display:flex;align-items:center;gap:6px;padding:3px 7px;border-radius:6px;color:{{ v.pillText }};font-size:11px;background:{{ v.pillBg }}">
+        <svg width="14" height="14" viewBox="0 0 32 32" fill="none">
+          <path d="M16 4L26.9 10V22L16 28L5.1 22V10L16 4Z" stroke="{{ v.sigilStroke }}" stroke-width="1.6" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="4.4" stroke="{{ v.sigilStroke }}" stroke-width="1" fill="none" opacity="0.8"/>
+          <circle cx="16" cy="16" r="1.3" fill="{{ v.sigilStroke }}"/>
+          <path d="M16 11.6V16L19 17.6" stroke="{{ v.sigilStroke }}" stroke-width="1" stroke-linecap="round"/>
+        </svg>
+        <span style="font-family:'JetBrains Mono',monospace">{{ v.currentProject }}</span>
+        <svg width="10" height="10" viewBox="0 0 256 256" fill="{{ v.chevron }}" style="margin-left:1px"><path d="M213.66 101.66l-80 80a8 8 0 01-11.32 0l-80-80a8 8 0 0111.32-11.32L128 164.69l74.34-74.35a8 8 0 0111.32 11.32z"/></svg>
+      </div>
+
+      <sc-if value="{{ v.open }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;top:74px;right:24px;width:270px;background:{{ v.cardBg }};border:1px solid {{ v.cardBorder }};border-radius:10px;box-shadow:{{ v.cardShadow }};color:{{ v.textPrimary }};display:flex;flex-direction:column;overflow:hidden">
+
+          <sc-if value="{{ v.showWatermark }}" hint-placeholder-val="{{ false }}">
+            <svg width="140" height="140" viewBox="0 0 140 140" style="position:absolute;top:-30px;right:-30px;opacity:{{ v.watermarkOpacity }};pointer-events:none">
+              <polygon points="70,10 116,36 116,88 70,114 24,88 24,36" fill="none" stroke="{{ v.accent }}" stroke-width="1"/>
+              <polygon points="70,34 96,49 96,79 70,94 44,79 44,49" fill="none" stroke="{{ v.accent }}" stroke-width="1"/>
+              <circle cx="70" cy="64" r="10" fill="none" stroke="{{ v.accent }}" stroke-width="1"/>
+              <line x1="70" y1="10" x2="70" y2="34" stroke="{{ v.accent }}" stroke-width="1"/>
+              <line x1="116" y1="36" x2="96" y2="49" stroke="{{ v.accent }}" stroke-width="1"/>
+              <line x1="116" y1="88" x2="96" y2="79" stroke="{{ v.accent }}" stroke-width="1"/>
+              <line x1="24" y1="36" x2="44" y2="49" stroke="{{ v.accent }}" stroke-width="1"/>
+              <line x1="24" y1="88" x2="44" y2="79" stroke="{{ v.accent }}" stroke-width="1"/>
+            </svg>
+          </sc-if>
+
+          <sc-if value="{{ v.glowTop }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,{{ v.accent }},transparent)"></div>
+          </sc-if>
+
+          <div style="padding:10px 12px 6px;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:{{ v.textMuted }};position:relative">Projects</div>
+
+          <div style="display:flex;flex-direction:column;position:relative">
+            <sc-for list="{{ v.projects }}" as="p" hint-placeholder-count="4">
+              <div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px 8px 15px;background:{{ p.rowBg }};cursor:pointer" style-hover="background:{{ v.hoverBg }}">
+                <sc-if value="{{ p.current }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;left:0;top:5px;bottom:5px;width:2.5px;border-radius:2px;background:{{ v.accent }};box-shadow:{{ v.stripeGlow }}"></div>
+                </sc-if>
+                <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                  <sc-if value="{{ v.showRowSigil }}" hint-placeholder-val="{{ false }}">
+                    <svg width="12" height="12" viewBox="0 0 32 32" fill="none" style="flex:none">
+                      <path d="M16 4L26.9 10V22L16 28L5.1 22V10L16 4Z" stroke="{{ v.textMuted }}" stroke-width="1.8" stroke-linejoin="round"/>
+                    </svg>
+                  </sc-if>
+                  <div style="min-width:0;display:flex;flex-direction:column;gap:1px">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:{{ v.textPrimary }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">{{ p.name }}</span>
+                    <span style="font-size:10.5px;color:{{ v.textMuted }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:150px">{{ p.path }}</span>
+                  </div>
+                </div>
+                <sc-if value="{{ p.current }}" hint-placeholder-val="{{ false }}">
+                  <svg width="13" height="13" viewBox="0 0 256 256" fill="{{ v.accent }}" style="flex:none"><path d="M229.66 77.66l-128 128a8 8 0 01-11.32 0l-56-56a8 8 0 0111.32-11.32L96 188.69 218.34 66.34a8 8 0 0111.32 11.32z"/></svg>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="height:1px;background:{{ v.cardBorder }};margin:2px 0;position:relative"></div>
+
+          <div style="display:flex;align-items:center;gap:6px;padding:9px 12px 10px 15px;color:{{ v.accent }};font-size:12px;font-weight:600;cursor:pointer;position:relative" style-hover="background:{{ v.hoverBg }}">
+            <svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor"><path d="M224 128a8 8 0 01-8 8h-80v80a8 8 0 01-16 0v-80H40a8 8 0 010-16h80V40a8 8 0 0116 0v80h80a8 8 0 018 8z"/></svg>
+            <span>Add project…</span>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </sc-for>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:840,&quot;height&quot;:960}}">
+class Component extends DCLogic {
+  renderVals() {
+    const projects = [
+      { name: 'ChronOS', path: '~/dev/chronos', current: true },
+      { name: 'aster-cli', path: '~/dev/aster-cli', current: false },
+      { name: 'dotfiles', path: '~/dotfiles', current: false },
+      { name: 'wallpapers', path: '~/Pictures/wallpapers', current: false },
+    ];
+
+    const dark = {
+      pageBg: '#11111b', labelColor: '#45475a', pillBg: 'transparent', pillText: '#a6adc8',
+      sigilStroke: '#007acc', chevron: '#6c7086', cardBg: '#1e1e2e', cardBorder: '#313244',
+      cardShadow: 'none', textPrimary: '#cdd6f4', textMuted: '#6c7086', hoverBg: '#24243a',
+      accent: '#007acc', stripeGlow: 'none', showWatermark: false, glowTop: false, showRowSigil: false,
+      watermarkOpacity: 0,
+    };
+
+    const lightBase = {
+      pageBg: '#dde0f2', pillText: '#3f4268', sigilStroke: '#007acc', chevron: '#7d80a6',
+      cardBg: '#eceefa', cardBorder: '#c4c8e6', textPrimary: '#2c2e4a', textMuted: '#5a5d80',
+      hoverBg: '#e0e3f4', accent: '#007acc',
+    };
+
+    const mk = (base, extra, label) => ({
+      ...base, ...extra, label,
+      currentProject: 'ChronOS',
+      projects: projects.map(p => ({
+        ...p,
+        rowBg: p.current ? (base === dark ? '#28283d' : (extra.rowCurrentBg || '#dfe2f6')) : 'transparent',
+      })),
+    });
+
+    return {
+      variants: [
+        mk(dark, { open: false }, 'Dark — pill closed'),
+        mk(dark, { open: true }, 'Dark — popup open'),
+        mk(lightBase, {
+          open: false, cardBg: '#e6e9fa',
+        }, 'Light — pill closed'),
+        mk(lightBase, {
+          open: true, cardBg: '#e6e9fa', cardShadow: '0 6px 24px rgba(60,64,110,0.16), inset 0 0 0 1px rgba(0,122,204,0.15)',
+          showWatermark: true, watermarkOpacity: 0.18, glowTop: true, showRowSigil: true,
+          stripeGlow: '0 0 10px rgba(203,166,247,0.7)', rowCurrentBg: '#d9defa',
+        }, 'Light — popup open (Light C, accepted)'),
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

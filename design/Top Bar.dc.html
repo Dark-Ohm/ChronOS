@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#11111b;font-family:'Inter',sans-serif}
+::selection{background:#cba6f7;color:#11111b}
+</style>
+</helmet>
+<div style="width:100vw;height:100vh;background:#11111b;display:flex;flex-direction:column">
+
+  <div style="height:30px;flex:none;background:#181825;border-bottom:1px solid #313244;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-family:'Inter',sans-serif;-webkit-app-region:drag">
+
+    <div style="display:flex;align-items:center;gap:12px;min-width:0;-webkit-app-region:no-drag">
+      <div style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#cdd6f4;cursor:pointer;flex:none" style-hover="background:#313244">
+        <svg width="15" height="15" viewBox="0 0 32 32" fill="none">
+          <path d="M16 2L28 9V23L16 30L4 23V9L16 2Z" stroke="#007acc" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M16 2V16L28 9M16 16L4 9M16 16V30" stroke="#007acc" stroke-width="1.4" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <div style="width:1px;height:14px;background:#313244;flex:none"></div>
+
+      <div style="display:flex;align-items:center;gap:3px;flex:none">
+        <div style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#f9e2af;cursor:pointer" style-hover="background:#313244">
+          <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M216 72h-84.69l-27.31-27.31A16 16 0 0093 40H40a16 16 0 00-16 16v144.62A15.4 15.4 0 0039.38 216h177.75a15.4 15.4 0 0015.37-15.38V88a16 16 0 00-16-16zM40 56h53l16 16H40z"/></svg>
+        </div>
+        <div style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#a6adc8;cursor:pointer" style-hover="background:#313244">
+          <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M223.71 66.14a8 8 0 00-10.68-1.9L182.8 82.68A104.4 104.4 0 00128 68a104.4 104.4 0 00-54.8 14.68L43 64.24a8 8 0 10-8.6 13.5l27 17.15A103.7 103.7 0 0024 168a8 8 0 0016 0 88 88 0 01176 0 8 8 0 0016 0 103.7 103.7 0 00-37.42-73.11l27-17.15a8 8 0 002.13-11.6zM96 152a12 12 0 1112-12 12 12 0 01-12 12zm64 0a12 12 0 1112-12 12 12 0 01-12 12z"/></svg>
+        </div>
+        <div style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#89b4fa;cursor:pointer" style-hover="background:#313244">
+          <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M128 24a104 104 0 10104 104A104.11 104.11 0 00128 24zm87.5 80h-33.9a154 154 0 00-15.9-57.7A88.3 88.3 0 01215.5 104zM128 40.4c9.5 0 22.1 19.6 27.9 47.6H100.1c5.8-28 18.4-47.6 27.9-47.6zM40.5 152A87.8 87.8 0 0140.5 104h33.9A170.6 170.6 0 0072.5 128a170.6 170.6 0 001.9 24zM96.6 168h62.8c-6.9 30-19.7 47.6-31.4 47.6S103.5 198 96.6 168zm-2.5-16A153.9 153.9 0 0192.5 128a153.9 153.9 0 011.6-24h67.8a153.9 153.9 0 011.6 24 153.9 153.9 0 01-1.6 24z"/></svg>
+        </div>
+        <div style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#89b4fa;cursor:pointer" style-hover="background:#313244">
+          <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M188.7 72.4A99 99 0 00160 62.6a68.3 68.3 0 00-3.2 6.6 92.5 92.5 0 00-57.6 0 68.3 68.3 0 00-3.2-6.6 99 99 0 00-28.7 9.8C43.5 100.2 36 137.4 39 174a99.6 99.6 0 0030.2 15.3 73.5 73.5 0 006.3-10.3 64 64 0 01-10-4.8c.8-.6 1.7-1.2 2.5-1.9a70.8 70.8 0 0059.9 0c.8.7 1.7 1.3 2.5 1.9a64 64 0 01-10 4.8 73.5 73.5 0 006.3 10.3A99.6 99.6 0 00217 174c3.6-42.4-7.4-79.3-28.3-101.6zM95.4 152.3c-6.6 0-12-6.1-12-13.6s5.3-13.6 12-13.6 12.1 6.1 12 13.6-5.3 13.6-12 13.6zm65.2 0c-6.6 0-12-6.1-12-13.6s5.3-13.6 12-13.6 12.1 6.1 12 13.6-5.4 13.6-12 13.6z"/></svg>
+        </div>
+        <div style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#a6adc8;cursor:pointer" style-hover="background:#313244">
+          <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M128 24a104 104 0 00-103.6 95.1l55.6 23a28.7 28.7 0 0116-4.9l24.7-35.9v-.5a38.7 38.7 0 1138.7 38.8h-.9l-35.4 25.3a28.8 28.8 0 01-56.9 6.8L27 158.6A104 104 0 10128 24zM86.3 194l-12.7-5.2a21.8 21.8 0 0011.7-10.7 21.5 21.5 0 000-16.5 21.9 21.9 0 00-28.5-11.9l-13.2 5.4a35 35 0 0032.3 47.4 34.6 34.6 0 0010.4-8.5zm74.8-77.3a25.8 25.8 0 1125.8-25.8 25.8 25.8 0 01-25.8 25.8z"/></svg>
+        </div>
+        <div style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#89b4fa;cursor:pointer" style-hover="background:#313244">
+          <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M212.1 26.5a12 12 0 00-13-2.6L92 84 45.8 48.6a8 8 0 00-9.8.3l-16 13.6a8 8 0 00-.2 12l35.6 32.6L19.8 143a8 8 0 00.2 12l16 13.6a8 8 0 009.8.3L92 133l107.1 60.1a12 12 0 0016.9-11V37.5a12 12 0 00-3.9-11z"/></svg>
+        </div>
+      </div>
+
+      <div style="width:1px;height:14px;background:#313244;flex:none"></div>
+
+      <div style="display:flex;align-items:center;gap:5px;flex:none">
+        <sc-for list="{{ workspaces }}" as="ws" hint-placeholder-count="4">
+          <div style="width:7px;height:7px;border-radius:50%;background:{{ ws.dot }};box-shadow:{{ ws.glow }};cursor:pointer"></div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:flex-end;gap:2px;height:16px;flex:1;justify-content:center;padding:0 12px">
+      <sc-for list="{{ cavaBars }}" as="h" hint-placeholder-count="24">
+        <div style="width:2.5px;height:{{ h }}px;background:#007acc;border-radius:1px"></div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:4px;flex:none;-webkit-app-region:no-drag">
+
+      <div style="display:flex;align-items:center;gap:5px;padding:3px 7px;border-radius:6px;color:#a6adc8;font-size:11px;cursor:pointer" style-hover="background:#24243a">
+        <svg width="12" height="12" viewBox="0 0 256 256" fill="currentColor"><path d="M216 72h-84.69l-27.31-27.31A16 16 0 0093 40H40a16 16 0 00-16 16v144.62A15.4 15.4 0 0039.38 216h177.75a15.4 15.4 0 0015.37-15.38V88a16 16 0 00-16-16zM40 56h53l16 16H40z"/></svg>
+        <span style="font-family:'JetBrains Mono',monospace">ChronOS</span>
+        <svg width="10" height="10" viewBox="0 0 256 256" fill="#6c7086" style="margin-left:1px"><path d="M213.66 101.66l-80 80a8 8 0 01-11.32 0l-80-80a8 8 0 0111.32-11.32L128 164.69l74.34-74.35a8 8 0 0111.32 11.32z"/></svg>
+      </div>
+
+      <div style="width:1px;height:14px;background:#313244;margin:0 4px"></div>
+
+      <div style="width:28px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#a6adc8;cursor:pointer" style-hover="background:#313244">
+        <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M96.34 112a8 8 0 01-11.31 0L64 90.63V216a8 8 0 01-16 0V90.63L26.34 112a8 8 0 01-11.31-11.31l34-34a8 8 0 0111.32 0l34 34A8 8 0 0196.34 112zm137.32 32a8 8 0 00-11.32 0L200 165.37V40a8 8 0 00-16 0v125.37l-22.34-22.35a8 8 0 00-11.32 11.31l34 34a8 8 0 0011.32 0l34-34a8 8 0 000-11.31z"/></svg>
+      </div>
+
+      <div style="position:relative;width:28px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#a6adc8;cursor:pointer" style-hover="background:#313244">
+        <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M155.51 24.81a8 8 0 00-8.42.88L77.25 80H32a16 16 0 00-16 16v64a16 16 0 0016 16h45.25l69.84 54.31A8 8 0 00160 224V32a8 8 0 00-4.49-7.19zM208 160a8 8 0 010-16 16 16 0 000-32 8 8 0 010-16 32 32 0 010 64z"/></svg>
+      </div>
+
+      <div style="position:relative;width:28px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#a6adc8;cursor:pointer" style-hover="background:#313244">
+        <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M221.8 175.94C216.25 166.38 208 139.33 208 104a80 80 0 10-160 0c0 35.34-8.26 62.38-13.81 71.94A16 16 0 0048 200h40.81a40 40 0 0078.38 0H208a16 16 0 0013.8-24.06z"/></svg>
+        <div style="position:absolute;top:1px;right:1px;width:6px;height:6px;border-radius:50%;background:#f38ba8;border:1.5px solid #181825"></div>
+      </div>
+
+      <div style="width:28px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#a6adc8;cursor:pointer" style-hover="background:#313244">
+        <svg width="13" height="13" viewBox="0 0 32 32" fill="none">
+          <path d="M16 3L27 11V25L16 29L5 25V11L16 3Z" stroke="#007acc" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M16 3V15M16 15L27 11M16 15L5 11M16 15V29" stroke="#007acc" stroke-width="1.2" stroke-linejoin="round"/>
+          <circle cx="16" cy="15" r="2.4" fill="#007acc"/>
+        </svg>
+      </div>
+
+      <div style="width:1px;height:14px;background:#313244;margin:0 4px"></div>
+
+      <div style="display:flex;align-items:center;gap:5px;padding:2px 8px 2px 6px;border-radius:6px;color:#a6adc8" style-hover="background:#24243a">
+        <svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor"><path d="M140.28 156.72a20 20 0 11-24.56 24.56 20 20 0 0124.56-24.56zM76.53 118a75.53 75.53 0 01103 0 8 8 0 0011-11.6 91.49 91.49 0 00-125 0A8 8 0 1076.53 118zm-42-42a8 8 0 0011.32-11.31 139.65 139.65 0 01188.32 0A8 8 0 10245.5 53.36a155.66 155.66 0 00-210.94 0A8 8 0 0034.5 76z"/></svg>
+        <svg width="14" height="10" viewBox="0 0 24 24" fill="none">
+          <rect x="1" y="1" width="19" height="10" rx="2.5" stroke="currentColor" stroke-width="1.6"/>
+          <rect x="21.5" y="4" width="2" height="4" rx="1" fill="currentColor"/>
+          <rect x="2.5" y="2.5" width="13" height="7" rx="1.2" fill="currentColor"/>
+        </svg>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px">78%</span>
+      </div>
+
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#cdd6f4;padding:0 4px">{{ time }}</span>
+
+    </div>
+  </div>
+
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#45475a;font-size:12px">workspace area</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:960,&quot;height&quot;:260}}">
+class Component extends DCLogic {
+  state = { now: new Date(), cava: Array.from({ length: 24 }, () => 3) };
+
+  componentDidMount() {
+    this._clock = setInterval(() => this.setState({ now: new Date() }), 30000);
+    this._cava = setInterval(() => {
+      this.setState({ cava: this.state.cava.map(() => 2 + Math.round(Math.random() * 14)) });
+    }, 140);
+  }
+  componentWillUnmount() { clearInterval(this._clock); clearInterval(this._cava); }
+
+  renderVals() {
+    const active = 1;
+    return {
+      workspaces: [0, 1, 2, 3].map(i => ({
+        dot: i === active ? '#007acc' : '#45475a',
+        glow: i === active ? '0 0 6px rgba(0,122,204,0.7)' : 'none',
+      })),
+      cavaBars: this.state.cava,
+      time: this.state.now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

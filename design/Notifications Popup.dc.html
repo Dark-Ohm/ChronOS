@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#11111b;font-family:'Inter',sans-serif}
+::selection{background:#cba6f7;color:#11111b}
+.notif-scroll{scrollbar-width:thin;scrollbar-color:#45475a #1e1e2e}
+.notif-scroll::-webkit-scrollbar{width:8px}
+.notif-scroll::-webkit-scrollbar-track{background:#1e1e2e}
+.notif-scroll::-webkit-scrollbar-thumb{background:#45475a;border-radius:4px}
+.notif-scroll::-webkit-scrollbar-thumb:hover{background:#585b70}
+</style>
+</helmet>
+<div style="position:relative;width:100vw;height:100vh;background:#11111b;overflow:hidden">
+  <div style="position:absolute;top:14px;right:24px;width:34px;height:34px;border-radius:6px;background:#313244;display:flex;align-items:center;justify-content:center;color:#a6adc8">
+    <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M221.8 175.94C216.25 166.38 208 139.33 208 104a80 80 0 10-160 0c0 35.34-8.26 62.38-13.81 71.94A16 16 0 0048 200h40.81a40 40 0 0078.38 0H208a16 16 0 0013.8-24.06z"/></svg>
+  </div>
+
+  <div style="position:absolute;top:56px;right:24px;width:360px;max-height:calc(100vh - 72px);background:#1e1e2e;border:1px solid #313244;border-radius:10px;font-family:'Inter',sans-serif;color:#cdd6f4;display:flex;flex-direction:column">
+
+    <div class="notif-scroll" style="display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden">
+      <sc-for list="{{ notifications }}" as="n" hint-placeholder-count="3">
+        <div style="display:flex;gap:0;border-bottom:1px solid #24243a">
+          <div style="width:3px;flex:none;border-radius:3px;margin:10px 0 10px 8px;background:{{ n.urgencyColor }}"></div>
+          <div style="flex:1;min-width:0;padding:10px 10px 12px 10px;position:relative">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <div style="display:flex;align-items:center;gap:6px;min-width:0">
+                <div style="width:16px;height:16px;border-radius:4px;flex:none;background:{{ n.iconColor }};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:#11111b">{{ n.iconLetter }}</div>
+                <span style="font-size:10.5px;color:#6c7086;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.appName }}</span>
+              </div>
+              <div style="width:18px;height:18px;border-radius:5px;flex:none;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer" onclick="{{ n.dismiss }}" style-hover="background:#313244;color:#cdd6f4">
+                <svg width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66 194.34a8 8 0 01-11.32 11.32L128 139.31l-66.34 66.35a8 8 0 01-11.32-11.32L116.69 128 50.34 61.66a8 8 0 0111.32-11.32L128 116.69l66.34-66.35a8 8 0 0111.32 11.32L139.31 128z"/></svg>
+              </div>
+            </div>
+            <div style="margin-top:5px;font-size:12.5px;font-weight:600;color:#cdd6f4;line-height:1.35">{{ n.summary }}</div>
+            <sc-if value="{{ n.hasBody }}" hint-placeholder-val="{{ true }}">
+              <div style="margin-top:3px;font-size:11.5px;color:#a6adc8;line-height:1.45;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden">{{ n.body }}</div>
+            </sc-if>
+            <sc-if value="{{ n.hasActions }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;gap:6px;margin-top:9px">
+                <sc-for list="{{ n.actions }}" as="act" hint-placeholder-count="2">
+                  <div style="padding:5px 11px;border-radius:6px;border:1px solid #45475a;font-size:11px;font-weight:600;color:#a6adc8;cursor:pointer;transition:border-color .12s,color .12s" onclick="{{ act.run }}" style-hover="border-color:#cba6f7;color:#cba6f7">{{ act.label }}</div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <sc-if value="{{ showFooter }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:12px 14px">
+        <div style="width:100%;box-sizing:border-box;text-align:center;padding:8px 0;border-radius:6px;background:transparent;border:1px solid #007acc;color:#007acc;font-size:12.5px;font-weight:600;cursor:pointer;transition:color .12s,border-color .12s" onclick="{{ clearAll }}" style-hover="border-color:#cba6f7;color:#cba6f7">
+          Clear all
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:36px 14px;text-align:center;font-size:12px;color:#6c7086">No notifications</div>
+    </sc-if>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:420,&quot;height&quot;:900}}">
+const URGENCY_COLORS = { low: '#6c7086', normal: '#f9e2af', critical: '#f38ba8' };
+
+class Component extends DCLogic {
+  state = {
+    notifications: [
+      { id: 1, appName: 'Zed', iconLetter: 'Z', iconColor: '#89b4fa', urgency: 'normal', summary: 'Build finished', body: 'chronos-core compiled in 4.2s with 0 errors, 2 warnings.', actions: [{ label: 'Show log', cmd: 'open-log' }] },
+      { id: 2, appName: 'Mail', iconLetter: 'M', iconColor: '#a6e3a1', urgency: 'low', summary: 'A. Petrova', body: 'Re: design review — can we push the sync to Thursday? I\u2019m out most of Tuesday.', actions: [{ label: 'Reply', cmd: 'reply' }, { label: 'Archive', cmd: 'archive' }] },
+      { id: 3, appName: 'System', iconLetter: 'S', iconColor: '#f38ba8', urgency: 'critical', summary: 'Battery critical — 5% remaining', body: 'Connect the charger now to avoid losing unsaved work.', actions: [] },
+      { id: 4, appName: 'Signal', iconLetter: 'S', iconColor: '#cba6f7', urgency: 'normal', summary: 'Dmitri Volkov', body: 'sent the updated deck, take a look when you can', actions: [{ label: 'Mark read', cmd: 'read' }] },
+      { id: 5, appName: 'Calendar', iconLetter: 'C', iconColor: '#fab387', urgency: 'low', summary: 'Standup in 10 minutes', body: 'Daily sync — Room 4B / meet.chronos.dev/standup', actions: [{ label: 'Join', cmd: 'join' }] },
+      { id: 6, appName: 'Package Manager', iconLetter: 'P', iconColor: '#89dceb', urgency: 'normal', summary: '7 packages updated', body: 'zed, mesa, pipewire and 4 more were upgraded in the background.', actions: [{ label: 'View log', cmd: 'view-log' }] },
+      { id: 7, appName: 'System', iconLetter: 'S', iconColor: '#6c7086', urgency: 'low', summary: 'Screenshot saved', body: 'Saved to ~/Pictures/Screenshots/2026-07-19.png', actions: [] },
+    ],
+  };
+
+  dismiss(id) {
+    this.setState(s => ({ notifications: s.notifications.filter(n => n.id !== id) }));
+  }
+
+  renderVals() {
+    const list = this.state.notifications;
+    return {
+      notifications: list.map(n => ({
+        ...n,
+        urgencyColor: URGENCY_COLORS[n.urgency],
+        hasBody: !!n.body,
+        hasActions: n.actions.length > 0,
+        actions: n.actions.map(a => ({ label: a.label, run: () => console.log('action:', a.cmd, 'on notif', n.id) })),
+        dismiss: () => this.dismiss(n.id),
+      })),
+      showFooter: list.length > 1,
+      isEmpty: list.length === 0,
+      clearAll: () => this.setState({ notifications: [] }),
+    };
+  }
+}
+</script>
+</body>
+</html>

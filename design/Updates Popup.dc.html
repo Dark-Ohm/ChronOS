@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#11111b;font-family:'Inter',sans-serif}
+::selection{background:#cba6f7;color:#11111b}
+</style>
+</helmet>
+<div style="position:relative;width:100vw;height:100vh;background:#11111b;overflow:hidden">
+  <div style="position:absolute;top:14px;right:24px;width:34px;height:34px;border-radius:6px;background:#313244;display:flex;align-items:center;justify-content:center;color:#a6adc8">
+    <svg width="17" height="17" viewBox="0 0 256 256" fill="currentColor"><path d="M208.49 96.49l-72 72a12 12 0 01-17 0l-72-72a12 12 0 0117-17L128 143l63.51-63.52a12 12 0 0117 17z"/></svg>
+  </div>
+
+  <div style="position:absolute;top:56px;right:24px;width:360px;background:#1e1e2e;border:1px solid #313244;border-radius:10px;font-family:'Inter',sans-serif;color:#cdd6f4;display:flex;flex-direction:column">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #313244">
+      <div style="font-size:13px;font-weight:600;color:#cdd6f4">Updates ({{ updates.length }})</div>
+      <div style="width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer" style-hover="background:#313244;color:#cdd6f4">
+        <svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66 194.34a8 8 0 01-11.32 11.32L128 139.31l-66.34 66.35a8 8 0 01-11.32-11.32L116.69 128 50.34 61.66a8 8 0 0111.32-11.32L128 116.69l66.34-66.35a8 8 0 0111.32 11.32L139.31 128z"/></svg>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;max-height:340px;overflow-y:auto">
+      <sc-for list="{{ updates }}" as="pkg" hint-placeholder-count="6">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 14px;border-bottom:1px solid #24243a" style-hover="background:#24243a">
+          <div style="display:flex;align-items:center;gap:7px;min-width:0">
+            <span style="font-size:12.5px;font-weight:500;color:#cdd6f4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ pkg.name }}</span>
+            <sc-if value="{{ pkg.aur }}" hint-placeholder-val="{{ true }}">
+              <span style="flex:none;font-size:9.5px;font-weight:600;letter-spacing:.02em;color:#cba6f7;background:rgba(203,166,247,0.12);border:1px solid rgba(203,166,247,0.3);border-radius:6px;padding:1px 5px;line-height:1.4">AUR</span>
+            </sc-if>
+          </div>
+          <div style="flex:none;font-family:'JetBrains Mono',monospace;font-size:11px;color:#6c7086;display:flex;align-items:center;gap:5px">
+            <span>{{ pkg.oldVersion }}</span>
+            <span style="color:#45475a">→</span>
+            <span style="color:#a6adc8">{{ pkg.newVersion }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="padding:12px 14px">
+      <div style="width:100%;box-sizing:border-box;text-align:center;padding:8px 0;border-radius:6px;background:transparent;border:1px solid #007acc;color:#007acc;font-size:12.5px;font-weight:600;cursor:pointer;transition:color .12s,border-color .12s" style-hover="border-color:#cba6f7;color:#cba6f7">
+        Upgrade all
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:420,&quot;height&quot;:520}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      updates: [
+        { name: 'linux-firmware', aur: false, oldVersion: '20240909.12', newVersion: '20241017.4' },
+        { name: 'zed', aur: true, oldVersion: '0.145.2', newVersion: '0.146.0' },
+        { name: 'mesa', aur: false, oldVersion: '24.2.3-1', newVersion: '24.2.4-1' },
+        { name: 'ttf-jetbrains-mono-nerd', aur: true, oldVersion: '3.2.1', newVersion: '3.3.0' },
+        { name: 'pipewire', aur: false, oldVersion: '1.2.4-1', newVersion: '1.2.5-1' },
+        { name: 'wl-clipboard', aur: false, oldVersion: '2.2.1-1', newVersion: '2.2.1-2' },
+        { name: 'visual-studio-code-bin', aur: true, oldVersion: '1.93.1', newVersion: '1.94.0' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
