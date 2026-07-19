@@ -33,6 +33,7 @@ portable-pty = "0.9"
 alacritty_terminal = "0.26"
 toml = "0.8"
 serde = { workspace = true, features = ["derive"] }
+uuid = "1"
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }

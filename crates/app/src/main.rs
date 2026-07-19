@@ -3,6 +3,7 @@ mod desktop_terminal;
 mod dock;
 mod ipc;
 mod launcher;
+mod monitor;
 mod notifications;
 mod osd;
 mod plugin_bridge;

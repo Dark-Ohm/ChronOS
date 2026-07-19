@@ -53,9 +53,7 @@ pub struct SystemPopupBrightnessWatcher {}
 pub struct SystemPopupUPowerWatcher {}
 
 fn pick_display(cx: &App) -> Option<DisplayId> {
-    cx.primary_display()
-        .map(|d| d.id())
-        .or_else(|| cx.displays().into_iter().next().map(|d| d.id()))
+    crate::monitor::pult_display(cx)
 }
 
 fn window_options(display_id: Option<DisplayId>) -> WindowOptions {
@@ -85,10 +83,9 @@ fn window_options(display_id: Option<DisplayId>) -> WindowOptions {
 /// refresh so the slider reflects the live monitor state, not a stale init
 /// value.
 ///
-/// `display_id` — display of the bar that was clicked (from `window.display(cx)`),
-/// so the popup opens on the same monitor as the clicked ⚙ icon. Falls back to
-/// `pick_display` (primary_display → first in cx.displays()) only if the caller
-/// could not resolve a display (e.g. IPC toggle without a window).
+/// `display_id` — the pult (chrome) display from `crate::monitor::pult_display`,
+/// so the popup opens on the same monitor as the bar. Falls back to
+/// `pick_display` only if the caller passes `None`.
 pub fn open(display_id: Option<DisplayId>, cx: &mut App) {
     if cx.global::<SystemPopupState>().handle.is_some() {
         return;
@@ -138,11 +135,11 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
 /// first display in `cx.displays()` (which is what `pick_display` alone does
 /// when `cx.primary_display()` returns None — the current state on Hyprland
 /// 0.55.4+ with the Lua config layer).
-pub fn toggle(window: &mut Window, cx: &mut App) {
+pub fn toggle(_window: &mut Window, cx: &mut App) {
     if cx.global::<SystemPopupState>().handle.is_some() {
         close(cx);
     } else {
-        let display = window.display(cx).map(|d| d.id());
+        let display = crate::monitor::pult_display(cx);
         open(display, cx);
     }
 }

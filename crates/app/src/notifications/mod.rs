@@ -79,9 +79,7 @@ pub struct NotificationWatcher {}
 
 /// Resolve the display to anchor the popup on (primary, else first).
 fn pick_display(cx: &App) -> Option<DisplayId> {
-    cx.primary_display()
-        .map(|d| d.id())
-        .or_else(|| cx.displays().into_iter().next().map(|d| d.id()))
+    crate::monitor::pult_display(cx)
 }
 
 /// Layer-shell window options for the notifications popup.

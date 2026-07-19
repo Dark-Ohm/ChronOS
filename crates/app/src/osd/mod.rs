@@ -89,9 +89,7 @@ impl OsdPopupState {
 pub struct OsdWatcher {}
 
 fn pick_display(cx: &App) -> Option<DisplayId> {
-    cx.primary_display()
-        .map(|d| d.id())
-        .or_else(|| cx.displays().into_iter().next().map(|d| d.id()))
+    crate::monitor::pult_display(cx)
 }
 
 /// Bottom-centre overlay. `KeyboardInteractivity::None` — Exclusive is

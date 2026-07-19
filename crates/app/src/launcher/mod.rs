@@ -81,10 +81,7 @@ pub fn open(cx: &mut App) {
         return;
     }
 
-    let display_id = cx
-        .primary_display()
-        .map(|d| d.id())
-        .or_else(|| cx.displays().into_iter().next().map(|d| d.id()));
+    let display_id = crate::monitor::pult_display(cx);
     tracing::info!(?display_id, "launcher display_id");
 
     match cx.open_window(window_options(display_id), |window, cx| {

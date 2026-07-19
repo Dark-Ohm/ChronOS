@@ -152,7 +152,7 @@ fn open_on_display(display_id: Option<DisplayId>, cx: &mut App) -> bool {
     }
 }
 
-/// Opens one bar window per display and installs the empty widget registry.
+/// Opens one bar window on the pult (control) display.
 /// Called once at startup from `main.rs`.
 pub fn init(cx: &mut App) {
     cx.set_global(BarWidgetRegistry::default());
@@ -165,14 +165,14 @@ pub fn init(cx: &mut App) {
             .await;
 
         let _ = cx.update(|cx: &mut App| {
-            let displays = cx.displays();
-            if displays.is_empty() {
-                tracing::info!("No displays found, opening bar on default display");
-                open_on_display(None, cx);
-            } else {
-                tracing::info!("Opening bar on {} displays", displays.len());
-                for d in displays {
-                    open_on_display(Some(d.id()), cx);
+            match crate::monitor::pult_display(cx) {
+                Some(display_id) => {
+                    tracing::info!("Opening bar on pult display {:?}", display_id);
+                    open_on_display(Some(display_id), cx);
+                }
+                None => {
+                    tracing::info!("No displays found, opening bar on default display");
+                    open_on_display(None, cx);
                 }
             }
         });
