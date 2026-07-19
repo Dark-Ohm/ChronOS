@@ -283,3 +283,110 @@ If its empty\not full - its a fresh log. - see previous log in /home/neo/Project
   `AudioCommand` / `EndpointState`) stable. Do NOT pin an old pipewire crate.
 - Rejected now: permanent reliance on subprocess — poll is good enough for bar/OSD
   foundation but not for 144 FPS-adjacent continuous metering.
+
+## 2026-07-19 — Layer-shell popup sizing: hard `max_h()`+`overflow_hidden()` clip, NOT pixel-estimated height
+
+- Context: `updates_popup` (Zed №1) sized its window via `count * ROW_H`-style
+  arithmetic against an unmeasured GPUI text-metric constant (`ROW_H = 32`).
+  Live smoke (24 updates) showed the real rendered row height is taller than
+  guessed — the list consumed the entire window and pushed the "Upgrade all"
+  button below the window's visible/clickable bounds *entirely* (not a
+  cosmetic crop — the button ceased to exist on screen). Same failure mode
+  independently reproduced in `notifications` (Hermes №9/№11) — an
+  `estimate_content_height` formula chasing the same unmeasured metrics,
+  repeatedly undercounting.
+- Considered: (1) tune the pixel constants more precisely (Hermes №11's
+  original brief); (2) hard-clip the variable-length list content to a fixed
+  budget, with the mandatory chrome (footer/button) laid out *outside* that
+  clipped box so it can never be pushed off regardless of how tall rows
+  actually render.
+- Decided: **(2), unconditionally, for any popup with a variable-length list
+  and mandatory chrome below it.** `.max_h(px(N)).overflow_hidden()` on the
+  list container (confirmed present and working in this gpui fork —
+  `gpui_macros/src/styles.rs:900`, `BoxStylePrefix{prefix:"max_h"}`; note
+  `.overflow_y_scroll()` does NOT resolve in this fork, confirmed separately
+  — clip works, scroll doesn't). Applied to `updates_popup` (commit
+  `67f7d10`) and `notifications` (Hermes №12) — both live-smoked (grim +
+  `hyprctl layers`), footer/button unconditionally visible regardless of
+  content length. This is now the STANDARD pattern for every layer-shell
+  popup with a variable list — do not re-derive per-popup pixel formulas.
+- Rejected: precise pixel-tuning as a durable fix — GPUI text-metric
+  differences (font, line-height, padding compounding) make any hardcoded
+  per-row constant a recurring source of the same bug under different
+  content lengths. The clip is structural, not arithmetic — it cannot be
+  "wrong" the way a pixel estimate can.
+
+## 2026-07-19 — Launcher/popup dismiss: no close-on-focus-loss, ever (supersedes Cline №9 debounce)
+
+- Context: `follow_mouse=1` in Hyprland fires spurious keyboard-deactivation
+  the instant the cursor leaves a window, even without a real dismiss intent.
+  Cline №9 tried a 300ms debounce on focus-loss-close — live smoke proved
+  debounce only *delays* the incorrect close, it doesn't fix it (moving the
+  mouse away for >300ms still closes the launcher unintentionally).
+- Considered: (1) tune the debounce window further; (2) remove close-on-
+  focus-loss entirely, keep only explicit dismiss paths (Esc / click-result /
+  re-toggle hotkey / dedicated close button).
+- Decided: **(2).** Applied to `launcher` (commit `fba8697`) and independently
+  arrived at by Zed for `updates_popup` (Zed №1, before this was written down
+  as a rule — Zed reasoned it out from the same `follow_mouse=1` MEMORY note).
+  Live-smoked: launcher stays open through mouse-away, closes correctly via
+  Esc/click. **This is now the standing rule for every layer-shell popup**:
+  `observe_window_activation` may only be used to RE-FOCUS input on regained
+  activation, never to close on lost activation. `tray_menu`'s
+  `schedule_autoclose` (timer-based, not focus-based) is a different,
+  acceptable mechanism — timers are not focus-loss detection.
+- Rejected: any focus-loss-triggered close, debounced or not — the trigger
+  itself (spurious deactivation under `follow_mouse=1`) is indistinguishable
+  from a real dismiss at the event level, so no debounce value fixes it.
+
+## 2026-07-19 — Top Bar redesign wave: decisions locked, briefs not yet written
+
+Context: user compared live shell against Claude Design mockups
+(`design/*.dc.html`) and rejected the current visual state outright. Beyond
+per-popup polish (border/badge/hover — HERMES.md №13), the Top Bar mockup
+proposed genuinely new features. Each decided independently, full context in
+HANDOFF.md "ВОЛНА «Top Bar редизайн»" — summarized here for the log:
+
+- **Audio visualizer**: considered native PipeWire-monitor tap (no external
+  binary, more work/risk) vs. shelling to the real `cava` binary (external
+  system dependency, not installed on this machine, but a proven/simple
+  instrument). Decided: shell to real `cava`. Rejected: native tap (not
+  worth the mainloop/threading complexity for a decorative bar element);
+  faking/skipping the visualizer (user explicitly wants it real).
+- **Dock**: considered keeping the standalone bottom-panel window (current
+  state, just got persistent config from Mimo №7) vs. absorbing it into the
+  bar's left cluster as an ordinary `BarWidget`, reusing the just-built
+  `dock/config.rs` persistence logic. Decided: absorb into bar, standalone
+  dock window goes away. The chronos-glyph icon (leftmost in the mockup)
+  becomes a Plasma-Kickoff-style "Start" button wired to the already-
+  accepted `launcher::toggle(cx)` — UX pattern borrowed from KDE Plasma,
+  implementation is 100% native GPUI (no Qt/KDE dependency of any kind —
+  does not contradict the earlier "Plasma abandoned for Hyprland" call,
+  which was about not adopting KDE's *stack*, not about UX inspiration).
+- **Git-branch indicator**: considered (1) a fixed path in config (dead
+  simple, always shows one hardcoded repo's branch); (2) following the
+  focused window's cwd (fragile — no universal way to query an arbitrary
+  terminal/editor's cwd on Wayland, would need per-app integration hacks);
+  (3) **user's own proposal, adopted**: a small persistent project registry
+  (`~/.config/chronos/projects.toml`, same load/save pattern as `dock.toml`)
+  with an "Add project" action opening a REAL system file picker (confirmed
+  live: `org.freedesktop.portal.FileChooser` is present and reachable via
+  zbus on this machine — ordinary D-Bus portal call, same complexity class
+  as the existing upower/tray proxies), and a bar-clickable popup to select
+  the *active* project. The pill shows the active project's current branch.
+  Rejected (1) and (2) once (3) was proposed — strictly better than both:
+  not fragile like (2), not single-repo-locked like (1).
+- **Notification history**: no inbox/history concept exists in the tree at
+  all today (confirmed by grep — notifications are purely ephemeral popups).
+  Considered building a persistent history+unread-badge feature vs.
+  deferring it. Decided: build it — bell icon + red badge dot (mockup:
+  `#f38ba8`, cutout border matching bar bg) in the bar, click opens a
+  history popup reusing `notifications/view.rs` card rendering, backed by
+  the already-existing `NotificationCommand::DismissAll`.
+- Build order (not yet dispatched, recorded so it isn't lost): workspace-dots
+  and notification-history are independent, can go in parallel; dock→bar and
+  project-switcher both touch the bar's left cluster and must be serialized
+  (same file, avoid a shared-file collision); cava is fully independent (own
+  service crate + a center bar widget). Final `bar/mod.rs` widget-order
+  assembly is done by the Architect personally after each piece is
+  individually accepted — not delegated to a narrow-zone agent.
