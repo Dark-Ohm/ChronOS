@@ -45,11 +45,7 @@ pub fn parse_wallpaper_set(payload: &str) -> Option<std::path::PathBuf> {
         return None;
     }
     let path = std::path::PathBuf::from(rest);
-    if path.is_absolute() {
-        Some(path)
-    } else {
-        None
-    }
+    if path.is_absolute() { Some(path) } else { None }
 }
 
 /// Parsed wallpaper IPC command.
@@ -114,13 +110,19 @@ mod tests {
     fn encodes_wallpaper_set_payload() {
         let path = std::path::Path::new("/home/user/Pictures/Wallpapers/a.jpg");
         let payload = encode_wallpaper_set(path);
-        assert_eq!(payload, "wallpaper-set:/home/user/Pictures/Wallpapers/a.jpg");
+        assert_eq!(
+            payload,
+            "wallpaper-set:/home/user/Pictures/Wallpapers/a.jpg"
+        );
     }
 
     #[test]
     fn parse_wallpaper_set_extracts_path() {
         let parsed = parse_wallpaper_set("wallpaper-set:/home/user/pics/test.png");
-        assert_eq!(parsed, Some(std::path::PathBuf::from("/home/user/pics/test.png")));
+        assert_eq!(
+            parsed,
+            Some(std::path::PathBuf::from("/home/user/pics/test.png"))
+        );
     }
 
     #[test]

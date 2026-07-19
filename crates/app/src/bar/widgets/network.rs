@@ -28,9 +28,7 @@ enum NetworkView {
 fn describe(data: &NetworkData, status: ServiceStatus) -> NetworkView {
     if matches!(
         status,
-        ServiceStatus::Initializing
-            | ServiceStatus::Unavailable
-            | ServiceStatus::Degraded(_)
+        ServiceStatus::Initializing | ServiceStatus::Unavailable | ServiceStatus::Degraded(_)
     ) || data.connectivity == ConnectivityState::Unknown
     {
         return NetworkView::Stub;
@@ -130,12 +128,18 @@ mod tests {
 
     #[test]
     fn stub_when_initializing() {
-        assert_eq!(describe(&data(), ServiceStatus::Initializing), NetworkView::Stub);
+        assert_eq!(
+            describe(&data(), ServiceStatus::Initializing),
+            NetworkView::Stub
+        );
     }
 
     #[test]
     fn stub_when_unavailable() {
-        assert_eq!(describe(&data(), ServiceStatus::Unavailable), NetworkView::Stub);
+        assert_eq!(
+            describe(&data(), ServiceStatus::Unavailable),
+            NetworkView::Stub
+        );
     }
 
     #[test]
@@ -148,14 +152,20 @@ mod tests {
 
     #[test]
     fn stub_when_unknown_connectivity() {
-        assert_eq!(describe(&data(), ServiceStatus::Available), NetworkView::Stub);
+        assert_eq!(
+            describe(&data(), ServiceStatus::Available),
+            NetworkView::Stub
+        );
     }
 
     #[test]
     fn disconnected_on_none() {
         let mut d = data();
         d.connectivity = ConnectivityState::None;
-        assert_eq!(describe(&d, ServiceStatus::Available), NetworkView::Disconnected);
+        assert_eq!(
+            describe(&d, ServiceStatus::Available),
+            NetworkView::Disconnected
+        );
     }
 
     #[test]
@@ -173,10 +183,13 @@ mod tests {
         // old `Full && ssid.is_none()` heuristic produced).
         let mut d = data();
         d.connectivity = ConnectivityState::Full;
-        assert_eq!(describe(&d, ServiceStatus::Available), NetworkView::Wifi {
-            ssid: "wifi".into(),
-            strength: 0,
-        });
+        assert_eq!(
+            describe(&d, ServiceStatus::Available),
+            NetworkView::Wifi {
+                ssid: "wifi".into(),
+                strength: 0,
+            }
+        );
     }
 
     #[test]
@@ -201,7 +214,9 @@ mod tests {
         d.wifi_ssid = Some("ThisIsAVeryLongSSIDName".into());
         d.wifi_strength = Some(50);
         match describe(&d, ServiceStatus::Available) {
-            NetworkView::Wifi { ssid, .. } => assert!(ssid.ends_with('…') && ssid.chars().count() == MAX_SSID_LEN + 1),
+            NetworkView::Wifi { ssid, .. } => {
+                assert!(ssid.ends_with('…') && ssid.chars().count() == MAX_SSID_LEN + 1)
+            }
             other => panic!("expected Wifi, got {other:?}"),
         }
     }

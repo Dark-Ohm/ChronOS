@@ -1,8 +1,6 @@
 //! OSD volume strip view — progress bar + icon/label from `OsdPopupState`.
 
-use gpui::{
-    App, Context, FontWeight, Render, Window, div, px, prelude::*,
-};
+use gpui::{App, Context, FontWeight, Render, Window, div, prelude::*, px};
 
 use chronos_ui::Theme;
 
@@ -42,7 +40,11 @@ impl Render for OsdView {
             "🔊"
         };
 
-        let kind_label = if is_source { "Микрофон" } else { "Громкость" };
+        let kind_label = if is_source {
+            "Микрофон"
+        } else {
+            "Громкость"
+        };
 
         let bg = theme.bg.elevated;
         let bar_track = theme.bg.secondary;
@@ -92,15 +94,11 @@ impl Render for OsdView {
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(kind_label.to_string()),
                             )
-                            .child(
-                                div()
-                                    .text_color(text_secondary)
-                                    .child(if muted {
-                                        "mute".to_string()
-                                    } else {
-                                        format!("{percent}%")
-                                    }),
-                            ),
+                            .child(div().text_color(text_secondary).child(if muted {
+                                "mute".to_string()
+                            } else {
+                                format!("{percent}%")
+                            })),
                     )
                     // Track + fill.
                     .child(
@@ -122,11 +120,7 @@ impl Render for OsdView {
                         div()
                             .text_color(text_secondary)
                             .text_xs()
-                            .child(if name.is_empty() {
-                                String::new()
-                            } else {
-                                name
-                            }),
+                            .child(if name.is_empty() { String::new() } else { name }),
                     ),
             );
 

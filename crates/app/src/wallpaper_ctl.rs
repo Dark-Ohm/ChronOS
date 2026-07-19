@@ -36,8 +36,14 @@ pub fn scan_wallpapers() -> Vec<PathBuf> {
         .filter(|p| p.is_file() && is_image(p))
         .collect();
     entries.sort_by(|a, b| {
-        let a_name = a.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let b_name = b.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let a_name = a
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let b_name = b
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         a_name.cmp(&b_name)
     });
     entries
@@ -101,10 +107,7 @@ mod tests {
         for window in wallpapers.windows(2) {
             let a = window[0].file_stem().unwrap().to_string_lossy();
             let b = window[1].file_stem().unwrap().to_string_lossy();
-            assert!(
-                a <= b,
-                "wallpapers not sorted: {a} > {b}",
-            );
+            assert!(a <= b, "wallpapers not sorted: {a} > {b}",);
         }
     }
 }

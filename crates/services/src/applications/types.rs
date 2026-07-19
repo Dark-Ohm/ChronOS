@@ -9,7 +9,7 @@ pub struct AppEntry {
     pub id: String,
     /// Resolved display name (locale-aware).
     pub name: String,
-    /// Raw Exec= value (field codes still present — strip before launch).
+    /// Exec= value with XDG field codes (%f, %F, %u, etc.) already stripped.
     pub exec: String,
     /// Icon name from Icon= field.
     pub icon: Option<String>,

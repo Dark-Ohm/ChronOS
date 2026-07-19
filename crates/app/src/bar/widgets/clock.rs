@@ -3,7 +3,7 @@
 
 use chrono::{Datelike, Local};
 
-use gpui::{AnyElement, App, Window, div, px, text, prelude::*};
+use gpui::{AnyElement, App, Window, div, prelude::*, px, text};
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_ui::Theme;

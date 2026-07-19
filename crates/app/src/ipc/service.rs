@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 use tokio::net::UnixListener as TokioUnixListener;
 use tokio::sync::mpsc;
 
-use super::messages::{WallpaperIpcCmd, classify_wallpaper, encode_ping, is_ping, is_toggle_launcher};
+use super::messages::{
+    WallpaperIpcCmd, classify_wallpaper, encode_ping, is_ping, is_toggle_launcher,
+};
 
 pub type IpcReceiver = mpsc::UnboundedReceiver<()>;
 pub type IpcToggleReceiver = mpsc::UnboundedReceiver<()>;
@@ -45,9 +47,7 @@ impl IpcSubscriber {
     /// Starts the accept loop. Must be called from within a tokio runtime.
     /// Returns receivers that yield `()` once per received ping / toggle request,
     /// plus a wallpaper command receiver.
-    pub fn start_listener(
-        &mut self,
-    ) -> (IpcReceiver, IpcToggleReceiver, IpcWallpaperReceiver) {
+    pub fn start_listener(&mut self) -> (IpcReceiver, IpcToggleReceiver, IpcWallpaperReceiver) {
         let (ping_sender, ping_receiver) = mpsc::unbounded_channel();
         let (toggle_sender, toggle_receiver) = mpsc::unbounded_channel();
         let (wallpaper_sender, wallpaper_receiver) = mpsc::unbounded_channel();
@@ -57,13 +57,7 @@ impl IpcSubscriber {
             match TokioUnixListener::from_std(std_listener) {
                 Ok(listener) => {
                     tokio::spawn(async move {
-                        accept_loop(
-                            listener,
-                            ping_sender,
-                            toggle_sender,
-                            wallpaper_sender,
-                        )
-                        .await;
+                        accept_loop(listener, ping_sender, toggle_sender, wallpaper_sender).await;
                     });
                 }
                 Err(e) => tracing::error!("Failed to convert IPC listener: {e}"),
