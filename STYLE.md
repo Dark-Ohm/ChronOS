@@ -1,0 +1,81 @@
+# ChronOS — Style System (канон стиля для кода)
+
+Единственный источник истины визуального стиля — **`crates/ui/src/theme/
+schemes.rs`** (`Theme` в `crates/ui/src/theme/mod.rs`). Любой виджет/попап
+берёт цвета/радиусы/шрифты из `Theme::global(cx)`, **не хардкодит hex/HSLA/px
+там, где есть токен**. Этот файл — карта соответствия и дисциплина, чтобы
+редизайн бара и всё последующее рисовалось консистентно.
+
+> **`design/` — осторожно.** Мокапы компонентов (`Top Bar.dc.html`, попапы)
+> — эталон ЛЭЙАУТА и хардкодят НАШУ палитру (Catppuccin Mocha + `#007acc`).
+> НО в папке лежит генерик-скаффолд **Nocturne** (`styles.css`,
+> `_ds_manifest.json`) с ЧУЖОЙ палитрой (блёрпл `#9184d9` на `#161826`) —
+> **это НЕ стиль ChronOS**, мокапы его не используют (0 ссылок на styles.css).
+> Игнорируй Nocturne-палитру; бери токены отсюда/из schemes.rs.
+
+## Карта: hex мокапа → токен Theme (тёмная схема)
+
+| Hex в мокапе | Токен Theme | Роль |
+|---|---|---|
+| `#181825` | **`bg.tertiary`** | фон бара (НЕ `bg.primary` #1e1e2e!) |
+| `#1e1e2e` | `bg.primary` | фон попапов base |
+| `#25253b` | `bg.secondary` | divider внутри попапов |
+| `#313244` | `bg.elevated` | сепараторы бара, бордер (`border.subtle`), hover-фон |
+| `#45475a` | `text.disabled` | неактивная workspace-точка |
+| `#6c7086` | `text.muted` | приглушённый текст/иконки |
+| `#a6adc8` | `text.secondary` | вторичные иконки/текст (большинство кнопок) |
+| `#cdd6f4` | `text.primary` | яркий текст (часы, лого) |
+| `#007acc` | `accent.primary` | акцент: сигилы, CAVA, активная точка, glow |
+| `#cba6f7` | `accent.hover` | hover-акцент |
+| `#f38ba8` | `status.error`* / base0f | бейдж уведомлений (розовый) |
+
+## Дыры токенов — ЗАКРЫТЬ перед редизайном (задача агенту)
+
+1. **`status.*` — Tailwind-суррогаты, перевести на каноничный Catppuccin.**
+   Сейчас (`DEFAULT_BASE16`, base08–0c): `f87171`/`fbbf24`/`4ade80`/`60a5fa`
+   — это Tailwind, НЕ Catppuccin. Мокапы хотят Catppuccin: error `f38ba8`
+   (red/maroon), warning `f9e2af` (yellow), success `a6e3a1` (green), info
+   `89b4fa` (blue), alt/teal `94e2d5`. Переписать base08–0c под Catppuccin
+   Mocha — тогда бейджи/updates/battery-цвета совпадут с мокапами.
+2. **Нет font-family токена.** Мокап: JetBrains Mono для mono-элементов
+   (часы, `78%`, имя проекта). Добавить в `Theme` поле `font_mono`
+   (`"JetBrains Mono"`) + опц. `font_ui` (Inter/system). Mono-виджеты
+   берут `font_mono`, остальные — дефолт.
+3. **Бар: высота 32 → 30.** `BAR_HEIGHT` в `crates/luau/src/bar.rs`.
+4. **Фон бара:** `bar/mod.rs` рендерит `bg.primary` → должно быть
+   `bg.tertiary` (#181825).
+
+## Дисциплина (чтоб последующее рисовалось как надо)
+
+- **Токен, не хардкод.** Каждый цвет — `theme.*`. Ноль сырых hex/HSLA в
+  виджетах. Радиус — `theme.radius`/`radius_lg`. Mono-шрифт — `font_mono`.
+- **Акцент живёт в линиях/glow/марках, НЕ в заливке.** `#007acc` — сигилы,
+  бордеры, glow-рёбра, активные штрихи; не заливать им площади. (То же
+  правило в светлой теме — см. `DECISIONS.log` 2026-07-19.)
+- **Ни чистого чёрного, ни белого** — всё из палитры.
+- **Сепаратор бара** — конвенция: `div().w(px(1.)).h(px(14.)).bg(bg.elevated)`
+  между группами кластера.
+- **Hover** — `theme.interactive.hover`; активное состояние — `accent`
+  в линии/фоне-тинте, не флуд.
+
+## Текущие нарушения дисциплины (чинить при касании файла)
+
+- `bar/widgets/dock.rs` — Start-кнопка хардкодит `Hsla { h:0.56,... }` →
+  токен (`accent.primary`?).
+- `bar/widgets/battery.rs` — пороги 15%/30% + цвета через `status.*`
+  (ок после Catppuccin-фикса).
+- `bar/widgets/cava.rs` — хардкод `MAX_BAR_H/MIN_BAR_H/BAR_W/BAR_GAP`
+  (допустимо как локальные консты виджета, но цвет — `accent.primary`).
+- `clock.rs` — русские месяцы хардкодом (i18n — отдельно, не стиль).
+
+## Порядок работ
+
+1. **Токен-фундамент** (агент): status.* → Catppuccin, `font_mono`,
+   BAR_HEIGHT 30, бар на `bg.tertiary`, de-hardcode dock. Отдельный
+   самодостаточный коммит ДО лэйаута.
+2. **Реконсиляция набора виджетов** (решения пользователя — Tier 2):
+   мокап рассинхронен с живым набором (не показывает tray/updates/system/
+   battery; добавляет up/down + accent-лого; часы центр→право?; MPRIS где?;
+   место project-switcher; dock-иконки реальные vs стилизованные).
+3. **Лэйаут-редизайн бара** (агент/Архитектор): порядок виджетов +
+   visual parity против `Top Bar.dc.html`, всё из токенов.
