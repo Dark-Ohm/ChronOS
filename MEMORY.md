@@ -36,6 +36,19 @@ _Hard constraints from user that every session must respect._
 ## Architecture decisions
 _Major design choices with rationale. The "why" matters more than the "what" for future sessions._
 
+> **STALE NOTICE (2026-07-19, поздний вечер):** entry below ("widgets
+> deferred") describes an early scaffold stage — since then the bar has
+> shipped real widgets (clock, mpris, network, tray, volume, workspaces,
+> cava) via this exact registry pattern; a full Top Bar redesign wave
+> (cava done, workspace-dots/dock-relocation/project-switcher/
+> notification-history in flight) is under way. Canonical current state
+> lives in `HANDOFF.md`/`ARCHITECTURE.md`/`roadmap.md`, not here — this
+> file's "Architecture decisions"/"Discovered durable knowledge" sections
+> below are historical rationale, still true as *why* but not *current
+> state*. Left un-rewritten (31KB, out of scope for a point-fix); the
+> stale "widgets deferred" framing directly below is the one actively
+> misleading claim, hence this notice.
+
 - **Bar = scaffold + dyn-safe widget contract (widgets deferred).** The top bar ships as a plain strip now; structure delivered: left/center/right sections, `trait BarWidget` (`section() -> BarSection` + `render(&self, &mut Window, &App) -> AnyElement`), and a runtime `BarWidgetRegistry` (GPUI global, `Vec<Box<dyn BarWidget>>`, `register()` + `widgets_for(section)`). Deliberately diverges from the `reference/gpui-shell` pattern (`trait BarWidget: Sized` chrome + static `enum Widget`/`match` dispatch): we make the trait itself dyn-safe and use it as the dispatch mechanism so adding a widget needs NO core recompile. Spec: `docs/superpowers/specs/2026-07-09-bar-scaffold-widget-contract-design.md`. (User-confirmed 2026-07-09.)
 - `BarWidget::render` is `&self` (not `&mut self`) so the bar can call it through a shared `&dyn BarWidget` borrowed immutably from the global registry during `Bar::render`; it also takes `&App` (not `&mut App`) for the same borrow reason — `Bar::render` already holds an immutable `cx.global()` borrow of the registry, so two immutable borrows coexist. Reactivity later via interior mutability / global `AppState`, not `&mut self`/`&mut App`.
 - **BarWidgetRegistry must grow named-widget replacement for LuaU hot-reload.** The 2026-07-09 decision to use Vec (not HashMap) was correct for scaffold, but LuaU hot-reload now requires replacing widgets by name. Approach: add `replace_by_name(name: &str, widget: Box<dyn BarWidget>)` to the Vec-backed registry (iterate, find by name, swap). This preserves insertion order while enabling replacement. Must be done in `crates/app` before Task 7 (bridge). Also add `unregister_by_name(name)` for full hot-reload cycle.
