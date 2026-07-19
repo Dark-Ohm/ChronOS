@@ -34,7 +34,9 @@ pub use tray::{
     MenuNode, MenuToggleType, TrayCommand, TrayIcon, TrayItem, TrayPixmap, TrayState,
     TraySubscriber, strip_mnemonic,
 };
-pub use upower::{BatteryState, PowerProfile, UPowerData, UPowerSubscriber};
+pub use upower::{
+    profile_to_str, BatteryState, PowerProfile, UPowerData, UPowerSubscriber,
+};
 pub use wallpaper::{
     AWWW_BIN, AWWW_DAEMON_BIN, Backend, IMAGE_EXTENSIONS, WallpaperCommand, WallpaperState,
     WallpaperSubscriber, command_to_awww_args, is_image, parse_query,

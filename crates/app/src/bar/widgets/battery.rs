@@ -1,9 +1,9 @@
-//! Battery widget for the bar — shows percentage + charging icon.
+//! Battery widget for the bar — shows percentage + charging icon + power profile.
 
 use gpui::{AnyElement, App, Window, div, prelude::*, px};
 
 use chronos_luau::bar::{BarSection, BarWidget};
-use chronos_services::Service;
+use chronos_services::{profile_to_str, Service, PowerProfile};
 use chronos_ui::Theme;
 
 use crate::state::AppState;
@@ -43,6 +43,21 @@ impl BarWidget for BatteryWidget {
             _ => "🔋",
         };
 
+        /// Cycle to the next power profile: Performance → Balanced → PowerSaver → Performance.
+        fn cycle_profile(current: PowerProfile) -> PowerProfile {
+            match current {
+                PowerProfile::Performance => PowerProfile::Balanced,
+                PowerProfile::Balanced => PowerProfile::PowerSaver,
+                PowerProfile::PowerSaver => PowerProfile::Performance,
+            }
+        }
+
+        let profile_icon = match data.power_profile {
+            PowerProfile::Performance => "⚡",
+            PowerProfile::Balanced => "⚖",
+            PowerProfile::PowerSaver => "🌱",
+        };
+
         let theme = Theme::global(cx);
         let color = if percent <= 15 {
             theme.status.error
@@ -52,11 +67,30 @@ impl BarWidget for BatteryWidget {
             theme.status.success
         };
 
+        let profile_suffix = format!(" {} {}", profile_icon, profile_to_str(data.power_profile));
+
         div()
+            .id("bar-battery")
             .flex()
             .items_center()
             .gap(px(4.))
-            .child(div().child(format!("{icon} {percent}%")).text_color(color))
+            .cursor_pointer()
+            .px(px(6.))
+            .py(px(2.))
+            .rounded(theme.radius)
+            .child(div().child(format!("{icon} {percent}%{profile_suffix}")).text_color(color))
+            .on_click(move |_event, _window, cx| {
+                let upower = AppState::upower(cx);
+                let current = upower.get().power_profile;
+                let next = cycle_profile(current);
+                let svc = upower.clone();
+                let _ = cx.background_spawn(async move {
+                    match svc.set_power_profile(next).await {
+                        Ok(()) => tracing::info!("battery widget: set power profile to {:?}", next),
+                        Err(e) => tracing::error!("battery widget: failed to set power profile: {e:?}"),
+                    }
+                });
+            })
             .into_any_element()
     }
 }

@@ -16,6 +16,15 @@ use crate::Service;
 use crate::ServiceStatus;
 pub use types::{BatteryState, PowerProfile, UPowerData};
 
+/// Map our PowerProfile enum to the string expected by power-profiles-daemon.
+pub fn profile_to_str(p: PowerProfile) -> &'static str {
+    match p {
+        PowerProfile::Performance => "performance",
+        PowerProfile::Balanced => "balanced",
+        PowerProfile::PowerSaver => "power-saver",
+    }
+}
+
 pub mod types;
 
 #[proxy(
@@ -52,6 +61,18 @@ trait UPowerDevice {
     fn type_(&self) -> zbus::Result<u32>;
 }
 
+#[proxy(
+    interface = "net.hadess.PowerProfiles",
+    default_service = "net.hadess.PowerProfiles",
+    default_path = "/net/hadess/PowerProfiles"
+)]
+trait PowerProfiles {
+    #[zbus(property)]
+    fn active_profile(&self) -> zbus::Result<String>;
+    #[zbus(property)]
+    fn set_active_profile(&self, profile: &str) -> zbus::Result<()>;
+}
+
 fn map_state(s: i32) -> BatteryState {
     match s {
         1 => BatteryState::Charging,
@@ -59,6 +80,20 @@ fn map_state(s: i32) -> BatteryState {
         3 => BatteryState::Empty,
         4 => BatteryState::Full,
         _ => BatteryState::Unknown,
+    }
+}
+
+/// Map power-profiles-daemon profile string to our enum.
+/// Unknown values default to Performance with a warning.
+fn map_profile(s: String) -> PowerProfile {
+    match s.as_str() {
+        "performance" => PowerProfile::Performance,
+        "balanced" => PowerProfile::Balanced,
+        "power-saver" => PowerProfile::PowerSaver,
+        other => {
+            warn!("Unknown power profile '{}', defaulting to Performance", other);
+            PowerProfile::Performance
+        }
     }
 }
 
@@ -116,7 +151,6 @@ pub struct UPowerSubscriber {
     /// Stored so future command methods (`set_power_profile`, when wired in a
     /// follow-up spec) can reuse the live D-Bus connection. Currently unused —
     /// retained per plan.
-    #[allow(dead_code)]
     conn: Mutable<Option<Connection>>,
 }
 
@@ -144,9 +178,16 @@ impl UPowerSubscriber {
         Self { data, status, conn }
     }
 
-    pub async fn set_power_profile(&self, _profile: PowerProfile) -> anyhow::Result<()> {
-        // Deferred: real PowerProfiles proxy wiring lands in a follow-up spec.
-        anyhow::bail!("UPowerSubscriber::set_power_profile deferred to a follow-up spec")
+    /// Set the active power profile via power-profiles-daemon.
+    pub async fn set_power_profile(&self, profile: PowerProfile) -> anyhow::Result<()> {
+        let conn = self
+            .conn
+            .get_cloned()
+            .ok_or_else(|| anyhow::anyhow!("UPowerSubscriber not connected yet"))?;
+        let profiles = PowerProfilesProxy::new(&conn).await?;
+        let profile_str = profile_to_str(profile);
+        profiles.set_active_profile(profile_str).await?;
+        Ok(())
     }
 }
 
@@ -180,43 +221,52 @@ async fn run(
         let connect = async {
             let conn = Connection::system().await?;
             let dev = DisplayDeviceProxy::new(&conn).await?;
+            let profiles = PowerProfilesProxy::new(&conn).await?;
             let percentage = dev.percentage().await.unwrap_or(0.0);
             let state = dev
                 .state()
                 .await
                 .map(map_state)
                 .unwrap_or(BatteryState::Unknown);
-            Ok::<_, anyhow::Error>((conn, dev, percentage, state))
+            let profile = profiles
+                .active_profile()
+                .await
+                .map(map_profile)
+                .unwrap_or_default();
+            Ok::<_, anyhow::Error>((conn, dev, profiles, percentage, state, profile))
         };
 
         match tokio::time::timeout(CONNECT_TIMEOUT, connect).await {
-            Ok(Ok((conn, dev, percentage, state))) => {
+            Ok(Ok((conn, dev, profiles, percentage, state, profile))) => {
                 let has_battery = detect_has_battery(&conn).await;
                 data.set(UPowerData {
                     battery_percent: percentage,
                     state,
                     has_battery,
-                    ..UPowerData::default()
+                    power_profile: profile,
                 });
                 status.set(ServiceStatus::Available);
                 conn_slot.set(Some(conn));
                 info!("UPowerSubscriber connected");
 
-                // Subscribe to percentage + state property changes; on stream
+                // Subscribe to percentage + state + profile property changes; on stream
                 // error, break to retry.
                 let percentage_stream = dev.receive_percentage_changed().await;
                 let state_stream = dev.receive_state_changed().await;
+                let profile_stream = profiles.receive_active_profile_changed().await;
                 let mut percentage_stream = std::pin::pin!(percentage_stream);
                 let mut state_stream = std::pin::pin!(state_stream);
+                let mut profile_stream = std::pin::pin!(profile_stream);
                 loop {
-                    // Wait for either property stream to emit; re-read both on
-                    // any change (cheap, and keeps data consistent).
+                    // Wait for any property stream to emit; re-read all on
+                    // change (cheap, and keeps data consistent).
                     let next = tokio::select! {
                         _ = percentage_stream.next() => true,
                         _ = state_stream.next() => true,
+                        _ = profile_stream.next() => true,
                     };
                     if !next {
-                        break; // both streams ended cleanly
+                        break; // all streams ended cleanly
                     }
                     let percentage = dev.percentage().await.unwrap_or(0.0);
                     let state = dev
@@ -224,11 +274,17 @@ async fn run(
                         .await
                         .map(map_state)
                         .unwrap_or(BatteryState::Unknown);
+                    let profile = profiles
+                        .active_profile()
+                        .await
+                        .map(map_profile)
+                        .unwrap_or_default();
                     // has_battery is static for the lifetime of the machine; no
                     // need to re-poll it on every property change.
                     data.set(UPowerData {
                         battery_percent: percentage,
                         state,
+                        power_profile: profile,
                         ..data.get_cloned()
                     });
                 }
@@ -246,5 +302,30 @@ async fn run(
 
         tokio::time::sleep(backoff).await;
         backoff = (backoff * 2).min(MAX_BACKOFF);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn map_profile_known_values() {
+        assert_eq!(map_profile("performance".to_string()), PowerProfile::Performance);
+        assert_eq!(map_profile("balanced".to_string()), PowerProfile::Balanced);
+        assert_eq!(map_profile("power-saver".to_string()), PowerProfile::PowerSaver);
+    }
+
+    #[test]
+    fn map_profile_unknown_defaults_to_performance() {
+        assert_eq!(map_profile("unknown".to_string()), PowerProfile::Performance);
+        assert_eq!(map_profile("".to_string()), PowerProfile::Performance);
+    }
+
+    #[test]
+    fn profile_to_str_roundtrip() {
+        assert_eq!(profile_to_str(PowerProfile::Performance), "performance");
+        assert_eq!(profile_to_str(PowerProfile::Balanced), "balanced");
+        assert_eq!(profile_to_str(PowerProfile::PowerSaver), "power-saver");
     }
 }
