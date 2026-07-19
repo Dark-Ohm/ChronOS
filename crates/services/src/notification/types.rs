@@ -81,6 +81,11 @@ pub type DismissReason = CloseReason;
 ///
 /// Contains every active notification keyed by id. The UI layer subscribes
 /// to this and renders the popup stack; the daemon mutates it.
+///
+/// `history` holds the persistent (in-session) log of notifications that
+/// have appeared — they stay here even after the ephemeral popup closes,
+/// so the bell/inbox can show "what happened" after a notification expired
+/// or was dismissed (feature №14).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NotificationState {
     /// Monotonic next id for `Notify` calls with `replaces_id == 0`.
@@ -89,7 +94,16 @@ pub struct NotificationState {
     pub notifications: Vec<Notification>,
     /// Whether any notification is currently in a critical/urgent state.
     pub any_critical: bool,
+    /// Persistent history (newest last). Bounded — old entries drop off the
+    /// front past `MAX_HISTORY`. Survives `close_internal`/`DismissAll`.
+    pub history: Vec<Notification>,
+    /// Count of history entries not yet seen by the user (inbox unread).
+    /// Incremented on `Notify`, cleared by `MarkAllRead`.
+    pub unread: usize,
 }
+
+/// Max entries kept in `history` (in-session ring buffer, not unbounded).
+pub const MAX_HISTORY: usize = 100;
 
 impl NotificationState {
     pub fn by_id(&self, id: u32) -> Option<&Notification> {
@@ -106,5 +120,19 @@ impl NotificationState {
             .notifications
             .iter()
             .any(|n| n.urgency == Urgency::Critical);
+    }
+
+    /// Push a notification into `history`, bounded by `MAX_HISTORY`.
+    pub fn push_history(&mut self, note: Notification) {
+        self.history.push(note);
+        if self.history.len() > MAX_HISTORY {
+            let overflow = self.history.len() - MAX_HISTORY;
+            self.history.drain(0..overflow);
+        }
+    }
+
+    /// Clear the unread counter (bell dot disappears). Does NOT touch `history`.
+    pub fn mark_all_read(&mut self) {
+        self.unread = 0;
     }
 }

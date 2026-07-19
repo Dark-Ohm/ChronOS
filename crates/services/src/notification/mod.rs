@@ -66,8 +66,10 @@ pub enum NotificationCommand {
     Close(u32),
     /// Activate a notification action (emits `ActionInvoked`).
     InvokeAction(u32, String),
-    /// Close every notification.
+    /// Close every notification (ephemeral popup only — history is untouched).
     DismissAll,
+    /// Mark the whole history as read (bell dot clears). Does not delete history.
+    MarkAllRead,
 }
 
 /// The subscriber: owns reactive state + the live D-Bus connection.
@@ -142,6 +144,10 @@ impl NotificationSubscriber {
                 for id in ids {
                     self.close_internal(id, CloseReason::DismissedByDaemon).await;
                 }
+            }
+            NotificationCommand::MarkAllRead => {
+                // History stays; only the unread counter clears (bell dot).
+                self.data.lock_mut().mark_all_read();
             }
         }
         Ok(())
@@ -283,7 +289,14 @@ impl NotificationSubscriber {
         };
 
         self.data.lock_mut().notifications.retain(|n| n.id != id);
-        self.data.lock_mut().notifications.push(note);
+        self.data.lock_mut().notifications.push(note.clone());
+        // Feature №14: persist into history + bump unread, regardless of what
+        // the ephemeral popup does next (expire/dismiss leave history intact).
+        {
+            let mut data = self.data.lock_mut();
+            data.push_history(note);
+            data.unread = data.unread.saturating_add(1);
+        }
         self.data.lock_mut().recompute_flags();
 
         // Arm expiry timer on the service runtime (NOT std::thread).
@@ -586,5 +599,58 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(svc.get().notifications.len(), 0, "matching action must close");
+    }
+
+    /// Feature №14: every `Notify` appends to `history` and bumps `unread`,
+    /// even though the ephemeral notification may later close/expire.
+    #[tokio::test]
+    async fn notify_builds_history_and_unread() {
+        let svc = NotificationSubscriber::new();
+        svc.notify("A".into(), 0, String::new(), "s1".into(), String::new(),
+            vec![], std::collections::HashMap::new(), 0).await;
+        svc.notify("B".into(), 0, String::new(), "s2".into(), String::new(),
+            vec![], std::collections::HashMap::new(), 0).await;
+
+        let state = svc.get();
+        assert_eq!(state.notifications.len(), 2, "both still active");
+        assert_eq!(state.history.len(), 2, "history captured both");
+        assert_eq!(state.unread, 2, "unread bumped per notify");
+    }
+
+    /// Feature №14: closing the ephemeral notification does NOT drop history,
+    /// but `MarkAllRead` clears the unread counter (bell dot).
+    #[tokio::test]
+    async fn close_keeps_history_mark_all_read_clears_unread() {
+        let svc = NotificationSubscriber::new();
+        let id = svc.notify("A".into(), 0, String::new(), "s".into(), String::new(),
+            vec![], std::collections::HashMap::new(), 0).await;
+        assert_eq!(svc.get().unread, 1);
+
+        svc.close_notification(id).await;
+        let after_close = svc.get();
+        assert_eq!(after_close.notifications.len(), 0, "ephemeral gone");
+        assert_eq!(after_close.history.len(), 1, "history retained");
+        assert_eq!(after_close.unread, 1, "unread still set until read");
+
+        svc.dispatch(NotificationCommand::MarkAllRead).await.unwrap();
+        let after_read = svc.get();
+        assert_eq!(after_read.unread, 0, "bell dot cleared");
+        assert_eq!(after_read.history.len(), 1, "history intact after read");
+    }
+
+    /// Feature №14: history is bounded (ring buffer) — old entries drop.
+    #[tokio::test]
+    async fn history_is_bounded() {
+        let svc = NotificationSubscriber::new();
+        for i in 0..(super::types::MAX_HISTORY + 10) {
+            let _ = svc.notify(
+                format!("A{i}"), 0, String::new(), "s".into(), String::new(),
+                vec![], std::collections::HashMap::new(), 0).await;
+        }
+        let state = svc.get();
+        assert_eq!(state.history.len(), super::types::MAX_HISTORY,
+            "history capped at MAX_HISTORY");
+        assert_eq!(state.unread, super::types::MAX_HISTORY + 10,
+            "unread tracks every Notify (uncapped), independent of history length");
     }
 }

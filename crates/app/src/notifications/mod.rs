@@ -25,6 +25,7 @@
 //! fix (commit `67f7d10`). Long single-card bodies are clipped by
 //! `BODY_MAX_H` inside the card so they don't bleed into the next card.
 
+pub mod history_popup;
 pub mod view;
 
 use gpui::{

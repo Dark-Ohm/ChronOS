@@ -6,6 +6,7 @@ mod clock;
 mod dock;
 mod mpris;
 mod network;
+mod notification_bell;
 mod tray;
 mod updates;
 mod volume;
@@ -28,4 +29,5 @@ pub fn register_builtin(cx: &mut App) {
     mpris::register(cx);
     updates::register(cx);
     cava::register(cx);
+    notification_bell::register(cx);
 }

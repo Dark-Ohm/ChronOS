@@ -57,6 +57,7 @@ fn main() {
             chronos_ui::Theme::init(cx);
             bar::init(cx);
             notifications::init(cx);
+            notifications::history_popup::init(cx);
             osd::init(cx);
             tray_menu::init(cx);
             updates_popup::init(cx);
