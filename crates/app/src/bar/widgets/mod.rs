@@ -1,6 +1,7 @@
 //! Built-in bar widgets.
 
 mod battery;
+mod cava;
 mod clock;
 mod mpris;
 mod network;
@@ -24,4 +25,5 @@ pub fn register_builtin(cx: &mut App) {
     volume::register(cx);
     mpris::register(cx);
     updates::register(cx);
+    cava::register(cx);
 }

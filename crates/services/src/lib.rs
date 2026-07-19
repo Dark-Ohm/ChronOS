@@ -7,6 +7,7 @@
 pub mod applications;
 pub mod audio;
 pub mod aur;
+pub mod cava;
 pub mod compositor;
 pub mod mpris;
 pub mod network;
@@ -20,6 +21,7 @@ pub use applications::{
 };
 pub use audio::{AudioCommand, AudioDevice, AudioState, AudioSubscriber, EndpointState};
 pub use aur::{AurCommand, AurSubscriber, PackageUpdate, UpdateSource, UpdatesState};
+pub use cava::{CavaState, CavaSubscriber, BAR_COUNT as CAVA_BAR_COUNT};
 pub use compositor::{
     ActiveWindow, CompositorBackend, CompositorCommand, CompositorState, CompositorSubscriber,
     Monitor, Workspace,
@@ -48,6 +50,7 @@ pub struct Services {
     pub applications: ApplicationsSubscriber,
     pub aur: AurSubscriber,
     pub audio: AudioSubscriber,
+    pub cava: CavaSubscriber,
     pub compositor: CompositorSubscriber,
     pub mpris: MprisSubscriber,
     pub network: NetworkSubscriber,
@@ -66,6 +69,7 @@ pub fn init_all() -> Services {
         applications: ApplicationsSubscriber::new(),
         aur: AurSubscriber::new(),
         audio: AudioSubscriber::new(),
+        cava: CavaSubscriber::new(),
         compositor: CompositorSubscriber::new(),
         mpris: MprisSubscriber::new(),
         network: NetworkSubscriber::new(),

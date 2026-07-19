@@ -74,6 +74,11 @@ impl AppState {
     pub fn aur(cx: &App) -> &chronos_services::AurSubscriber {
         &Self::global(cx).services.aur
     }
+
+    #[inline(always)]
+    pub fn cava(cx: &App) -> &chronos_services::CavaSubscriber {
+        &Self::global(cx).services.cava
+    }
 }
 
 /// Watch a signal and apply updates to component state.
