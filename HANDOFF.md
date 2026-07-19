@@ -8,7 +8,7 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-19 (ночь, после приёмки Cline/Mimo/Hermes).**
+**Обновлено: 2026-07-20 (после приёмки Grok №14 + Mimo №10 + уборки).**
 Всё датированное 2026-07-17/18 и «Приёмка-разведка» ниже — ИСТОРИЯ.
 Актуальное поле — **этот блок** + «ВОЛНА Top Bar» (решения) + field
 rules внизу файла. `git log` — истина по коммитам.
@@ -18,8 +18,8 @@ rules внизу файла. `git log` — истина по коммитам.
 | | |
 |---|---|
 | **origin/master** | `897c084` (запушено: Hermes №13 `8d74583` + design `9119edd` + doc-sync) |
-| **local master HEAD** | `0a99a67` — **ahead 9**, не пушено без отдельного добро |
-| ahead | …→ `f7de445` Zed system popup → `a3d36ba` Grok №14 MPRIS multi-player → `0a99a67` Mimo №10 consolidation (+ docs) |
+| **local master HEAD** | `7c8e2fd` — **ahead 12**, не пушено без отдельного добро |
+| ahead | …→ `f7de445` Zed system popup → `a3d36ba` Grok №14 MPRIS → `0a99a67` Mimo №10 consolidation → уборка `8766c31`/`9c86a2c`/`7c8e2fd` (+ docs) |
 
 Ранее запушено и живо: tray_menu `67ca90a`, launcher no-focus-loss
 `fba8697`, updates clip `67f7d10`, power-profiles `2522018`, volume
@@ -54,6 +54,21 @@ picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
   ненадёжен). **Известный хвост:** попап открывается на первом дисплее,
   не на кликнутом (`window.display()==None`) — чинится консолидацией,
   не блокер. Отчёт: `orchestration/report-log/zed-report-2.md`.
+- **`a3d36ba` Grok №14 MPRIS multi-player** — список плееров +
+  sticky-выбор + `CyclePlayer` + scroll-цикл + `‹i/n›`. Живьём grim:
+  `‹1/3›`, kill active → `‹1/2›`. Scroll-cycle только unit (ydotool
+  wheel-лимит). Отчёт: `report-log/grok-report-14.md`.
+- **`0a99a67` Mimo №10 consolidation** — chrome на ОДИН пультовый
+  монитор: `monitor.rs` (`pult_display` по uuid из
+  `~/.config/chronos/monitor.toml`, fallback самый большой +
+  авто-designation), бар только на пультовом, 8 попапов+launcher+
+  system_popup на `pult_display` (desktop_terminal не тронут). Живьём:
+  бар только DP-1, launcher/попап DP-1, monitor.toml авто-создан
+  (uuid `09e7b298…`). Дисплейный хвост system popup закрыт. Отчёт:
+  `report-log/mimo-report-10.md`.
+- **Уборка `8766c31`/`9c86a2c`/`7c8e2fd`** — battery `background_spawn`
+  `.detach()` (был `let _=`, кровный факт); rustfmt-дрейф 6 файлов +
+  фикс exec doc-коммента; MEMORY.md синхрон. Рабочее дерево ЧИСТОЕ.
 - **Уже на origin:** Hermes №13 visual parity `8d74583`; design-волна
   `9119edd` (`design/*.dc.html` в репо — user explicit; Light C
   принят; System Popup мокап принят).
@@ -64,59 +79,31 @@ picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
 
 ### Открыто прямо сейчас
 
-- **Grok №14 (MPRIS multi-player) — ПРИНЯТ, `a3d36ba`.** Список плееров +
-  sticky-выбор (ручной держится пока плеер жив) + `CyclePlayer` +
-  scroll-цикл в виджете + `‹i/n›`. Живьём (grim): `‹1/3›`, kill active →
-  auto-fallback `‹1/2›`. Scroll-cycle только unit (ydotool wheel-лимит,
-  как №5). Отчёт: `report-log/grok-report-14.md`.
-- **Mimo №10 (consolidation) — ПРИНЯТ, `0a99a67`.** chrome на один
-  пультовый монитор. Живьём: бар только на DP-1 (не на HDMI),
-  launcher/попап на DP-1, `~/.config/chronos/monitor.toml` авто-создан с
-  uuid DP-1 (`09e7b298…`). 8 попапов+launcher+system_popup на
-  `pult_display`, desktop_terminal не тронут. Дисплейный хвост system
-  popup закрыт (`window.display` убран). Эрраты Архитектора: логирование
-  вместо `let _=fs::write`, устаревший коммент. Отчёт:
-  `report-log/mimo-report-10.md`.
-- **Mimo №9** (project switcher) — **разблокирован**, №10 сел →
-  можно давать (project-switcher теперь на консолидированный бар).
-  Бриф в MIMO.md.
-  Пилюля = **имя проекта** + сигил/шеврон (не git-ветка — design
-  drift vs старый текст брифа). Эталон:
-  `design/Project Switcher.dc.html` (dark + Light C). Portal
-  FileChooser / `projects.toml`. Бриф в MIMO.md (после №8).
-- **Zed №2/№3 (System popup) — ПРИНЯТО функционально, `f7de445`**
-  (детали в блоке «Принято локально» выше). Bug 2 (кнопки не работали)
-  оказался двойным: `background_spawn` без `.detach()` (Task drop=cancel)
-  + `spawn_blocking` вне tokio — оба в кровных фактах ниже. gaming
-  repaint добавлен. **Открытый хвост:** дисплей — `window.display()==None`
-  для layer-shell (моя гипотеза «попап на дисплее кликнутого бара» через
-  `window.display` НЕ сработала, форк его не заполняет). Роутится через
-  консолидацию (ниже), не через inheritance. Побочно:
-  `display.bounds().origin==(0,0)` в форке (локальные коорд).
-
-- **НАПРАВЛЕНИЕ: chrome → один «пультовый» монитор** (принято
-  2026-07-19 ночь, `DECISIONS.log`). Отход от традиционного DE: бар/
-  панели/попапы/лаунчер — на ОДНОМ пультовом мониторе; второй → холст
-  под окна (Hyprland) + desktop-виджеты (`plasminal`) + позже. Сейчас
-  `bar/mod.rs:174` открывает бар на всех дисплеях — это меняется.
-  Designation пультового — по **uuid** монитора в конфиге
-  (`cx.primary_display()==None` на Wayland; форк даёт стабильный
-  across-reboot `uuid()` из имени вывода). Скоуп СЕЙЧАС: точим шелл
-  под пультовый; роль второго (виджет-холст) — ОТЛОЖЕНА до готовности
-  пультовой части. **Consolidation — БРИФ НАПИСАН (Mimo №10, MIMO.md,
-  исполнять ПЕРЕД №9).** Гейт `uuid()` пройден живьём (2026-07-20):
-  оба дисплея дают `uuid()==Ok`, стабильный UUIDv5. **Пультовый DP-1
-  (2560×1440) uuid=`09e7b298-aad0-546d-a4de-adcb9106fd7d`**; HDMI-A-1
-  (1920×1200) uuid=`56f01978-2d1e-5e26-bbe4-cc5fd992f8af`. Скоуп: конфиг
-  `~/.config/chronos/monitor.toml` (chrome_monitor uuid, fallback самый
-  большой) + общий `pult_display(cx)` + бар только на пультовом + свап
-  `pick_display`→`pult_display` в 9 chrome-попапах (desktop_terminal НЕ
-  трогать). Закрывает дисплейный хвост system popup разом.
+- **Mimo №9** (project switcher) — **разблокирован** (№10 сел, бар
+  консолидирован). Готов к раздаче. Пилюля = **имя проекта** + сигил/
+  шеврон (не git-ветка). Эталон: `design/Project Switcher.dc.html`
+  (dark + Light C). Portal FileChooser / `projects.toml`. Бриф в MIMO.md.
+- **КАПСТОУН: перерисовка бара** против `Top Bar.dc.html` — делает
+  Архитектор ЛИЧНО после №9 (порядок виджетов + visual parity). Аудит
+  снят (2 Haiku, 2026-07-20): (Tier 1, механика) высота 32→30, фон бара
+  `#181825` (не bg.primary), нижняя граница 1px, вертикальные
+  разделители между группами, JetBrains Mono 11–11.5px, CAVA 2.5px/16px.
+  (Tier 2, РЕШЕНИЯ пользователя ДО перерисовки) мокап рассинхронен с
+  живым набором: не показывает tray/updates/system/battery, добавляет
+  up/down + accent-логотип; часы центр→право?; MPRIS куда?; место
+  project-switcher; dock-иконки реальные vs стилизованные. Сначала
+  реконсиляция набора, потом стиль.
+- **Направление chrome→один пультовый монитор — РЕАЛИЗОВАНО** (`0a99a67`,
+  `DECISIONS.log` 2026-07-19). Второй монитор → холст (окна Hyprland +
+  desktop-виджеты `plasminal`) — **роль ОТЛОЖЕНА** до готовности
+  пультовой части. Пультовый = DP-1 uuid `09e7b298…` в
+  `~/.config/chronos/monitor.toml`.
+- **Хвост аудита `background_spawn`:** `notifications/view.rs` ×2 всё
+  ещё голый `background_spawn` (racy drop=cancel) — не срочно, латентно.
+- **Push:** локально ahead 12, не пушено — ждёт добра.
 - **Светлая тема** — порт `light_scheme()` под Light C **не начат**
-  (`crates/ui/src/theme/schemes.rs` всё ещё Latte-hex).
-- **Финальная сборка порядка** в bar registry / `bar/mod.rs` —
-  Архитектор лично, когда куски волны сядут.
-- **Grok №13 cava** — ✅ давно, `c519e2e`+`eb043fd`.
+  (`crates/ui/src/theme/schemes.rs` всё ещё Latte-hex). Часть капстоуна
+  или отдельно — на усмотрение.
 
 ### Кровные факты (System popup / железо, 2026-07-19)
 
