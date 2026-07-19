@@ -84,7 +84,7 @@ impl BarWidget for BatteryWidget {
                 let current = upower.get().power_profile;
                 let next = cycle_profile(current);
                 let svc = upower.clone();
-                let _ = cx.background_spawn(async move {
+                cx.background_spawn(async move {
                     match svc.set_power_profile(next).await {
                         Ok(()) => tracing::info!("battery widget: set power profile to {:?}", next),
                         Err(e) => tracing::error!("battery widget: failed to set power profile: {e:?}"),

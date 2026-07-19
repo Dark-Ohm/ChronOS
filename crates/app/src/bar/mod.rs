@@ -13,7 +13,7 @@ use gpui::{
     WindowBounds, WindowKind, WindowOptions, div, layer_shell::*, point, prelude::*, px,
 };
 
-use crate::state::{watch, AppState};
+use crate::state::{AppState, watch};
 
 struct Bar;
 
@@ -38,14 +38,15 @@ impl Bar {
         watch(cx, AppState::mpris(cx).subscribe(), |_, _, cx| {
             cx.notify();
         });
+        watch(cx, AppState::cava(cx).subscribe(), |_, _, cx| {
+            cx.notify();
+        });
 
         // 1-second ticker for clock and other time-dependent widgets.
         // Uses the background executor, not tokio.
         cx.spawn(async move |this, cx| {
             loop {
-                cx.background_executor()
-                    .timer(Duration::from_secs(1))
-                    .await;
+                cx.background_executor().timer(Duration::from_secs(1)).await;
                 let _ = this.update(cx, |_, cx| cx.notify());
             }
         })
@@ -140,7 +141,9 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
 }
 
 fn open_on_display(display_id: Option<DisplayId>, cx: &mut App) -> bool {
-    match cx.open_window(window_options(display_id, cx), move |_, cx| cx.new(|cx| Bar::new(cx))) {
+    match cx.open_window(window_options(display_id, cx), move |_, cx| {
+        cx.new(|cx| Bar::new(cx))
+    }) {
         Ok(_) => true,
         Err(err) => {
             tracing::warn!("Failed to open bar window: {}", err);
