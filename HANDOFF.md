@@ -18,8 +18,8 @@ rules внизу файла. `git log` — истина по коммитам.
 | | |
 |---|---|
 | **origin/master** | `897c084` (запушено: Hermes №13 `8d74583` + design `9119edd` + doc-sync) |
-| **local master HEAD** | `f7de445` — **ahead 4**, не пушено без отдельного добро |
-| ahead | `8457bbc` Cline №11 → `07df942` Mimo №8 → `f4ddd72` Hermes №14 → `f7de445` Zed system popup |
+| **local master HEAD** | `0a99a67` — **ahead 9**, не пушено без отдельного добро |
+| ahead | …→ `f7de445` Zed system popup → `a3d36ba` Grok №14 MPRIS multi-player → `0a99a67` Mimo №10 consolidation (+ docs) |
 
 Ранее запушено и живо: tray_menu `67ca90a`, launcher no-focus-loss
 `fba8697`, updates clip `67f7d10`, power-profiles `2522018`, volume
@@ -64,14 +64,22 @@ picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
 
 ### Открыто прямо сейчас
 
-- **В поле параллельно (2026-07-20):** Mimo №10 (consolidation, MIMO.md,
-  ПЕРЕД №9) + Grok №14 (MPRIS multi-player — список плееров + sticky +
-  scroll-цикл, GROK.md). Зоны не пересекаются: Mimo = `bar/mod.rs`+попапы+
-  `monitor.rs`, Grok = `services/mpris`+`bar/widgets/mpris.rs`. Приёмку
-  обоих делаю сам (release+живой смок). Оба агента в холодных сессиях —
-  брифы самодостаточны.
-- **Mimo №9** (project switcher) — **разблокирован** (№8 принят), но
-  ЖДЁТ №10 (project-switcher чище на консолидированный бар).
+- **Grok №14 (MPRIS multi-player) — ПРИНЯТ, `a3d36ba`.** Список плееров +
+  sticky-выбор (ручной держится пока плеер жив) + `CyclePlayer` +
+  scroll-цикл в виджете + `‹i/n›`. Живьём (grim): `‹1/3›`, kill active →
+  auto-fallback `‹1/2›`. Scroll-cycle только unit (ydotool wheel-лимит,
+  как №5). Отчёт: `report-log/grok-report-14.md`.
+- **Mimo №10 (consolidation) — ПРИНЯТ, `0a99a67`.** chrome на один
+  пультовый монитор. Живьём: бар только на DP-1 (не на HDMI),
+  launcher/попап на DP-1, `~/.config/chronos/monitor.toml` авто-создан с
+  uuid DP-1 (`09e7b298…`). 8 попапов+launcher+system_popup на
+  `pult_display`, desktop_terminal не тронут. Дисплейный хвост system
+  popup закрыт (`window.display` убран). Эрраты Архитектора: логирование
+  вместо `let _=fs::write`, устаревший коммент. Отчёт:
+  `report-log/mimo-report-10.md`.
+- **Mimo №9** (project switcher) — **разблокирован**, №10 сел →
+  можно давать (project-switcher теперь на консолидированный бар).
+  Бриф в MIMO.md.
   Пилюля = **имя проекта** + сигил/шеврон (не git-ветка — design
   drift vs старый текст брифа). Эталон:
   `design/Project Switcher.dc.html` (dark + Light C). Portal
