@@ -73,6 +73,7 @@ impl Render for VolumePopupView {
         let hover = theme.interactive.hover;
         let accent = theme.accent.primary;
         let bar_track = theme.bg.secondary;
+        let border_subtle = theme.border.subtle;
 
         let header = div()
             .w_full()
@@ -103,6 +104,8 @@ impl Render for VolumePopupView {
             .w(px(300.))
             .rounded(radius_lg)
             .bg(bg)
+            .border_1()
+            .border_color(border_subtle)
             .overflow_hidden()
             .child(header)
             .child(divider_line)

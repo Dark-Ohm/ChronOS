@@ -46,6 +46,7 @@ impl Render for UpdatesPopupView {
         let accent = theme.accent.primary;
         let accent_hover = theme.accent.hover;
         let hover = theme.interactive.hover;
+        let border_subtle = theme.border.subtle;
 
         let header = div()
             .w_full()
@@ -96,7 +97,7 @@ impl Render for UpdatesPopupView {
             };
             let mut rows: Vec<AnyElement> = updates[..shown]
                 .iter()
-                .map(|u| render_row(u, text_primary, text_muted, radius))
+                .map(|u| render_row(u, text_primary, text_muted, radius, hover, accent_hover))
                 .collect();
             if hidden > 0 {
                 rows.push(
@@ -155,6 +156,8 @@ impl Render for UpdatesPopupView {
             .flex_col()
             .rounded(radius_lg)
             .bg(bg)
+            .border_1()
+            .border_color(border_subtle)
             .overflow_hidden()
             .child(header)
             .child(divider_line)
@@ -168,10 +171,33 @@ fn render_row(
     text_primary: gpui::Hsla,
     text_muted: gpui::Hsla,
     radius: gpui::Pixels,
+    hover: gpui::Hsla,
+    accent_hover: gpui::Hsla,
 ) -> AnyElement {
-    let source_tag = match update.source {
-        UpdateSource::Official => "",
-        UpdateSource::Aur => " (AUR)",
+    let is_aur = matches!(update.source, UpdateSource::Aur);
+    let name_block: AnyElement = if is_aur {
+        // AUR badge (pill) instead of a bare " (AUR)" text suffix — visual
+        // parity with the design mockup (rounded pill, accent.hover bg on
+        // lowered alpha, smaller radius). Rendered ONLY for AUR sources.
+        div()
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .child(div().text_color(text_primary).child(update.name.clone()))
+            .child(
+                div()
+                    .rounded(radius)
+                    .px(px(6.))
+                    .py(px(1.))
+                    .bg(accent_hover)
+                    .opacity(0.18)
+                    .text_color(accent_hover)
+                    .text_xs()
+                    .child("AUR"),
+            )
+            .into_any_element()
+    } else {
+        div().text_color(text_primary).child(update.name.clone()).into_any_element()
     };
     div()
         .w_full()
@@ -181,11 +207,8 @@ fn render_row(
         .px(px(ROW_PAD_X))
         .py(px(ROW_PAD_Y))
         .rounded(radius)
-        .child(
-            div()
-                .text_color(text_primary)
-                .child(format!("{}{}", update.name, source_tag)),
-        )
+        .hover(|s| s.bg(hover))
+        .child(name_block)
         .child(
             div()
                 .text_color(text_muted)

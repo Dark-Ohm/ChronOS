@@ -36,6 +36,7 @@ impl Render for NotificationsView {
         let notifications = &cx.global::<NotificationPopupState>().current.notifications;
 
         let theme = Theme::global(cx);
+        let border_subtle = theme.border.subtle;
 
         // Urgency → left-border color (captured as plain `Hsla` values before
         // any closures so we don't hold a borrow of `cx`/`theme` inside the
@@ -165,6 +166,8 @@ impl Render for NotificationsView {
             .flex_col()
             .gap(px(8.))
             .max_h(px(LIST_MAX_H))
+            .border_1()
+            .border_color(border_subtle)
             .overflow_hidden()
             .children(cards)
             .into_any_element()

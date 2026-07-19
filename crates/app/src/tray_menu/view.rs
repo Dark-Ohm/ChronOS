@@ -50,6 +50,8 @@ impl Render for TrayMenuView {
         let divider = theme.bg.secondary;
         let radius = theme.radius;
         let radius_lg = theme.radius_lg;
+        let hover = theme.interactive.hover;
+        let border_subtle = theme.border.subtle;
 
         let Some(service) = service else {
             // No menu open — empty surface.
@@ -63,6 +65,8 @@ impl Render for TrayMenuView {
                 .flex_col()
                 .rounded(radius_lg)
                 .bg(bg)
+                .border_1()
+                .border_color(border_subtle)
                 .p(px(ROW_PAD_X))
                 .text_color(text_muted)
                 .child("…".to_string())
@@ -81,6 +85,7 @@ impl Render for TrayMenuView {
                     &text_muted,
                     &divider,
                     radius,
+                    hover,
                     0,
                 )
             })
@@ -90,6 +95,8 @@ impl Render for TrayMenuView {
             .flex_col()
             .rounded(radius_lg)
             .bg(bg)
+            .border_1()
+            .border_color(border_subtle)
             .overflow_hidden()
             .children(rows)
             .into_any_element()
@@ -106,6 +113,7 @@ fn render_node(
     text_muted: &gpui::Hsla,
     divider: &gpui::Hsla,
     radius: gpui::Pixels,
+    hover: gpui::Hsla,
     depth: u32,
 ) -> AnyElement {
     let indent = px(SUBMENU_INDENT * depth as f32);
@@ -176,6 +184,7 @@ fn render_node(
             .rounded(radius)
             .ml(indent)
             .cursor_pointer()
+            .hover(|s| s.bg(hover))
             .id(format!("tray-menu-item-{id}"))
             .on_click(move |_event, window, cx: &mut App| {
                 click_item(window, cx, id);
@@ -195,6 +204,7 @@ fn render_node(
             .py(px(ROW_PAD_Y))
             .rounded(radius)
             .ml(indent)
+            .hover(|s| s.bg(hover))
             .child(
                 div()
                     .text_color(text_color)
@@ -218,6 +228,7 @@ fn render_node(
                     text_muted,
                     divider,
                     radius,
+                    hover,
                     depth + 1,
                 )
             })
