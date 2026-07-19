@@ -89,34 +89,22 @@ pub fn open(cx: &mut App) {
 
     match cx.open_window(window_options(display_id), |window, cx| {
         let entity = cx.new(|cx| LauncherView::new(cx));
-        // Focus-lost-close: close the launcher when it loses focus (click away,
-        // workspace switch, etc). Matches rofi/fuzzel UX — no focus fighting.
         entity.update(cx, |_view, cx| {
-            // `was_active` gate: the very first Wayland configure reports the
-            // toplevel as not-activated (focus is still on the previous
-            // window), which fires a spurious active=false ~6ms after
-            // creation. Closing on that killed every launcher instantly and
-            // left a handle-less ghost on screen (seen live 2026-07-17).
-            // Only a true→false transition may close.
-            let mut was_active = false;
+            // Dismiss is explicit only: Esc (LauncherView::handle_key), clicking
+            // a result (launches then closes), or re-toggling the hotkey. We
+            // deliberately do NOT close on focus loss: with `follow_mouse=1` in
+            // Hyprland, moving the cursor onto any other surface deactivates the
+            // launcher, which made it vanish the instant the pointer left it
+            // (seen live 2026-07-17; the earlier 300ms debounce only delayed
+            // that, it didn't fix it). The observer only re-focuses the text
+            // input when focus returns, so typing keeps working after a hover.
             cx.observe_window_activation(window, move |view, window, cx| {
-                tracing::info!(active = window.is_window_active(), was_active, interacted = view.interacted, "launcher activation observer fired");
                 if window.is_window_active() {
-                    was_active = true;
                     view.focus_input(window, cx);
-                } else if was_active {
-                    // Если клик произошёл ВНУТРИ лаунчера (по строке результата),
-                    // то click handler уже выставил interacted=true и вызвал
-                    // close_this сам. Пропускаем — не закрываем повторно.
-                    if view.interacted {
-                        view.interacted = false; // сбросить гейт
-                        return;
-                    }
-                    crate::launcher::close_this(window, cx);
                 }
             })
             // Dropping the Subscription cancels the observer immediately —
-            // it must outlive this scope for either branch to ever fire.
+            // it must outlive this scope for the refocus to keep firing.
             .detach();
         });
         entity
