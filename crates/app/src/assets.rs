@@ -25,6 +25,8 @@ macro_rules! icons {
 icons!(
     "arrow-up.svg",
     "bell.svg",
+    "chevron-down.svg",
+    "folder.svg",
     "hexagon-core.svg",
     "hexagon-sigil.svg",
     "speaker-high.svg",

@@ -8,6 +8,7 @@ mod monitor;
 mod notifications;
 mod osd;
 mod plugin_bridge;
+mod project_switcher;
 pub mod state;
 mod system_popup;
 mod tray_menu;
@@ -64,6 +65,7 @@ fn main() {
             osd::init(cx);
             tray_menu::init(cx);
             updates_popup::init(cx);
+            project_switcher::init(cx);
             volume_popup::init(cx);
             system_popup::init(cx);
             desktop_terminal::init(cx);

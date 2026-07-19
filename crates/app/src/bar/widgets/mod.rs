@@ -7,6 +7,7 @@ mod dock;
 mod mpris;
 mod network;
 mod notification_bell;
+mod project;
 mod separator;
 mod system;
 mod tray;
@@ -32,7 +33,9 @@ pub fn register_builtin(cx: &mut App) {
     mpris::register(cx);
     cava::register(cx);
 
-    // Right: controls cluster → | → battery → clock (rightmost).
+    // Right: project pill → | → controls cluster → | → battery → clock.
+    project::register(cx);
+    separator::register(BarSection::Right, cx);
     volume::register(cx);
     network::register(cx);
     tray::register(cx);

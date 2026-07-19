@@ -30,8 +30,17 @@ fn describe(state: &MprisState) -> MprisView {
     if !state.has_player {
         return MprisView::Hidden;
     }
+    // Idle player with no metadata (e.g. a browser with no media loaded):
+    // showing "▶ Unknown" is noise — hide until something is actually queued.
+    if !state.playing && state.title.is_empty() && state.artist.is_empty() {
+        return MprisView::Hidden;
+    }
     let icon = if state.playing { "⏸" } else { "▶" };
-    let label = format_track_label(&state.title, &state.artist, MAX_LABEL_CHARS);
+    let label = if state.title.is_empty() && state.artist.is_empty() {
+        truncate_chars(&state.player_id, MAX_LABEL_CHARS)
+    } else {
+        format_track_label(&state.title, &state.artist, MAX_LABEL_CHARS)
+    };
     let multi = multi_player_indicator(state.player_count, state.player_index);
     MprisView::Track {
         icon,
