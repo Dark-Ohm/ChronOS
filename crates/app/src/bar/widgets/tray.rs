@@ -19,7 +19,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
 use gpui::{
-    AnyElement, App, ObjectFit, RenderImage, Window, div, img, prelude::*, px,
+    AnyElement, App, InteractiveElement, MouseButton, ObjectFit, RenderImage, Window, div, img,
+    prelude::*, px,
 };
 use image::{Frame, RgbaImage};
 use smallvec::SmallVec;
@@ -59,6 +60,9 @@ impl BarWidget for TrayWidget {
             .iter()
             .map(|item| {
                 let id = item.id.clone();
+                // Separate clone for the right-click handler so the left-click
+                // `move` closure doesn't consume `id`.
+                let id_right = id.clone();
 
                 div()
                     .id(format!("tray-item-{id}"))
@@ -68,8 +72,14 @@ impl BarWidget for TrayWidget {
                     .rounded(radius)
                     .child(render_icon(item))
                     .on_click(move |_event, _window, cx: &mut App| {
-                        AppState::tray(cx)
-                            .dispatch(TrayCommand::ActivateItem { service: id.clone() });
+                        AppState::tray(cx).dispatch(TrayCommand::ActivateItem {
+                            service: id.clone(),
+                        });
+                    })
+                    // Right-click opens the DBusMenu context popup (toggle).
+                    // Left-click ActivateItem above is intentionally untouched.
+                    .on_mouse_down(MouseButton::Right, move |_event, _window, cx: &mut App| {
+                        crate::tray_menu::toggle(cx, id_right.clone());
                     })
                     .into_any_element()
             })
@@ -151,8 +161,10 @@ fn cached_pixmap_render_image(item_id: &str, pm: &TrayPixmap) -> Option<Arc<Rend
     }
     let rendered = pixmap_render_image(pm)?;
     PIXMAP_CACHE.with(|c| {
-        c.borrow_mut()
-            .insert(item_id.to_string(), (meta.0, meta.1, meta.2, rendered.clone()));
+        c.borrow_mut().insert(
+            item_id.to_string(),
+            (meta.0, meta.1, meta.2, rendered.clone()),
+        );
     });
     Some(rendered)
 }
@@ -163,7 +175,14 @@ const ICON_SIZES: &[&str] = &[
     "scalable", "symbolic", "48x48", "32x32", "24x24", "22x22", "16x16",
 ];
 const ICON_CONTEXTS: &[&str] = &[
-    "devices", "apps", "actions", "status", "categories", "mimetypes", "panel", "places",
+    "devices",
+    "apps",
+    "actions",
+    "status",
+    "categories",
+    "mimetypes",
+    "panel",
+    "places",
 ];
 const ICON_EXTS: &[&str] = &["svg", "png"];
 
@@ -178,7 +197,8 @@ fn cached_resolve_icon(icon_name: &str) -> Option<PathBuf> {
     }
     let resolved = resolve_icon_path(icon_name);
     ICON_CACHE.with(|c| {
-        c.borrow_mut().insert(icon_name.to_string(), resolved.clone());
+        c.borrow_mut()
+            .insert(icon_name.to_string(), resolved.clone());
     });
     resolved
 }
@@ -192,14 +212,21 @@ fn resolve_icon_path(icon_name: &str) -> Option<PathBuf> {
     let chain = theme_chain(&bases);
     for base in &bases {
         for theme_name in &chain {
-            if theme_name.is_empty() { continue; }
+            if theme_name.is_empty() {
+                continue;
+            }
             for size in ICON_SIZES {
                 for ctx in ICON_CONTEXTS {
                     for ext in ICON_EXTS {
                         let candidate = base
-                            .join(theme_name).join(size).join(ctx)
-                            .join(icon_name).with_extension(ext);
-                        if candidate.exists() { return Some(candidate); }
+                            .join(theme_name)
+                            .join(size)
+                            .join(ctx)
+                            .join(icon_name)
+                            .with_extension(ext);
+                        if candidate.exists() {
+                            return Some(candidate);
+                        }
                     }
                 }
             }
@@ -270,7 +297,11 @@ fn collect_inherits(
         let index = base.join(theme).join("index.theme");
         if let Ok(content) = std::fs::read_to_string(&index) {
             if let Some(inherits) = parse_inherits(&content) {
-                for parent in inherits.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                for parent in inherits
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                {
                     collect_inherits(parent, chain, visited, depth + 1, bases);
                 }
             }
@@ -317,7 +348,9 @@ fn read_gtk_icon_theme() -> Option<String> {
         if let Some(rest) = line.strip_prefix("gtk-icon-theme-name") {
             let rest = rest.trim_start_matches([' ', '=']);
             let value = rest.split('#').next().unwrap_or(rest).trim();
-            if !value.is_empty() { return Some(value.to_string()); }
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
         }
     }
     None
@@ -346,7 +379,11 @@ mod tests {
 
     #[test]
     fn pixmap_render_image_swaps_rgba_to_bgra() {
-        let pm = TrayPixmap { width: 1, height: 1, data: vec![0x10, 0x20, 0x30, 0xFF] };
+        let pm = TrayPixmap {
+            width: 1,
+            height: 1,
+            data: vec![0x10, 0x20, 0x30, 0xFF],
+        };
         let img = pixmap_render_image(&pm).expect("render image builds");
         assert_eq!(img.frame_count(), 1);
         let bytes = img.as_bytes(0).expect("frame bytes present");
@@ -355,7 +392,11 @@ mod tests {
 
     #[test]
     fn pixmap_render_image_bad_length_yields_none() {
-        let pm = TrayPixmap { width: 2, height: 2, data: vec![0; 4] };
+        let pm = TrayPixmap {
+            width: 2,
+            height: 2,
+            data: vec![0; 4],
+        };
         assert!(pixmap_render_image(&pm).is_none());
     }
 
@@ -366,9 +407,17 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
 
         std::fs::create_dir_all(dir.join("main")).unwrap();
-        std::fs::write(dir.join("main/index.theme"), "[Icon Theme]\nInherits=parent\n").unwrap();
+        std::fs::write(
+            dir.join("main/index.theme"),
+            "[Icon Theme]\nInherits=parent\n",
+        )
+        .unwrap();
         std::fs::create_dir_all(dir.join("parent")).unwrap();
-        std::fs::write(dir.join("parent/index.theme"), "[Icon Theme]\nName=Parent\n").unwrap();
+        std::fs::write(
+            dir.join("parent/index.theme"),
+            "[Icon Theme]\nName=Parent\n",
+        )
+        .unwrap();
 
         let bases = vec![dir.clone()];
         let mut chain = Vec::new();
@@ -408,7 +457,11 @@ mod tests {
             let d = dir.join(format!("d{i}"));
             std::fs::create_dir_all(&d).unwrap();
             if i < 5 {
-                std::fs::write(d.join("index.theme"), format!("[Icon Theme]\nInherits=d{}\n", i + 1)).unwrap();
+                std::fs::write(
+                    d.join("index.theme"),
+                    format!("[Icon Theme]\nInherits=d{}\n", i + 1),
+                )
+                .unwrap();
             } else {
                 std::fs::write(d.join("index.theme"), "[Icon Theme]\nName=Last\n").unwrap();
             }
@@ -429,7 +482,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
 
         std::fs::create_dir_all(dir.join("default")).unwrap();
-        std::fs::write(dir.join("default/index.theme"), "[Icon Theme]\nInherits=Adwaita\n").unwrap();
+        std::fs::write(
+            dir.join("default/index.theme"),
+            "[Icon Theme]\nInherits=Adwaita\n",
+        )
+        .unwrap();
 
         let bases = vec![dir.clone()];
         let theme = read_default_theme(&bases);
