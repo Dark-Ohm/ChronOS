@@ -8,13 +8,13 @@
 //! `NotificationCommand` dispatches.
 
 use gpui::{
-    AnyElement, App, Context, Div, FontWeight, InteractiveElement, Render, Window, div, px,
-    prelude::*,
+    AnyElement, App, Context, Div, FontWeight, InteractiveElement, Render, Window, div, prelude::*,
+    px,
 };
 
 use chronos_services::{Notification, NotificationCommand, Urgency};
 
-use crate::notifications::NotificationPopupState;
+use crate::notifications::{BODY_MAX_H, LIST_MAX_H, NotificationPopupState};
 use crate::state::AppState;
 
 use chronos_ui::Theme;
@@ -99,7 +99,13 @@ impl Render for NotificationsView {
                     .text_color(text_primary)
                     .font_weight(FontWeight::BOLD)
                     .child(summary);
-                let content = div().text_color(text_muted).child(body);
+                // Body: hard-clipped so a long body truncates instead of
+                // overflowing the card and colliding with the next one.
+                let content = div()
+                    .max_h(px(BODY_MAX_H))
+                    .overflow_hidden()
+                    .text_color(text_muted)
+                    .child(body);
 
                 let mut card: Div = div()
                     .flex_col()
@@ -134,8 +140,7 @@ impl Render for NotificationsView {
                                     cx.background_spawn(async move {
                                         let _ = svc
                                             .dispatch(NotificationCommand::InvokeAction(
-                                                id,
-                                                action_key,
+                                                id, action_key,
                                             ))
                                             .await;
                                     });
@@ -152,9 +157,15 @@ impl Render for NotificationsView {
             })
             .collect();
 
+        // Card stack: hard-clipped to LIST_MAX_H so any number of
+        // notifications can never grow the (fixed-cap) window taller and
+        // push content past the surface edge — older cards are silently
+        // clipped off the bottom and expire on their timer anyway.
         div()
             .flex_col()
             .gap(px(8.))
+            .max_h(px(LIST_MAX_H))
+            .overflow_hidden()
             .children(cards)
             .into_any_element()
     }
