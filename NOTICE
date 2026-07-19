@@ -20,5 +20,6 @@ This product includes and/or derives from the following works:
 - Wallpaper handling informed by waytrogen, released into the public
   domain (Unlicense).
 
-- pacman/AUR update-check logic adapted from Alloy. See the upstream
-  project for its license and attribution terms.
+The pacman/AUR update-check logic is derived from Alloy, a first-party
+project by the ChronOS authors, and is covered by this project's license.
+
