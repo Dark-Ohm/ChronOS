@@ -106,7 +106,8 @@ layer-shell popup with dynamic content (`updates_popup`, `volume_popup`,
    (a footer button, etc.) is laid out *outside* the clipped box so it can
    never be pushed off-window regardless of how tall rows actually render
    in this GPUI fork. `.overflow_hidden()` (clip) works here; `.overflow_y_
-   scroll()` (real scroll) does not resolve in this fork — don't reach for
+   scroll()` (real scroll) **[CORRECTED 2026-07-20: DOES work — needs
+   `.id()`; see DECISIONS.log]** was believed not to resolve in this fork — don't reach for
    it.
 2. **Dismiss: explicit only, never on focus loss.** `follow_mouse=1` in
    Hyprland fires spurious keyboard-deactivation the instant the cursor

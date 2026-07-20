@@ -49,7 +49,15 @@ bugs in ChronOS (notifications, tray_menu, OSD-style popups all share it).
 
 ## Pitfalls (specific to this ChronOS gpui-ce build)
 
-- **`overflow_y_scroll()` does not resolve** on `Div` here, even though
+- **`overflow_y_scroll()` requires `.id()` first — it is NOT missing.**
+  It lives on `StatefulInteractiveElement`, implemented only for
+  `Stateful<E>` (`Source/gpui/src/elements/div.rs:3752`), so calling it on a
+  bare `div()` fails with "no method" — which was long misread as "the fork
+  lacks scroll". Working sample shipped in the fork:
+  `Source/gpui/examples/scrollable.rs` (`.id("vertical").overflow_scroll()`),
+  `cargo check` green 2026-07-20. Corrected after the Architect was told to
+  actually look inside the fork.
+  Historical note — it was previously described as not resolving on `Div`, even though
   `cursor_pointer()` (same `InteractiveElement` trait, `src/elements/div.rs:1429`
   vs `:1475`) compiles fine in `bar/widgets/tray.rs`. Appears to be a gpui-ce
   version quirk in this workspace. Workarounds: (a) skip the inner scroll and
