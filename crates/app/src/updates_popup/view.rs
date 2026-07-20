@@ -129,13 +129,11 @@ impl Render for UpdatesPopupView {
         } else {
             let status_line: AnyElement = match upgrade_state {
                 UpgradeState::Idle => div().into_any_element(),
-                UpgradeState::Running => div()
-                    .w_full()
-                    .px(px(HEADER_PAD))
-                    .pb(px(2.))
-                    .text_color(text_muted)
-                    .child("Upgrading…")
-                    .into_any_element(),
+                // Во время работы статус несёт САМА кнопка («Upgrading…»),
+                // поэтому отдельной строки нет: она дублировала бы текст и
+                // съедала FOOTER_BUDGET_H, которого при полном списке ровно
+                // 64px на весь футер (эррата Архитектора при приёмке №12).
+                UpgradeState::Running => div().into_any_element(),
                 UpgradeState::Done => div()
                     .w_full()
                     .px(px(HEADER_PAD))
