@@ -26,7 +26,7 @@ use image::{Frame, RgbaImage};
 use smallvec::SmallVec;
 
 use chronos_luau::bar::{BarSection, BarWidget};
-use chronos_services::{Service, TrayCommand, TrayItem, TrayPixmap};
+use chronos_services::{Service, TrayCommand, TrayItem, TrayPixmap, TrayState};
 
 use crate::state::AppState;
 
@@ -48,15 +48,18 @@ impl BarWidget for TrayWidget {
         let tray = AppState::tray(cx);
         let state = tray.get();
 
-        if state.items.is_empty() {
-            return div().into_any_element();
-        }
-
         let theme = chronos_ui::Theme::global(cx);
         let radius = theme.radius;
 
-        let badges: Vec<AnyElement> = state
-            .items
+        // Filter → dedupe → cap (in that order, per task spec).
+        let prepared = prepare_tray_items(&state, MAX_TRAY_ITEMS);
+
+        if prepared.visible.is_empty() {
+            return div().into_any_element();
+        }
+
+        let mut badges: Vec<AnyElement> = prepared
+            .visible
             .iter()
             .map(|item| {
                 let id = item.id.clone();
@@ -86,6 +89,20 @@ impl BarWidget for TrayWidget {
             })
             .collect();
 
+        // Overflow indicator: `+N` in the same muted-badge language as the
+        // bell/update counters, only when the cap bit off real items.
+        if prepared.overflow > 0 {
+            badges.push(
+                div()
+                    .id("tray-overflow")
+                    .font_family(theme.font_mono)
+                    .text_size(theme.font_sizes.sm)
+                    .text_color(theme.text.muted)
+                    .child(format!("+{}", prepared.overflow))
+                    .into_any_element(),
+            );
+        }
+
         div()
             .flex()
             .items_center()
@@ -93,6 +110,87 @@ impl BarWidget for TrayWidget {
             .children(badges)
             .into_any_element()
     }
+}
+
+/// Result of `prepare_tray_items`: the items to actually render plus the
+/// number of hidden-overflow items (for the `+N` badge).
+pub struct PreparedTray<'a> {
+    /// Items passing filter + dedupe, capped to `max`.
+    pub visible: Vec<&'a TrayItem>,
+    /// How many usable items were dropped past the cap.
+    pub overflow: usize,
+}
+
+/// Maximum number of tray icons shown; extras collapse into a `+N` badge.
+const MAX_TRAY_ITEMS: usize = 8;
+
+/// D-Bus name owner prefix of a registered service string.
+///
+/// A `StatusNotifierItem` id is either a unique bus name (`:1.75`) or a
+/// well-known name (`org.kde.StatusNotifierItem-1234-1`). For unique names
+/// the owner is the whole id up to the first `/`; for well-known names we
+/// take the name before the dash-instance suffix so multiple items from the
+/// same application collapse together. This is what the dedupe keys on.
+pub fn bus_name(id: &str) -> &str {
+    let no_path = id.split('/').next().unwrap_or(id);
+    if let Some(idx) = no_path.find('-') {
+        // `:1.75` has no dash → stays whole; `org.kde.StatusNotifierItem-1234-1`
+        // → `org.kde.StatusNotifierItem`. Unique `:N.M` names are never split.
+        if no_path.starts_with(':') {
+            no_path
+        } else {
+            &no_path[..idx]
+        }
+    } else {
+        no_path
+    }
+}
+
+/// An item is worth rendering only if the user can recognise/click it:
+/// it needs either an icon (name or pixmap) or a non-empty title. Vivaldi
+/// (Chromium) registers anonymous `StatusNotifierItem`s with neither — they
+/// show as a blank glyph and are meaningless, so we drop them here. The
+/// service keeps the full bus truth untouched (needed for menus/debugging).
+pub fn is_useful(item: &TrayItem) -> bool {
+    let has_icon =
+        item.icon_name.as_ref().is_some_and(|n| !n.is_empty()) || item.icon_pixmap.is_some();
+    let has_title = item.title.as_ref().is_some_and(|t| !t.is_empty());
+    has_icon || has_title
+}
+
+/// Collapse several items from one bus owner into a single icon.
+///
+/// Order is preserved (newest last, per `TrayState`). For each bus owner the
+/// first *useful* item wins; if none of an owner's items are useful they are
+/// all dropped by the caller's filter anyway.
+pub fn dedupe_by_bus<'a>(items: &[&'a TrayItem]) -> Vec<&'a TrayItem> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for item in items {
+        if seen.insert(bus_name(&item.id)) {
+            out.push(*item);
+        }
+    }
+    out
+}
+
+/// Keep at most `max` items; return the kept list and the number dropped.
+pub fn apply_cap<'a>(items: &[&'a TrayItem], max: usize) -> (Vec<&'a TrayItem>, usize) {
+    if items.len() <= max {
+        (items.to_vec(), 0)
+    } else {
+        let overflow = items.len() - max;
+        (items[..max].to_vec(), overflow)
+    }
+}
+
+/// Full pipeline: filter anonymous items → dedupe by bus owner → cap.
+/// Pure and side-effect-free (render() may run many times per frame).
+pub fn prepare_tray_items<'a>(state: &'a TrayState, max: usize) -> PreparedTray<'a> {
+    let useful: Vec<&TrayItem> = state.items.iter().filter(|i| is_useful(i)).collect();
+    let deduped = dedupe_by_bus(&useful);
+    let (visible, overflow) = apply_cap(&deduped, max);
+    PreparedTray { visible, overflow }
 }
 
 /// Render a single tray item's icon, following the fallback chain:
@@ -493,5 +591,91 @@ mod tests {
         let theme = read_default_theme(&bases);
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(theme, Some("Adwaita".to_string()));
+    }
+
+    // ── tray clutter defence (task №16) ───────────────────────────────
+
+    fn mk_item(id: &str, title: Option<&str>, icon: Option<&str>) -> TrayItem {
+        TrayItem {
+            id: id.to_string(),
+            title: title.map(|s| s.to_string()),
+            icon_name: icon.map(|s| s.to_string()),
+            icon_pixmap: None,
+            label: "?".to_string(),
+            menu_path: None,
+            menu: None,
+        }
+    }
+
+    #[test]
+    fn bus_name_splits_path_and_wellknown() {
+        assert_eq!(bus_name(":1.75"), ":1.75");
+        assert_eq!(bus_name(":1.75/org/chromium/StatusNotifierItem/15"), ":1.75");
+        assert_eq!(
+            bus_name("org.kde.StatusNotifierItem-1234-1"),
+            "org.kde.StatusNotifierItem"
+        );
+        assert_eq!(
+            bus_name("org.kde.StatusNotifierItem-1234-1/Menu"),
+            "org.kde.StatusNotifierItem"
+        );
+    }
+
+    #[test]
+    fn anonymous_item_is_filtered_out() {
+        let junk = mk_item(":1.75/org/chromium/StatusNotifierItem/15", Some(""), None);
+        assert!(!is_useful(&junk));
+        let with_title = mk_item(":1.70", Some("Wireless"), None);
+        assert!(is_useful(&with_title));
+        let with_icon = mk_item(":1.71", Some(""), Some("network-wireless"));
+        assert!(is_useful(&with_icon));
+    }
+
+    #[test]
+    fn dedupe_collapses_same_bus_owner() {
+        let items = vec![
+            mk_item(":1.75/org/chromium/StatusNotifierItem/15", None, None),
+            mk_item(":1.75/org/chromium/StatusNotifierItem/16", None, None),
+            mk_item(":1.75/org/chromium/StatusNotifierItem/17", None, None),
+        ];
+        let refs: Vec<&TrayItem> = items.iter().collect();
+        let deduped = dedupe_by_bus(&refs);
+        assert_eq!(deduped.len(), 1);
+        assert_eq!(deduped[0].id, ":1.75/org/chromium/StatusNotifierItem/15");
+    }
+
+    #[test]
+    fn cap_limits_to_max_with_overflow() {
+        let items: Vec<TrayItem> = (1..=12)
+            .map(|i| mk_item(&format!(":1.{i}"), Some("App"), Some("icon")))
+            .collect();
+        let refs: Vec<&TrayItem> = items.iter().collect();
+        let (kept, overflow) = apply_cap(&refs, 8);
+        assert_eq!(kept.len(), 8);
+        assert_eq!(overflow, 4);
+    }
+
+    #[test]
+    fn prepare_pipeline_filter_dedupe_cap() {
+        let mut state = TrayState::default();
+        for n in 1..=13 {
+            state.items.push(mk_item(
+                &format!(":1.75/org/chromium/StatusNotifierItem/{n}"),
+                Some(""),
+                None,
+            ));
+        }
+        state
+            .items
+            .push(mk_item(":1.50/org/ayatana/NotificationItem/udiskie", Some("udiskie"), None));
+        state
+            .items
+            .push(mk_item(":1.60", Some("Wireless"), Some("network-wireless")));
+
+        let prepared = prepare_tray_items(&state, 8);
+        assert_eq!(prepared.visible.len(), 2);
+        assert_eq!(prepared.overflow, 0);
+        assert!(prepared.visible.iter().any(|i| i.title.as_deref() == Some("udiskie")));
+        assert!(prepared.visible.iter().any(|i| i.title.as_deref() == Some("Wireless")));
     }
 }
