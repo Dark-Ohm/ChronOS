@@ -53,27 +53,52 @@ fn default_scheme() -> ThemeScheme {
 }
 
 fn light_scheme() -> ThemeScheme {
-    // Инвертируем bg/text относительно дефолта: светлый фон, тёмный текст.
+    // Светлая схема ChronOS «Light C» (айдентика, НЕ инверсия Latte).
+    // Эталон: design/Project Switcher.dc.html, вариант Light C
+    // (lightBase + override-блок «Light — popup open (Light C, accepted)»).
+    // Принцип: холодная сине-лавандовая база, индиго-текст, неон — только
+    // в линиях/деталях. Акцент НЕ переопределяется — остаётся #007acc
+    // (правило design.md/DECISIONS: светлая тема не красит акцент).
     let mut theme = Theme::default();
-    theme.bg.primary = hex("eff1f5");
-    theme.bg.secondary = hex("e6e9ef");
-    theme.bg.tertiary = hex("f7f8fb");
-    theme.bg.elevated = hex("dce0e8");
-    theme.text.primary = hex("4c4f69");
-    theme.text.secondary = hex("5c5f77");
-    theme.text.muted = hex("9ca0b0");
-    theme.text.disabled = hex("bcc0cc");
-    theme.text.placeholder = hex("9ca0b0");
-    theme.border.default = hex("ccd0da");
-    theme.border.subtle = hex("e6e9ef");
-    theme.interactive.default = hex("ccd0da");
-    theme.interactive.hover = hex("bcc0cc");
-    theme.interactive.active = hex("9ca0b0");
-    ThemeScheme::new(
-        "Light",
-        "Светлая схема (инверсия bg/text дефолта)",
-        theme,
-    )
+
+    // Поверхности — холодная сине-лавандовая база Light C.
+    theme.bg.primary = hex("dde0f2"); // pageBg — базовый фон страницы/окна
+    theme.bg.secondary = hex("e6e9fa"); // cardBg (accepted) — поверхность карточки/попапа
+    theme.bg.tertiary = hex("eceefa"); // cardBase (lightBase) — фон пилюли/свёрнутого
+    theme.bg.elevated = hex("e0e3f4"); // hoverBg — приподнятый слой/hover-фон
+
+    // Текст — глубокий индиго, НЕ чёрный.
+    theme.text.primary = hex("2c2e4a"); // textPrimary — основной индиго-текст
+    theme.text.secondary = hex("5a5d80"); // textMuted — приглушённый (вторичный)
+    theme.text.muted = hex("7d80a6"); // chevron — ещё приглушённый (третичный)
+    // disabled/placeholder — мокап не диктует, выводим по духу палитры
+    // (разбеливание muted к лавандовому). См. отчёт «додумано».
+    theme.text.disabled = hex("9a9dc0"); // додумано — disabled индиго-лавандовый
+    theme.text.placeholder = hex("9a9dc0"); // додумано — placeholder = disabled
+
+    // Бордеры — из палитры Light C.
+    theme.border.default = hex("c4c8e6"); // cardBorder — разделитель карточки
+    // subtle — тоньше default (мокап не диктует, выводим осветлением).
+    theme.border.subtle = hex("d4d7ee"); // додумано — subtle-разделитель
+    // focused — акцентная линия (неон в деталях, не в заливке).
+    theme.border.focused = hex("007acc"); // accent — glow-ребро/фокус-контур
+
+    // Акцент НЕ переопределяется — правило design.md/DECISIONS.
+    // accent.primary/selection/hover остаются из Theme::default (#007acc/
+    // #007acc/#1f9bdc) — на светлом фоне читаются, MVP.
+
+    // Interactive — из палитры Light C по ролям.
+    theme.interactive.default = hex("c4c8e6"); // cardBorder — контур контрола
+    theme.interactive.hover = hex("e0e3f4"); // hoverBg — hover-состояние
+    // active — чуть глубже hover (мокап не диктует, выводим затемнением).
+    theme.interactive.active = hex("d4d7ee"); // додумано — active-состояние
+    // toggle_on — акцент (неон в деталях), toggle_on_hover — дефолтный #1f9bdc.
+    theme.interactive.toggle_on = hex("007acc"); // accent — включённый тоггл
+
+    // status.* — оставлены Catppuccin Mocha (из Theme::default): на светлом
+    // фоне читаются, Light C не диктует свои. MVP — см. отчёт.
+
+    ThemeScheme::new("Light", "Светлая схема ChronOS (Light C)", theme)
 }
 
 fn solarized_dark_scheme() -> Result<ThemeScheme> {
@@ -115,4 +140,74 @@ pub fn builtin_schemes() -> Vec<ThemeScheme> {
         out.push(solarized);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn light_scheme_uses_light_c_palette() {
+        let s = light_scheme();
+        assert_eq!(s.name, "Light");
+        assert_eq!(s.description, "Светлая схема ChronOS (Light C)");
+        // Якоря Light C из мокапа.
+        assert_eq!(s.theme.bg.primary, hex("dde0f2")); // pageBg
+        assert_eq!(s.theme.bg.secondary, hex("e6e9fa")); // cardBg (accepted)
+        assert_eq!(s.theme.bg.tertiary, hex("eceefa")); // cardBase
+        assert_eq!(s.theme.bg.elevated, hex("e0e3f4")); // hoverBg
+        assert_eq!(s.theme.text.primary, hex("2c2e4a")); // textPrimary
+        assert_eq!(s.theme.text.secondary, hex("5a5d80")); // textMuted
+        assert_eq!(s.theme.text.muted, hex("7d80a6")); // chevron
+        assert_eq!(s.theme.border.default, hex("c4c8e6")); // cardBorder
+        // Акцент НЕ переопределяется — остаётся #007acc из дефолта.
+        assert_eq!(s.theme.accent.primary, hex("007acc"));
+        assert_eq!(s.theme.border.focused, hex("007acc"));
+        assert_eq!(s.theme.interactive.toggle_on, hex("007acc"));
+    }
+
+    #[test]
+    fn light_scheme_status_kept_from_default() {
+        // status.* — Catppuccin Mocha из дефолта, Light C не диктует свои.
+        let s = light_scheme();
+        let d = Theme::default();
+        assert_eq!(s.theme.status, d.status);
+    }
+
+    #[test]
+    fn select_scheme_default_when_unset() {
+        let t = Theme::select_scheme(None);
+        assert_eq!(t, Theme::default());
+        let t = Theme::select_scheme(Some(String::new()));
+        assert_eq!(t, Theme::default());
+        let t = Theme::select_scheme(Some("   ".to_string()));
+        assert_eq!(t, Theme::default());
+    }
+
+    #[test]
+    fn select_scheme_by_name_case_insensitive() {
+        let light_lower = Theme::select_scheme(Some("light".to_string()));
+        let light_upper = Theme::select_scheme(Some("LIGHT".to_string()));
+        let light_mixed = Theme::select_scheme(Some("LiGhT".to_string()));
+        let expected = light_scheme().theme;
+        assert_eq!(light_lower, expected);
+        assert_eq!(light_upper, expected);
+        assert_eq!(light_mixed, expected);
+
+        let default_named = Theme::select_scheme(Some("default".to_string()));
+        assert_eq!(default_named, Theme::default());
+    }
+
+    #[test]
+    fn select_scheme_garbage_falls_back_to_default() {
+        let t = Theme::select_scheme(Some("nope-not-a-scheme".to_string()));
+        assert_eq!(t, Theme::default());
+    }
+
+    #[test]
+    fn builtin_schemes_contains_default_and_light() {
+        let names: Vec<&'static str> = builtin_schemes().iter().map(|s| s.name).collect();
+        assert!(names.contains(&"Default"));
+        assert!(names.contains(&"Light"));
+    }
 }

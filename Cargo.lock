@@ -1089,6 +1089,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "gpui 0.2.2 (git+https://github.com/Dark-Ohm/Chronos-GPUI?rev=ee80b72)",
+ "tracing",
 ]
 
 [[package]]

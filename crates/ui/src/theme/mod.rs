@@ -31,8 +31,8 @@ pub fn parse_hex(s: &str) -> Result<Hsla> {
             s
         );
     }
-    let value = u32::from_str_radix(raw, 16)
-        .with_context(|| format!("некорректный hex-цвет: {s:?}"))?;
+    let value =
+        u32::from_str_radix(raw, 16).with_context(|| format!("некорректный hex-цвет: {s:?}"))?;
     // rgba() ожидает 0xRRGGBBAA. Для 6 цифр alpha = 0xff.
     let packed = if raw.len() == 6 {
         (value << 8) | 0xff
@@ -97,7 +97,7 @@ pub struct InteractiveColors {
 }
 
 /// Относительные размеры шрифта (на базе [`FontSizes::base`]).
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct FontSizes {
     pub base: Pixels,
     pub xs: Pixels,
@@ -127,7 +127,7 @@ impl Default for FontSizes {
 }
 
 /// Тема оформления ChronOS — глобальное состояние gpui.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Theme {
     pub bg: BgColors,
     pub text: TextColors,
@@ -196,9 +196,42 @@ impl Default for Theme {
 impl Global for Theme {}
 
 impl Theme {
-    /// Регистрирует тему по умолчанию как глобальное состояние gpui.
+    /// Регистрирует тему как глобальное состояние gpui.
+    ///
+    /// По умолчанию ставит [`Theme::default`] (тёмная схема). Если задана
+    /// переменная окружения `CHRONOS_THEME` и её значение (case-insensitive)
+    /// совпадает с именем одной из [`builtin_schemes`], ставится эта схема.
+    /// Неверное имя → дефолт + `tracing::warn!` со списком доступных имён.
+    /// Поведение без переменной не меняется (как до ввода механизма выбора).
     pub fn init(cx: &mut App) {
-        cx.set_global(Theme::default());
+        cx.set_global(Self::select_scheme(std::env::var("CHRONOS_THEME").ok()));
+    }
+
+    /// Выбирает тему по опциональному имени схемы (case-insensitive).
+    ///
+    /// `None` или пустая строка → [`Theme::default`]. Валидное имя →
+    /// соответствующая схема из [`builtin_schemes`]. Невалидное имя →
+    /// [`Theme::default`] + предупреждение через `tracing::warn!`.
+    pub fn select_scheme(env_value: Option<String>) -> Theme {
+        let Some(raw) = env_value else {
+            return Theme::default();
+        };
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Theme::default();
+        }
+        let wanted = trimmed.to_lowercase();
+        let schemes = builtin_schemes();
+        if let Some(scheme) = schemes.iter().find(|s| s.name.to_lowercase() == wanted) {
+            return scheme.theme;
+        }
+        let available: Vec<&'static str> = schemes.iter().map(|s| s.name).collect();
+        tracing::warn!(
+            requested = %trimmed,
+            available = ?available,
+            "CHRONOS_THEME: неизвестная схема, fallback на Default"
+        );
+        Theme::default()
     }
 
     /// Возвращает заимствованную ссылку на активную тему.
@@ -254,9 +287,8 @@ mod tests {
     #[test]
     fn base16_roundtrip() {
         let hex = [
-            "#1e1e2e", "#25253b", "#181825", "#313244", "#45475a", "#a6adc8",
-            "#cdd6f4", "#f8f8f2", "#f38ba8", "#f9e2af", "#89b4fa", "#a6e3a1",
-            "#94e2d5", "#89b4fa", "#cba6f7", "#f38ba8",
+            "#1e1e2e", "#25253b", "#181825", "#313244", "#45475a", "#a6adc8", "#cdd6f4", "#f8f8f2",
+            "#f38ba8", "#f9e2af", "#89b4fa", "#a6e3a1", "#94e2d5", "#89b4fa", "#cba6f7", "#f38ba8",
         ];
         let colors = Base16Colors::from_hex(&hex).expect("16 валидных hex");
         let theme = colors.to_theme();
