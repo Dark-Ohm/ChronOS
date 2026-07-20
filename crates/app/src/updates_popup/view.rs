@@ -11,7 +11,7 @@ use gpui::{
     prelude::*, px,
 };
 
-use chronos_services::{PackageUpdate, Service, UpdateSource};
+use chronos_services::{PackageUpdate, Service, UpdateSource, UpgradeState};
 
 use crate::state::AppState;
 use crate::updates_popup::{LIST_MAX_H, close_this, max_visible_rows, upgrade_all};
@@ -123,31 +123,84 @@ impl Render for UpdatesPopupView {
                 .into_any_element()
         };
 
-        let footer: AnyElement = if updates.is_empty() {
+        let upgrade_state = state.upgrade_state;
+        let footer: AnyElement = if updates.is_empty() && upgrade_state == UpgradeState::Idle {
             div().into_any_element()
         } else {
+            let status_line: AnyElement = match upgrade_state {
+                UpgradeState::Idle => div().into_any_element(),
+                UpgradeState::Running => div()
+                    .w_full()
+                    .px(px(HEADER_PAD))
+                    .pb(px(2.))
+                    .text_color(text_muted)
+                    .child("Upgrading…")
+                    .into_any_element(),
+                UpgradeState::Done => div()
+                    .w_full()
+                    .px(px(HEADER_PAD))
+                    .pb(px(2.))
+                    .text_color(theme.status.success)
+                    .child("Upgrade complete")
+                    .into_any_element(),
+                UpgradeState::Failed => div()
+                    .w_full()
+                    .px(px(HEADER_PAD))
+                    .pb(px(2.))
+                    .text_color(theme.status.error)
+                    .child("Upgrade failed")
+                    .into_any_element(),
+            };
+
+            let button: AnyElement = if upgrade_state == UpgradeState::Running {
+                // Blocked during upgrade.
+                div()
+                    .id("updates-popup-upgrade-all")
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .px(px(ROW_PAD_X))
+                    .py(px(ROW_PAD_Y))
+                    .rounded(radius)
+                    .bg(theme.interactive.active)
+                    .text_color(text_muted)
+                    .child("Upgrading…")
+                    .into_any_element()
+            } else if !updates.is_empty() {
+                div()
+                    .id("updates-popup-upgrade-all")
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .px(px(ROW_PAD_X))
+                    .py(px(ROW_PAD_Y))
+                    .rounded(radius)
+                    .bg(accent)
+                    .hover(|s| s.bg(accent_hover))
+                    .text_color(text_primary)
+                    .child("Upgrade all")
+                    .on_click(|_event, window, cx: &mut App| {
+                        upgrade_all(window, cx);
+                    })
+                    .into_any_element()
+            } else {
+                // No updates left after a successful upgrade — no button.
+                div().into_any_element()
+            };
+
             div()
                 .w_full()
-                .px(px(HEADER_PAD))
-                .py(px(ROW_PAD_Y))
+                .flex_col()
+                .child(status_line)
                 .child(
                     div()
-                        .id("updates-popup-upgrade-all")
                         .w_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .px(px(ROW_PAD_X))
+                        .px(px(HEADER_PAD))
                         .py(px(ROW_PAD_Y))
-                        .rounded(radius)
-                        .bg(accent)
-                        .hover(|s| s.bg(accent_hover))
-                        .text_color(text_primary)
-                        .child("Upgrade all")
-                        .on_click(|_event, window, cx: &mut App| {
-                            upgrade_all(window, cx);
-                        }),
+                        .child(button),
                 )
                 .into_any_element()
         };

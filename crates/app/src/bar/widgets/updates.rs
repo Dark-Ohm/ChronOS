@@ -115,6 +115,7 @@ mod tests {
     fn describe_with_updates() {
         let state = UpdatesState {
             updates: vec![update("a"), update("b"), update("c")],
+            ..Default::default()
         };
         let v = describe(&state);
         assert!(v.has_updates);

@@ -41,7 +41,7 @@ use tracing::{info, warn};
 
 use crate::Service;
 use crate::ServiceStatus;
-pub use types::{AurCommand, PackageUpdate, UpdateSource, UpdatesState};
+pub use types::{AurCommand, PackageUpdate, UpdateSource, UpgradeState, UpdatesState};
 
 pub mod types;
 
@@ -103,20 +103,37 @@ impl AurSubscriber {
                 let data = self.data.clone();
                 let status = self.status.clone();
                 self.runtime.spawn(async move {
-                    if let Err(e) = run_upgrade_all().await {
-                        warn!("AurSubscriber upgrade-all failed: {e:?}");
-                        return;
+                    // Signal "running" to the popup.
+                    {
+                        let mut s = data.get_cloned();
+                        s.upgrade_state = UpgradeState::Running;
+                        data.set(s);
                     }
+
+                    let upgrade_result = run_upgrade_all().await;
+
                     // Re-read so the badge/list reflect the new state once
                     // the (blocking, possibly slow) upgrade finishes.
                     match read_state().await {
-                        Ok(state) => {
+                        Ok(mut state) => {
+                            state.upgrade_state = match &upgrade_result {
+                                Ok(()) => UpgradeState::Done,
+                                Err(_) => UpgradeState::Failed,
+                            };
                             data.set(state);
                             status.set(ServiceStatus::Available);
                         }
                         Err(e) => {
                             warn!("AurSubscriber re-read after upgrade-all failed: {e:?}");
+                            // Even if re-read fails, report the upgrade outcome.
+                            let mut s = data.get_cloned();
+                            s.upgrade_state = UpgradeState::Failed;
+                            data.set(s);
                         }
+                    }
+
+                    if let Err(e) = upgrade_result {
+                        warn!("AurSubscriber upgrade-all failed: {e:?}");
                     }
                 });
             }
@@ -179,7 +196,10 @@ async fn read_state() -> anyhow::Result<UpdatesState> {
     tokio::task::spawn_blocking(|| {
         let mut updates = read_official()?;
         updates.extend(read_aur());
-        Ok(UpdatesState { updates })
+        Ok(UpdatesState {
+            updates,
+            ..Default::default()
+        })
     })
     .await
     .map_err(|e| anyhow::anyhow!("aur read join error: {e}"))?
@@ -455,6 +475,7 @@ mod tests {
                     source: UpdateSource::Aur,
                 },
             ],
+            ..Default::default()
         };
         assert_eq!(state.count(), 2);
     }

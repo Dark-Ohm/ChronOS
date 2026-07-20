@@ -21,7 +21,7 @@ pub use applications::{
     AppEntry, ApplicationsCommand, ApplicationsState, ApplicationsSubscriber, strip_field_codes,
 };
 pub use audio::{AudioCommand, AudioDevice, AudioState, AudioSubscriber, EndpointState};
-pub use aur::{AurCommand, AurSubscriber, PackageUpdate, UpdateSource, UpdatesState};
+pub use aur::{AurCommand, AurSubscriber, PackageUpdate, UpdateSource, UpgradeState, UpdatesState};
 pub use brightness::{
     BrightnessCommand, BrightnessState, BrightnessSubscriber, DDCUTIL_BIN, detect_displays,
     get_brightness, parse_getvcp_stdout, read_primary, set_brightness, write_all,

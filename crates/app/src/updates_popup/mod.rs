@@ -185,14 +185,14 @@ pub fn toggle(_window: &mut Window, cx: &mut App) {
     }
 }
 
-/// Dispatch "Upgrade all" and close the popup. Called from inside the
-/// popup's own `on_click`, which already holds `&mut Window` for the
-/// popup's window — closing MUST go through `close_this`, not `close(cx)`
-/// (same reentrancy hazard as `tray_menu::click_item`).
-pub(crate) fn upgrade_all(window: &mut Window, cx: &mut App) {
+/// Dispatch "Upgrade all". Called from inside the popup's own `on_click`,
+/// which already holds `&mut Window` for the popup's window. The popup
+/// stays open so the user can see the upgrade status (button is blocked,
+/// "Upgrading…" text shown); it closes only on explicit dismiss or after
+/// the upgrade completes and the user clicks close.
+pub(crate) fn upgrade_all(_window: &mut Window, cx: &mut App) {
     AppState::aur(cx).dispatch(AurCommand::UpgradeAll);
     tracing::info!("updates_popup: dispatched UpgradeAll");
-    close_this(window, cx);
 }
 
 /// Wire the updates popup to the live aur service. Called once from
