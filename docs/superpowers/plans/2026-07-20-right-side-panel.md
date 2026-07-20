@@ -2383,8 +2383,14 @@ git commit -m "app : side_panel_right — CPU/RAM/GPU + сеть spectrum-вид
   `.shutdown()`).
 - Produces: `#[derive(Default)] pub enum ArmState { #[default] Idle,
   Armed(PowerAction) }`, `pub enum PowerAction { LogOut, Restart,
-  Shutdown }`, `pub fn render_power_row(arm: &ArmState, theme: &Theme, cx:
-  &mut Context<SidePanelRightView>) -> impl IntoElement`.
+  Shutdown }`, pure transitions `pub fn on_click(ArmState, PowerAction)
+  -> ArmState` / `pub fn is_confirming_click(&ArmState, PowerAction) ->
+  bool` / `pub fn on_timeout(ArmState) -> ArmState`, `pub(crate) const
+  ARM_TIMEOUT: Duration`, and `pub fn render_power_row(theme: &Theme,
+  arm: ArmState, cx: &mut Context<SidePanelRightView>) -> impl
+  IntoElement`. Also adds the view method `pub(crate) fn
+  SidePanelRightView::on_power_click(&mut self, action: PowerAction, cx:
+  &mut Context<Self>)` and the view field `power_arm: ArmState`.
 
 **Design decision (no confirm-dialog primitive exists in this codebase —
 building one is out of scope for this plan):** clicking Log out /
@@ -2497,10 +2503,9 @@ fn label_for(action: PowerAction, arm: &ArmState) -> &'static str {
     }
 }
 
-/// Reads `PowerArmState` from the `Global` (step 5/6 below turn this
-/// module-level test scaffolding into the real thing — this initial cut
-/// intentionally does not compile against `App` yet, `render_power_row`'s
-/// final signature is nailed down in step 6, not guessed here).
+/// Renders the row from a plain `ArmState` value. Click wiring is added
+/// in step 5 via `cx.listener` — kept out of this step so step 4's tests
+/// cover only the pure state machine.
 pub fn render_power_row(theme: &Theme, arm: ArmState) -> impl IntoElement {
     div()
         .flex()
@@ -2539,7 +2544,7 @@ pub fn render_power_row(theme: &Theme, arm: ArmState) -> impl IntoElement {
         ))
 }
 
-fn power_button(action: PowerAction, label: &str, theme: &Theme) -> impl IntoElement {
+fn power_button(action: PowerAction, label: &str, theme: &Theme) -> gpui::Stateful<gpui::Div> {
     div()
         .id(("power-btn", action as usize))
         .flex_1()
@@ -2553,10 +2558,12 @@ fn power_button(action: PowerAction, label: &str, theme: &Theme) -> impl IntoEle
         .text_size(px(8.5))
         .font_family(theme.font_mono)
         .child(label.to_string())
-    // .on_click(...) is added in step 6, once `PowerArmState` (the
-    // `Global` it mutates) exists — added here in step 3 without a click
-    // handler on purpose so step 4's tests only cover the pure state
-    // machine, not GPUI wiring.
+    // `.on_click(...)` is attached by the caller in step 5 via
+    // `cx.listener` — the return type is `Stateful<Div>` (not
+    // `impl IntoElement`) precisely so the caller can still chain
+    // `.on_click` onto it; `on_click` lives on
+    // `StatefulInteractiveElement`, which is why `.id(..)` above is
+    // mandatory, not decorative.
 }
 
 #[cfg(test)]
@@ -2601,147 +2608,170 @@ declaration order, fine as an `.id()` disambiguator.
 Run: `cargo test -p chronos-app --lib side_panel_right::power_row`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Make `ArmState` a `Global`, not view-local state**
+- [ ] **Step 5: Attach the click handlers via `cx.listener`**
 
-Every existing `on_click` in this codebase (`battery.rs`, `dock.rs`,
-`workspaces.rs`, `system_popup/view.rs`, `tray.rs` — confirmed by
-grepping `on_click(move |` across the tree) receives `&mut App`, never
-`&mut Context<Self>`, even for clicks built inside a view's own `render`.
-Mutating per-view state from inside such a closure requires going through
-the view's window handle — exactly the pattern `GamingModeState` already
-uses in `crates/app/src/system_popup/gaming_mode.rs` (a `Global`, mutated
-directly via `cx.global_mut::<GamingModeState>()`, with a
-`repaint_popup(cx)` helper that re-notifies the tracked window through
-its `WindowHandle`). Reuse that exact pattern instead of inventing a new
-one:
+`on_click`'s listener type is `Fn(&ClickEvent, &mut Window, &mut App)`
+(`Source/gpui/src/elements/div.rs:1475`, alias at `:1584`) — it never
+hands you `&mut Context<Self>` directly. The adapter for that is
+**`Context::listener`** (`Source/gpui/src/app/context.rs:252`): it takes
+`Fn(&mut T, &E, &mut Window, &mut Context<T>)` and returns exactly the
+`Fn(&E, &mut Window, &mut App)` shape `on_click` wants, by downgrading
+the entity and doing `view.update(cx, ..)` internally.
 
-In `power_row.rs`, change `ArmState` from a plain enum to a `Global`
-wrapper:
+This is the idiomatic path and it is **already used in this codebase** —
+`crates/app/src/volume_popup/view.rs:199` mutates view-local state
+(`this.expanded`) from an `on_click` this exact way, and 15 of the fork's
+examples do the same (`Source/gpui/examples/opacity.rs:92` is the
+shortest read). Do **not** reach for a `Global` here: arm state is
+view-local UI state, and a `Global` would be shared across every panel
+instance if the panel ever opens on more than one display.
 
-```rust
-use gpui::Global;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct PowerArmState(pub ArmState);
-
-impl Global for PowerArmState {}
-```
-
-- [ ] **Step 6: Wire the click handler through the panel's window handle**
-
-In `crates/app/src/side_panel_right/mod.rs`, add a repaint helper next to
-`close_this` (mirrors `GamingModeState::repaint_popup`):
+Add the field to the view (`view.rs`):
 
 ```rust
-pub(crate) fn repaint(cx: &mut App) {
-    if let Some(handle) = cx.global::<SidePanelRightState>().handle.clone() {
-        match handle.update(cx, |_view: &mut SidePanelRightView, _window, view_cx| {
-            view_cx.notify();
-        }) {
-            Ok(()) => {}
-            Err(e) => tracing::warn!("side_panel_right: repaint failed: {e}"),
-        }
-    }
+use crate::side_panel_right::power_row::{
+    is_confirming_click, on_click as arm_on_click, on_timeout, render_power_row, ArmState,
+    PowerAction, ARM_TIMEOUT,
+};
+
+pub struct SidePanelRightView {
+    // .. existing fields from tasks 9-10 ..
+    power_arm: ArmState,
 }
 ```
 
-In `power_row.rs`, initialize the global once from `side_panel_right::init`
-(Task 7) — add to that function:
+Initialize it in `new()`'s returned `Self` with `power_arm: ArmState::default(),`.
+
+Note the `on_click as arm_on_click` rename: `power_row::on_click` (the
+pure state-machine function from Step 3) collides by name with GPUI's
+`on_click` element method that's in scope via `prelude::*`. Renaming at
+the import keeps both readable.
+
+Make `ARM_TIMEOUT` `pub(crate)` in `power_row.rs` (it was private in
+Step 3) so `view.rs` can reference it.
+
+- [ ] **Step 6: Implement the click + timeout behavior as a view method**
+
+In `view.rs`, on `impl SidePanelRightView`:
 
 ```rust
-    cx.set_global(PowerArmState::default());
-```
-
-Rewrite `power_button`'s `on_click` to mutate the global directly and
-call `repaint`, with no view-context indirection needed:
-
-```rust
-fn power_button(action: PowerAction, label: &str, theme: &Theme) -> impl IntoElement {
-    div()
-        .id(("power-btn", action as usize))
-        .flex_1()
-        .flex()
-        .flex_col()
-        .items_center()
-        .gap(px(6.))
-        .p(px(10.))
-        .cursor_pointer()
-        .text_color(theme.text.secondary)
-        .text_size(px(8.5))
-        .font_family(theme.font_mono)
-        .child(label.to_string())
-        .on_click(move |_event, _window, cx: &mut gpui::App| {
-            let current = cx.global::<PowerArmState>().0;
-            if is_confirming_click(&current, action) {
-                match action {
-                    PowerAction::LogOut => AppState::power(cx).log_out(),
-                    PowerAction::Restart => AppState::power(cx).restart(),
-                    PowerAction::Shutdown => AppState::power(cx).shutdown(),
-                }
-                cx.global_mut::<PowerArmState>().0 = ArmState::Idle;
-            } else {
-                let armed = on_click(current, action);
-                cx.global_mut::<PowerArmState>().0 = armed;
-                cx.spawn(async move |cx| {
-                    cx.background_executor().timer(ARM_TIMEOUT).await;
-                    // NOT `let _ = cx.update(...)` — an Err here means the
-                    // app context is gone while a power action sits armed,
-                    // which is exactly the state we must never silently
-                    // leave behind (plan Global Constraints; the
-                    // ghost-window saga 2026-07-18 traced back to a
-                    // swallowed `handle.update` Err).
-                    match cx.update(|cx| {
-                        if cx.global::<PowerArmState>().0 == armed {
-                            cx.global_mut::<PowerArmState>().0 = on_timeout(armed);
-                            crate::side_panel_right::repaint(cx);
-                        }
-                    }) {
-                        Ok(()) => {}
-                        Err(e) => tracing::warn!(
-                            "side_panel_right: power arm timeout could not disarm ({e}) — \
-                             a power button may still read 'Confirm?'"
-                        ),
-                    }
-                })
-                .detach();
+    fn on_power_click(
+        &mut self,
+        action: PowerAction,
+        cx: &mut Context<Self>,
+    ) {
+        if is_confirming_click(&self.power_arm, action) {
+            match action {
+                PowerAction::LogOut => AppState::power(cx).log_out(),
+                PowerAction::Restart => AppState::power(cx).restart(),
+                PowerAction::Shutdown => AppState::power(cx).shutdown(),
             }
-            crate::side_panel_right::repaint(cx);
+            self.power_arm = ArmState::Idle;
+            cx.notify();
+            return;
+        }
+
+        let armed = arm_on_click(self.power_arm, action);
+        self.power_arm = armed;
+        cx.notify();
+
+        cx.spawn(async move |view, cx| {
+            cx.background_executor().timer(ARM_TIMEOUT).await;
+            // NOT `let _ = view.update(..)` — an Err means the view is
+            // gone while a power action sits armed, the exact class of
+            // swallowed Err that hid the ghost-window bug (HANDOFF.md
+            // 2026-07-18). Plan Global Constraints forbid it.
+            match view.update(cx, |view, cx| {
+                // Only disarm if nothing re-armed a different action in
+                // the meantime — otherwise a stale timer would cancel a
+                // fresh arm the user just made.
+                if view.power_arm == armed {
+                    view.power_arm = on_timeout(armed);
+                    cx.notify();
+                }
+            }) {
+                Ok(()) => {}
+                Err(e) => tracing::warn!(
+                    "side_panel_right: power arm timeout could not disarm ({e}) — \
+                     a power button may still read 'Confirm?'"
+                ),
+            }
         })
+        .detach();
+    }
+```
+
+- [ ] **Step 7: Render the row with listeners attached**
+
+`render_power_row` from Step 3 builds the buttons but attaches no
+listeners — it has no `cx` to build them from. Give it one. Replace its
+Step 3 signature and body in `power_row.rs` with:
+
+```rust
+use gpui::Context;
+
+use crate::side_panel_right::view::SidePanelRightView;
+
+pub fn render_power_row(
+    theme: &Theme,
+    arm: ArmState,
+    cx: &mut Context<SidePanelRightView>,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .gap(px(2.))
+        .child(
+            // Switch user — always disabled, never armed, no listener.
+            div()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .items_center()
+                .gap(px(6.))
+                .p(px(10.))
+                .text_color(theme.text.disabled)
+                .child("User")
+                .child(
+                    div()
+                        .text_size(px(8.5))
+                        .font_family(theme.font_mono)
+                        .child("SWITCH USER"),
+                ),
+        )
+        .child(
+            power_button(PowerAction::LogOut, label_for(PowerAction::LogOut, &arm), theme)
+                .on_click(cx.listener(move |this, _event, _window, cx| {
+                    this.on_power_click(PowerAction::LogOut, cx);
+                })),
+        )
+        .child(
+            power_button(PowerAction::Restart, label_for(PowerAction::Restart, &arm), theme)
+                .on_click(cx.listener(move |this, _event, _window, cx| {
+                    this.on_power_click(PowerAction::Restart, cx);
+                })),
+        )
+        .child(
+            power_button(PowerAction::Shutdown, label_for(PowerAction::Shutdown, &arm), theme)
+                .on_click(cx.listener(move |this, _event, _window, cx| {
+                    this.on_power_click(PowerAction::Shutdown, cx);
+                })),
+        )
 }
 ```
 
-Make `ARM_TIMEOUT` `pub(crate)` (was private in Step 3). Update
-`render_power_row` to read `cx.global::<PowerArmState>().0` instead of
-taking `arm: &ArmState` as a parameter (the caller in `view.rs` no longer
-needs to track `power_arm` itself — the global is the single source of
-truth):
+`power_button` returns `Stateful<Div>` (Step 3) specifically so
+`.on_click` can be chained here — `on_click` is a
+`StatefulInteractiveElement` method, which is why the `.id(..)` inside
+`power_button` is load-bearing, not cosmetic.
+
+Make `on_power_click` (Step 6) `pub(crate)` so `power_row.rs` can call it
+across the module boundary.
+
+Call it from `view.rs`'s `render`, after the network section:
 
 ```rust
-pub fn render_power_row(theme: &Theme, cx: &App) -> impl IntoElement {
-    let arm = cx.global::<PowerArmState>().0;
-    // .. rest unchanged, using `arm` instead of the old `*arm` parameter ..
-}
+            .child(render_power_row(&theme, self.power_arm, cx))
 ```
-
-Update the four call sites inside `render_power_row` (`power_button(...)`)
-to drop the now-removed `cx: &mut Context<SidePanelRightView>` parameter
-from `power_button`'s signature, since it no longer needs it.
-
-- [ ] **Step 7: Add `render_power_row` to `view.rs`'s `render`**
-
-`SidePanelRightView` does **not** get a `power_arm` field — `PowerArmState`
-is a `Global` (Step 5), read directly in `render_power_row`. Append after
-the network section:
-
-```rust
-            .child(render_power_row(&theme, cx.global::<PowerArmState>().0))
-```
-
-Add `use crate::side_panel_right::power_row::{render_power_row, PowerArmState};`
-to `view.rs`'s imports (drop the earlier `ArmState`/`on_click`/`on_timeout`/
-`is_confirming_click` imports sketched in Step 5's first draft — those stay
-inside `power_row.rs` now, `view.rs` only needs `render_power_row` and
-`PowerArmState`).
 
 - [ ] **Step 8: Build**
 
