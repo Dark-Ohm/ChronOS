@@ -15,6 +15,29 @@ pub mod schemes;
 pub use base16::Base16Colors;
 pub use schemes::{ThemeScheme, builtin_schemes};
 
+/// Чернила и бумага бренда — фиксированные полюса палитры для контента
+/// ПОВЕРХ насыщенной заливки. Не чистые `#000`/`#fff` (STYLE.md это
+/// запрещает), а крайние тона Catppuccin.
+const INK: &str = "11111b";
+const PAPER: &str = "cdd6f4";
+
+/// Контрастный передний план для текста/марок, лежащих ПОВЕРХ насыщенной
+/// заливки (`accent.*`, `status.*`): цифра в бейдже, кружок тумблера.
+///
+/// Выбор идёт по светлоте САМОЙ ЗАЛИВКИ, а не по активной схеме: заливки у
+/// нас одинаковы в тёмной и светлой (акцент `#007acc`, статусы —
+/// Catppuccin), поэтому `theme.text.primary` here не годится — он
+/// переворачивается вместе со схемой и ломает контраст в одной из двух.
+///
+/// Живые случаи, ради которых это появилось (2026-07-20): цифра бейджа
+/// уведомлений — почти-белая на светло-розовом `status.error` (плыла уже в
+/// тёмной), и кружок тумблера gaming-mode — светло-серый на светлом треке
+/// (пропадал в светлой схеме).
+pub fn on_fill(fill: Hsla) -> Hsla {
+    let pole = if fill.l > 0.5 { INK } else { PAPER };
+    parse_hex(pole).unwrap_or(fill)
+}
+
 /// Парсит hex-цвет в [`Hsla`].
 ///
 /// Принимает строки вида `"#1e1e2e"`, `"1e1e2e"` (6 hex-цифр, alpha = 0xff)
@@ -283,6 +306,36 @@ pub mod radius {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Оба живых случая 2026-07-20: светлая заливка получает тёмные чернила,
+    /// тёмная — светлую бумагу. Иначе контент поверх заливки плывёт.
+    #[test]
+    fn on_fill_picks_contrast_by_fill_lightness() {
+        let ink = parse_hex(INK).expect("INK валиден");
+        let paper = parse_hex(PAPER).expect("PAPER валиден");
+
+        // status.error (#f38ba8) — светло-розовый: цифра бейджа должна быть тёмной.
+        let badge = parse_hex("f38ba8").expect("hex валиден");
+        assert_eq!(on_fill(badge), ink);
+
+        // accent.primary (#007acc) — тёмно-синий: кружок/текст поверх — светлые.
+        let accent = parse_hex("007acc").expect("hex валиден");
+        assert_eq!(on_fill(accent), paper);
+    }
+
+    /// Трек тумблера в выключенном состоянии = interactive.hover, а он
+    /// ПЕРЕВОРАЧИВАЕТСЯ между схемами — кружок обязан следовать за треком.
+    #[test]
+    fn on_fill_follows_track_across_schemes() {
+        let ink = parse_hex(INK).expect("INK валиден");
+        let paper = parse_hex(PAPER).expect("PAPER валиден");
+
+        let dark_track = parse_hex("313244").expect("hex валиден"); // тёмная схема
+        let light_track = parse_hex("e0e3f4").expect("hex валиден"); // Light C
+
+        assert_eq!(on_fill(dark_track), paper);
+        assert_eq!(on_fill(light_track), ink);
+    }
 
     #[test]
     fn base16_roundtrip() {

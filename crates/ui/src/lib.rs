@@ -7,7 +7,7 @@
 
 pub mod theme;
 
-pub use theme::parse_hex;
+pub use theme::{on_fill, parse_hex};
 pub use theme::{
     ActiveTheme, Base16Colors, FontSizes, Theme, ThemeScheme, builtin_schemes,
 };

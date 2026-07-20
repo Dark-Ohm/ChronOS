@@ -72,19 +72,13 @@ impl BarWidget for NotificationBellWidget {
             } else {
                 view.unread.to_string()
             };
+            // Число, а не пилюля-кружок (решение пользователя 2026-07-20):
+            // счётчик живёт нашим mono-шрифтом в цвете статуса, заливки нет.
             bell = bell.child(
                 div()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .min_w(px(16.))
-                    .h(px(16.))
-                    .px(px(4.))
-                    .rounded(px(8.))
-                    .bg(badge_color)
-                    .text_color(theme.text.primary)
-                    .text_xs()
-                    .font_weight(gpui::FontWeight::BOLD)
+                    .font_family(theme.font_mono)
+                    .text_size(theme.font_sizes.sm)
+                    .text_color(badge_color)
                     .child(label),
             );
         }

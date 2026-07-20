@@ -95,8 +95,16 @@ fn light_scheme() -> ThemeScheme {
     // toggle_on — акцент (неон в деталях), toggle_on_hover — дефолтный #1f9bdc.
     theme.interactive.toggle_on = hex("007acc"); // accent — включённый тоггл
 
-    // status.* — оставлены Catppuccin Mocha (из Theme::default): на светлом
-    // фоне читаются, Light C не диктует свои. MVP — см. отчёт.
+    // status.* — Catppuccin LATTE, не Mocha. Пастельные Mocha-статусы
+    // рассчитаны на тёмный фон: живой смок 2026-07-20 показал, что
+    // `status.warning` (#f9e2af) как ЦВЕТ ТЕКСТА в виджете обновлений на
+    // светлом баре практически невидим. Latte — те же смыслы в той же
+    // палитре, но с контрастом под светлую поверхность. Заливки (бейджи)
+    // темнеют вместе с этим, а контент поверх них ведёт `on_fill`.
+    theme.status.error = hex("d20f39"); // Latte red
+    theme.status.warning = hex("df8e1d"); // Latte peach/yellow
+    theme.status.success = hex("40a02b"); // Latte green
+    theme.status.info = hex("1e66f5"); // Latte blue
 
     ThemeScheme::new("Light", "Светлая схема ChronOS (Light C)", theme)
 }
@@ -167,11 +175,20 @@ mod tests {
     }
 
     #[test]
-    fn light_scheme_status_kept_from_default() {
-        // status.* — Catppuccin Mocha из дефолта, Light C не диктует свои.
+    fn light_scheme_status_is_latte_not_mocha() {
+        // Пастельные Mocha-статусы невидимы как текст на светлом фоне
+        // (живой смок 2026-07-20: `↑ 19` бледно-жёлтым на светлом баре).
+        // Светлая схема обязана нести Latte-статусы, а не дефолтные.
         let s = light_scheme();
         let d = Theme::default();
-        assert_eq!(s.theme.status, d.status);
+        assert_ne!(s.theme.status, d.status);
+        assert_eq!(s.theme.status.warning, hex("df8e1d"));
+        assert_eq!(s.theme.status.error, hex("d20f39"));
+
+        // Контраст: Latte-статусы темнее светлой поверхности (#dde0f2),
+        // иначе текст ими снова поплывёт.
+        assert!(s.theme.status.warning.l < s.theme.bg.primary.l);
+        assert!(s.theme.status.error.l < s.theme.bg.primary.l);
     }
 
     #[test]

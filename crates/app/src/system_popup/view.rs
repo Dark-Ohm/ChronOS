@@ -372,11 +372,9 @@ fn toggle_switch(
 ) -> AnyElement {
     let track_bg = if active { accent } else { hover };
     let knob_left = if active { px(17.) } else { px(2.) };
-    let knob_color = if active {
-        gpui::hsla(0., 0., 1., 1.)
-    } else {
-        gpui::hsla(0., 0., 0.85, 1.)
-    };
+    // Кружок лежит ПОВЕРХ трека — контраст считаем от трека, не от схемы:
+    // светло-серый кружок пропадал на светлом треке в схеме Light C.
+    let knob_color = chronos_ui::on_fill(track_bg);
 
     let _ = cx;
 
