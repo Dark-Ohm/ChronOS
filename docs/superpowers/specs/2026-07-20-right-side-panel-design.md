@@ -24,7 +24,8 @@
 - CPU/RAM/GPU и сетевой трафик показывают живые данные, читаемые
   на глаз, без «эффекта LED-гирлянды на морозе» (см. отклонённые
   визуальные итерации в `.superpowers/brainstorm/` этой сессии).
-- Power row вызывает реальные log out / restart / shutdown / switch user.
+- Power row вызывает реальные log out / restart / shutdown. Switch
+  user — видим, но disabled (нет login manager'а, см. §3.4).
 
 **Вне зоны v1** (осознанно отложено, roadmap):
 - Видео-превью (`gpui-video-player`) — отдельная веха.
@@ -157,22 +158,37 @@ guard для reentrant `remove_window()`.
 
 ### 3.4 Power row
 
-- Четыре кнопки в ряд: Switch user / Log out / Restart / Power
-  (иконки-обводки, без заливки, тихие — `color: #7d80a6`, hover
-  `#c8cae0`; Power при hover краснеет `#f38ba8` — единственная
-  «опасная» подсветка в панели).
-- Новый сервис `crates/services/src/power/` — тонкая обёртка над:
-  - Log out → session-specific (Hyprland: завершение сессии compositor'а,
-    например `hyprctl dispatch exit` — уточнить в плане, зависит от
-    того, держит ли ChronOS сессию или только shell).
-  - Restart → `systemctl reboot`.
-  - Shutdown → `systemctl poweroff`.
-  - Switch user → `loginctl` (новый greeter session) или
-    `dm-tool switch-to-greeter`, зависит от используемого display
-    manager — уточнить в плане.
-- **Все четыре действия — подтверждающий диалог обязателен** (не в
-  этой спеке, но зафиксировать: destructive-action правило проекта
-  распространяется и на UI, не только на git/shell).
+**Контекст, меняющий объём:** в системе нет login/display manager'а
+(нет greetd/SDDM/lightdm) — сессия стартует напрямую (TTY autologin →
+exec Hyprland или аналог). Свой login manager — будущий, отдельный
+проект, не существует сегодня. Это значит:
+
+- **Switch user** — некуда переключать: нет greeter'а, которому можно
+  отдать VT. **В v1 — кнопка присутствует визуально, но disabled**
+  (приглушена, курсор `not-allowed`, тултип «требует login manager»).
+  Не реализуем до появления собственного login manager'а — не гадать
+  про `loginctl`/`dm-tool`, эта земля пуста.
+- **Log out** — реализуемо: `hyprctl dispatch exit` завершает сессию
+  compositor'а, TTY-autologin решает что происходит дальше (либо назад
+  в shell-логин на TTY, либо respawn — зависит от инит-скрипта сессии,
+  не от ChronOS).
+- Restart → `systemctl reboot`.
+- Shutdown → `systemctl poweroff`.
+
+Три кнопки в ряд (Switch user disabled / Log out / Restart / Power) —
+иконки-обводки, без заливки, тихие — `color: #7d80a6`, hover `#c8cae0`;
+Power при hover краснеет `#f38ba8` — единственная «опасная» подсветка
+в активных кнопках. Disabled-состояние Switch user — отдельный
+визуальный токен (ещё не мокапилось, нужна итерация при реализации).
+
+Новый сервис `crates/services/src/power/` — тонкая обёртка над
+`hyprctl dispatch exit` / `systemctl reboot` / `systemctl poweroff`.
+Switch user в сервис не входит вообще (нечего оборачивать).
+
+**Все действующие кнопки (log out/restart/shutdown) — подтверждающий
+диалог обязателен** (не в этой спеке, но зафиксировать: destructive-
+action правило проекта распространяется и на UI, не только на
+git/shell).
 
 ---
 
@@ -256,9 +272,10 @@ guard для reentrant `remove_window()`.
 
 1. Механизм хит-теста hover-у-края (invisible layer-shell strip vs
    compositor polling) — требует технической разведки.
-2. Log out / switch user — точный механизм зависит от того, держит
-   ли Hyprland-сессия login manager (`greetd`? `SDDM`?) — нужно
-   спросить/проверить у пользователя перед планом.
+2. ~~Log out / switch user — механизм~~ — снято: нет login manager'а
+   в системе (будет свой, отдельным проектом, не сейчас). Log out =
+   `hyprctl dispatch exit`, Switch user = disabled-стаб в v1. Не
+   переоткрывать этот вопрос без нового факта о login manager'е.
 3. `font_ui` в `Theme` — новое поле, затрагивает `crates/ui/src/theme/`
    глобально, не только эту панель — оценить blast radius в плане.
 4. Per-app stream mute — точный формат `pw-dump` для application-стримов
