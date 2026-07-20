@@ -209,15 +209,20 @@ and calls `window.handle_input(input)` (client.rs:2183-2206). So scroll **does**
 layer-shell surface — delivered to the window currently holding mouse focus, then
 dispatched to the hovered element's `on_scroll_wheel` listener.
 
-**`StatefulInteractiveElement::on_scroll_wheel`** (`Source/gpui/src/elements/div.rs:357-371`)
-binds a `ScrollWheelEvent` listener in the **bubble** phase, gated by
-`hitbox.should_handle_scroll(window)`. It lives on `StatefulInteractiveElement`, so it is
-reachable on `div()` **only after `.id(...)`** (which yields `Stateful<Div>`). The same goes
-for `on_click` (`div.rs:1475`), `on_hover`, `cursor`/`cursor_pointer` (styles.rs:164/178) —
-all are on `StatefulInteractiveElement`, not on the bare `Div`/`InteractiveElement`.
-**Empirically verified:** `div().on_click(...)` / `div().overflow_y_scroll()` FAIL to
-compile (E0599); `div().id("x").on_click(...).overflow_y_scroll()` compiles. So every
-interactive element on a layer-shell surface must carry `.id(...)` first.
+**`on_scroll_wheel` is on `InteractiveElement` — works on BARE `div()`.** The fluent method
+is the default on `InteractiveElement` (`Source/gpui/src/elements/div.rs:969`, imperative
+binding at `div.rs:357`), which `Div` implements (`div.rs:699`/`div.rs:1695`). **Empirically
+verified:** `div().on_scroll_wheel(..)` compiles with no `.id()`. It binds a `ScrollWheelEvent`
+listener in the **bubble** phase, gated by `hitbox.should_handle_scroll(window)` (div.rs:367).
+
+**But `on_click` / `overflow_y_scroll` are on `StatefulInteractiveElement` — need `.id()`.**
+`on_click` (div.rs:1475) and the scroll-clip methods (`overflow_scroll` div.rs:1416,
+`overflow_x_scroll` :1423, `overflow_y_scroll` :1429, `track_scroll` :1435) live on
+`StatefulInteractiveElement` (div.rs:1213+), implemented only for `Stateful<E>` (div.rs:3775),
+not for bare `Div`. So a scrollable/clickeable element must carry `.id(...)` first.
+**Empirically verified:** `div().overflow_y_scroll()` and `div().on_click(..)` both FAIL to
+compile (E0599); `div().id("x").overflow_y_scroll().on_click(..)` compiles. So:
+scroll-wheel listeners → bare `div()` is fine; click + scroll-clip → `.id()` required first.
 
 ---
 
@@ -236,7 +241,11 @@ retellings, not the fork:
    `Stateful<Div>`, which is why every working sample writes `.id("x").overflow_y_scroll()`.
    **Empirically verified:** `div().overflow_y_scroll()` FAILS to compile (rustc E0599
    "no method named overflow_y_scroll found for struct gpui::Div"); `div().id("x").overflow_y_scroll()`
-   compiles clean. So the correct rule is: scroll/click/hover/cursor need `.id()` first.
+   compiles clean. So the correct rule is: scroll-wheel listeners work on bare `div()`
+   (InteractiveElement, div.rs:969), but click + scroll-clip (`overflow_y_scroll` etc.) need
+   `.id()` first (StatefulInteractiveElement, div.rs:1213+; bare `Div` implements only
+   InteractiveElement, div.rs:1695). `cursor`/`cursor_pointer` are style methods
+   (styles.rs:164/178), applied via `div().cursor_pointer()` on the styled element directly.
    (This corrects an earlier draft of this doc that wrongly claimed bare `div()` could scroll.)
 2. **`resize()` does NOT flow to `set_size` at window.rs:1468.** That line (window.rs:1468)
    is inside `impl HasDisplayHandle for WaylandWindow` — unrelated to resize. The real path
