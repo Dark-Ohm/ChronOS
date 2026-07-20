@@ -261,6 +261,60 @@ mod tests {
         let speed = update_speed(&mut state, 1001, 501, t1, Duration::from_secs(1));
         assert_eq!(speed, NetSpeed { dl: 0.0, ul: 0.0 });
     }
+
+    // Ported verbatim in intent from the pre-extraction tests in
+    // `crates/app/src/bar/widgets/network.rs` (renamed for the new field
+    // names). Do NOT drop these when deleting the originals in Step 5 —
+    // they cover the two cases the three tests above do not: repeated
+    // same-frame calls, and u64 counter wraparound.
+
+    #[test]
+    fn repeated_calls_in_one_frame_never_collapse_the_cached_value() {
+        let mut state = NetState::default();
+        let t0 = Instant::now();
+
+        let r1 = update_speed(&mut state, 0, 0, t0, SAMPLE_INTERVAL);
+        assert_eq!(r1, NetSpeed { dl: 0.0, ul: 0.0 });
+
+        // Simulate many render() calls inside the same frame.
+        for _ in 0..10 {
+            let r = update_speed(&mut state, 0, 0, t0, SAMPLE_INTERVAL);
+            assert_eq!(r.dl, 0.0, "cached value collapsed between repeated calls");
+            assert_eq!(r.ul, 0.0, "cached value collapsed between repeated calls");
+        }
+
+        // Advance past the gate with real counters.
+        let t1 = t0 + SAMPLE_INTERVAL + Duration::from_millis(1);
+        let r2 = update_speed(&mut state, 1_000_000, 500_000, t1, SAMPLE_INTERVAL);
+        assert!(r2.dl > 900_000.0 && r2.dl < 1_100_000.0);
+        assert!(r2.ul > 450_000.0 && r2.ul < 550_000.0);
+
+        // Same instant → cache wins, even with wildly different counters.
+        let r3 = update_speed(&mut state, 9_999_999, 8_888_888, t1, SAMPLE_INTERVAL);
+        assert_eq!(r3.dl, r2.dl, "cached value changed despite different counters");
+        assert_eq!(r3.ul, r2.ul, "cached value changed despite different counters");
+    }
+
+    #[test]
+    fn counter_wraparound_yields_zero_then_recovers() {
+        let mut state = NetState::default();
+        let t0 = Instant::now();
+
+        // First sample at near-wrap counters.
+        update_speed(&mut state, u64::MAX, u64::MAX, t0, SAMPLE_INTERVAL);
+
+        // Counters wrapped: `saturating_sub` must floor at 0, not underflow.
+        let t1 = t0 + SAMPLE_INTERVAL;
+        let wrapped = update_speed(&mut state, 100, 200, t1, SAMPLE_INTERVAL);
+        assert_eq!(wrapped.dl, 0.0, "dl must be 0 on the wrap tick");
+        assert_eq!(wrapped.ul, 0.0, "ul must be 0 on the wrap tick");
+
+        // Next tick recovers normally from the new baseline.
+        let t2 = t1 + SAMPLE_INTERVAL;
+        let recovered = update_speed(&mut state, 100_000, 200_000, t2, SAMPLE_INTERVAL);
+        assert!((recovered.dl - 99_900.0).abs() < 100.0);
+        assert!((recovered.ul - 199_800.0).abs() < 100.0);
+    }
 }
 ```
 
@@ -275,9 +329,11 @@ pub mod net_stats;
 - [ ] **Step 4: Run the new module's tests**
 
 Run: `cargo test -p chronos-services --lib net_stats`
-Expected: 3 tests pass (`first_sample_returns_zero_and_stores_snapshot`,
+Expected: 5 tests pass (`first_sample_returns_zero_and_stores_snapshot`,
 `second_sample_after_interval_computes_real_delta`,
-`sample_within_min_interval_returns_cached_value_not_fresh_delta`).
+`sample_within_min_interval_returns_cached_value_not_fresh_delta`,
+`repeated_calls_in_one_frame_never_collapse_the_cached_value`,
+`counter_wraparound_yields_zero_then_recovers`).
 
 - [ ] **Step 5: Rewire `crates/app/src/bar/widgets/network.rs` to use the shared module**
 
@@ -296,9 +352,24 @@ Update every call site in this file that referenced `SpeedSample { dl_speed,
 ul_speed }` field names to the new field names `NetSpeed { dl, ul }` — grep
 for `.dl_speed` and `.ul_speed` in this file and rename to `.dl` / `.ul`.
 Existing tests in this file that constructed `NetworkState`/`Sample`
-directly must be deleted (they now live in `net_stats.rs`, Step 2) — keep
-only this file's own tests for `format_speed`, `indicator_color`,
-`compute_view`, which don't touch the moved types.
+directly must be deleted — but only after confirming each one has a
+counterpart in `net_stats.rs` (Step 2). The four originals map as:
+
+| `network.rs` original | `net_stats.rs` counterpart |
+|---|---|
+| `update_speed_first_call_returns_zero` | `first_sample_returns_zero_and_stores_snapshot` |
+| `update_speed_computes_correct_speed` | `second_sample_after_interval_computes_real_delta` |
+| `update_speed_immunity_to_frequency` | `repeated_calls_in_one_frame_never_collapse_the_cached_value` |
+| `update_speed_handles_counter_wrap` | `counter_wraparound_yields_zero_then_recovers` |
+
+Run `grep -n "fn update_speed_" crates/app/src/bar/widgets/network.rs`
+before deleting and verify the list matches this table exactly. If it
+contains a test not in the left column, **stop** — an extra test means
+someone added coverage after this plan was written; port it to
+`net_stats.rs` rather than deleting it.
+
+Keep this file's own tests for `format_speed`, `indicator_color`,
+`compute_view` — they don't touch the moved types.
 
 - [ ] **Step 6: Add `chronos-services` as a workspace path dependency check**
 
@@ -312,7 +383,9 @@ Expected: a line already present (the bar widget already imports
 Run: `cargo test -p chronos-services -p chronos-app --lib`
 Expected: all pass, same total pass count for bar network tests as
 Step 1's baseline minus the moved tests (now passing under
-`chronos-services`), plus the 3 new `net_stats` tests.
+`chronos-services`), plus the 5 `net_stats` tests. Net coverage must not
+drop: the 4 `update_speed_*` tests deleted from `network.rs` are covered
+by 4 of the 5 in `net_stats.rs` (see Step 5's mapping table).
 
 Run: `cargo build --workspace`
 Expected: clean build, no warnings about unused imports in
@@ -1337,9 +1410,20 @@ pub fn open_pinned(cx: &mut App) {
 }
 
 /// Close from outside (bar toggle / hotkey).
+///
+/// Note the `match` instead of `let _ =`: `system_popup`/`volume_popup`
+/// swallow this Err today, and a swallowed `handle.update` Err is exactly
+/// what hid the ghost-window bug for a full session (HANDOFF.md
+/// 2026-07-18). New code does not inherit that wart — an Err here means
+/// the handle was taken but the window never closed, i.e. a ghost.
 pub fn close(cx: &mut App) {
     if let Some(handle) = cx.global_mut::<SidePanelRightState>().handle.take() {
-        let _ = handle.update(cx, |_, window: &mut Window, _| window.remove_window());
+        match handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
+            Ok(()) => {}
+            Err(e) => tracing::warn!(
+                "side_panel_right: close() could not reach the window ({e}) — possible ghost"
+            ),
+        }
     }
 }
 
@@ -2600,12 +2684,24 @@ fn power_button(action: PowerAction, label: &str, theme: &Theme) -> impl IntoEle
                 cx.global_mut::<PowerArmState>().0 = armed;
                 cx.spawn(async move |cx| {
                     cx.background_executor().timer(ARM_TIMEOUT).await;
-                    let _ = cx.update(|cx| {
+                    // NOT `let _ = cx.update(...)` — an Err here means the
+                    // app context is gone while a power action sits armed,
+                    // which is exactly the state we must never silently
+                    // leave behind (plan Global Constraints; the
+                    // ghost-window saga 2026-07-18 traced back to a
+                    // swallowed `handle.update` Err).
+                    match cx.update(|cx| {
                         if cx.global::<PowerArmState>().0 == armed {
                             cx.global_mut::<PowerArmState>().0 = on_timeout(armed);
                             crate::side_panel_right::repaint(cx);
                         }
-                    });
+                    }) {
+                        Ok(()) => {}
+                        Err(e) => tracing::warn!(
+                            "side_panel_right: power arm timeout could not disarm ({e}) — \
+                             a power button may still read 'Confirm?'"
+                        ),
+                    }
                 })
                 .detach();
             }
