@@ -1,6 +1,6 @@
 ---
 name: gpui-layer-shell
-description: Make a gpui-ce layer-shell popup/window resize its height to fit dynamic content (fix "popup clipped at bottom" bugs). Use when a ChronOS surface has a fixed height and content overflows, or any time a layer-shell surface's height must track its children. Covers the `window.resize()` API, content-height estimation, the missing `max_height` Style field, and the `overflow_y_scroll` quirk in this gpui-ce build.
+description: Make a gpui-ce layer-shell popup/window resize its height to fit dynamic content (fix "popup clipped at bottom" bugs). Use when a ChronOS surface has a fixed height and content overflows, or any time a layer-shell surface's height must track its children. Covers the `window.resize()` API, content-height estimation, the surface-vs-element `max_h` distinction, and the `.id()` requirement for `overflow_y_scroll`. For the full fork API map, see `chronos-gpui`.
 ---
 
 # gpui-ce layer-shell rubber-band height
@@ -18,10 +18,19 @@ bugs in ChronOS (notifications, tray_menu, OSD-style popups all share it).
    padding, inter-card gap. For wrapped text, estimate `chars_per_line` from
    width (`(width - 2*pad) / approx_glyph_px`) and `lines = ceil(chars / cpl)`.
    Keep a `MIN_*` floor so a tiny notification doesn't collapse the window.
-2. **Cap the height.** gpui `Style` has **NO `max_height`** field — you cannot
-   clamp via style. Apply the cap by clamping the value you pass to `resize()`
-   (e.g. `display_h*0.4` clamped to `[160,560]`), and optionally enable inner
-   vertical scroll past the cap.
+2. **Cap the height — two different things, don't confuse them.**
+   - **The layer-shell *surface itself*** (the actual Wayland window) has no
+     style-level cap: its size is `WindowBounds`/`resize()` only, full stop —
+     see `chronos-gpui`'s `windowing-platform.md`. Clamp the value you pass to
+     `resize()` (e.g. `display_h*0.4` clamped to `[160,560]`).
+   - **Content *inside* that surface** (a scrollable list, a variable-length
+     card) CAN be capped in style: there is no field literally named
+     `max_height`, but `.max_h(px(N))` exists and works (`Style.max_size`,
+     `style.rs:234`; macro `gpui_macros/src/styles.rs:899-903` — see
+     `chronos-gpui`'s `elements-styling-layout.md` §3 for the full verdict).
+     Combine with `.id(...).overflow_y_scroll()` for a real scrollable region
+     inside a fixed-size popup — see the scroll pitfall below, it is NOT
+     "impossible" here either.
 3. **Resize on every content change**, before repainting:
    ```rust
    let height = { /* read global state, compute */ }.min(max_popup_height(cx));
@@ -45,26 +54,33 @@ bugs in ChronOS (notifications, tray_menu, OSD-style popups all share it).
 - `f32::from(pixels)` — `From<Pixels> for f32` exists (`src/geometry.rs`
   ~line 2909). `Pixels.0` is **private** — do NOT write `d.bounds().size.height.0`;
   use `f32::from(...)`.
-- `gpui::Style` — no `max_height`/`max_width`. Clamp via `resize()` only.
+- `gpui::Style` — no field literally named `max_height`/`max_width`, but
+  `max_size: Size<Length>` (`style.rs:234`) + the `.max_h`/`.max_w` macro
+  prefix (`gpui_macros/src/styles.rs:899-903`) cap an *element's* size.
+  The layer-shell *surface* still has no style-level cap — that one really is
+  `resize()`-only. See `chronos-gpui/references/elements-styling-layout.md`.
 
 ## Pitfalls (specific to this ChronOS gpui-ce build)
 
 - **`overflow_y_scroll()` requires `.id()` first — it is NOT missing.**
   It lives on `StatefulInteractiveElement`, implemented only for
   `Stateful<E>` (`Source/gpui/src/elements/div.rs:3752`), so calling it on a
-  bare `div()` fails with "no method" — which was long misread as "the fork
-  lacks scroll". Working sample shipped in the fork:
+  bare `div()` fails with "no method" — a compile error long misread as "the
+  fork lacks scroll" (it stood as canon for a full day, spread into 6 docs,
+  before anyone opened the fork — see `chronos-gpui/SKILL.md` for the full
+  story). Working sample shipped in the fork the whole time:
   `Source/gpui/examples/scrollable.rs` (`.id("vertical").overflow_scroll()`),
-  `cargo check` green 2026-07-20. Corrected after the Architect was told to
-  actually look inside the fork.
-  Historical note — it was previously described as not resolving on `Div`, even though
-  `cursor_pointer()` (same `InteractiveElement` trait, `src/elements/div.rs:1429`
-  vs `:1475`) compiles fine in `bar/widgets/tray.rs`. Appears to be a gpui-ce
-  version quirk in this workspace. Workarounds: (a) skip the inner scroll and
-  rely on `resize()` — fine for the normal case where the compositor applies
-  the resize; or (b) wire a real `ScrollHandle` (`use gpui::ScrollHandle;`,
-  store in the view, `.track_scroll(&self.handle)` + `overflow_y_scroll()`) —
-  the canonical gpui scroll path. Test which compiles before committing to (b).
+  `cargo check` green. `cursor_pointer()` compiling on a bare `div()` in
+  `bar/widgets/tray.rs` was the tell — it lives on plain `InteractiveElement`
+  (no `.id()` needed), which is a *different* trait than `overflow_y_scroll`'s
+  `StatefulInteractiveElement` — not a version quirk, a trait boundary.
+  For a real scrollable region: `.id("x")` + `.overflow_y_scroll()`, or wire
+  `ScrollHandle` + `.track_scroll(&handle)` for programmatic control
+  (`scroll_to_bottom()`, `div.rs:4063`). For an append-only log/terminal,
+  prefer `list()` + `ListState::set_follow_mode(FollowMode::Tail)`
+  (`list.rs:113`/`:617`) over manual `scroll_to_bottom` calls — see
+  `chronos-gpui/references/elements-styling-layout.md`, "2. Scroll — full
+  picture" → "Autoscroll to bottom (terminal log / streaming)".
 - **Build via the right crate.** `cargo build -p chronos` / `cargo test -p chronos`
   isolate app-crate changes from the often-broken `chronos-services` WIP tests.
   `cargo test --workspace` may fail on a *foreign* test that is not your concern

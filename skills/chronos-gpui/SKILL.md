@@ -1,6 +1,6 @@
 ---
 name: chronos-gpui
-description: Ground truth about OUR gpui fork ("gpui-ce chronos edition" in ../Source) — what the fork actually contains, which APIs exist and under which traits, what the 60 shipped examples prove, and where it diverges from upstream GPUI. Use before claiming "the fork can't do X", when picking a windowing/layout/async API for ChronOS, or when an API "doesn't resolve". Evidence-based: every claim carries a file:line from Source/ or a runnable example.
+description: Ground truth about OUR gpui fork ("gpui-ce chronos edition" in ../Source) — what the fork actually contains, which APIs exist and under which traits, what the 55 shipped examples prove, and where it diverges from upstream GPUI. Use before claiming "the fork can't do X", when picking a windowing/layout/async API for ChronOS, or when an API "doesn't resolve". Evidence-based: every claim carries a file:line from Source/ or a runnable example.
 ---
 
 # ChronOS GPUI fork — ground truth
@@ -28,12 +28,12 @@ Zed, not crates.io. Path-deps from ChronOS point here.
 
 | Crate group | What |
 |---|---|
-| `gpui` | core: elements, styling, layout, app/entity/context, 44 examples |
+| `gpui` | core: elements, styling, layout, app/entity/context, 42 examples |
 | `gpui_platform`, `gpui_linux` | windowing, Wayland, **layer-shell**, input, displays |
 | `gpui_macros` | style-macro generation (where `px_*`/`max_h`-style methods come from) |
 | `gpui_scheduler`, `gpui_tokio` | executors, `Task` (`#[must_use]`, drop = cancel) |
 | forked zed-internal | `gpui_collections`, `gpui_sum_tree`, `gpui_refineable`, … |
-| `gpui-component` | separate workspace, 14 examples — NOT used by ChronOS today |
+| `gpui-component` | separate workspace, 13 examples — NOT used by ChronOS today |
 
 ## Navigation
 
@@ -41,8 +41,11 @@ Zed, not crates.io. Path-deps from ChronOS point here.
 |---|---|
 | Elements, styling, layout, scroll | [elements-styling-layout.md](references/elements-styling-layout.md) |
 | Windowing, Wayland, layer-shell, input | [windowing-platform.md](references/windowing-platform.md) |
-| App/Entity/Context, async, executors | [state-async-executors.md](references/state-async-executors.md) |
-| Example corpus (what each proves) | [examples-index.md](references/examples-index.md) |
+| App/Entity/Context, async, executors | **MISSING — recon not yet delivered, see HANDOFF "Mimo №14"** |
+| Example corpus, full catalog | [examples-catalog.md](references/examples-catalog.md) |
+| Examples grouped by topic (task → example) | [examples-by-topic.md](references/examples-by-topic.md) |
+| Run/check any example | `scripts/run-example.sh --list` / `--check <name>` |
+| 8-question eval per reference | `evals/*.eval.md` |
 
 ## Related skills
 
