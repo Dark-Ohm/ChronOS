@@ -131,8 +131,9 @@ fixtures have failed twice.
 4. If bar needs live repaint: ask for / add `watch` in `bar/mod.rs`.
 
 ### New bar widget
-0. **`render()` MUST be side-effect free.** It is called many times per
-   frame (measure/layout/paint) *and* on every watched service signal —
+0. **Nothing in `render()` may depend on HOW OFTEN it is called.** It runs
+   many times per frame (measure/layout/paint) *and* on every watched
+   service signal —
    cava alone pushes 30 fps. Anything that samples over time (rates,
    counters, deltas) must carry its own **time gate + cached value**, or
    it silently collapses: the network widget computed its delta between
@@ -143,6 +144,15 @@ fixtures have failed twice.
    `elapsed.as_secs_f64()`. Injecting time is what makes the
    "immune to call frequency" property unit-testable — the pre-fix version
    had 14 green tests and was still broken live.
+
+   **Mutating state in `render()` is NOT itself the sin** — say it precisely,
+   or the rule gets cargo-culted. `dock.rs` (`ICON_CACHE`), `tray.rs`
+   (`PIXMAP_CACHE`, `ICON_CACHE`), `project_switcher` (`CONFIG_CACHE`) all
+   mutate from render and are fine: a memoization cache is a pure function
+   of its key, so call frequency cannot change the answer. The defect is
+   **frequency-dependence** — a value derived from the interval between
+   calls. TWINS search 2026-07-20 over all UI surfaces: those 4 caches are
+   idempotent, and no site outside `network.rs` computes over `elapsed`.
 1. `bar/widgets/<name>.rs` — `BarWidget`, pure `describe` + unit tests
    (see `network.rs` / `volume.rs` / `mpris.rs`).
 2. Two lines at **end** of `widgets/mod.rs`: `mod` + `register` — do not
