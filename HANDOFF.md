@@ -144,8 +144,21 @@ picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
     элементов, скролл целиком, Style, списки, текст.
   - **Hermes №17** → `references/windowing-platform.md` — layer-shell,
     resize, дисплеи, фокус, жизненный цикл окна, ввод. Самая ценная зона.
-  - **Mimo №14** (ПОСЛЕ №13) → `references/state-async-executors.md` —
-    глобалы, реентерабельность, Task/detach, таймеры, подписки, анимации.
+  - **`f4d2ebc` Grok №17 — ПРИНЯТ.** elements/styling/layout/scroll.
+    Ключевая находка (перепроверена лично): `FollowMode::Tail`
+    (`list.rs:113`) + `set_follow_mode` (`:617`) — готовый механизм
+    автопрокрутки к хвосту, пригодится для scrollback будущего терминала.
+  - **`f7099e5` Hermes №17 — ПРИНЯТ.** windowing/platform/layer-shell —
+    самая ценная зона волны, ноль дефектов после его же самопроверки.
+  - **OpenCode №4 — ПРИНЯТ**, коммит `cbfc197`. Каталог 55+ примеров +
+    `scripts/run-example.sh`. Хвост: 29/42 примеров не прогнаны
+    напрямую через `cargo check` (риск низкий, задекларирован).
+  - **Mimo №14 — НЕ ВЫПОЛНЕНО.** Вместо `state-async-executors.md`
+    сдал вебисследование техстека (`mimo-report-techstack.md`, не по
+    брифу) и оставил мусор в `../Source/` (чужой репозиторий форка —
+    `.mimocode/`, `REPORT.md`, `findings/` и т.п., read-only было
+    нарушено явно). Код форка не пострадал (diff пуст), мусор вычищен
+    Архитектором. Задание переоткрыто, см. приёмку в MIMO.md.
   - **OpenCode №4** → `references/examples-index.md` + `scripts/run-example.sh`
     — каталог всех 60 примеров + инвентаризация `gpui-component`.
   Требование пользователя: каждый дробит зону минимум на 3 партии и
