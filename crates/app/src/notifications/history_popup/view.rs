@@ -37,7 +37,7 @@ impl Render for HistoryPopupView {
         let border_subtle = theme.border.subtle;
         let text_primary = theme.text.primary;
         let text_muted = theme.text.muted;
-        let bg_elevated = theme.bg.elevated;
+        let bg_primary = theme.bg.primary;
         let radius_lg = theme.radius_lg;
 
         // Close (✕) button — sits in the header, closes this popup.
@@ -92,7 +92,7 @@ impl Render for HistoryPopupView {
             .p(px(12.))
             .w(px(360.))
             .rounded(radius_lg)
-            .bg(bg_elevated)
+            .bg(bg_primary)
             .border_1()
             .border_color(border_subtle)
             .child(header)

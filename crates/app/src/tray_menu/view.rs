@@ -44,7 +44,7 @@ impl Render for TrayMenuView {
 
         let theme = Theme::global(cx);
 
-        let bg = theme.bg.elevated;
+        let bg = theme.bg.primary;
         let text_primary = theme.text.primary;
         let text_muted = theme.text.muted;
         let divider = theme.bg.secondary;

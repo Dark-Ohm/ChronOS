@@ -36,7 +36,7 @@ impl Render for SystemPopupView {
         let upower = AppState::upower(cx).get();
         let gaming_active = gaming_mode::GamingModeState::is_active(cx);
 
-        let bg = theme.bg.elevated;
+        let bg = theme.bg.primary;
         let text_primary = theme.text.primary;
         let text_muted = theme.text.muted;
         let text_secondary = theme.text.secondary;

@@ -26,7 +26,7 @@ impl Render for ProjectPopupView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let config = cached();
         let theme = Theme::global(cx);
-        let bg = theme.bg.elevated;
+        let bg = theme.bg.primary;
         let text_primary = theme.text.primary;
         let text_secondary = theme.text.secondary;
         let text_muted = theme.text.muted;

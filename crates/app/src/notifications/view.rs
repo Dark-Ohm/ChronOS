@@ -100,7 +100,7 @@ pub(crate) fn render_notification_card(
         Urgency::Low => theme.status.info,
     };
 
-    let bg_elevated = theme.bg.elevated;
+    let bg_primary = theme.bg.primary;
     let text_primary = theme.text.primary;
     let text_secondary = theme.text.secondary;
     let text_muted = theme.text.muted;
@@ -135,7 +135,7 @@ pub(crate) fn render_notification_card(
         .gap(px(4.))
         .p(px(12.))
         .rounded(radius_lg)
-        .bg(bg_elevated)
+        .bg(bg_primary)
         .border_l_3()
         .border_color(accent)
         .child(header)
