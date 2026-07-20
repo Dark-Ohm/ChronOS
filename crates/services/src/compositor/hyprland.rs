@@ -13,7 +13,7 @@ use hyprland::{
     event_listener::EventListener,
     prelude::*,
 };
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use super::types::{
     ActiveWindow, CompositorBackend, CompositorCommand, CompositorState, Monitor, Workspace,
@@ -88,6 +88,41 @@ fn send_dispatch(line: &str) -> Result<()> {
         .write_all(format!("/dispatch {line}\n").as_bytes())
         .map_err(|e| anyhow::anyhow!("write Hyprland socket {}: {e}", path.display()))?;
     Ok(())
+}
+
+/// Перечитывает СПИСОК воркспейсов с композитора и кладёт его в состояние.
+///
+/// Почему не «переставить флаг `active` по имеющемуся списку» (так было до
+/// 2026-07-20): список брался ровно один раз на старте шелла, поэтому
+/// созданные позже воркспейсы не появлялись точками в баре, а опустевшие не
+/// исчезали. Хуже того — при переходе НА воркспейс, созданный после старта,
+/// его `id` в списке отсутствовал, и активной не подсвечивалась ни одна
+/// точка. Событий `createworkspacev2`/`destroyworkspacev2` мы просто не
+/// слушали.
+///
+/// `hint_active` — id из события смены воркспейса: он приходит раньше, чем
+/// `get_active()` успевает обновиться, поэтому доверяем событию, а не опросу.
+fn refresh_workspaces(data: &Mutable<CompositorState>, hint_active: Option<i32>) {
+    let active_id = hint_active.or_else(|| HWorkspace::get_active().ok().map(|w| w.id));
+    match Workspaces::get() {
+        Ok(list) => {
+            let workspaces: Vec<Workspace> = list
+                .into_iter()
+                .map(|w| Workspace {
+                    id: w.id,
+                    name: w.name,
+                    active: active_id == Some(w.id),
+                    monitor_id: w.monitor_id,
+                })
+                .collect();
+            data.lock_mut().workspaces = workspaces;
+        }
+        Err(e) => {
+            // Не роняем список в пустой: лучше показать чуть устаревшие точки,
+            // чем мигнуть пустым баром на разовом сбое IPC.
+            warn!("workspace refresh failed, keeping previous list: {e}");
+        }
+    }
 }
 
 /// Fetch the full current compositor state from Hyprland (sync).
@@ -171,10 +206,21 @@ fn run_listener(data: Mutable<CompositorState>) -> Result<()> {
         let data = data.clone();
         listener.add_workspace_changed_handler(move |evt| {
             debug!("workspace changed: {:?}", evt.name);
-            let mut s = data.lock_mut();
-            for w in s.workspaces.iter_mut() {
-                w.active = w.id == evt.id;
-            }
+            refresh_workspaces(&data, Some(evt.id));
+        });
+    }
+    {
+        let data = data.clone();
+        listener.add_workspace_added_handler(move |evt| {
+            debug!("workspace added: {:?}", evt.name);
+            refresh_workspaces(&data, None);
+        });
+    }
+    {
+        let data = data.clone();
+        listener.add_workspace_deleted_handler(move |evt| {
+            debug!("workspace deleted: {:?}", evt.name);
+            refresh_workspaces(&data, None);
         });
     }
     {
