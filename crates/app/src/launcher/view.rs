@@ -132,6 +132,11 @@ impl Render for LauncherView {
         // requirement; after that, focus follows compositor policy.
 
         let theme = Theme::global(cx);
+        let text_primary = theme.text.primary;
+        let text_muted = theme.text.muted;
+        let bg_primary = theme.bg.primary;
+        let bg_elevated = theme.bg.elevated;
+        let hover = theme.interactive.hover;
 
         let pattern: SharedString = self.pattern.clone().into();
         let selected = self.selected;
@@ -148,17 +153,19 @@ impl Render for LauncherView {
             // untracked handle sends keystrokes into the void.
             .track_focus(&self.focus)
             .size_full()
-            .bg(theme.bg.primary)
+            .bg(bg_primary)
+            .text_color(text_primary)
             .flex()
             .flex_col()
             .on_key_down(cx.listener(|this, event, window, cx| this.handle_key(event, window, cx)))
             .child(
                 div()
                     .h(px(INPUT_HEIGHT))
-                    .bg(theme.bg.elevated)
+                    .bg(bg_elevated)
                     .px(px(12.))
                     .flex()
                     .items_center()
+                    .text_color(text_primary)
                     .child(format!("🔍 {pattern}")),
             )
             .child(
@@ -175,7 +182,8 @@ impl Render for LauncherView {
                             .flex()
                             .items_center()
                             .cursor_pointer()
-                            .when(is_selected, |el| el.bg(theme.interactive.hover))
+                            .text_color(text_primary)
+                            .when(is_selected, |el| el.bg(hover))
                             .child(
                                 div()
                                     .when(is_selected, |el| el.child("> "))
@@ -196,7 +204,7 @@ impl Render for LauncherView {
                                 .px(px(12.))
                                 .flex()
                                 .items_center()
-                                .child(div().text_color(theme.text.muted).child("No results")),
+                                .child(div().text_color(text_muted).child("No results")),
                         )
                     }),
             )

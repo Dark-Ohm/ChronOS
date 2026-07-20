@@ -277,7 +277,15 @@ fn power_profile_block(
         } else {
             gpui::transparent_black()
         };
-        let color = if is_active { text_primary } else { text_muted };
+        // Текст ПОВЕРХ accent-заливки — через on_fill (не theme.text.*):
+        // в Light C text.primary тёмный и на #007acc ещё читается, но
+        // STYLE.md запрещает text-токены на насыщенной заливке; dark
+        // text.primary == paper-полюс on_fill → пиксель тот же.
+        let color = if is_active {
+            chronos_ui::on_fill(accent)
+        } else {
+            text_muted
+        };
         let id: SharedString = format!("power-profile-{label}").into();
         row = row.child(
             div()
