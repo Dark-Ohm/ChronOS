@@ -209,15 +209,15 @@ and calls `window.handle_input(input)` (client.rs:2183-2206). So scroll **does**
 layer-shell surface — delivered to the window currently holding mouse focus, then
 dispatched to the hovered element's `on_scroll_wheel` listener.
 
-**`InteractiveElement::on_scroll_wheel`** (`Source/gpui/src/elements/div.rs:357-371`)
+**`StatefulInteractiveElement::on_scroll_wheel`** (`Source/gpui/src/elements/div.rs:357-371`)
 binds a `ScrollWheelEvent` listener in the **bubble** phase, gated by
-`hitbox.should_handle_scroll(window)`. Available directly on `div()` (it's on
-`InteractiveElement`, `div.rs:699`; `Div` implements it at `div.rs:1695`).
-
-**Click / hover / cursor:** `on_click` (`div.rs:1475`, bubble phase), `on_hover`
-(`InteractiveElement`), `cursor`/`cursor_pointer` (styles.rs:164/178) — all live on
-`InteractiveElement` and are therefore usable on bare `div()`. Hover is `hitbox.is_hovered`
-gated (e.g. `on_pinch`, div.rs:379). None of these require `.id()`.
+`hitbox.should_handle_scroll(window)`. It lives on `StatefulInteractiveElement`, so it is
+reachable on `div()` **only after `.id(...)`** (which yields `Stateful<Div>`). The same goes
+for `on_click` (`div.rs:1475`), `on_hover`, `cursor`/`cursor_pointer` (styles.rs:164/178) —
+all are on `StatefulInteractiveElement`, not on the bare `Div`/`InteractiveElement`.
+**Empirically verified:** `div().on_click(...)` / `div().overflow_y_scroll()` FAIL to
+compile (E0599); `div().id("x").on_click(...).overflow_y_scroll()` compiles. So every
+interactive element on a layer-shell surface must carry `.id(...)` first.
 
 ---
 
@@ -226,18 +226,18 @@ gated (e.g. `on_pinch`, div.rs:379). None of these require `.id()`.
 These correct the existing `skills/gpui-layer-shell/SKILL.md`, which was written from
 retellings, not the fork:
 
-1. **`overflow_y_scroll()` does NOT require `.id()` / `Stateful<E>`.** It is a default
-   method on `InteractiveElement` (`Source/gpui/src/elements/div.rs:1429`), and `Div`
-   implements `InteractiveElement` directly (`div.rs:1695`). Bare `div().overflow_y_scroll()`
-   compiles — proven by `Source/gpui/examples/animation.rs:60-62` (`.flex_col().h(px(150.)).overflow_y_scroll()` with no `.id()`) and `examples/scrollable.rs` (`cargo check` green).
-   What actually requires `.id()`/`Stateful` is **`track_scroll(&ScrollHandle)`**
-   (`div.rs:1435`, on `StatefulInteractiveElement`, `div.rs:1213`; `Stateful<E>` impl at
-   `div.rs:3752`). The old skill inverted this: it claimed scroll "lives on
-   `StatefulInteractiveElement`, only for `Stateful<E>`". That is false. The real scroll
-   method is `overflow_y_scroll` (or `overflow_scroll` for both axes, div.rs:1416), and it
-   works on a plain `div()`. `examples/scrollable.rs` shows the canonical nested
-   `id("vertical").overflow_scroll()` / `id("horizontal").overflow_scroll()` usage
-   (scrollable.rs:12-29).
+1. **`overflow_y_scroll()` REQUIRES `.id()` (or a `Stateful<E>` handle) — the existing
+   `gpui-layer-shell` skill was RIGHT about this.** The scroll methods live on the
+   `StatefulInteractiveElement` trait (`Source/gpui/src/elements/div.rs:1213+`, methods at
+   `div.rs:1416` `overflow_scroll`, `:1423` `overflow_x_scroll`, `:1429` `overflow_y_scroll`,
+   `:1435` `track_scroll`). `Div` implements ONLY `InteractiveElement` (`div.rs:1695`) — there
+   is NO `impl StatefulInteractiveElement for Div`. `StatefulInteractiveElement` is implemented
+   solely for `Stateful<E>` (`div.rs:3752`). `Div::id(..)` (`div.rs:710`) returns
+   `Stateful<Div>`, which is why every working sample writes `.id("x").overflow_y_scroll()`.
+   **Empirically verified:** `div().overflow_y_scroll()` FAILS to compile (rustc E0599
+   "no method named overflow_y_scroll found for struct gpui::Div"); `div().id("x").overflow_y_scroll()`
+   compiles clean. So the correct rule is: scroll/click/hover/cursor need `.id()` first.
+   (This corrects an earlier draft of this doc that wrongly claimed bare `div()` could scroll.)
 2. **`resize()` does NOT flow to `set_size` at window.rs:1468.** That line (window.rs:1468)
    is inside `impl HasDisplayHandle for WaylandWindow` — unrelated to resize. The real path
    is `Window::resize` (window.rs:2318) → `WaylandWindow::resize` (window.rs:1340) →

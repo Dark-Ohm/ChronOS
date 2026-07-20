@@ -22,14 +22,20 @@ reading window.rs:2318/1340/1306/423.
 
 ## Q2 — Does `div().overflow_y_scroll()` compile WITHOUT `.id()`?
 
-**A:** Yes. `overflow_y_scroll` is a default method on `InteractiveElement`
-(`Source/gpui/src/elements/div.rs:1429`), and `Div` implements `InteractiveElement`
-(`div.rs:1695`). The only scroll method that needs `.id()`/`Stateful` is `track_scroll`
-(`div.rs:1435`, on `StatefulInteractiveElement`, `div.rs:1213`; `Stateful<E>` impl
-`div.rs:3752`).
+**A:** No. The scroll methods live on the `StatefulInteractiveElement` trait
+(`Source/gpui/src/elements/div.rs:1213+`; `overflow_y_scroll` at `div.rs:1429`). `Div`
+implements ONLY `InteractiveElement` (`div.rs:1695`); there is NO `impl
+StatefulInteractiveElement for Div`. The trait is implemented solely for `Stateful<E>`
+(`div.rs:3752`), and `Div::id(..)` (`div.rs:710`) returns `Stateful<Div>`. So the
+scrollable element must carry `.id(...)` first: `div().id("x").overflow_y_scroll()`.
+`track_scroll(&ScrollHandle)` is also on `StatefulInteractiveElement` (div.rs:1435).
 
-**Proven by:** `Source/gpui/examples/animation.rs:60-62` calls `.flex_col().h(px(150.)).overflow_y_scroll()`
-with no `.id()`; `cargo check --example animation -p 'path+file:///.../Source/gpui#0.2.2'` green.
+**Proven by:** `cargo check` of a throwaway probe — `div().overflow_y_scroll()` fails with
+rustc E0599 (`no method named overflow_y_scroll found for struct gpui::Div`);
+`div().id("x").overflow_y_scroll()` compiles clean. This matches the existing
+`gpui-layer-shell` skill (SKILL.md:52-67), which was correct. WARNING: an earlier draft of
+this reference doc wrongly claimed bare `div()` could scroll — that claim was empirically
+refuted and corrected.
 
 ---
 
