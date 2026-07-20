@@ -101,6 +101,53 @@ update callbacks).
 `Context::spawn` (`context.rs:237-245`) gives the closure
 `(WeakEntity<T>, &mut AsyncApp)` on the **foreground** executor.
 
+### `Context::listener` — the bridge from element callbacks to view state
+
+**Every element event callback takes `&mut App`, never `&mut Context<T>`.**
+`on_click`'s listener is `Fn(&ClickEvent, &mut Window, &mut App)`
+(`elements/div.rs:1475`, alias `ClickListener` at `:1584`); `on_hover` is
+`Fn(&bool, &mut Window, &mut App)` (`div.rs:618` imperative, `:1524`
+fluent). Same shape across the family.
+
+This does **not** mean view state is unreachable from a click.
+`Context::listener` (`context.rs:252-260`) is the adapter built for
+exactly this:
+
+```rust
+pub fn listener<E: ?Sized>(
+    &self,
+    f: impl Fn(&mut T, &E, &mut Window, &mut Context<T>) + 'static,
+) -> impl Fn(&E, &mut Window, &mut App) + 'static
+```
+
+It downgrades `self.entity()` to a weak handle and calls
+`view.update(cx, |view, cx| f(view, e, window, cx)).ok()` internally — so
+you write a closure over `&mut T` + `&mut Context<T>` and hand the result
+straight to `on_click`. `Context::processor` (`:264-272`) is the same
+trick for callbacks that must **return** a value.
+
+Note the `.ok()` at `:258`: if the entity is already released the listener
+is a **silent no-op**. That is intentional (a click on a dying view should
+do nothing), but it means a listener that never fires is a symptom of a
+dead entity, not necessarily of bad wiring.
+
+**Live proof, in ChronOS itself:** `crates/app/src/volume_popup/view.rs:199`
+mutates view-local state (`this.expanded`) from an `on_click` this way;
+`launcher/view.rs:160` and `desktop_terminal/view.rs:343` do it for
+`on_key_down`. In the fork, 15 examples use it —
+`Source/gpui/examples/opacity.rs:92` (`on_click(cx.listener(Self::start_animation))`)
+is the shortest read, and shows a **method reference** works directly, no
+closure needed, when the signature matches.
+
+**The grep trap that hides this** (cost a real planning error 2026-07-20):
+searching `on_click(move |` finds only raw-closure call sites and
+*structurally cannot* match `on_click(cx.listener(..))`. Conclude from
+that grep that "clicks only get `&mut App`, so view state needs a
+`Global`" and you will invent a `Global` + manual-repaint workaround for
+a problem the framework already solved — and put per-view UI state into
+process-wide storage, which breaks the moment a second instance of that
+view exists (multi-monitor). **Grep `cx.listener` too, always.**
+
 `Context::notify` (`context.rs:230`) → `App::notify(entity_id)` → observers fire.
 
 `Context::emit` (`context.rs:765-779`) pushes `Effect::Emit` for
@@ -335,6 +382,8 @@ behavior, not for day-to-day bar widgets.
 | `async_*` examples ship in the fork | **They do not** — only image_loading / move_entity / … | `ls examples/` |
 | `tokio::spawn_blocking` just works next to GPUI | Needs Tokio runtime; use `gpui_tokio::init` + handle | `gpui_tokio.rs:12-25, 98-99` |
 | There is a built-in interval timer | Only one-shot `timer`; loop yourself | `executor.rs:162` |
+| `on_click` gives `&mut App`, so view state needs a `Global` | `cx.listener` adapts `Fn(&mut T, &E, &mut Window, &mut Context<T>)` → the `&mut App` shape | `context.rs:252`, live at `volume_popup/view.rs:199` |
+| `on_hover` can be attached twice to refine behavior | `debug_assert!` — second call panics in debug builds | `div.rs:622-625` |
 
 ---
 

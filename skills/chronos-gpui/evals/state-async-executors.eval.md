@@ -106,3 +106,47 @@ cancelled — so drop of the returned `Task` cancels both layers.
 
 **Proven by:** gpui_tokio.rs:55-72. Also: `init` must have been called first
 or `read_global::<GlobalTokio>` panics (global missing).
+
+---
+
+## Q9 — `on_click`'s callback only gets `&mut App`. How do you mutate the view's own state from a click, without a `Global`?
+
+**A:** `Context::listener` (`Source/gpui/src/app/context.rs:252-260`). It
+takes `impl Fn(&mut T, &E, &mut Window, &mut Context<T>)` and returns
+`impl Fn(&E, &mut Window, &mut App)` — precisely `on_click`'s listener
+type (`elements/div.rs:1475`; alias `ClickListener`, `div.rs:1584`).
+Internally it downgrades the entity and runs
+`view.update(cx, |view, cx| f(view, e, window, cx)).ok()`.
+
+`Context::processor` (`:264-272`) is the same adapter for callbacks that
+must return a value.
+
+**Proven by:** context.rs:252-272; div.rs:1475 + 1584. Live in ChronOS at
+`crates/app/src/volume_popup/view.rs:199` (mutates `this.expanded` from
+`on_click`); in the fork at `examples/opacity.rs:92`
+(`on_click(cx.listener(Self::start_animation))` — a bare method reference).
+
+**Anti-answer to reject:** "use a `Global` + a manual repaint helper."
+That is a workaround for a non-problem, and it moves per-view UI state
+into process-wide storage — wrong the moment the view has two instances
+(multi-monitor). A grep for `on_click(move |` cannot match
+`on_click(cx.listener(..))`, which is how this wrong conclusion gets
+reached; grep both.
+
+---
+
+## Q10 — Can you call `.on_hover(..)` twice on one element to layer two behaviors?
+
+**A:** No. `Interactivity::on_hover`
+(`Source/gpui/src/elements/div.rs:618-626`) opens with
+`debug_assert!(self.hover_listener.is_none(), "calling on_hover more than
+once on the same element is not supported")` — the second call panics in
+debug builds and silently overwrites the field's semantics otherwise.
+There is exactly one `hover_listener` slot. Compose the two behaviors into
+a single closure, or attach the second to a wrapping element.
+
+Signature is `impl Fn(&bool, &mut Window, &mut App)` — the `&bool` is
+"is now hovered", so enter and leave arrive through the same callback.
+
+**Proven by:** div.rs:618-626 (imperative) and div.rs:1524-1530 (fluent
+wrapper delegating to it).

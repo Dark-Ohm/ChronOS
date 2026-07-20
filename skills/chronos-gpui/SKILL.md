@@ -21,6 +21,19 @@ evidence from the fork's sources or a runnable example — never a
 retelling. `Source/*/examples/` is a ready-made proving ground; look
 there *before* writing a limitation into canon.
 
+**It happened a second time (2026-07-20, same day).** A plan concluded
+that mutating view state from an `on_click` requires a `Global`, because
+every `on_click(move |…)` in the tree receives `&mut App`. True premise,
+false conclusion: `Context::listener` (`context.rs:252`) is the adapter
+built for exactly this, it is used by 15 fork examples, and ChronOS
+itself already calls it at `volume_popup/view.rs:199`. The grep that
+produced the wrong answer — `on_click(move |` — *structurally cannot*
+match `on_click(cx.listener(..))`.
+
+**The generalized rule:** when a grep's shape determines your conclusion,
+the grep is a hypothesis, not evidence. Search for the *thing you'd
+expect to exist if you were wrong* before writing the limitation down.
+
 ## Scope
 
 `../Source/` — our own fork, 19 crates + `gpui-component`. Not upstream
@@ -45,7 +58,17 @@ Zed, not crates.io. Path-deps from ChronOS point here.
 | Example corpus, full catalog | [examples-catalog.md](references/examples-catalog.md) |
 | Examples grouped by topic (task → example) | [examples-by-topic.md](references/examples-by-topic.md) |
 | Run/check any example | `scripts/run-example.sh --list` / `--check <name>` |
-| 8-question eval per reference | `evals/*.eval.md` |
+| Eval per reference (8-10 questions) | `evals/*.eval.md` |
+
+## Fast answers to the questions that keep getting asked wrong
+
+| Question | Answer | Evidence |
+|---|---|---|
+| Can a bare `div()` scroll? | No — `.id()` it first; `overflow_y_scroll` is on `StatefulInteractiveElement` | `div.rs:1429`, `:3752` |
+| Can an `on_click` mutate the view's own state? | Yes — `cx.listener`, no `Global` needed | `context.rs:252`, `volume_popup/view.rs:199` |
+| Two `on_hover` on one element? | No — `debug_assert` panics; one slot | `div.rs:622-625`, `:1995` |
+| Is there an interval timer? | No — one-shot `timer`, loop it yourself | `executor.rs:162` |
+| Must Kael easing be ported? | Already ported | `easing.rs:1-71` |
 
 ## Related skills
 
