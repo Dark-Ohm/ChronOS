@@ -11,6 +11,7 @@ mod plugin_bridge;
 mod project_switcher;
 pub mod state;
 mod system_popup;
+mod theme_config;
 mod tray_menu;
 mod updates_popup;
 mod volume_popup;
@@ -58,7 +59,7 @@ fn main() {
             state::AppState::init(services, cx);
 
             subscriber.start(cx);
-            chronos_ui::Theme::init(cx);
+            theme_config::init(cx);
             bar::init(cx);
             notifications::init(cx);
             notifications::history_popup::init(cx);
