@@ -41,7 +41,7 @@ Zed, not crates.io. Path-deps from ChronOS point here.
 |---|---|
 | Elements, styling, layout, scroll | [elements-styling-layout.md](references/elements-styling-layout.md) |
 | Windowing, Wayland, layer-shell, input | [windowing-platform.md](references/windowing-platform.md) |
-| App/Entity/Context, async, executors | **MISSING — recon not yet delivered, see HANDOFF "Mimo №14"** |
+| App/Entity/Context, async, executors | [state-async-executors.md](references/state-async-executors.md) |
 | Example corpus, full catalog | [examples-catalog.md](references/examples-catalog.md) |
 | Examples grouped by topic (task → example) | [examples-by-topic.md](references/examples-by-topic.md) |
 | Run/check any example | `scripts/run-example.sh --list` / `--check <name>` |
