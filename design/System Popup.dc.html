@@ -11,83 +11,101 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-body{margin:0;background:#11111b;font-family:'Inter',sans-serif}
+body{margin:0;font-family:'Inter',sans-serif}
 ::selection{background:#cba6f7;color:#11111b}
 .gpui-toggle{position:relative;width:34px;height:19px;border-radius:9999px;cursor:pointer;flex:none;transition:background .12s}
 .gpui-toggle .knob{position:absolute;top:2px;width:15px;height:15px;border-radius:50%;background:#cdd6f4;transition:left .15s}
 </style>
 </helmet>
-<div style="position:relative;width:100vw;height:100vh;background:#11111b;overflow:hidden">
-  <div style="position:absolute;top:14px;right:24px;width:34px;height:34px;border-radius:6px;background:#313244;display:flex;align-items:center;justify-content:center;color:#a6adc8">
-    <svg width="15" height="15" viewBox="0 0 32 32" fill="none">
-      <path d="M16 3L27 11V25L16 29L5 25V11L16 3Z" stroke="#007acc" stroke-width="2" stroke-linejoin="round"/>
-      <path d="M16 3V15M16 15L27 11M16 15L5 11M16 15V29" stroke="#007acc" stroke-width="1.2" stroke-linejoin="round"/>
-      <circle cx="16" cy="15" r="2.4" fill="#007acc"/>
-    </svg>
-  </div>
+<div style="display:flex;flex-wrap:wrap">
+  <sc-for list="{{ variants }}" as="v" hint-placeholder-count="2">
+    <div style="width:420px;height:500px;background:{{ v.pageBg }};position:relative;overflow:hidden;box-sizing:border-box;border-right:1px solid rgba(0,0,0,0.15);border-bottom:1px solid rgba(0,0,0,0.15)">
 
-  <div style="position:absolute;top:56px;right:24px;width:360px;background:#1e1e2e;border:1px solid #313244;border-radius:10px;font-family:'Inter',sans-serif;color:#cdd6f4;display:flex;flex-direction:column">
+      <div style="position:absolute;top:14px;left:16px;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:{{ v.labelColor }}">{{ v.label }}</div>
 
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #313244">
-      <div style="font-size:13px;font-weight:600;color:#cdd6f4">System</div>
-      <div style="width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer" style-hover="background:#313244;color:#cdd6f4">
-        <svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66 194.34a8 8 0 01-11.32 11.32L128 139.31l-66.34 66.35a8 8 0 01-11.32-11.32L116.69 128 50.34 61.66a8 8 0 0111.32-11.32L128 116.69l66.34-66.35a8 8 0 0111.32 11.32L139.31 128z"/></svg>
+      <div style="position:absolute;top:44px;right:24px;width:34px;height:34px;border-radius:6px;background:{{ v.triggerBg }};display:flex;align-items:center;justify-content:center;color:{{ v.textMuted }}">
+        <svg width="15" height="15" viewBox="0 0 32 32" fill="none">
+          <path d="M16 3L27 11V25L16 29L5 25V11L16 3Z" stroke="#007acc" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M16 3V15M16 15L27 11M16 15L5 11M16 15V29" stroke="#007acc" stroke-width="1.2" stroke-linejoin="round"/>
+          <circle cx="16" cy="15" r="2.4" fill="#007acc"/>
+        </svg>
       </div>
-    </div>
 
-    <div style="display:flex;flex-direction:column;padding:14px;gap:8px">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:7px">
-          <svg width="15" height="15" viewBox="0 0 32 32" fill="none">
-            <path d="M16 4L23 9V19L16 24L9 19V9L16 4Z" stroke="#a6adc8" stroke-width="1.8" stroke-linejoin="round"/>
-            <path d="M16 4V13.5M16 13.5L23 9M16 13.5L9 9" stroke="#a6adc8" stroke-width="1.1" stroke-linejoin="round"/>
-            <circle cx="16" cy="24" r="2" fill="#a6adc8"/>
+      <div style="position:absolute;top:86px;right:24px;width:360px;background:{{ v.cardBg }};border:1px solid {{ v.cardBorder }};border-radius:10px;box-shadow:{{ v.cardShadow }};font-family:'Inter',sans-serif;color:{{ v.textPrimary }};display:flex;flex-direction:column;overflow:hidden">
+
+        <sc-if value="{{ v.showWatermark }}" hint-placeholder-val="{{ false }}">
+          <svg width="140" height="140" viewBox="0 0 140 140" style="position:absolute;top:-30px;right:-30px;opacity:{{ v.watermarkOpacity }};pointer-events:none">
+            <polygon points="70,10 116,36 116,88 70,114 24,88 24,36" fill="none" stroke="{{ v.accent }}" stroke-width="1"/>
+            <polygon points="70,34 96,49 96,79 70,94 44,79 44,49" fill="none" stroke="{{ v.accent }}" stroke-width="1"/>
+            <circle cx="70" cy="64" r="10" fill="none" stroke="{{ v.accent }}" stroke-width="1"/>
           </svg>
-          <span style="font-size:12.5px;font-weight:500;color:#cdd6f4">Brightness</span>
+        </sc-if>
+        <sc-if value="{{ v.glowTop }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,{{ v.accent }},transparent)"></div>
+        </sc-if>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid {{ v.cardBorder }};position:relative">
+          <div style="font-size:13px;font-weight:600;color:{{ v.textPrimary }}">System</div>
+          <div style="width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:{{ v.textMuted }};cursor:pointer" style-hover="background:{{ v.hoverBg }}">
+            <svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66 194.34a8 8 0 01-11.32 11.32L128 139.31l-66.34 66.35a8 8 0 01-11.32-11.32L116.69 128 50.34 61.66a8 8 0 0111.32-11.32L128 116.69l66.34-66.35a8 8 0 0111.32 11.32L139.31 128z"/></svg>
+          </div>
         </div>
-        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#a6adc8">{{ brightnessLabel }}</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <div style="width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#a6adc8;cursor:pointer;flex:none" onclick="{{ decBrightness }}" style-hover="background:#313244">
-          <svg width="11" height="11" viewBox="0 0 256 256" fill="currentColor"><rect x="40" y="116" width="176" height="24" rx="8"/></svg>
+
+        <div style="display:flex;flex-direction:column;padding:14px;gap:8px;position:relative">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:7px">
+              <svg width="15" height="15" viewBox="0 0 32 32" fill="none">
+                <path d="M16 4L23 9V19L16 24L9 19V9L16 4Z" stroke="{{ v.textMuted }}" stroke-width="1.8" stroke-linejoin="round"/>
+                <path d="M16 4V13.5M16 13.5L23 9M16 13.5L9 9" stroke="{{ v.textMuted }}" stroke-width="1.1" stroke-linejoin="round"/>
+                <circle cx="16" cy="24" r="2" fill="{{ v.textMuted }}"/>
+              </svg>
+              <span style="font-size:12.5px;font-weight:500;color:{{ v.textPrimary }}">Brightness</span>
+            </div>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:{{ v.textMuted }}">{{ brightnessLabel }}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:{{ v.textMuted }};cursor:pointer;flex:none" onclick="{{ decBrightness }}" style-hover="background:{{ v.hoverBg }}">
+              <svg width="11" height="11" viewBox="0 0 256 256" fill="currentColor"><rect x="40" y="116" width="176" height="24" rx="8"/></svg>
+            </div>
+            <div style="flex:1;height:4px;border-radius:3px;background:{{ v.trackBg }};position:relative">
+              <div style="position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:{{ v.fillBar }};width:{{ brightnessPct }}"></div>
+            </div>
+            <div style="width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:{{ v.textMuted }};cursor:pointer;flex:none" onclick="{{ incBrightness }}" style-hover="background:{{ v.hoverBg }}">
+              <svg width="11" height="11" viewBox="0 0 256 256" fill="currentColor"><path d="M228 128a12 12 0 01-12 12h-76v76a12 12 0 01-24 0v-76H40a12 12 0 010-24h76V40a12 12 0 0124 0v76h76a12 12 0 0112 12z"/></svg>
+            </div>
+          </div>
         </div>
-        <div style="flex:1;height:4px;border-radius:3px;background:#313244;position:relative">
-          <div style="position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:#cdd6f4;width:{{ brightnessPct }}"></div>
+
+        <div style="height:1px;background:{{ v.cardBorder }};position:relative"></div>
+
+        <div style="display:flex;flex-direction:column;padding:14px;gap:9px;position:relative">
+          <span style="font-size:12.5px;font-weight:500;color:{{ v.textPrimary }}">Power profile</span>
+          <div style="display:flex;border-radius:6px;overflow:hidden;border:1px solid {{ v.segBorder }}">
+            <sc-for list="{{ v.profiles }}" as="p" hint-placeholder-count="3">
+              <div style="flex:1;text-align:center;padding:6px 0;font-size:11.5px;font-weight:600;cursor:pointer;color:{{ p.color }};background:{{ p.bg }}" onclick="{{ p.select }}" style-hover="background:{{ p.hoverBg }}">{{ p.label }}</div>
+            </sc-for>
+          </div>
         </div>
-        <div style="width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#a6adc8;cursor:pointer;flex:none" onclick="{{ incBrightness }}" style-hover="background:#313244">
-          <svg width="11" height="11" viewBox="0 0 256 256" fill="currentColor"><path d="M228 128a12 12 0 01-12 12h-76v76a12 12 0 01-24 0v-76H40a12 12 0 010-24h76V40a12 12 0 0124 0v76h76a12 12 0 0112 12z"/></svg>
+
+        <div style="height:1px;background:{{ v.cardBorder }};position:relative"></div>
+
+        <div style="display:flex;flex-direction:column;padding:14px;gap:8px;position:relative">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:12.5px;font-weight:500;color:{{ v.textPrimary }}">Gaming mode</span>
+            <div class="gpui-toggle" style="background:{{ gamingTrack }}" onclick="{{ toggleGaming }}">
+              <div class="knob" style="left:{{ gamingKnobLeft }}"></div>
+            </div>
+          </div>
+          <div style="font-size:10.5px;line-height:1.5;color:{{ v.textMuted }}">Performance profile · No animations · Do Not Disturb · Hide bar/dock · VSync forced</div>
         </div>
+
       </div>
     </div>
-
-    <div style="height:1px;background:#313244"></div>
-
-    <div style="display:flex;flex-direction:column;padding:14px;gap:9px">
-      <span style="font-size:12.5px;font-weight:500;color:#cdd6f4">Power profile</span>
-      <div style="display:flex;border-radius:6px;overflow:hidden;border:1px solid #45475a">
-        <sc-for list="{{ profiles }}" as="p" hint-placeholder-count="3">
-          <div style="flex:1;text-align:center;padding:6px 0;font-size:11.5px;font-weight:600;cursor:pointer;color:{{ p.color }};background:{{ p.bg }}" onclick="{{ p.select }}" style-hover="background:{{ p.hoverBg }}">{{ p.label }}</div>
-        </sc-for>
-      </div>
-    </div>
-
-    <div style="height:1px;background:#313244"></div>
-
-    <div style="display:flex;flex-direction:column;padding:14px;gap:8px">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:12.5px;font-weight:500;color:#cdd6f4">Gaming mode</span>
-        <div class="gpui-toggle" style="background:{{ gamingTrack }}" onclick="{{ toggleGaming }}">
-          <div class="knob" style="left:{{ gamingKnobLeft }}"></div>
-        </div>
-      </div>
-      <div style="font-size:10.5px;line-height:1.5;color:#6c7086">Performance profile · No animations · Do Not Disturb · Hide bar/dock · VSync forced</div>
-    </div>
-
-  </div>
+  </sc-for>
 </div>
 
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:420,&quot;height&quot;:460}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:840,&quot;height&quot;:520}}">
 class Component extends DCLogic {
   state = { brightness: 72, profile: 'balanced', gaming: false };
 
@@ -98,21 +116,44 @@ class Component extends DCLogic {
       { key: 'balanced', label: 'Balanced' },
       { key: 'performance', label: 'Performance' },
     ];
+
+    const mkProfiles = (activeBg, activeText, inactiveText, inactiveHover) => profileDefs.map(p => ({
+      label: p.label,
+      bg: s.profile === p.key ? activeBg : 'transparent',
+      color: s.profile === p.key ? activeText : inactiveText,
+      hoverBg: s.profile === p.key ? activeBg : inactiveHover,
+      select: () => this.setState({ profile: p.key }),
+    }));
+
+    const dark = {
+      pageBg: '#11111b', labelColor: '#45475a', triggerBg: '#313244', cardBg: '#1e1e2e',
+      cardBorder: '#313244', cardShadow: 'none', textPrimary: '#cdd6f4', textMuted: '#6c7086',
+      hoverBg: '#313244', trackBg: '#313244', fillBar: '#cdd6f4', segBorder: '#45475a',
+      accent: '#007acc', showWatermark: false, glowTop: false, watermarkOpacity: 0,
+      profiles: mkProfiles('#007acc', '#1e1e2e', '#a6adc8', '#313244'),
+    };
+
+    const light = {
+      pageBg: '#dde0f2', labelColor: '#7d80a6', triggerBg: '#e6e9fa', cardBg: '#e6e9fa',
+      cardBorder: '#c4c8e6', cardShadow: '0 6px 24px rgba(60,64,110,0.16), inset 0 0 0 1px rgba(0,122,204,0.15)',
+      textPrimary: '#2c2e4a', textMuted: '#5a5d80', hoverBg: '#e0e3f4', trackBg: '#cfd3ec',
+      fillBar: '#2c2e4a', segBorder: '#c4c8e6', accent: '#007acc',
+      showWatermark: true, glowTop: true, watermarkOpacity: 0.18,
+      profiles: mkProfiles('#007acc', '#e6e9fa', '#5a5d80', '#e0e3f4'),
+    };
+
     return {
       brightnessLabel: `${s.brightness}%`,
       brightnessPct: `${s.brightness}%`,
       incBrightness: () => this.setState(s => ({ brightness: Math.min(100, s.brightness + 5) })),
       decBrightness: () => this.setState(s => ({ brightness: Math.max(0, s.brightness - 5) })),
-      profiles: profileDefs.map(p => ({
-        label: p.label,
-        bg: s.profile === p.key ? '#007acc' : 'transparent',
-        color: s.profile === p.key ? '#1e1e2e' : '#a6adc8',
-        hoverBg: s.profile === p.key ? '#007acc' : '#313244',
-        select: () => this.setState({ profile: p.key }),
-      })),
       gamingTrack: s.gaming ? '#007acc' : '#45475a',
       gamingKnobLeft: s.gaming ? '17px' : '2px',
       toggleGaming: () => this.setState(s => ({ gaming: !s.gaming })),
+      variants: [
+        { ...dark, label: 'Dark — reference' },
+        { ...light, label: 'Light — accepted (Light C)' },
+      ],
     };
   }
 }
