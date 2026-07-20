@@ -24,11 +24,16 @@ macro_rules! icons {
 
 icons!(
     "arrow-up.svg",
+    "battery.svg",
+    "battery-charging.svg",
     "bell.svg",
+    "bolt.svg",
     "chevron-down.svg",
     "folder.svg",
     "hexagon-core.svg",
     "hexagon-sigil.svg",
+    "pause.svg",
+    "play.svg",
     "speaker-high.svg",
     "speaker-low.svg",
     "speaker-mute.svg",

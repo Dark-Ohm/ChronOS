@@ -70,6 +70,7 @@ impl BarWidget for TrayWidget {
                     .px(px(6.))
                     .py(px(2.))
                     .rounded(radius)
+                    .hover(|s| s.bg(theme.interactive.hover))
                     .child(render_icon(item))
                     .on_click(move |_event, _window, cx: &mut App| {
                         AppState::tray(cx).dispatch(TrayCommand::ActivateItem {

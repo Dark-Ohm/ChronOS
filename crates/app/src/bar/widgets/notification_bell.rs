@@ -63,6 +63,7 @@ impl BarWidget for NotificationBellWidget {
             .px(px(6.))
             .py(px(2.))
             .rounded(theme.radius)
+            .hover(|s| s.bg(theme.interactive.hover))
             .child(glyph);
 
         if view.unread > 0 {

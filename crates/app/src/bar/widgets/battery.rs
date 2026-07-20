@@ -1,6 +1,6 @@
 //! Battery widget for the bar — shows percentage + charging icon + power profile.
 
-use gpui::{AnyElement, App, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Window, div, prelude::*, px, svg};
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{profile_to_str, Service, PowerProfile};
@@ -37,10 +37,10 @@ impl BarWidget for BatteryWidget {
         }
 
         let percent = data.battery_percent.round() as u32;
-        let icon = match data.state {
-            chronos_services::BatteryState::Charging => "⚡",
-            chronos_services::BatteryState::Full => "⚡",
-            _ => "🔋",
+        let icon_path = match data.state {
+            chronos_services::BatteryState::Charging => "icons/battery-charging.svg",
+            chronos_services::BatteryState::Full => "icons/battery-charging.svg",
+            _ => "icons/battery.svg",
         };
 
         /// Cycle to the next power profile: Performance → Balanced → PowerSaver → Performance.
@@ -53,9 +53,9 @@ impl BarWidget for BatteryWidget {
         }
 
         let profile_icon = match data.power_profile {
-            PowerProfile::Performance => "⚡",
-            PowerProfile::Balanced => "⚖",
-            PowerProfile::PowerSaver => "🌱",
+            PowerProfile::Performance => "icons/bolt.svg",
+            PowerProfile::Balanced => "icons/bolt.svg",
+            PowerProfile::PowerSaver => "icons/bolt.svg",
         };
 
         let theme = Theme::global(cx);
@@ -67,8 +67,6 @@ impl BarWidget for BatteryWidget {
             theme.status.success
         };
 
-        let profile_suffix = format!(" {} {}", profile_icon, profile_to_str(data.power_profile));
-
         div()
             .id("bar-battery")
             .flex()
@@ -78,7 +76,28 @@ impl BarWidget for BatteryWidget {
             .px(px(6.))
             .py(px(2.))
             .rounded(theme.radius)
-            .child(div().child(format!("{icon} {percent}%{profile_suffix}")).text_color(color))
+            .hover(|s| s.bg(theme.interactive.hover))
+            .child(svg().path(icon_path).size(px(13.)).text_color(color))
+            .child(
+                div()
+                    .child(format!("{percent}%"))
+                    .text_color(color)
+                    .font_family(theme.font_mono)
+                    .text_size(theme.font_sizes.sm),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(2.))
+                    .child(svg().path(profile_icon).size(px(10.)).text_color(theme.text.muted))
+                    .child(
+                        div()
+                            .child(profile_to_str(data.power_profile))
+                            .text_color(theme.text.muted)
+                            .text_size(theme.font_sizes.sm),
+                    ),
+            )
             .on_click(move |_event, _window, cx| {
                 let upower = AppState::upower(cx);
                 let current = upower.get().power_profile;

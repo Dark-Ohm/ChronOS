@@ -9,10 +9,10 @@ use chronos_ui::Theme;
 use crate::state::AppState;
 
 /// Max bar height in px (bar itself is 32px tall).
-const MAX_BAR_H: f32 = 18.;
+const MAX_BAR_H: f32 = 16.;
 /// Minimum visible stub so idle frame is not invisible.
 const MIN_BAR_H: f32 = 2.;
-const BAR_W: f32 = 3.;
+const BAR_W: f32 = 2.5;
 const BAR_GAP: f32 = 2.5;
 
 /// Map a 0..=100 level to pixel height.

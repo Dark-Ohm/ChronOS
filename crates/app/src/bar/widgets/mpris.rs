@@ -1,6 +1,6 @@
 //! MPRIS media-player widget — track label + play/pause + multi-player scroll.
 
-use gpui::{AnyElement, App, ScrollDelta, ScrollWheelEvent, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, ScrollDelta, ScrollWheelEvent, Window, div, prelude::*, px, svg};
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{CycleDirection, MprisCommand, MprisState, Service};
@@ -18,7 +18,7 @@ enum MprisView {
     Hidden,
     /// Active player with play/pause icon + truncated track label.
     Track {
-        icon: &'static str,
+        icon_path: &'static str,
         label: String,
         playing: bool,
         /// Multi-player hint when `player_count > 1` (e.g. `‹2/3›`).
@@ -35,7 +35,7 @@ fn describe(state: &MprisState) -> MprisView {
     if !state.playing && state.title.is_empty() && state.artist.is_empty() {
         return MprisView::Hidden;
     }
-    let icon = if state.playing { "⏸" } else { "▶" };
+    let icon_path = if state.playing { "icons/pause.svg" } else { "icons/play.svg" };
     let label = if state.title.is_empty() && state.artist.is_empty() {
         truncate_chars(&state.player_id, MAX_LABEL_CHARS)
     } else {
@@ -43,7 +43,7 @@ fn describe(state: &MprisState) -> MprisView {
     };
     let multi = multi_player_indicator(state.player_count, state.player_index);
     MprisView::Track {
-        icon,
+        icon_path,
         label,
         playing: state.playing,
         multi,
@@ -120,7 +120,7 @@ impl BarWidget for MprisWidget {
         match describe(&state) {
             MprisView::Hidden => div().into_any_element(),
             MprisView::Track {
-                icon,
+                icon_path,
                 label,
                 playing,
                 multi,
@@ -139,7 +139,8 @@ impl BarWidget for MprisWidget {
                     .px(px(6.))
                     .py(px(2.))
                     .rounded(theme.radius)
-                    .child(div().child(icon.to_string()).text_color(color))
+                    .hover(|s| s.bg(theme.interactive.hover))
+                    .child(svg().path(icon_path).size(px(13.)).text_color(color))
                     .child(div().child(label).text_color(color));
                 if let Some(hint) = multi {
                     row = row.child(
@@ -202,12 +203,12 @@ mod tests {
         let state = track_state("Track", "Artist", true, 1, 1);
         match describe(&state) {
             MprisView::Track {
-                icon,
+                icon_path,
                 label,
                 playing,
                 multi,
             } => {
-                assert_eq!(icon, "⏸");
+                assert_eq!(icon_path, "icons/pause.svg");
                 assert!(playing);
                 assert_eq!(label, "Track — Artist");
                 assert!(multi.is_none());
@@ -220,8 +221,8 @@ mod tests {
     fn paused_shows_play_icon() {
         let state = track_state("T", "", false, 1, 1);
         match describe(&state) {
-            MprisView::Track { icon, playing, multi, .. } => {
-                assert_eq!(icon, "▶");
+            MprisView::Track { icon_path, playing, multi, .. } => {
+                assert_eq!(icon_path, "icons/play.svg");
                 assert!(!playing);
                 assert!(multi.is_none());
             }

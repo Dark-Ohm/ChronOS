@@ -36,6 +36,7 @@ impl BarWidget for SystemWidget {
             .px(px(6.))
             .py(px(2.))
             .rounded(theme.radius)
+            .hover(|s| s.bg(theme.interactive.hover))
             .child(
                 svg()
                     .path("icons/hexagon-core.svg")

@@ -65,6 +65,7 @@ impl BarWidget for UpdatesWidget {
             .px(px(6.))
             .py(px(2.))
             .rounded(theme.radius)
+            .hover(|s| s.bg(theme.interactive.hover))
             .child(svg().path(view.icon).size(px(13.)).text_color(color));
         if view.has_updates {
             row = row.child(
