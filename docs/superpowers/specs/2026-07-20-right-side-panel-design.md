@@ -107,17 +107,14 @@ guard для reentrant `remove_window()`.
   тот процесс что играет), НЕ master sink. MPRIS-протокол per-player mute
   не поддерживает, поэтому это делается через PipeWire на уровне
   application-стрима: `wpctl set-mute <stream-id> toggle`, где
-  `<stream-id>` — id PipeWire-стрима приложения (`media.class ==
-  "Stream/Output/Audio"` в `pw-dump`, не sinks/sources).
-  **Сервис (Task 6, 2026-07-21):** `AudioStream` +
-  `parse_pw_dump_streams` / `find_stream_for_player` в
-  `crates/services/src/audio/pw_dump.rs`, команда
-  `AudioCommand::ToggleStreamMute(u32)`, convenience
-  `AudioSubscriber::toggle_stream_mute_for_player(hint)` (spawn:
-  live `pw-dump` → match → dispatch или `info!` no-op). UI-кнопка
-  панели — Task 9 (ещё не wired). Эвристика match — case-insensitive
-  substring по `application.name` / `node_name`; 1:1 нет (браузер
-  с N вкладками → first match); пустой hint → `None`.
+  `<stream-id>` — id PipeWire-стрима приложения (`pw-dump` секция
+  streams/sink-inputs, не sinks/sources). Существующий
+  `crates/services/src/audio/` **на master** парсит sink/source
+  (`AudioDevice`/`EndpointState`); per-app streams — **Task 6**
+  (в working tree есть WIP `AudioStream`/`ToggleStreamMute` —
+  **не принят, не коммитить вслепую**). Сопоставление MPRIS→stream —
+  эвристика по `application.name`/процессу; 1:1 нет → no-op + лог,
+  не паника.
 - Шеврон-стрелка в углу карточки — «open full player». **В v1 это
   визуальный элемент без обработчика** (задел под будущий expanded-player).
 - Данные и команды play/pause/next/prev — существующий
@@ -195,10 +192,9 @@ git/shell).
 
 Панель — GPUI entity, подписывается на:
 - `MprisSubscriber` (существует)
-- `AudioSubscriber` — **расширен** (Task 6): `ToggleStreamMute(u32)` +
-  `parse_pw_dump_streams` / `find_stream_for_player` +
-  `toggle_stream_mute_for_player` (см. §3.1); sink/source poll без
-  изменений
+- `AudioSubscriber` — **расширяется** (Task 6) командой
+  `ToggleStreamMute(u32)` + парсингом application-стримов из `pw-dump`
+  (на master — только sink/source; WIP в tree — см. §3.1)
 - новый `SystemResourcesSubscriber` (CPU/RAM/GPU)
 - существующий network service (переиспользуется как есть)
 - новый `PowerSubscriber` (dispatch-only, без состояния — команды
@@ -279,7 +275,6 @@ git/shell).
 3. ~~`font_ui` в `Theme` — blast radius~~ — **закрыто** `18c88f0`:
    одно поле + `Default`; схемы/base16 через `Theme::default()`,
    второй литерал `Theme {…}` не потребовался.
-4. ~~Per-app stream mute — формат `pw-dump`~~ — **закрыто 2026-07-21
-   (Task 6):** live `media.class == "Stream/Output/Audio"`,
-   `application.name` populated (напр. Vivaldi × N concurrent tabs);
-   first-match + no-op on miss — by design, не баг.
+4. Per-app stream mute — формат `pw-dump` / match-эвристика: Task 6.
+   В working tree есть незакоммиченный WIP; **не считать done** без
+   приёмки + коммита.
