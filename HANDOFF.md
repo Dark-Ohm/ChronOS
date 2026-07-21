@@ -8,23 +8,23 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-20 поздно — вендор-волна крейтов роздана + правая
-панель как капстоун. НИЖЕ бар-блок — история, читать `git log`+`roadmap.md`
-как истину (HANDOFF отставал на ~15 вех до этой правки).**
+**Обновлено: 2026-07-21 — Task 7 side_panel_right ПРИНЯТ (`da744a2`).**
 
-### АКТУАЛЬНОЕ ПОЛЕ (2026-07-20 поздно)
+### АКТУАЛЬНОЕ ПОЛЕ (2026-07-21)
 
-**1. Правая боковая панель — план готов, код нулевой.** Спека
-`docs/superpowers/specs/2026-07-20-right-side-panel-design.md` + план
-`docs/superpowers/plans/2026-07-20-right-side-panel.md` (12 задач, TDD,
-эррата по вердикту судьи применена). Проверено: ни одна задача не начата
-(модуля `side_panel_right/` нет, `net_stats`/`system_resources`/`power`
-нет, `Theme::font_ui` нет, 0 чекбоксов). Ключевые решения зашиты в план:
-MPRIS не даёт art/position/длину → v1 без прогресс-бара, градиент-
-плейсхолдер; switch user = disabled-стаб (нет login manager), log out =
-`hyprctl dispatch exit`; Esc-закрытия нет нигде в дереве → панель тоже
-без Esc; палитра метров только сине-циан; `net_stats` выносится общим
-модулем (Task 1). Капстоун, ждёт исполнения.
+**1. Правая боковая панель — Task 7 (оконный скелет) ПРИНЯТ.**
+Коммит `da744a2` — `crates/app/src/side_panel_right/{mod,view}.rs` +
+`main.rs` (mod+init). Live: namespace `side_panel_right`, 300×1410
+у правого края pult (y=30 под баром), open/close residual 0, close с
+match+warn (не `let _ =`). Smoke-hook **не** в product. Отчёт:
+`orchestration/reports/hermes-report-7.md` (+ grim в
+`orchestration/reports/hermes-7-smoke/`). Дальше: Tasks 1–6 / 8–12
+по плану `docs/superpowers/plans/2026-07-20-right-side-panel.md`
+(спека `…-right-side-panel-design.md`). В WIP-дереве могут лежать
+чужие куски Task 2 (`font_ui`) / Task 6 (audio) — **не** смешивать с
+Task 7. Ключевые решения плана: MPRIS v1 без прогресс-бара; switch
+user disabled-стаб; log out = `hyprctl dispatch exit`; без Esc;
+палитра метров сине-циан; `net_stats` — Task 1.
 
 **2. Вендор-волна крейтов — ЗАКРЫТА 3/3 (2026-07-21).**
   - **✅ `gpui-animation`** — Source `66cd816` (Grok).
