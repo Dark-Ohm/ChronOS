@@ -11,6 +11,7 @@ pub mod brightness;
 pub mod cava;
 pub mod compositor;
 pub mod mpris;
+pub mod net_stats;
 pub mod network;
 pub mod notification;
 pub mod tray;

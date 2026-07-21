@@ -14,145 +14,26 @@
 //! Between updates, the last computed speed pair is cached and returned
 //! unchanged, so any number of render calls within a frame all produce the same
 //! value — never zero from a sub-second delta.
+//!
+//! Sampling logic lives in `chronos_services::net_stats` (shared with the right
+//! side panel).
 
-use std::io;
-use std::path::Path;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use gpui::{AnyElement, App, Hsla, Window, div, prelude::*, px};
 
 use chronos_luau::bar::{BarSection, BarWidget, BarWidgetRegistry};
+use chronos_services::net_stats::{
+    NetState as NetworkState, SAMPLE_INTERVAL, read_interface_bytes, update_speed,
+};
 use chronos_services::{ConnectivityState, Service};
 use chronos_ui::Theme;
 
 use crate::state::AppState;
 
-/// Minimum time between procfs snapshot updates.
-const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
-
 /// Speed below which the link is considered idle (< 1 KB/s).
 const IDLE_THRESHOLD: u64 = 1024;
-
-/// Snapshot of aggregate byte counters for speed computation.
-struct Sample {
-    rx: u64,
-    tx: u64,
-    time: Instant,
-}
-
-/// Mutable state inside the widget (interior mutability for `&self` render).
-struct NetworkState {
-    /// Base snapshot for delta (None on first tick).
-    sample: Option<Sample>,
-    /// Last computed download speed (bytes/sec), cached between updates.
-    cached_dl: f64,
-    /// Last computed upload speed (bytes/sec), cached between updates.
-    cached_ul: f64,
-}
-
-impl Default for NetworkState {
-    fn default() -> Self {
-        Self {
-            sample: None,
-            cached_dl: 0.0,
-            cached_ul: 0.0,
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Procfs helpers
-// ---------------------------------------------------------------------------
-
-/// Reads total rx/tx bytes from all non-loopback interfaces.
-fn read_interface_bytes() -> io::Result<(u64, u64)> {
-    let net_dir = Path::new("/sys/class/net");
-    let mut total_rx = 0u64;
-    let mut total_tx = 0u64;
-
-    for entry in std::fs::read_dir(net_dir)? {
-        let entry = entry?;
-        let ifname = entry.file_name();
-        let ifname = ifname.to_string_lossy();
-
-        if ifname == "lo" {
-            continue;
-        }
-
-        if let Ok(rx_str) =
-            std::fs::read_to_string(entry.path().join("statistics").join("rx_bytes"))
-        {
-            if let Ok(rx) = rx_str.trim().parse::<u64>() {
-                total_rx += rx;
-            }
-        }
-        if let Ok(tx_str) =
-            std::fs::read_to_string(entry.path().join("statistics").join("tx_bytes"))
-        {
-            if let Ok(tx) = tx_str.trim().parse::<u64>() {
-                total_tx += tx;
-            }
-        }
-    }
-
-    Ok((total_rx, total_tx))
-}
-
-// ---------------------------------------------------------------------------
-// Speed computation (time-gated, testable via parameter injection)
-// ---------------------------------------------------------------------------
-
-/// Result of a speed update.
-struct SpeedSample {
-    dl_speed: f64,
-    ul_speed: f64,
-}
-
-/// Update network speed state from fresh byte counters.
-///
-/// Returns the current (download, upload) speeds in bytes/sec.
-/// `min_interval` controls the time gate — if less time has elapsed since the
-/// last sample, cached speeds are returned without updating the snapshot.
-/// Pass `SAMPLE_INTERVAL` in production; inject shorter durations in tests to
-/// verify behaviour without waiting.
-fn update_speed(
-    state: &mut NetworkState,
-    rx: u64,
-    tx: u64,
-    now: Instant,
-    min_interval: Duration,
-) -> SpeedSample {
-    match state.sample {
-        Some(ref prev) => {
-            let elapsed = now.duration_since(prev.time);
-            if elapsed < min_interval {
-                // Time gate: return cached speeds without touching the snapshot.
-                return SpeedSample {
-                    dl_speed: state.cached_dl,
-                    ul_speed: state.cached_ul,
-                };
-            }
-            let elapsed_secs = elapsed.as_secs_f64();
-            let dl = (rx.saturating_sub(prev.rx)) as f64 / elapsed_secs;
-            let ul = (tx.saturating_sub(prev.tx)) as f64 / elapsed_secs;
-            state.sample = Some(Sample { rx, tx, time: now });
-            state.cached_dl = dl;
-            state.cached_ul = ul;
-            SpeedSample { dl_speed: dl, ul_speed: ul }
-        }
-        None => {
-            // First tick: store snapshot, return 0.
-            state.sample = Some(Sample { rx, tx, time: now });
-            state.cached_dl = 0.0;
-            state.cached_ul = 0.0;
-            SpeedSample {
-                dl_speed: 0.0,
-                ul_speed: 0.0,
-            }
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Format helpers (pure, testable)
@@ -272,7 +153,7 @@ impl BarWidget for NetworkWidget {
                 // would tear down the bar. Silently recover.
                 let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 let result = update_speed(&mut *guard, rx, tx, Instant::now(), SAMPLE_INTERVAL);
-                (result.dl_speed, result.ul_speed)
+                (result.dl, result.ul)
             }
             Err(_) => {
                 // Read error — return cached values.
@@ -458,87 +339,4 @@ mod tests {
             theme.status.success
         );
     }
-
-    // -- update_speed (time-gated speed computation) -----------------------
-
-    #[test]
-    fn update_speed_first_call_returns_zero() {
-        let mut state = NetworkState::default();
-        let now = Instant::now();
-        let result = update_speed(&mut state, 100_000, 50_000, now, SAMPLE_INTERVAL);
-        assert_eq!(result.dl_speed, 0.0);
-        assert_eq!(result.ul_speed, 0.0);
-        // Snapshot should be stored for next tick.
-        assert!(state.sample.is_some());
-    }
-
-    #[test]
-    fn update_speed_immunity_to_frequency() {
-        let mut state = NetworkState::default();
-        let t0 = Instant::now();
-
-        // First call (cold start).
-        let r1 = update_speed(&mut state, 0, 0, t0, SAMPLE_INTERVAL);
-        assert_eq!(r1.dl_speed, 0.0);
-
-        // Simulate many render calls within the same "frame".
-        for _ in 0..10 {
-            let r = update_speed(&mut state, 0, 0, t0, SAMPLE_INTERVAL);
-            assert_eq!(r.dl_speed, 0.0, "cached value collapsed between repeated calls");
-            assert_eq!(r.ul_speed, 0.0, "cached value collapsed between repeated calls");
-        }
-
-        // Advance time past the gate and provide real counters.
-        let t1 = t0 + SAMPLE_INTERVAL + Duration::from_millis(1);
-        let r2 = update_speed(&mut state, 1_000_000, 500_000, t1, SAMPLE_INTERVAL);
-        assert!(r2.dl_speed > 900_000.0 && r2.dl_speed < 1_100_000.0);
-        assert!(r2.ul_speed > 450_000.0 && r2.ul_speed < 550_000.0);
-
-        // Same time → cached value, not zero.
-        let r3 = update_speed(&mut state, 1_000_000, 500_000, t1, SAMPLE_INTERVAL);
-        assert_eq!(r3.dl_speed, r2.dl_speed, "cached value changed between gated calls");
-        assert_eq!(r3.ul_speed, r2.ul_speed, "cached value changed between gated calls");
-
-        // Different counters, same time → cache still wins.
-        let r4 = update_speed(&mut state, 9_999_999, 8_888_888, t1, SAMPLE_INTERVAL);
-        assert_eq!(r4.dl_speed, r2.dl_speed, "cached value changed despite different counters");
-        assert_eq!(r4.ul_speed, r2.ul_speed, "cached value changed despite different counters");
-    }
-
-    #[test]
-    fn update_speed_computes_correct_speed() {
-        let mut state = NetworkState::default();
-        let t0 = Instant::now();
-
-        // Cold start.
-        update_speed(&mut state, 0, 0, t0, SAMPLE_INTERVAL);
-
-        // After exactly SAMPLE_INTERVAL: 50,000 bytes transferred.
-        let t1 = t0 + SAMPLE_INTERVAL;
-        let result = update_speed(&mut state, 50_000, 10_000, t1, SAMPLE_INTERVAL);
-        assert_eq!(result.dl_speed, 50_000.0);
-        assert_eq!(result.ul_speed, 10_000.0);
-    }
-
-    #[test]
-    fn update_speed_handles_counter_wrap() {
-        let mut state = NetworkState::default();
-        let t0 = Instant::now();
-
-        // First sample with high (near-wrapping) counters.
-        update_speed(&mut state, u64::MAX, u64::MAX, t0, SAMPLE_INTERVAL);
-
-        // After SAMPLE_INTERVAL: counters appear to have wrapped.
-        let t1 = t0 + SAMPLE_INTERVAL;
-        let result = update_speed(&mut state, 100, 200, t1, SAMPLE_INTERVAL);
-        assert_eq!(result.dl_speed, 0.0, "dl should be 0 on wrap tick");
-        assert_eq!(result.ul_speed, 0.0, "ul should be 0 on wrap tick");
-
-        // Next tick recovers normally.
-        let t2 = t1 + SAMPLE_INTERVAL;
-        let result = update_speed(&mut state, 100_000, 200_000, t2, SAMPLE_INTERVAL);
-        assert!((result.dl_speed - 99_900.0).abs() < 100.0);
-        assert!((result.ul_speed - 199_800.0).abs() < 100.0);
-    }
-
 }
