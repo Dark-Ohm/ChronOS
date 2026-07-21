@@ -41,9 +41,24 @@
     билд чист. Один самодостаточный коммит (shared `lib.rs`/`state.rs`
     вперемешку — раздельно не расщепить без битого промежуточного).
     Отчёты: `report-log/grok-report-19.md`, `glm-report-3.md`.
-Дальше: Tasks 8–12 (тело панели) на `gpui-rsx`+`gpui-animation`+div
-(НЕ gpui-component, см. п.2). Серийный трек по `view.rs` — один агент
-(Hermes владеет `side_panel_right/`). Ключевые решения:
+  - **Tasks 8/9** `8c05197` — hover-peek strip (4px invisible layer-shell,
+    deferred-init 50ms чтобы сесть на pult DP-1, generation-based debounce)
+    + MPRIS-карточка (`mpris_card.rs`: swatch `0x5fd3e8`, title/artist,
+    transport + mute→`toggle_stream_mute_for_player`). Стек **C**: div +
+    `gpui-animation` `transition_when` fade 180ms на inner body (rsx НЕ
+    использован — div читаемее). **Кровный факт соблюдён:** один
+    `on_hover` на узел (root=debounce, strip=открытие, анимация на inner —
+    `transition_when`, НЕ `transition_on_hover`). Приёмка: units 5/5,
+    release green, grim `panel-pinned.png` (карточка на DP-1),
+    peek open/close по логу (~280ms debounce). **Живой клик play/pause+
+    mute НЕ дожат** (ydotool dual-head врёт) — за пользователем на master-
+    бинаре; диспатч зовёт те же API, что живой bar-mpris. Smoke-env
+    `CHRONOS_SMOKE_SIDE_PANEL` (env-gated) оставлен как единственный
+    пин-триггер до Task 12. Отчёт: `report-log/hermes-report-20.md`.
+Дальше: Tasks 10 (метры CPU/RAM/GPU+сеть) → 11 (power-row arm/confirm) →
+12 (бар-триггер) на `gpui-animation`+div (НЕ gpui-component, см. п.2).
+Серийный трек по `view.rs` — Hermes владеет `side_panel_right/`.
+Ключевые решения:
 MPRIS v1 без прогресс-бара; switch user disabled-стаб; log out =
 `hyprctl dispatch exit`; без Esc; палитра метров сине-циан.
 
