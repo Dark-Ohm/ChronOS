@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0d0d15;font-family:'Inter',sans-serif}
+::selection{background:#cba6f7;color:#11111b}
+.sb-scroll{scrollbar-width:thin;scrollbar-color:#45475a #181825}
+.sb-scroll::-webkit-scrollbar{width:6px}
+.sb-scroll::-webkit-scrollbar-thumb{background:#45475a;border-radius:3px}
+</style>
+</helmet>
+<div style="width:352px;height:1440px;background:#181825;border-left:1px solid #313244;display:flex;flex-direction:column;font-family:'Inter',sans-serif;color:#cdd6f4;box-sizing:border-box;overflow:hidden">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #232336;flex:none">
+    <span style="font-size:11.5px;font-weight:600;color:#a6adc8">kitty</span>
+    <div style="width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer" style-hover="background:#232336;color:#cdd6f4">
+      <svg width="12" height="12" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66 194.34a8 8 0 01-11.32 11.32L128 139.31l-66.34 66.35a8 8 0 01-11.32-11.32L116.69 128 50.34 61.66a8 8 0 0111.32-11.32L128 116.69l66.34-66.35a8 8 0 0111.32 11.32L139.31 128z"/></svg>
+    </div>
+  </div>
+
+  <div style="flex:none;padding:12px 14px;border-bottom:1px solid #232336;background:linear-gradient(180deg,#1e1e30,#181825)">
+    <div style="font-size:13px;font-weight:600;color:#cdd6f4;margin-bottom:2px">Claude Code</div>
+    <div style="font-size:11px;color:#a6adc8;margin-bottom:9px">Claude needs your permission to run a command</div>
+    <div style="display:flex;gap:7px">
+      <div style="flex:1;text-align:center;padding:6px 0;border-radius:6px;background:transparent;border:1px solid #007acc;color:#007acc;font-size:11.5px;font-weight:600;cursor:pointer" style-hover="border-color:#cba6f7;color:#cba6f7">Allow</div>
+      <div style="flex:1;text-align:center;padding:6px 0;border-radius:6px;background:transparent;border:1px solid #45475a;color:#a6adc8;font-size:11.5px;font-weight:600;cursor:pointer" style-hover="background:#232336">Deny</div>
+    </div>
+  </div>
+
+  <div class="sb-scroll" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:14px">
+
+    <div style="background:#1e1e2e;border:1px solid #232336;border-radius:9px;overflow:hidden">
+      <div style="aspect-ratio:16/9;background:#000;position:relative;display:flex;align-items:center;justify-content:center">
+        <svg width="34" height="34" viewBox="0 0 256 256" fill="#e0e0e6" style="opacity:0.9"><path d="M240.55 79.61A32.14 32.14 0 00216.13 65C176.72 55.94 128 55.94 128 55.94s-48.72 0-88.13 9.03A32.14 32.14 0 0015.45 79.61 336.15 336.15 0 008 128a336.15 336.15 0 007.45 48.39 32.14 32.14 0 0024.42 24.6C79.28 210.06 128 210.06 128 210.06s48.72 0 88.13-9.07a32.14 32.14 0 0024.42-24.6A336.15 336.15 0 00248 128a336.15 336.15 0 00-7.45-48.39zM102 156.28V99.72L156.36 128z"/></svg>
+        <span style="position:absolute;bottom:8px;right:10px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#e0e0e6;background:rgba(0,0,0,0.5);padding:1px 5px;border-radius:4px">-14:22</span>
+      </div>
+      <div style="padding:9px 11px">
+        <div style="font-size:11.5px;font-weight:500;color:#cdd6f4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px">rust async internals — deep dive</div>
+        <div style="height:3px;border-radius:2px;background:#313244;position:relative;margin-bottom:8px">
+          <div style="position:absolute;left:0;top:0;bottom:0;width:38%;border-radius:2px;background:#007acc"></div>
+        </div>
+        <div style="display:flex;align-items:center;background:#15151f;border:1px solid #26263a;border-radius:8px;padding:3px;gap:2px">
+          <div style="flex:1;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer;transition:color .12s,background .12s" style-hover="background:#25253a;color:#f2f2f5">
+            <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M155.51 24.81a8 8 0 00-8.42.88L77.25 80H32a16 16 0 00-16 16v64a16 16 0 0016 16h45.25l69.84 54.31A8 8 0 00160 224V32a8 8 0 00-4.49-7.19zM224.49 103.51a8 8 0 00-11.31 11.31L228.69 130l-15.51 15.51a8 8 0 0011.31 11.31l15.51-15.51 15.51 15.51a8 8 0 0011.31-11.31L251.31 130l15.51-15.51a8 8 0 00-11.31-11.31L240 118.69z"/></svg>
+          </div>
+          <div style="width:1px;height:16px;background:#26263a"></div>
+          <div style="flex:1;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer;transition:color .12s,background .12s" style-hover="background:#25253a;color:#f2f2f5">
+            <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor"><path d="M205.67 62.36L98.32 130.63a4 4 0 000 6.74l107.35 68.27A4 4 0 00212 202.27V53.73a4 4 0 00-6.33-3.37zM64 48a8 8 0 00-8 8v144a8 8 0 0016 0V56a8 8 0 00-8-8z"/></svg>
+          </div>
+          <div style="flex:1.4;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#181825;cursor:pointer;background:#007acc;transition:background .12s" style-hover="background:#cba6f7">
+            <svg width="17" height="17" viewBox="0 0 256 256" fill="currentColor"><path d="M240 128a15.74 15.74 0 01-7.6 13.51L88.32 229.65a16 16 0 01-16.2.3A15.86 15.86 0 0164 216.13V39.87a15.86 15.86 0 018.12-13.82 16 16 0 0116.2.3l144.08 88.14A15.74 15.74 0 01240 128z"/></svg>
+          </div>
+          <div style="width:1px;height:16px;background:#26263a"></div>
+          <div style="flex:1;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer;transition:color .12s,background .12s" style-hover="background:#25253a;color:#f2f2f5">
+            <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor"><path d="M50.33 193.64L157.68 125.37a4 4 0 000-6.74L50.33 50.36A4 4 0 0044 53.73v148.54a4 4 0 006.33 3.37zM192 48a8 8 0 00-8 8v144a8 8 0 0016 0V56a8 8 0 00-8-8z"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11px;color:#a6adc8">CPU</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#89dceb">{{ cpuPct }}%</span>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:2px;height:38px">
+        <sc-for list="{{ cpuBars }}" as="h" hint-placeholder-count="24">
+          <div style="flex:1;height:{{ h }}%;background:#89dceb;border-radius:1px;min-height:2px"></div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11px;color:#a6adc8">RAM</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#89b4fa">{{ ramPct }}%</span>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:2px;height:34px">
+        <sc-for list="{{ ramBars }}" as="h" hint-placeholder-count="24">
+          <div style="flex:1;height:{{ h }}%;background:#89b4fa;border-radius:1px;min-height:2px"></div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11px;color:#a6adc8">GPU</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#f9e2af">{{ gpuPct }}%</span>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:2px;height:26px">
+        <sc-for list="{{ gpuBars }}" as="h" hint-placeholder-count="24">
+          <div style="flex:1;height:{{ h }}%;background:#f9e2af;border-radius:1px;min-height:2px"></div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11px;color:#a6adc8">↓ down</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#cdd6f4">416 KB/s</span>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:2px;height:26px">
+        <sc-for list="{{ netDown }}" as="h" hint-placeholder-count="24">
+          <div style="flex:1;height:{{ h }}%;background:#6c7086;border-radius:1px;min-height:2px"></div>
+        </sc-for>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11px;color:#a6adc8">↑ up</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#cdd6f4">570 KB/s</span>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:2px;height:26px">
+        <sc-for list="{{ netUp }}" as="h" hint-placeholder-count="24">
+          <div style="flex:1;height:{{ h }}%;background:#6c7086;border-radius:1px;min-height:2px"></div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="background:#1e1e2e;border:1px solid #232336;border-radius:9px;padding:12px;display:flex;flex-direction:column;gap:9px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11.5px;font-weight:500;color:#cdd6f4">Disk</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#6c7086">318G / 512G</span>
+      </div>
+      <div style="height:5px;border-radius:3px;background:#313244;position:relative">
+        <div style="position:absolute;left:0;top:0;bottom:0;width:62%;border-radius:3px;background:#a6e3a1"></div>
+      </div>
+    </div>
+
+    <div style="background:#1e1e2e;border:1px solid #232336;border-radius:9px;padding:12px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11.5px;font-weight:500;color:#cdd6f4">Battery</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#a6e3a1">95% · charging</span>
+      </div>
+      <div style="height:5px;border-radius:3px;background:#313244;position:relative">
+        <div style="position:absolute;left:0;top:0;bottom:0;width:95%;border-radius:3px;background:#a6e3a1"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="flex:none;border-top:1px solid #232336;background:#1e1e2e;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;color:#6c7086">
+      <span>5%↓ 410 ▲ 562</span>
+      <span style="font-family:'JetBrains Mono',monospace">14:33 · 21 июл</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px">
+      <div style="display:flex;align-items:center;justify-content:center;gap:4px;padding:5px 0;border-radius:5px;border:1px solid #45475a;color:#cdd6f4;font-size:10.5px;font-weight:600;cursor:pointer" style-hover="background:#232336;border-color:#007acc">
+        <svg width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M230.6 49.53a8 8 0 00-8.66 1.73L177.4 96H160v-8a8 8 0 00-8-8H32a16 16 0 00-16 16v64a16 16 0 0016 16h120a8 8 0 008-8v-8h17.4l44.54 44.74a8 8 0 008.66 1.73A8 8 0 00232 200V56a8 8 0 00-1.4-6.47z"/></svg>
+        Switch
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:4px;padding:5px 0;border-radius:5px;border:1px solid #45475a;color:#cdd6f4;font-size:10.5px;font-weight:600;cursor:pointer" style-hover="background:#232336;border-color:#007acc">
+        <svg width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M124 216a12 12 0 01-12 12H48a20 20 0 01-20-20V68a20 20 0 0120-20h64a12 12 0 010 24H52v152h60a12 12 0 0112 12zm105.66-96l-40-40a12 12 0 00-17 17L189.35 116H100a12 12 0 000 24h89.35l-16.69 19a12 12 0 0017 17l40-40a12 12 0 000-17z"/></svg>
+        Log out
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:4px;padding:5px 0;border-radius:5px;border:1px solid #45475a;color:#cdd6f4;font-size:10.5px;font-weight:600;cursor:pointer" style-hover="background:#232336;border-color:#007acc">
+        <svg width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M197.67 186.37a8 8 0 01-11.34 11.29C165.94 177.13 132 165.16 100 165.16s-65.94 12-86.34 32.5a8 8 0 01-11.32-11.29C25.9 163 65.1 149.16 100 149.16s74.11 13.87 97.67 37.21zM100 40a56 56 0 1056 56 56.06 56.06 0 00-56-56zm0 96a40 40 0 1140-40 40 40 0 01-40 40zm150.34-48.4a8 8 0 00-11.31 0L216 110.63l-23.06-23.03a8 8 0 00-11.31 11.31L204.68 122l-23.05 23.03a8 8 0 0011.31 11.32L216 133.31l23.03 23.04a8 8 0 0011.31-11.32L227.31 122l23.03-23.03a8 8 0 000-11.37z"/></svg>
+        Restart
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:4px;padding:5px 0;border-radius:5px;background:transparent;border:1px solid #f38ba8;color:#f38ba8;font-size:10.5px;font-weight:600;cursor:pointer" style-hover="background:rgba(243,139,168,0.12)">
+        <svg width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M164.4 39.9a8 8 0 10-8.8 13.4 88 88 0 11-95.2 0 8 8 0 10-8.8-13.4 104 104 0 1084.8 20.2 8 8 0 001.4-1.4 104.2 104.2 0 0126.6 0zM128 24a8 8 0 00-8 8v96a8 8 0 0016 0V32a8 8 0 00-8-8z"/></svg>
+        Power
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:352,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = { cpu: Array.from({length:24},() => 10+Math.random()*70), ram: Array.from({length:24},() => 40+Math.random()*20), gpu: Array.from({length:24},() => Math.random()*40), netDown: Array.from({length:24},() => Math.random()*100), netUp: Array.from({length:24},() => Math.random()*80) };
+
+  componentDidMount() {
+    this._t = setInterval(() => {
+      this.setState({
+        cpu: this.state.cpu.map(() => 10+Math.random()*70),
+        ram: this.state.ram.map(() => 40+Math.random()*20),
+        gpu: this.state.gpu.map(() => Math.random()*40),
+        netDown: this.state.netDown.map(() => Math.random()*100),
+        netUp: this.state.netUp.map(() => Math.random()*80),
+      });
+    }, 900);
+  }
+  componentWillUnmount() { clearInterval(this._t); }
+
+  renderVals() {
+    return {
+      cpuBars: this.state.cpu, ramBars: this.state.ram, gpuBars: this.state.gpu,
+      netDown: this.state.netDown, netUp: this.state.netUp,
+      cpuPct: Math.round(this.state.cpu[this.state.cpu.length-1]),
+      ramPct: Math.round(this.state.ram[this.state.ram.length-1]),
+      gpuPct: Math.round(this.state.gpu[this.state.gpu.length-1]),
+    };
+  }
+}
+</script>
+</body>
+</html>
