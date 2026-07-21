@@ -32,16 +32,34 @@
     отложен в Task 9. Отчёт: `report-log/zed-report-6.md`.
   - **Task 7** `da744a2` — оконный скелет `side_panel_right/`
     (namespace, 300×1410, pult y=30). Smoke-hook **не** в product.
-    Отчёт: `orchestration/reports/hermes-report-7.md`.
-Дальше: Tasks 3–5 / 8–12 (mute UI = Task 9). Ключевые решения:
+    Отчёт: `report-log/hermes-report-7.md`.
+  - **Tasks 3/4/5** `bf5b683` — бэкенд сервисов: `system_resources`
+    (CPU/RAM `sysinfo` 0.39.6 + GPU `nvml-wrapper`, `None` без Nvidia) +
+    `power` (log out/restart/shutdown чистые билдеры, switch user
+    disabled-стаб, plain struct без `Service`). Приёмка: 148 services
+    тестов зелёные (прогнал сам), live GPU `Some(6.0)`==nvidia-smi,
+    билд чист. Один самодостаточный коммит (shared `lib.rs`/`state.rs`
+    вперемешку — раздельно не расщепить без битого промежуточного).
+    Отчёты: `report-log/grok-report-19.md`, `glm-report-3.md`.
+Дальше: Tasks 8–12 (тело панели). Ключевые решения:
 MPRIS v1 без прогресс-бара; switch user disabled-стаб; log out =
 `hyprctl dispatch exit`; без Esc; палитра метров сине-циан.
 
-**2. Вендор-волна крейтов — ЗАКРЫТА 3/3 (2026-07-21).**
+**2. Вендор-волна крейтов + `gpui-component` recon (2026-07-21).**
   - **✅ `gpui-animation`** — Source `66cd816` (Grok).
   - **✅ `gpui-rsx`** — Source `99cab5e` (Cline).
-  - **✅ `ccf-gpui-widgets` recon** — вендор ОТЛОЖЕН (Hermes).
-  Source ahead на 2 коммита; dep из `crates/app` + пилоты — отдельно.
+  - **✅ `ccf-gpui-widgets` recon** — вендор ОТЛОЖЕН, 58 дельт (Hermes).
+  - **🔑 `gpui-component` (Longbridge) recon — Hermes №18, ВЕРДИКТ: БРИФ
+    не месяц.** `crates/ui` 0.5.2 компилится об наш форк `Source/gpui`
+    @`99cab5e` с **0 ошибок** (rsx-паттерн, НЕ ccf), один gpui в графе —
+    перепроверил лично в `/home/neo/scratch/gpui-component-recon`.
+    Рекомендация A: path-dep всей либы + theme-адаптер Hsla→Hsla (~20-30
+    ролей), панель юзает Button/Slider/Progress/Label/Avatar. **Цена:**
+    89k-LOC монолит + тяжёлые дефолт-депы (ropey/markdown/html5ever/lsp)
+    всегда в линке `chronos` (feature-strip нет); runtime на layer-shell
+    не мерян; `init` ставит Light по умолчанию (нужен Dark после).
+    **Решение о принятии рекомендации A — за пользователем (в полёте).**
+    Отчёт: `report-log/hermes-report-18.md`.
 
 **3. Working tree — чисто по капстоуну.** T1/T2/T6/T7 закоммичены;
 некапстоунный шум остаётся (skills/*, launcher docs move, _ds/) — не
