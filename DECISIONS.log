@@ -284,6 +284,22 @@ If its empty\not full - its a fresh log. - see previous log in /home/neo/Project
 - Rejected now: permanent reliance on subprocess — poll is good enough for bar/OSD
   foundation but not for 144 FPS-adjacent continuous metering.
 
+## 2026-07-21 — Audio per-app stream mute stays on `wpctl` + `pw-dump` (no native PipeWire)
+
+- Context: right-side panel Task 6 — mute one MPRIS player's playback stream,
+  not the master sink. MPRIS has no per-player mute.
+- Considered: (1) native `pipewire` registry for stream nodes; (2) extend
+  existing MVP: parse `pw-dump` JSON for `Stream/Output/Audio`, mute via
+  `wpctl set-mute <node-id> toggle`, name-match MPRIS hint → stream.
+- Decided: **(2).** Same backend decision as 2026-07-17; no new deps; unit-
+  testable parsers; live schema confirmed
+  (`media.class == "Stream/Output/Audio"`, `application.name` populated).
+- Explicit limits kept: first matching stream only (browser multi-tab);
+  empty/mismatched hint → no-op + log, never panic; full bus-name MPRIS
+  ids may miss unless the panel passes a short hint.
+- Rejected now: promoting stream mute as a reason to land native pipewire —
+  still zero product pressure beyond panel mute button (Task 9 UI).
+
 ## 2026-07-19 — Layer-shell popup sizing: hard `max_h()`+`overflow_hidden()` clip, NOT pixel-estimated height
 
 - Context: `updates_popup` (Zed №1) sized its window via `count * ROW_H`-style

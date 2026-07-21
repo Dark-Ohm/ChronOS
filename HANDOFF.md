@@ -14,16 +14,26 @@
 
 **1. Правая боковая панель — капстоун в полёте (2026-07-21).**
 План `docs/superpowers/plans/2026-07-20-right-side-panel.md`, спека
-`…-right-side-panel-design.md`. Принято:
+`…-right-side-panel-design.md`. Принято / готово:
   - **Task 1** `dbce8ac` — `net_stats` shared-модуль + бар-виджет.
   - **Task 2** `18c88f0` — `Theme::font_ui` (`"Inter"`) рядом с
     `font_mono`; тест `theme_default_font_ui_is_inter`. Поле есть,
     **потребителей UI ещё нет** (MPRIS-карточка Task 9).
+  - **Task 6** — per-app stream mute в `services/audio` (**код готов,
+    коммит нет**): `AudioStream`, `ToggleStreamMute`,
+    `parse_pw_dump_streams` / `find_stream_for_player`,
+    `toggle_stream_mute_for_player`. Только
+    `audio/{types,pw_dump,mod}.rs`. Live:
+    `media.class == "Stream/Output/Audio"`. Отчёт
+    `orchestration/reports/zed-report-6.md`. Judge: crate-root
+    re-export `AudioStream` в `lib.rs` **нет** — тип через
+    `chronos_services::audio::AudioStream`. Commit list: **не**
+    тащить `lib.rs`/`net_stats`.
   - **Task 7** `da744a2` — оконный скелет `side_panel_right/`
     (namespace, 300×1410, pult y=30). Smoke-hook **не** в product.
     Отчёт: `orchestration/reports/hermes-report-7.md`.
-Дальше: Tasks 3–6 / 8–12. Ключевые решения плана: MPRIS v1 без
-прогресс-бара; switch user disabled-стаб; log out =
+Дальше: Tasks 3–5 / 8–12 (mute UI = Task 9). Ключевые решения:
+MPRIS v1 без прогресс-бара; switch user disabled-стаб; log out =
 `hyprctl dispatch exit`; без Esc; палитра метров сине-циан.
 
 **2. Вендор-волна крейтов — ЗАКРЫТА 3/3 (2026-07-21).**
@@ -32,9 +42,8 @@
   - **✅ `ccf-gpui-widgets` recon** — вендор ОТЛОЖЕН (Hermes).
   Source ahead на 2 коммита; dep из `crates/app` + пилоты — отдельно.
 
-**3. Working tree — чужой WIP (не коммитить вслепую).**
-`services/audio/*` (Task 6?), правки `main.rs` / `side_panel_right/`
-сверх `da744a2`. Развести перед shared-коммитами.
+**3. Working tree — разводить поимённым add.**
+Task 6 audio uncommitted; не смешивать с чужим WIP в shared-файлах.
 
 ---
 
