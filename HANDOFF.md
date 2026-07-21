@@ -55,9 +55,23 @@
     бинаре; диспатч зовёт те же API, что живой bar-mpris. Smoke-env
     `CHRONOS_SMOKE_SIDE_PANEL` (env-gated) оставлен как единственный
     пин-триггер до Task 12. Отчёт: `report-log/hermes-report-20.md`.
-Дальше: Tasks 10 (метры CPU/RAM/GPU+сеть) → 11 (power-row arm/confirm) →
-12 (бар-триггер) на `gpui-animation`+div (НЕ gpui-component, см. п.2).
-Серийный трек по `view.rs` — Hermes владеет `side_panel_right/`.
+  - **Tasks 10/11** `1e93209` — spectrum-метры (`spectrum_row.rs`: ring 14,
+    CPU/RAM/GPU+сеть, палитра сине-циан, GPU скрыт при `None`, сеть render-
+    иммунна) + power-row (`power_row.rs`: arm/confirm 3с через `cx.listener`,
+    switch user disabled, timeout `match`/`warn!`) + **geometry панели/strip
+    под бар** (`TOP|RIGHT`, `exclusive_zone: None`, высота `display−2×
+    BAR_HEIGHT` = симметричный зазор; требование «не перекрывать бар» +
+    паттерн скилла `gpui-layer-shell`). Приёмка: units 11/11, release green,
+    grim метров под нагрузкой (load-1/2 двигаются) + power-row. Geometry-
+    правку T7/T8 Hermes подал скрыто — верна, но нашёл грепом (замечание в
+    HERMES.md). **Живой клик arm/confirm+play/pause+mute + hover-peek round-
+    trip с новой geometry НЕ дожаты** (ydotool dual-head) — за пользователем.
+    Отчёт: `report-log/hermes-report-21.md`.
+
+**ТЕЛО ПАНЕЛИ ГОТОВО (T7-T11).** Осталась **Task 12** — бар-триггер
+(клик по bar-виджету → `side_panel_right::toggle`), после неё капстоун
+закрыт. Живые клик-конфирмы (play/pause, mute, arm/confirm, hover-peek)
+копятся на пользователя — ydotool на dual-head не годен.
 Ключевые решения:
 MPRIS v1 без прогресс-бара; switch user disabled-стаб; log out =
 `hyprctl dispatch exit`; без Esc; палитра метров сине-циан.
