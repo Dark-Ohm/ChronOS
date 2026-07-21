@@ -163,6 +163,10 @@ pub struct Theme {
     pub transparent: Hsla,
     pub font_sizes: FontSizes,
     pub font_mono: &'static str,
+    /// UI text (labels, titles, body copy) — everything that isn't a
+    /// number or a mono-styled value. `font_mono` stays reserved for
+    /// digits/code/mono-widgets per STYLE.md.
+    pub font_ui: &'static str,
 }
 
 impl Default for Theme {
@@ -212,6 +216,7 @@ impl Default for Theme {
             transparent: rgba(0x00000000).into(),
             font_sizes: FontSizes::default(),
             font_mono: "JetBrains Mono",
+            font_ui: "Inter",
         }
     }
 }
@@ -353,6 +358,12 @@ mod tests {
         let theme = Theme::default();
         assert_ne!(theme.status.error, theme.status.success);
         assert_eq!(theme.bg.primary, parse_hex("1e1e2e").unwrap());
+    }
+
+    #[test]
+    fn theme_default_font_ui_is_inter() {
+        let theme = Theme::default();
+        assert_eq!(theme.font_ui, "Inter");
     }
 
     #[test]
