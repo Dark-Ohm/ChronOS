@@ -94,6 +94,11 @@ impl AppState {
     pub fn system_resources(cx: &App) -> &chronos_services::SystemResourcesSubscriber {
         &Self::global(cx).services.system_resources
     }
+
+    #[inline(always)]
+    pub fn disks(cx: &App) -> &chronos_services::DisksSubscriber {
+        &Self::global(cx).services.udisks
+    }
 }
 
 /// Watch a signal and apply updates to component state.

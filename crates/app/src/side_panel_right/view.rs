@@ -10,7 +10,7 @@
 use std::time::{Duration, Instant};
 
 use chronos_services::net_stats::{self, NetState};
-use chronos_services::{MprisState, Service, SystemResourcesState};
+use chronos_services::{DiskInfo, MprisState, Service, SystemResourcesState};
 use gpui::{
     AsyncApp, Context, IntoElement, Render, ScrollHandle, Window, div, prelude::*, px, rgb,
 };
@@ -39,6 +39,7 @@ const REVEAL_MS: u64 = 180;
 pub struct SidePanelRightView {
     mpris: MprisState,
     system: SystemResourcesState,
+    disks: Vec<DiskInfo>,
     cpu_history: SpectrumHistory,
     ram_history: SpectrumHistory,
     gpu_history: SpectrumHistory,
@@ -74,6 +75,16 @@ impl SidePanelRightView {
             },
         );
 
+        let disks_signal = AppState::disks(cx).subscribe();
+        state::watch(
+            cx,
+            disks_signal,
+            |this: &mut Self, data: Vec<DiskInfo>, cx| {
+                this.disks = data;
+                cx.notify();
+            },
+        );
+
         cx.spawn(async move |this, cx| {
             cx.background_executor()
                 .timer(Duration::from_millis(16))
@@ -93,6 +104,7 @@ impl SidePanelRightView {
         Self {
             mpris: AppState::mpris(cx).get(),
             system: AppState::system_resources(cx).get(),
+            disks: AppState::disks(cx).get(),
             cpu_history: SpectrumHistory::default(),
             ram_history: SpectrumHistory::default(),
             gpu_history: SpectrumHistory::default(),
@@ -277,7 +289,7 @@ impl Render for SidePanelRightView {
                                         H_NET,
                                     )),
                             )
-                            .child(render_disks_section()),
+                            .child(render_disks_section(&self.disks, cx)),
                     )
                     // 4. Footer (flex:none)
                     .child(render_footer(&net_summary, power_arm, cx)),

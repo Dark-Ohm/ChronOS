@@ -17,6 +17,7 @@ pub mod notification;
 pub mod power;
 pub mod system_resources;
 pub mod tray;
+pub mod udisks;
 pub mod upower;
 pub mod wallpaper;
 
@@ -46,6 +47,7 @@ pub use tray::{
     MenuNode, MenuToggleType, TrayCommand, TrayIcon, TrayItem, TrayPixmap, TrayState,
     TraySubscriber, strip_mnemonic,
 };
+pub use udisks::{DiskInfo, DisksCommand, DisksSubscriber};
 pub use upower::{
     profile_to_str, BatteryState, PowerProfile, UPowerData, UPowerSubscriber,
 };
@@ -69,6 +71,7 @@ pub struct Services {
     pub power: power::PowerSubscriber,
     pub system_resources: SystemResourcesSubscriber,
     pub tray: TraySubscriber,
+    pub udisks: DisksSubscriber,
     pub upower: UPowerSubscriber,
     pub wallpaper: WallpaperSubscriber,
 }
@@ -91,6 +94,7 @@ pub fn init_all() -> Services {
         power: power::PowerSubscriber::new(),
         system_resources: SystemResourcesSubscriber::new(),
         tray: TraySubscriber::new(),
+        udisks: DisksSubscriber::new(),
         upower: UPowerSubscriber::new(),
         wallpaper: WallpaperSubscriber::new(),
     }
