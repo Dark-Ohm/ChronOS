@@ -190,8 +190,29 @@ Compositor abstraction: `enum CompositorBackend { Hyprland, Niri }` + free
 functions per backend (gpui-shell style). Hyprland via `hyprland` crate; Niri
 via `niri-ipc`.
 
+**Not every module under `crates/services` is a `Service`.** Pure helpers that
+share state between surfaces live as free functions. Example (2026-07-21,
+`dbce8ac`): `crates/services/src/net_stats.rs` — time-gated procfs
+byte-rate sampling (`SAMPLE_INTERVAL`, `NetState`, `update_speed`,
+`read_interface_bytes`). Registered only as `pub mod net_stats` (not in
+`Services` / `init_all`). Consumers: bar `network` widget today; right side
+panel network spectrum next. Design §3.3 still points at
+`bar/widgets/network.rs` as the data story — that path is UI only now;
+shared sampling is `chronos_services::net_stats`.
+
 `panic = "unwind"` — a `unwrap()` in a listener thread must not kill the shell.
 Services use `Result`/`expect` rigorously.
+
+**Audio (WirePlumber MVP, 2026-07-17 + stream mute 2026-07-21):** default
+sink/source via `wpctl` poll (`AudioState` / `EndpointState`); device list
+and **application playback streams** via `pw-dump`
+(`AudioDevice` / `AudioStream`, `media.class == "Stream/Output/Audio"`).
+Per-app mute for the right panel: `AudioCommand::ToggleStreamMute(id)` →
+`wpctl set-mute <id> toggle`; resolve player → stream with
+`find_stream_for_player` (case-insensitive substring on
+`application.name`/`node_name`; first match; `None` = silent no-op).
+UI wiring is separate (panel Task 9). Native `pipewire` crate still deferred
+— see DECISIONS.log 2026-07-17 / 2026-07-21.
 
 ## 8. Performance (144 FPS)
 

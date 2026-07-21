@@ -27,7 +27,8 @@ existing bar-widget logic into a shared module (`net_stats`), one new
 - Any value computed from elapsed time (spectrum-bar samples) must be
   immune to `render()` call frequency: time-gate + cached last value +
   `Instant`/`Duration` injected as parameters, exactly the pattern in
-  `crates/app/src/bar/widgets/network.rs` (`update_speed`, `SAMPLE_INTERVAL`).
+  `crates/services/src/net_stats.rs` (`update_speed`, `SAMPLE_INTERVAL`).
+  Bar widget re-exports usage via `chronos_services::net_stats` (Task 1 done).
 - Popup/panel window lifecycle follows `ARCHITECTURE.md §4.1`: explicit
   dismiss only, `close_this` for in-window close (never re-entrant
   `handle.update` for `remove_window()`). **Correction discovered during
@@ -65,9 +66,31 @@ existing bar-widget logic into a shared module (`net_stats`), one new
   `RIGHT | TOP | BOTTOM`, `exclusive_zone: Some(px(0.))` (never reserves
   screen space, unlike the bar).
 
+### Progress (evidence, not hope)
+
+| Task | Status | Commit / evidence |
+|---|---|---|
+| 1 `net_stats` | **DONE** | `dbce8ac` — `crates/services/src/net_stats.rs` + bar rewire |
+| 2 `Theme::font_ui` | **DONE** | `18c88f0` — `font_ui: "Inter"`, test `theme_default_font_ui_is_inter` |
+| 3–5 | open | — |
+| 6 audio stream mute | **code ready, uncommitted** | `audio/{types,pw_dump,mod}.rs` only; report `zed-report-6.md` |
+| 7 `side_panel_right` skeleton | **DONE** | `da744a2` — `side_panel_right/{mod,view}.rs`, `main.rs` mod+init |
+| 8–12 | open | mute UI = Task 9 |
+
+Verify Task 1 tests (package name is **`chronos`**, not `chronos-app`; bar
+lives in the **binary**, not `lib`):
+
+```bash
+cargo test -p chronos-services --lib net_stats          # 5 tests
+cargo test -p chronos --bin chronos bar::widgets::network  # 14 UI tests
+```
+
 ---
 
 ## Task 1: Extract network speed sampling into a shared module
+
+> **DONE `dbce8ac` (2026-07-21).** Steps below left as a record; checkboxes
+> marked complete. Do not re-run the extract.
 
 **Files:**
 - Create: `crates/services/src/net_stats.rs`
@@ -92,14 +115,14 @@ existing bar-widget logic into a shared module (`net_stats`), one new
   to avoid clashing with the bar widget's own `NetworkState`-adjacent
   naming once both exist side by side.
 
-- [ ] **Step 1: Run the existing network widget tests to capture the baseline**
+- [x] **Step 1: Run the existing network widget tests to capture the baseline**
 
-Run: `cargo test -p chronos-app --lib bar::widgets::network`
-Expected: all current tests pass (they test `update_speed`, `format_speed`,
-`indicator_color`, `compute_view` — note the exact count of passing tests
-in the output, you'll compare after the move).
+~~Run: `cargo test -p chronos-app --lib bar::widgets::network`~~ **stale
+package name** — use:
+`cargo test -p chronos --bin chronos bar::widgets::network`
+Baseline at extract: **18** tests (incl. 4 `update_speed_*`).
 
-- [ ] **Step 2: Create `crates/services/src/net_stats.rs` with the moved pure logic**
+- [x] **Step 2: Create `crates/services/src/net_stats.rs` with the moved pure logic**
 
 ```rust
 //! Shared, render-frequency-immune network byte-rate sampling.
@@ -318,7 +341,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 3: Register the module in `crates/services/src/lib.rs`**
+- [x] **Step 3: Register the module in `crates/services/src/lib.rs`**
 
 Add near the other `pub mod` declarations:
 
@@ -326,7 +349,7 @@ Add near the other `pub mod` declarations:
 pub mod net_stats;
 ```
 
-- [ ] **Step 4: Run the new module's tests**
+- [x] **Step 4: Run the new module's tests**
 
 Run: `cargo test -p chronos-services --lib net_stats`
 Expected: 5 tests pass (`first_sample_returns_zero_and_stores_snapshot`,
@@ -335,7 +358,7 @@ Expected: 5 tests pass (`first_sample_returns_zero_and_stores_snapshot`,
 `repeated_calls_in_one_frame_never_collapse_the_cached_value`,
 `counter_wraparound_yields_zero_then_recovers`).
 
-- [ ] **Step 5: Rewire `crates/app/src/bar/widgets/network.rs` to use the shared module**
+- [x] **Step 5: Rewire `crates/app/src/bar/widgets/network.rs` to use the shared module**
 
 Remove the private `Sample`, `NetworkState`, `SpeedSample`,
 `read_interface_bytes`, `update_speed`, `SAMPLE_INTERVAL` definitions from
@@ -371,32 +394,29 @@ someone added coverage after this plan was written; port it to
 Keep this file's own tests for `format_speed`, `indicator_color`,
 `compute_view` — they don't touch the moved types.
 
-- [ ] **Step 6: Add `chronos-services` as a workspace path dependency check**
+- [x] **Step 6: Add `chronos-services` as a workspace path dependency check**
 
 Run: `grep -n "chronos-services" crates/app/Cargo.toml`
 Expected: a line already present (the bar widget already imports
 `chronos_services::{ConnectivityState, Service}` per the file header) — no
 `Cargo.toml` change needed.
 
-- [ ] **Step 7: Run both test suites and the full workspace build**
+- [x] **Step 7: Run both test suites and the full workspace build**
 
-Run: `cargo test -p chronos-services -p chronos-app --lib`
-Expected: all pass, same total pass count for bar network tests as
-Step 1's baseline minus the moved tests (now passing under
-`chronos-services`), plus the 5 `net_stats` tests. Net coverage must not
-drop: the 4 `update_speed_*` tests deleted from `network.rs` are covered
-by 4 of the 5 in `net_stats.rs` (see Step 5's mapping table).
+~~`cargo test -p chronos-services -p chronos-app --lib`~~ — package
+`chronos-app` does not exist. Verified as:
+`cargo test -p chronos-services --lib` (143) +
+`cargo test -p chronos --bin chronos bar::widgets::network` (14 after move).
+`cargo build --workspace` clean for zone files.
 
-Run: `cargo build --workspace`
-Expected: clean build, no warnings about unused imports in
-`network.rs`.
-
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add crates/services/src/net_stats.rs crates/services/src/lib.rs crates/app/src/bar/widgets/network.rs
 git commit -m "services : вынести сэмплинг сетевой скорости в net_stats — общий модуль для бара и панели"
 ```
+
+Landed as **`dbce8ac`**.
 
 ---
 
@@ -974,6 +994,11 @@ git commit -m "services : power — log out/restart/shutdown, switch user нам
 
 ## Task 6: Per-app stream mute in the `audio` service
 
+> **NOT ACCEPTED (2026-07-21).** WIP may sit in
+> `crates/services/src/audio/{types,pw_dump,mod}.rs` (uncommitted). Do not
+> treat this task as done until a named commit lands and Architect accepts.
+> Checkboxes stay open. UI mute button is Task 9.
+
 **Files:**
 - Modify: `crates/services/src/audio/types.rs`
 - Modify: `crates/services/src/audio/pw_dump.rs`
@@ -1288,6 +1313,8 @@ git commit -m "services : audio — per-app stream mute (ToggleStreamMute + pw-d
 
 ## Task 7: `side_panel_right` window module — open/close/toggle skeleton
 
+> **DONE `da744a2` (2026-07-21).** Steps below are a record; do not re-scaffold.
+
 **Files:**
 - Create: `crates/app/src/side_panel_right/mod.rs`
 - Create: `crates/app/src/side_panel_right/view.rs`
@@ -1304,14 +1331,14 @@ git commit -m "services : audio — per-app stream mute (ToggleStreamMute + pw-d
   filled by Tasks 9–11).
 - Consumes: `crate::monitor::pult_display` (existing).
 
-- [ ] **Step 1: Confirm the module registration point**
+- [x] **Step 1: Confirm the module registration point**
 
 Run: `grep -n "pub mod bar\|pub mod launcher\|pub mod system_popup" crates/app/src/lib.rs`
 Expected: a list of `pub mod` lines — add the new module in the same
 list, alphabetically near `side_panel_right`'s neighbors is fine, exact
 position doesn't matter.
 
-- [ ] **Step 2: Write `view.rs` — minimal renderable shell**
+- [x] **Step 2: Write `view.rs` — minimal renderable shell**
 
 ```rust
 //! Right side panel view — window shell only in this task. MPRIS card
@@ -1344,7 +1371,7 @@ impl Render for SidePanelRightView {
 }
 ```
 
-- [ ] **Step 3: Write `mod.rs` — window lifecycle**
+- [x] **Step 3: Write `mod.rs` — window lifecycle**
 
 ```rust
 //! Right side panel — lazy layer-shell overlay, hover-peek (task 8) or
@@ -1462,7 +1489,7 @@ pub fn init(cx: &mut App) {
 }
 ```
 
-- [ ] **Step 4: Register the module**
+- [x] **Step 4: Register the module**
 
 In `crates/app/src/lib.rs`, add `pub mod side_panel_right;` next to the
 other `pub mod` declarations.
@@ -1471,12 +1498,12 @@ In `crates/app/src/main.rs`, find the block that calls `system_popup::init(cx)`
 (or equivalent — grep `::init(cx)` in `main.rs` to find the exact call
 site) and add `side_panel_right::init(cx);` next to it.
 
-- [ ] **Step 5: Build**
+- [x] **Step 5: Build**
 
 Run: `cargo build --workspace`
 Expected: clean build.
 
-- [ ] **Step 6: Live smoke — window opens and closes on toggle**
+- [x] **Step 6: Live smoke — window opens and closes on toggle**
 
 Run: `RUST_LOG=info cargo run --release --bin chronos-app 2>&1 | tee /tmp/side-panel-smoke.log &`
 then trigger `side_panel_right::toggle` manually (bind it to a scratch
@@ -1488,7 +1515,7 @@ full height, and a second toggle removes it.
 Expected: panel visible in the screenshot, log shows no `remove_window`
 errors, second toggle closes it cleanly (screenshot after shows it gone).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add crates/app/src/side_panel_right crates/app/src/lib.rs crates/app/src/main.rs

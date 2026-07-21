@@ -38,17 +38,19 @@ Worktrees must be a **sibling of ChronOS** (so `../Source` resolves) — never
 | Module | Bus / backend | Notes |
 |---|---|---|
 | `compositor` | Hyprland / Niri | listener on **`std::thread`**, not tokio |
-| `network` | NetworkManager (system) | zbus + retry |
+| `network` | NetworkManager (system) | zbus + retry (connectivity, **not** byte rates) |
+| `net_stats` | `/sys/class/net` procfs | **not a `Service`** — pure sampling (`update_speed`, `SAMPLE_INTERVAL`); bar + future right-panel spectrum |
 | `upower` | UPower (system) | battery + `has_battery` |
 | `notification` | fdo Notifications (session) | server |
 | `tray` | StatusNotifierWatcher (session) | + `tray/menu.rs` DBusMenu client |
-| `audio` | `wpctl` MVP poll 250ms | `dispatch` + immediate re-read |
+| `audio` | `wpctl` MVP poll 250ms + `pw-dump` | sink/source `dispatch`; **per-app mute: WIP** (`AudioStream` / `ToggleStreamMute` in working tree — not on HEAD until accepted) |
 | `applications` | `.desktop` scan + inotify | launcher data, **mpsc** debounce (not crossbeam), `strip_field_codes` in parser |
 | `wallpaper` | awww MVP + multi-backend enum | 5 engines on host |
 | `mpris` | session `org.mpris.MediaPlayer2.*` | ListNames + NameOwnerChanged |
 
 `Services` / `init_all()` in `lib.rs` — **shared file**, add only your lines.
-Commands are concrete methods (`dispatch`), **not** on the trait.
+Commands are concrete methods (`dispatch`), **not** on the trait. Pure modules
+like `net_stats` get **only** `pub mod` — never a field on `Services`.
 
 ### `crates/app` — shell UI
 
@@ -65,6 +67,7 @@ Commands are concrete methods (`dispatch`), **not** on the trait.
 | `wallpaper_ctl.rs` | IPC wallpaper-next / wallpaper-set — scan `~/Pictures/Wallpapers`, round-robin |
 | `state.rs` | `AppState` global + `watch()` signal bridge |
 | `plugin_bridge.rs` | Lua → `BarWidget` |
+| `side_panel_right/` | right overlay skeleton (`da744a2`); meters/power still open tasks |
 
 ### Bar widgets + watches
 
@@ -138,12 +141,14 @@ fixtures have failed twice.
    counters, deltas) must carry its own **time gate + cached value**, or
    it silently collapses: the network widget computed its delta between
    consecutive `render()` calls and showed `↓ 0` during a real 15 MB/s
-   download (2026-07-20). Pattern that works — `network.rs::update_speed`:
-   take `now: Instant` and `min_interval: Duration` **as parameters**, bail
-   out returning the cache when `elapsed < min_interval`, divide by real
-   `elapsed.as_secs_f64()`. Injecting time is what makes the
-   "immune to call frequency" property unit-testable — the pre-fix version
-   had 14 green tests and was still broken live.
+   download (2026-07-20). Pattern that works —
+   `chronos_services::net_stats::update_speed` (was private in
+   `bar/widgets/network.rs` until `dbce8ac`): take `now: Instant` and
+   `min_interval: Duration` **as parameters**, bail out returning the cache
+   when `elapsed < min_interval`, divide by real `elapsed.as_secs_f64()`.
+   Injecting time is what makes the "immune to call frequency" property
+   unit-testable — the pre-fix version had green tests and was still
+   broken live. Tests live in `net_stats` (5); bar keeps format/view tests.
 
    **Mutating state in `render()` is NOT itself the sin** — say it precisely,
    or the rule gets cargo-culted. `dock.rs` (`ICON_CACHE`), `tray.rs`
@@ -151,8 +156,8 @@ fixtures have failed twice.
    mutate from render and are fine: a memoization cache is a pure function
    of its key, so call frequency cannot change the answer. The defect is
    **frequency-dependence** — a value derived from the interval between
-   calls. TWINS search 2026-07-20 over all UI surfaces: those 4 caches are
-   idempotent, and no site outside `network.rs` computes over `elapsed`.
+   calls. Rate sampling for the network widget is **only** in `net_stats`
+   now; bar `network.rs` only formats and paints.
 1. `bar/widgets/<name>.rs` — `BarWidget`, pure `describe` + unit tests
    (see `network.rs` / `volume.rs` / `mpris.rs`).
 2. Two lines at **end** of `widgets/mod.rs`: `mod` + `register` — do not
