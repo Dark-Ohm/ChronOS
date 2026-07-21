@@ -90,9 +90,17 @@ Theme-токены. Сейчас — хексы прямо из мокапа.
     `rsx!`), динамика (метры/media/power/scroll) — div прагматичнее; rsx НЕ
     большинство LOC. Живые клики не дожаты (ydotool). Отчёт: `report-log/
     hermes-report-22.md`.
-  - **Трек 2 (udisks2) — В ДЕРЕВЕ, ЖДЁТ ОТЧЁТ Zed.** Модуль `services/udisks/`,
-    проводка `lib.rs`/`state.rs`/`disks.rs`/`view.rs` + `zed-udisks-smoke/` есть,
-    но `zed-report.md` ещё нет — НЕ принят/не закоммичен. Приёмка по отчёту.
+  - **Трек 2 (udisks2) ✅ ПРИНЯТ** `8c8ccb7` (Zed). `services/udisks/`
+    `DisksSubscriber` (zbus, poll 2.5s), живая секция: usage-карточка на каждый
+    FS-девайс, internal — только полоса, removable — mount/unmount/eject.
+    Live vs `lsblk`: nvme internal без кнопок, Ventoy+VTOYEFI removable с
+    кнопками; `/boot`/zram/swap скрыты. Mount/Unmount проверен busctl.
+    Eject = `Drive.Eject` если ejectable иначе `Drive.PowerOff`. **⚠ Известное
+    поведение (ops):** «извлечь» на любой партиции многопартиционного USB зовёт
+    `PowerOff` ВСЕГО drive (клик на VTOYEFI-карточке = poweroff всего sdb) —
+    семантически «извлечь диск», но per-partition карточки могут ввести в
+    заблуждение. Usage через sysinfo (не statvfs — `unsafe_code=deny`). Отчёт:
+    `report-log/zed-report-7.md`.
   - **Трек 3 (MPRIS art/progress) ✅ ПРИНЯТ** `3d9b8b3` (Grok). `MprisState`
     += `art_url`/`position_us`/`length_us`; медиа-карточка рисует живую обложку
     (`file://` через `img`+ObjectFit::Cover), прогресс `#007acc`, таймкод `-M:SS`.
