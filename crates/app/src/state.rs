@@ -84,6 +84,16 @@ impl AppState {
     pub fn brightness(cx: &App) -> &chronos_services::BrightnessSubscriber {
         &Self::global(cx).services.brightness
     }
+
+    #[inline(always)]
+    pub fn power(cx: &App) -> &chronos_services::PowerSubscriber {
+        &Self::global(cx).services.power
+    }
+
+    #[inline(always)]
+    pub fn system_resources(cx: &App) -> &chronos_services::SystemResourcesSubscriber {
+        &Self::global(cx).services.system_resources
+    }
 }
 
 /// Watch a signal and apply updates to component state.

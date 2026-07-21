@@ -17,6 +17,8 @@ notify = "8"
 tracing.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+sysinfo.workspace = true
+nvml-wrapper.workspace = true
 
 [dev-dependencies]
 # futures-util from workspace provides StreamExt for tests

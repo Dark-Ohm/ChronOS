@@ -14,6 +14,8 @@ pub mod mpris;
 pub mod net_stats;
 pub mod network;
 pub mod notification;
+pub mod power;
+pub mod system_resources;
 pub mod tray;
 pub mod upower;
 pub mod wallpaper;
@@ -38,6 +40,8 @@ pub use notification::{
     CloseReason, Notification, NotificationCommand, NotificationState, NotificationSubscriber,
     Urgency,
 };
+pub use power::PowerSubscriber;
+pub use system_resources::{SystemResourcesState, SystemResourcesSubscriber};
 pub use tray::{
     MenuNode, MenuToggleType, TrayCommand, TrayIcon, TrayItem, TrayPixmap, TrayState,
     TraySubscriber, strip_mnemonic,
@@ -62,6 +66,8 @@ pub struct Services {
     pub mpris: MprisSubscriber,
     pub network: NetworkSubscriber,
     pub notification: NotificationSubscriber,
+    pub power: power::PowerSubscriber,
+    pub system_resources: SystemResourcesSubscriber,
     pub tray: TraySubscriber,
     pub upower: UPowerSubscriber,
     pub wallpaper: WallpaperSubscriber,
@@ -82,6 +88,8 @@ pub fn init_all() -> Services {
         mpris: MprisSubscriber::new(),
         network: NetworkSubscriber::new(),
         notification: NotificationSubscriber::new(),
+        power: power::PowerSubscriber::new(),
+        system_resources: SystemResourcesSubscriber::new(),
         tray: TraySubscriber::new(),
         upower: UPowerSubscriber::new(),
         wallpaper: WallpaperSubscriber::new(),
