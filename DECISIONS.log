@@ -300,6 +300,40 @@ If its empty\not full - its a fresh log. - see previous log in /home/neo/Project
 - Rejected now: promoting stream mute as a reason to land native pipewire —
   still zero product pressure beyond panel mute button (Task 9 UI).
 
+## 2026-07-21 — Тело правой панели: rsx+animation руками, НЕ `gpui-component` (отложен, апгрейдим по готовому рецепту)
+
+- **Контекст.** Тело панели (Tasks 9-11: MPRIS-карточка, метры, power-row).
+  Вопрос: тащить ли `gpui-component` (Longbridge, Button/Slider/Progress) или
+  рисовать самим на `gpui-rsx` + `gpui-animation` + голом div.
+- **Рассмотрено (recon Hermes №18 + пилот №19, оба перепроверены Архитектором
+  лично):**
+  - `gpui-component` 0.5.2 **компилится об наш форк с 0 ошибок** (rsx-паттерн,
+    не 58-дельт ccf). Проводка: ChronOS `gpui`→`path=../Source/gpui` + `[patch
+    ."…/zed"]` на наши path-крейты (одного patch мало — ChronOS и component
+    были на разных git-URL). Один gpui в графе, dual-gpui нет.
+  - **Цена (ЧЕСТНАЯ, from-scratch замер Архитектора):** бинарь **+2.66 MiB
+    (+13.2%)**, 20 152 392 → 22 815 688. Монолит 89k LOC + тяжёлые дефолт-депы
+    (ropey/markdown/html5ever/lsp-types) линкуются НАВСЕГДА, feature-strip нет.
+    **Поправка к отчёту пилота:** Hermes рапортовал «clean +0.68 MiB» — НЕ
+    воспроизвелось; from-scratch даёт то же 22.8, что инкрементал. Решающую
+    цифру он занизил ~вчетверо; принято реальное +2.66.
+- **Решено: rsx+animation руками (вариант C).** Причины пользователя: экономия
+  времени, меньше багов, интерфейс рисуется легче, и **порт можно апгрейдить
+  при надобности** — рецепт интеграции доказан и лежит на ветке
+  `pilot/gpui-component-spike @ 20ee13a` (path+patch+init+Dark, одна Button
+  рендерится на layer-shell). Тонкий бинарь сейчас, открытая дверь потом.
+- **Отклонён вариант A** (полный тулкит): +13% бинаря + coupling с монолитом
+  ради нескольких кнопок панели — не оправдано, пока component не станет общим
+  тулкитом всего шелла. Пересмотреть, если launcher/settings/пр. массово
+  захотят Button/Table/Input.
+- **Что это меняет для плана.** Tasks 9-11 остаются на голом `gpui div` (план
+  уже так написан, он рабочий); `gpui-rsx` — для чистоты разметки (но темовые
+  цвета через expr-атрибуты `bg={theme…}`, НЕ Tailwind `class="bg-*"` — конфликт
+  со STYLE.md), `gpui-animation` — peek-выезд панели + переходы метров.
+- **Урок процесса.** Цена бинаря — весь смысл пилота; артефакт на диске
+  противоречил отчётной цифре → перемер с нуля обязателен. Не принимать
+  decision-critical число миньона без воспроизведения.
+
 ## 2026-07-19 — Layer-shell popup sizing: hard `max_h()`+`overflow_hidden()` clip, NOT pixel-estimated height
 
 - Context: `updates_popup` (Zed №1) sized its window via `count * ROW_H`-style

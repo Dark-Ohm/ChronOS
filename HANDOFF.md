@@ -41,7 +41,9 @@
     билд чист. Один самодостаточный коммит (shared `lib.rs`/`state.rs`
     вперемешку — раздельно не расщепить без битого промежуточного).
     Отчёты: `report-log/grok-report-19.md`, `glm-report-3.md`.
-Дальше: Tasks 8–12 (тело панели). Ключевые решения:
+Дальше: Tasks 8–12 (тело панели) на `gpui-rsx`+`gpui-animation`+div
+(НЕ gpui-component, см. п.2). Серийный трек по `view.rs` — один агент
+(Hermes владеет `side_panel_right/`). Ключевые решения:
 MPRIS v1 без прогресс-бара; switch user disabled-стаб; log out =
 `hyprctl dispatch exit`; без Esc; палитра метров сине-циан.
 
@@ -49,17 +51,16 @@ MPRIS v1 без прогресс-бара; switch user disabled-стаб; log ou
   - **✅ `gpui-animation`** — Source `66cd816` (Grok).
   - **✅ `gpui-rsx`** — Source `99cab5e` (Cline).
   - **✅ `ccf-gpui-widgets` recon** — вендор ОТЛОЖЕН, 58 дельт (Hermes).
-  - **🔑 `gpui-component` (Longbridge) recon — Hermes №18, ВЕРДИКТ: БРИФ
-    не месяц.** `crates/ui` 0.5.2 компилится об наш форк `Source/gpui`
-    @`99cab5e` с **0 ошибок** (rsx-паттерн, НЕ ccf), один gpui в графе —
-    перепроверил лично в `/home/neo/scratch/gpui-component-recon`.
-    Рекомендация A: path-dep всей либы + theme-адаптер Hsla→Hsla (~20-30
-    ролей), панель юзает Button/Slider/Progress/Label/Avatar. **Цена:**
-    89k-LOC монолит + тяжёлые дефолт-депы (ropey/markdown/html5ever/lsp)
-    всегда в линке `chronos` (feature-strip нет); runtime на layer-shell
-    не мерян; `init` ставит Light по умолчанию (нужен Dark после).
-    **Решение о принятии рекомендации A — за пользователем (в полёте).**
-    Отчёт: `report-log/hermes-report-18.md`.
+  - **🔑 `gpui-component` (Longbridge) — recon+пилот СДЕЛАНЫ, РЕШЕНО НЕ
+    БРАТЬ сейчас (вариант C).** Компилится об наш форк с 0 ошибок (recon
+    №18), пилот №19 доказал проводку (path+`[patch]`, один gpui, Button
+    рендерится на layer-shell). **Реальная цена (from-scratch замер
+    Архитектора): +2.66 MiB / +13.2% бинаря** (Hermes рапортовал +0.68 —
+    НЕ воспроизвелось, занижено ~вчетверо; см. DECISIONS 2026-07-21).
+    Тело панели рисуем сами на `gpui-rsx`+`gpui-animation` (время/баги/
+    лёгкость + апгрейдим потом по рецепту). **Рецепт апгрейда живёт на
+    ветке `pilot/gpui-component-spike @20ee13a`** (не удалять — семя).
+    Отчёты: `report-log/hermes-report-18.md`, `hermes-report-19.md`.
 
 **3. Working tree — чисто по капстоуну.** T1/T2/T6/T7 закоммичены;
 некапстоунный шум остаётся (skills/*, launcher docs move, _ds/) — не
