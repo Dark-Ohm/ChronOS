@@ -9,6 +9,7 @@ mod notifications;
 mod osd;
 mod plugin_bridge;
 mod project_switcher;
+mod side_panel_right;
 pub mod state;
 mod system_popup;
 mod theme_config;
@@ -69,6 +70,7 @@ fn main() {
             project_switcher::init(cx);
             volume_popup::init(cx);
             system_popup::init(cx);
+            side_panel_right::init(cx);
             desktop_terminal::init(cx);
 
             // Initialize launcher global state (desktop entries come from AppState::applications)
