@@ -19,16 +19,17 @@
   - **Task 2** `18c88f0` — `Theme::font_ui` (`"Inter"`) рядом с
     `font_mono`; тест `theme_default_font_ui_is_inter`. Поле есть,
     **потребителей UI ещё нет** (MPRIS-карточка Task 9).
-  - **Task 6** — per-app stream mute в `services/audio` (**код готов,
-    коммит нет**): `AudioStream`, `ToggleStreamMute`,
+  - **Task 6** `984c799` — per-app stream mute в `services/audio`
+    (принят+закоммичен 2026-07-21): `AudioStream`, `ToggleStreamMute`,
     `parse_pw_dump_streams` / `find_stream_for_player`,
-    `toggle_stream_mute_for_player`. Только
-    `audio/{types,pw_dump,mod}.rs`. Live:
-    `media.class == "Stream/Output/Audio"`. Отчёт
-    `orchestration/reports/zed-report-6.md`. Judge: crate-root
-    re-export `AudioStream` в `lib.rs` **нет** — тип через
-    `chronos_services::audio::AudioStream`. Commit list: **не**
-    тащить `lib.rs`/`net_stats`.
+    `toggle_stream_mute_for_player`. Только `audio/{types,pw_dump,mod}.rs`
+    (lib.rs НЕ тронут). Приёмка: 24 audio + 143 services теста зелёные
+    (прогнал сам), build чист, живой `pw-dump` (49 стримов,
+    `Stream/Output/Audio`, Vivaldi-матч). crate-root re-export
+    `AudioStream` в `lib.rs` **нет** и не нужен (панель зовёт
+    `toggle_stream_mute_for_player`, тип ей не виден) — отчёт Zed это
+    место переврал (заявил реэкспорт, которого нет). Live mute-клик
+    отложен в Task 9. Отчёт: `report-log/zed-report-6.md`.
   - **Task 7** `da744a2` — оконный скелет `side_panel_right/`
     (namespace, 300×1410, pult y=30). Smoke-hook **не** в product.
     Отчёт: `orchestration/reports/hermes-report-7.md`.
@@ -42,8 +43,9 @@ MPRIS v1 без прогресс-бара; switch user disabled-стаб; log ou
   - **✅ `ccf-gpui-widgets` recon** — вендор ОТЛОЖЕН (Hermes).
   Source ahead на 2 коммита; dep из `crates/app` + пилоты — отдельно.
 
-**3. Working tree — разводить поимённым add.**
-Task 6 audio uncommitted; не смешивать с чужим WIP в shared-файлах.
+**3. Working tree — чисто по капстоуну.** T1/T2/T6/T7 закоммичены;
+некапстоунный шум остаётся (skills/*, launcher docs move, _ds/) — не
+мешать в код-коммиты.
 
 ---
 
