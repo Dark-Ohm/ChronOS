@@ -1314,13 +1314,20 @@ git commit -m "services : audio — per-app stream mute (ToggleStreamMute + pw-d
 ## Task 7: `side_panel_right` window module — open/close/toggle skeleton
 
 > **DONE `da744a2` (2026-07-21).** Steps below are a record; do not re-scaffold.
+>
+> **Registration errata (landed fact):** app crate is a **binary**. Shell
+> modules are declared with `mod side_panel_right;` +
+> `side_panel_right::init(cx);` in **`crates/app/src/main.rs`** only.
+> `crates/app/src/lib.rs` exports only `monitor` / `notifications` /
+> `state` for tests — **do not** add panel modules there. Plan text that
+> still says `lib.rs` / `pub mod` / `chronos-app` is historical; follow
+> the errata.
 
-**Files:**
+**Files (as landed):**
 - Create: `crates/app/src/side_panel_right/mod.rs`
 - Create: `crates/app/src/side_panel_right/view.rs`
-- Modify: `crates/app/src/main.rs` (call `side_panel_right::init(cx)`)
-- Modify: `crates/app/src/lib.rs` or equivalent module root that declares
-  `pub mod bar;` etc. — add `pub mod side_panel_right;`
+- Modify: `crates/app/src/main.rs` — `mod side_panel_right;` + `init(cx)`
+- ~~`crates/app/src/lib.rs`~~ — **not used** for this module (see errata)
 
 **Interfaces:**
 - Produces: `pub fn init(cx: &mut App)`, `pub fn toggle(_window: &mut
@@ -1330,13 +1337,15 @@ git commit -m "services : audio — per-app stream mute (ToggleStreamMute + pw-d
   &mut App)`, `pub struct SidePanelRightView` (empty shell this task,
   filled by Tasks 9–11).
 - Consumes: `crate::monitor::pult_display` (existing).
+- **No public open path in product yet** — `toggle` is not wired to bar
+  or IPC; live smoke used a temporary env hook that was **not** committed.
 
 - [x] **Step 1: Confirm the module registration point**
 
-Run: `grep -n "pub mod bar\|pub mod launcher\|pub mod system_popup" crates/app/src/lib.rs`
-Expected: a list of `pub mod` lines — add the new module in the same
-list, alphabetically near `side_panel_right`'s neighbors is fine, exact
-position doesn't matter.
+~~`grep … crates/app/src/lib.rs`~~ **stale** — binary modules live in
+`main.rs` (`mod bar;`, `mod system_popup;`, …). Landed: `main.rs`
+`mod side_panel_right;` + `side_panel_right::init(cx);` next to other
+popups.
 
 - [x] **Step 2: Write `view.rs` — minimal renderable shell**
 
@@ -1491,35 +1500,35 @@ pub fn init(cx: &mut App) {
 
 - [x] **Step 4: Register the module**
 
-In `crates/app/src/lib.rs`, add `pub mod side_panel_right;` next to the
-other `pub mod` declarations.
+~~`lib.rs` `pub mod`~~ **stale** — only:
 
-In `crates/app/src/main.rs`, find the block that calls `system_popup::init(cx)`
-(or equivalent — grep `::init(cx)` in `main.rs` to find the exact call
-site) and add `side_panel_right::init(cx);` next to it.
+```text
+// crates/app/src/main.rs
+mod side_panel_right;
+// …
+side_panel_right::init(cx);
+```
 
 - [x] **Step 5: Build**
 
-Run: `cargo build --workspace`
-Expected: clean build.
+Run: `cargo build --release -p chronos` (package name **`chronos`**, not
+`chronos-app`). Expected: clean build.
 
 - [x] **Step 6: Live smoke — window opens and closes on toggle**
 
-Run: `RUST_LOG=info cargo run --release --bin chronos-app 2>&1 | tee /tmp/side-panel-smoke.log &`
-then trigger `side_panel_right::toggle` manually (bind it to a scratch
-keypress in `crates/app/src/keymap` or your Hyprland test config — do not
-wire it permanently yet, that's Task 9's bar-widget-click target). Confirm
-via `grim` screenshot that a 300px-wide panel appears on the right edge,
-full height, and a second toggle removes it.
-
-Expected: panel visible in the screenshot, log shows no `remove_window`
-errors, second toggle closes it cleanly (screenshot after shows it gone).
+Landed evidence (`hermes-report-7.md` + grim): release binary,
+`namespace: side_panel_right`, `xywh: … 300 1410` on pult right edge,
+residual 0 after close. ~~`cargo run --bin chronos-app`~~ stale name —
+binary is `chronos`. Permanent bar/IPC bind = Task 9; smoke used a
+temporary non-committed trigger.
 
 - [x] **Step 7: Commit**
 
 ```bash
-git add crates/app/src/side_panel_right crates/app/src/lib.rs crates/app/src/main.rs
+git add crates/app/src/side_panel_right crates/app/src/main.rs
+# do NOT stage lib.rs for this task
 git commit -m "app : side_panel_right — оконный скелет (layer-shell overlay, toggle/close_this)"
+# landed: da744a2
 ```
 
 ---

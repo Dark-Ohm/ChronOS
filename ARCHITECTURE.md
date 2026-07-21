@@ -99,7 +99,8 @@ No manual `wl_surface` calls — GPUI encapsulates the protocol.
 Three real live-smoke bugs (`updates_popup`, `notifications`, launcher — see
 `DECISIONS.log` 2026-07-19) converged on two standing rules for every
 layer-shell popup with dynamic content (`updates_popup`, `volume_popup`,
-`notifications`, `tray_menu`, and anything added later):
+`notifications`, `tray_menu`, `side_panel_right` skeleton `da744a2`, and
+anything added later):
 
 1. **Sizing: hard `.max_h(px(N)).overflow_hidden()` clip on variable-length
    list content, never a pixel-counted height estimate.** Mandatory chrome
@@ -203,16 +204,15 @@ shared sampling is `chronos_services::net_stats`.
 `panic = "unwind"` — a `unwrap()` in a listener thread must not kill the shell.
 Services use `Result`/`expect` rigorously.
 
-**Audio (WirePlumber MVP, 2026-07-17 + stream mute 2026-07-21):** default
-sink/source via `wpctl` poll (`AudioState` / `EndpointState`); device list
-and **application playback streams** via `pw-dump`
-(`AudioDevice` / `AudioStream`, `media.class == "Stream/Output/Audio"`).
-Per-app mute for the right panel: `AudioCommand::ToggleStreamMute(id)` →
-`wpctl set-mute <id> toggle`; resolve player → stream with
-`find_stream_for_player` (case-insensitive substring on
-`application.name`/`node_name`; first match; `None` = silent no-op).
-UI wiring is separate (panel Task 9). Native `pipewire` crate still deferred
-— see DECISIONS.log 2026-07-17 / 2026-07-21.
+**Audio (WirePlumber MVP, 2026-07-17):** default sink/source via `wpctl`
+poll (`AudioState` / `EndpointState`); device list via `pw-dump`
+(`AudioDevice`). **Per-app playback streams / `ToggleStreamMute` (panel
+Task 6)** — decided (DECISIONS.log 2026-07-21: stay on `wpctl`+`pw-dump`,
+no native pipewire) and **implemented in the working tree**
+(`AudioStream`, `parse_pw_dump_streams`, `find_stream_for_player`,
+`AudioCommand::ToggleStreamMute`) but **not on master until accepted
+and committed** — do not treat stream mute as shipped API. UI button =
+panel Task 9 (also open).
 
 ## 8. Performance (144 FPS)
 
