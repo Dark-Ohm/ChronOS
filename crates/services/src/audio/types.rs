@@ -16,6 +16,19 @@ pub struct AudioDevice {
     pub is_default: bool,
 }
 
+/// One PipeWire playback stream belonging to an application (e.g. a
+/// browser tab, a media player) — distinct from [`AudioDevice`] (a
+/// sink/source hardware endpoint).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AudioStream {
+    /// PipeWire object id — argument to `wpctl set-mute <id> toggle`.
+    pub id: u32,
+    /// `application.name` from node props (may be empty).
+    pub application_name: String,
+    /// Technical `node.name`.
+    pub node_name: String,
+}
+
 /// One PipeWire endpoint (default sink or default source).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EndpointState {
@@ -45,6 +58,9 @@ pub enum AudioCommand {
     SetSourceVolume(f64),
     ToggleSinkMute,
     ToggleSourceMute,
+    /// Mute/unmute one application's PipeWire playback stream by its
+    /// `pw-dump` node id (see `pw_dump::find_stream_for_player`).
+    ToggleStreamMute(u32),
     /// `wpctl set-default <id>` for a sink node id from `pw-dump`.
     SetDefaultSink(u32),
     /// `wpctl set-default <id>` for a source node id from `pw-dump`.

@@ -7,7 +7,7 @@ use std::process::Command;
 
 use serde_json::Value;
 
-use super::types::AudioDevice;
+use super::types::{AudioDevice, AudioStream};
 
 /// Shell out to `pw-dump` and return stdout.
 pub fn run_pw_dump() -> anyhow::Result<String> {
@@ -133,6 +133,76 @@ fn extract_defaults(arr: &[Value]) -> (Option<String>, Option<String>) {
     (sink, source)
 }
 
+/// Parse `pw-dump` JSON for application playback streams
+/// (`media.class == "Stream/Output/Audio"`), distinct from sink/source
+/// hardware devices parsed by [`parse_pw_dump_devices`].
+pub fn parse_pw_dump_streams(json: &str) -> anyhow::Result<Vec<AudioStream>> {
+    let root: Value = serde_json::from_str(json)
+        .map_err(|e| anyhow::anyhow!("pw-dump JSON parse: {e}"))?;
+    let arr = root
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("pw-dump root is not an array"))?;
+
+    let mut streams = Vec::new();
+    for obj in arr {
+        let Some(id) = obj.get("id").and_then(|v| v.as_u64()).map(|n| n as u32) else {
+            continue;
+        };
+        let props = obj
+            .get("info")
+            .and_then(|i| i.get("props"))
+            .and_then(|p| p.as_object());
+        let Some(props) = props else {
+            continue;
+        };
+        let media_class = props
+            .get("media.class")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if media_class != "Stream/Output/Audio" {
+            continue;
+        }
+        let application_name = props
+            .get("application.name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let node_name = props
+            .get("node.name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        streams.push(AudioStream {
+            id,
+            application_name,
+            node_name,
+        });
+    }
+    Ok(streams)
+}
+
+/// Match a stream to `player_hint` (an MPRIS player identity string, e.g.
+/// `MprisState::player_id`) by case-insensitive substring against either
+/// `application_name` or `node_name`.
+///
+/// No 1:1 guarantee — a browser with multiple tabs/streams, or an app whose
+/// PipeWire name doesn't resemble its MPRIS identity, will not match (or will
+/// match the first of many). Callers must treat `None` as "nothing to mute"
+/// and degrade silently, never panic.
+pub fn find_stream_for_player(streams: &[AudioStream], player_hint: &str) -> Option<u32> {
+    let hint = player_hint.to_lowercase();
+    if hint.is_empty() {
+        return None;
+    }
+    streams
+        .iter()
+        .find(|s| {
+            s.application_name.to_lowercase().contains(&hint)
+                || s.node_name.to_lowercase().contains(&hint)
+        })
+        .map(|s| s.id)
+}
+
 /// Metadata values are usually `{ "name": "..." }` (Spa:String:JSON). Also
 /// accept a bare string or a JSON-encoded string of that object.
 fn metadata_value_name(value: Option<&Value>) -> Option<String> {
@@ -214,5 +284,69 @@ mod tests {
     #[test]
     fn parse_garbage_errors() {
         assert!(parse_pw_dump_devices("not json").is_err());
+    }
+}
+
+/// Stream fixtures shape confirmed live 2026-07-21 on this machine:
+/// `media.class == "Stream/Output/Audio"`, `application.name` populated
+/// (e.g. "Vivaldi" × many concurrent tab streams), sinks excluded.
+#[cfg(test)]
+mod stream_tests {
+    use super::*;
+
+    // Minimal synthetic fixture matching live schema (Step 1 probe).
+    const FIXTURE: &str = r#"[
+        {
+            "id": 142,
+            "info": {
+                "props": {
+                    "media.class": "Stream/Output/Audio",
+                    "application.name": "Vivaldi",
+                    "node.name": "Vivaldi",
+                    "node.description": "Playback"
+                }
+            }
+        },
+        {
+            "id": 143,
+            "info": {
+                "props": {
+                    "media.class": "Stream/Output/Audio",
+                    "application.name": "Spotify",
+                    "node.name": "spotify",
+                    "node.description": "Spotify"
+                }
+            }
+        },
+        {
+            "id": 55,
+            "info": {
+                "props": {
+                    "media.class": "Audio/Sink",
+                    "node.name": "alsa_output.pci-0000_00_1f.3.analog-stereo"
+                }
+            }
+        }
+    ]"#;
+
+    #[test]
+    fn parses_only_output_audio_streams_not_sinks() {
+        let streams = parse_pw_dump_streams(FIXTURE).unwrap();
+        assert_eq!(streams.len(), 2);
+        assert!(streams.iter().all(|s| s.id != 55));
+    }
+
+    #[test]
+    fn finds_stream_by_case_insensitive_application_name_match() {
+        let streams = parse_pw_dump_streams(FIXTURE).unwrap();
+        let id = find_stream_for_player(&streams, "vivaldi");
+        assert_eq!(id, Some(142));
+    }
+
+    #[test]
+    fn returns_none_when_no_stream_matches_hint() {
+        let streams = parse_pw_dump_streams(FIXTURE).unwrap();
+        let id = find_stream_for_player(&streams, "firefox");
+        assert_eq!(id, None);
     }
 }

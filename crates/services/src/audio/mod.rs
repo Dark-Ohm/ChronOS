@@ -20,7 +20,7 @@ use tracing::{info, warn};
 
 use crate::Service;
 use crate::ServiceStatus;
-pub use types::{AudioCommand, AudioDevice, AudioState, EndpointState};
+pub use types::{AudioCommand, AudioDevice, AudioState, AudioStream, EndpointState};
 pub use wpctl::{
     clamp_volume, format_set_default_args, format_set_mute_toggle_args, format_set_volume_args,
     parse_get_volume, parse_node_description,
@@ -82,6 +82,43 @@ impl AudioSubscriber {
                 }
                 Err(e) => {
                     warn!("AudioSubscriber re-read after command failed: {e:?}");
+                }
+            }
+        });
+    }
+
+    /// Resolve `player_hint` to a live PipeWire stream and toggle its mute.
+    ///
+    /// No-op (logged, not erred) if no matching stream is found — expected for
+    /// many-tabs / mismatched MPRIS↔PipeWire names; see
+    /// [`pw_dump::find_stream_for_player`].
+    pub fn toggle_stream_mute_for_player(&self, player_hint: String) {
+        let this = self.clone();
+        self.runtime.spawn(async move {
+            let json = match tokio::task::spawn_blocking(pw_dump::run_pw_dump).await {
+                Ok(Ok(json)) => json,
+                Ok(Err(e)) => {
+                    warn!("toggle_stream_mute_for_player: pw-dump failed: {e}");
+                    return;
+                }
+                Err(e) => {
+                    warn!("toggle_stream_mute_for_player: join error: {e}");
+                    return;
+                }
+            };
+            let streams = match pw_dump::parse_pw_dump_streams(&json) {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!("toggle_stream_mute_for_player: parse failed: {e}");
+                    return;
+                }
+            };
+            match pw_dump::find_stream_for_player(&streams, &player_hint) {
+                Some(id) => this.dispatch(AudioCommand::ToggleStreamMute(id)),
+                None => {
+                    info!(
+                        "toggle_stream_mute_for_player: no PipeWire stream matched '{player_hint}'"
+                    );
                 }
             }
         });
@@ -189,6 +226,7 @@ pub fn command_to_wpctl_args(cmd: &AudioCommand) -> Vec<String> {
         AudioCommand::SetSourceVolume(v) => format_set_volume_args(DEFAULT_SOURCE, *v),
         AudioCommand::ToggleSinkMute => format_set_mute_toggle_args(DEFAULT_SINK),
         AudioCommand::ToggleSourceMute => format_set_mute_toggle_args(DEFAULT_SOURCE),
+        AudioCommand::ToggleStreamMute(id) => format_set_mute_toggle_args(&id.to_string()),
         AudioCommand::SetDefaultSink(id) | AudioCommand::SetDefaultSource(id) => {
             format_set_default_args(*id)
         }
@@ -296,5 +334,11 @@ mod tests {
     fn command_to_wpctl_args_set_default_source() {
         let args = command_to_wpctl_args(&AudioCommand::SetDefaultSource(46));
         assert_eq!(args, vec!["set-default", "46"]);
+    }
+
+    #[test]
+    fn command_to_wpctl_args_stream_mute_targets_the_given_id() {
+        let args = command_to_wpctl_args(&AudioCommand::ToggleStreamMute(142));
+        assert_eq!(args, vec!["set-mute", "142", "toggle"]);
     }
 }
