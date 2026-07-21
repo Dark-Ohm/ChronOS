@@ -8,8 +8,10 @@
 //! **No Esc-to-close** — matches the real convention already in this
 //! codebase (`volume_popup`/`system_popup` have no Esc handler either,
 //! `KeyboardInteractivity::None` doesn't deliver key events). Dismiss is
-//! re-toggle / click-away (pinned) / mouse-leave debounce (peek, task 8).
+//! re-toggle / click-away (pinned) / mouse-leave debounce (peek).
 
+mod hover_strip;
+mod mpris_card;
 pub mod view;
 
 use gpui::{
@@ -24,9 +26,34 @@ const PANEL_WIDTH: f32 = 300.;
 #[derive(Default)]
 pub struct SidePanelRightState {
     handle: Option<WindowHandle<SidePanelRightView>>,
+    /// `true` when opened by hotkey/bar-click (`toggle` / `open_pinned`) —
+    /// stays open until re-toggled. `false` when opened by hover — closes
+    /// on mouse-leave debounce unless a pin request arrives while peeked.
+    pinned: bool,
+    /// Bumped on hover-enter (strip or panel). Leave schedules a close
+    /// only if this value is still unchanged after the debounce window.
+    peek_generation: u64,
 }
 
 impl Global for SidePanelRightState {}
+
+/// Pure decision: should a peek-leave request close the panel?
+fn should_close_on_peek_leave(state: &SidePanelRightState) -> bool {
+    !state.pinned
+}
+
+/// Cursor entered strip or panel — cancel any pending peek-close.
+pub(crate) fn hold_peek(cx: &mut App) {
+    let state = cx.global_mut::<SidePanelRightState>();
+    state.peek_generation = state.peek_generation.wrapping_add(1);
+}
+
+/// Cursor left strip or panel — close after debounce if still unpinned
+/// and no later enter bumped the generation.
+pub(crate) fn schedule_release_peek(cx: &mut App) {
+    let generation = cx.global::<SidePanelRightState>().peek_generation;
+    view::schedule_release_from_app(cx, generation);
+}
 
 fn window_options(display_id: Option<DisplayId>) -> WindowOptions {
     WindowOptions {
@@ -52,9 +79,13 @@ fn window_options(display_id: Option<DisplayId>) -> WindowOptions {
     }
 }
 
-/// Open pinned (idempotent — no-op if already open).
-pub fn open_pinned(cx: &mut App) {
+fn open_window(cx: &mut App, pinned: bool) {
     if cx.global::<SidePanelRightState>().handle.is_some() {
+        if pinned {
+            // Already open as peek → upgrade to pin without re-open.
+            cx.global_mut::<SidePanelRightState>().pinned = true;
+            tracing::info!("side_panel_right: upgraded peek → pinned");
+        }
         return;
     }
     let display_id = crate::monitor::pult_display(cx);
@@ -62,11 +93,38 @@ pub fn open_pinned(cx: &mut App) {
         view_cx.new(|cx| SidePanelRightView::new(cx))
     }) {
         Ok(handle) => {
-            cx.global_mut::<SidePanelRightState>().handle = Some(handle);
-            tracing::info!("side_panel_right: opened pinned");
+            let state = cx.global_mut::<SidePanelRightState>();
+            state.handle = Some(handle);
+            state.pinned = pinned;
+            tracing::info!(
+                "side_panel_right: opened ({})",
+                if pinned { "pinned" } else { "peek" }
+            );
         }
-        Err(err) => tracing::warn!("side_panel_right: failed to open: {err}"),
+        Err(err) => tracing::warn!(
+            "side_panel_right: failed to open ({}): {err}",
+            if pinned { "pinned" } else { "peek" }
+        ),
     }
+}
+
+/// Open pinned (idempotent — no-op if already open; upgrades peek → pin).
+pub fn open_pinned(cx: &mut App) {
+    open_window(cx, true);
+}
+
+/// Open in peek mode (hover entered the strip). No-op if already open in
+/// either mode (does not demote pin to peek).
+pub fn open_peek(cx: &mut App) {
+    open_window(cx, false);
+}
+
+/// Mouse left the strip and the panel. Closes only if not pinned.
+pub fn close_peek_if_not_pinned(cx: &mut App) {
+    if !should_close_on_peek_leave(cx.global::<SidePanelRightState>()) {
+        return;
+    }
+    close(cx);
 }
 
 /// Close from outside (bar toggle / hotkey).
@@ -78,6 +136,7 @@ pub fn open_pinned(cx: &mut App) {
 /// the handle was taken but the window never closed, i.e. a ghost.
 pub fn close(cx: &mut App) {
     if let Some(handle) = cx.global_mut::<SidePanelRightState>().handle.take() {
+        cx.global_mut::<SidePanelRightState>().pinned = false;
         match handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
             Ok(()) => {
                 tracing::info!("side_panel_right: closed");
@@ -86,6 +145,8 @@ pub fn close(cx: &mut App) {
                 "side_panel_right: close() could not reach the window ({e}) — possible ghost"
             ),
         }
+    } else {
+        cx.global_mut::<SidePanelRightState>().pinned = false;
     }
 }
 
@@ -102,7 +163,9 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
         .map(|h| **h == this)
         .unwrap_or(false);
     if tracked {
-        cx.global_mut::<SidePanelRightState>().handle.take();
+        let state = cx.global_mut::<SidePanelRightState>();
+        state.handle.take();
+        state.pinned = false;
     }
     window.remove_window();
     tracing::info!("side_panel_right: close_this");
@@ -119,4 +182,41 @@ pub fn toggle(_window: &mut Window, cx: &mut App) {
 
 pub fn init(cx: &mut App) {
     cx.set_global(SidePanelRightState::default());
+    // Defer the strip one tick so `cx.displays()` / pult uuid match what
+    // `bar::init` sees a moment later. Opening the strip synchronously in
+    // `main` before the bar historically landed it on the wrong output
+    // (HDMI-A-1) while the panel+bar bound to DP-1 (pult).
+    cx.spawn(async move |cx| {
+        cx.background_executor()
+            .timer(std::time::Duration::from_millis(50))
+            .await;
+        cx.update(|cx| {
+            hover_strip::init_hover_strip(cx);
+            // Optional smoke: pin-open for grim without hover/ydotool.
+            // Not product wiring — only when env is set.
+            if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL").is_some() {
+                open_pinned(cx);
+            }
+        });
+    })
+    .detach();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn peek_close_request_is_noop_while_pinned() {
+        let mut state = SidePanelRightState::default();
+        state.pinned = true;
+        assert!(!should_close_on_peek_leave(&state));
+    }
+
+    #[test]
+    fn peek_close_request_closes_when_not_pinned() {
+        let mut state = SidePanelRightState::default();
+        state.pinned = false;
+        assert!(should_close_on_peek_leave(&state));
+    }
 }
