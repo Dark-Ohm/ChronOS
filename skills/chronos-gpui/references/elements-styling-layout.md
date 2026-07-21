@@ -297,7 +297,7 @@ Truncation needs a **definite width** at layout time (`text.rs` layout path). Wi
 
 - `font_family(name)` — `styled.rs:708-711`
 - `font(Font)` — `styled.rs:720+`
-- No dedicated `.monospace()` helper. Use an explicit family (fork aliases `.ZedMono` in text system; ChronOS uses theme `font_mono` string separately).
+- No dedicated `.monospace()` helper. Use an explicit family (fork aliases `.ZedMono` in text system; ChronOS uses theme `font_mono` / `font_ui` strings — `"JetBrains Mono"` / `"Inter"`).
 
 ### Selection
 

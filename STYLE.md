@@ -37,10 +37,11 @@ schemes.rs`** (`Theme` в `crates/ui/src/theme/mod.rs`). Любой виджет
    (red/maroon), warning `f9e2af` (yellow), success `a6e3a1` (green), info
    `89b4fa` (blue), alt/teal `94e2d5`. Переписать base08–0c под Catppuccin
    Mocha — тогда бейджи/updates/battery-цвета совпадут с мокапами.
-2. **Нет font-family токена.** Мокап: JetBrains Mono для mono-элементов
-   (часы, `78%`, имя проекта). Добавить в `Theme` поле `font_mono`
-   (`"JetBrains Mono"`) + опц. `font_ui` (Inter/system). Mono-виджеты
-   берут `font_mono`, остальные — дефолт.
+2. **~~Нет font-family токена~~ — ЗАКРЫТО.** `Theme::font_mono`
+   (`"JetBrains Mono"`, `3e04264`) + `Theme::font_ui` (`"Inter"`,
+   `18c88f0`). Mono-виджеты (часы, `78%`, скорости) → `font_mono`;
+   UI-текст (лейблы/заголовки панели) → `font_ui`. Пока большинство
+   surfaces ещё на GPUI default — миграция по касанию, не разом.
 3. **Бар: высота 32 → 30.** `BAR_HEIGHT` в `crates/luau/src/bar.rs`.
 4. **Фон бара:** `bar/mod.rs` рендерит `bg.primary` → должно быть
    `bg.tertiary` (#181825).
@@ -71,7 +72,8 @@ schemes.rs`** (`Theme` в `crates/ui/src/theme/mod.rs`). Любой виджет
 ## Дисциплина (чтоб последующее рисовалось как надо)
 
 - **Токен, не хардкод.** Каждый цвет — `theme.*`. Ноль сырых hex/HSLA в
-  виджетах. Радиус — `theme.radius`/`radius_lg`. Mono-шрифт — `font_mono`.
+  виджетах. Радиус — `theme.radius`/`radius_lg`. Шрифты — `font_mono`
+  (цифры/код) и `font_ui` (лейблы/body), не строковый литерал family.
 - **Акцент живёт в линиях/glow/марках, НЕ в заливке.** `#007acc` — сигилы,
   бордеры, glow-рёбра, активные штрихи; не заливать им площади. (То же
   правило в светлой теме — см. `DECISIONS.log` 2026-07-19.)
@@ -93,9 +95,10 @@ schemes.rs`** (`Theme` в `crates/ui/src/theme/mod.rs`). Любой виджет
 
 ## Порядок работ
 
-1. **Токен-фундамент** (агент): status.* → Catppuccin, `font_mono`,
-   BAR_HEIGHT 30, бар на `bg.tertiary`, de-hardcode dock. Отдельный
-   самодостаточный коммит ДО лэйаута.
+1. **Токен-фундамент** — **сделано** (`3e04264` + `font_ui` `18c88f0`):
+   status.* → Catppuccin, `font_mono`/`font_ui`, BAR_HEIGHT 30, бар на
+   `bg.tertiary`. Dock de-hardcode — при касании (`dock.rs` ещё в
+   «нарушениях» ниже).
 2. **Реконсиляция набора виджетов** (решения пользователя — Tier 2):
    мокап рассинхронен с живым набором (не показывает tray/updates/system/
    battery; добавляет up/down + accent-лого; часы центр→право?; MPRIS где?;

@@ -12,19 +12,19 @@
 
 ### АКТУАЛЬНОЕ ПОЛЕ (2026-07-21)
 
-**1. Правая боковая панель — Task 7 (оконный скелет) ПРИНЯТ.**
-Коммит `da744a2` — `crates/app/src/side_panel_right/{mod,view}.rs` +
-`main.rs` (mod+init). Live: namespace `side_panel_right`, 300×1410
-у правого края pult (y=30 под баром), open/close residual 0, close с
-match+warn (не `let _ =`). Smoke-hook **не** в product. Отчёт:
-`orchestration/reports/hermes-report-7.md` (+ grim в
-`orchestration/reports/hermes-7-smoke/`). Дальше: Tasks 1–6 / 8–12
-по плану `docs/superpowers/plans/2026-07-20-right-side-panel.md`
-(спека `…-right-side-panel-design.md`). В WIP-дереве могут лежать
-чужие куски Task 2 (`font_ui`) / Task 6 (audio) — **не** смешивать с
-Task 7. Ключевые решения плана: MPRIS v1 без прогресс-бара; switch
-user disabled-стаб; log out = `hyprctl dispatch exit`; без Esc;
-палитра метров сине-циан; `net_stats` — Task 1.
+**1. Правая боковая панель — капстоун в полёте (2026-07-21).**
+План `docs/superpowers/plans/2026-07-20-right-side-panel.md`, спека
+`…-right-side-panel-design.md`. Принято:
+  - **Task 1** `dbce8ac` — `net_stats` shared-модуль + бар-виджет.
+  - **Task 2** `18c88f0` — `Theme::font_ui` (`"Inter"`) рядом с
+    `font_mono`; тест `theme_default_font_ui_is_inter`. Поле есть,
+    **потребителей UI ещё нет** (MPRIS-карточка Task 9).
+  - **Task 7** `da744a2` — оконный скелет `side_panel_right/`
+    (namespace, 300×1410, pult y=30). Smoke-hook **не** в product.
+    Отчёт: `orchestration/reports/hermes-report-7.md`.
+Дальше: Tasks 3–6 / 8–12. Ключевые решения плана: MPRIS v1 без
+прогресс-бара; switch user disabled-стаб; log out =
+`hyprctl dispatch exit`; без Esc; палитра метров сине-циан.
 
 **2. Вендор-волна крейтов — ЗАКРЫТА 3/3 (2026-07-21).**
   - **✅ `gpui-animation`** — Source `66cd816` (Grok).
@@ -32,17 +32,9 @@ user disabled-стаб; log out = `hyprctl dispatch exit`; без Esc;
   - **✅ `ccf-gpui-widgets` recon** — вендор ОТЛОЖЕН (Hermes).
   Source ahead на 2 коммита; dep из `crates/app` + пилоты — отдельно.
 
-**3. Капстоун «правая панель» — Task 1 СДЕЛАН (2026-07-21).**
-  - **`dbce8ac` `net_stats`** — сэмплинг скорости вынесен в
-    `crates/services/src/net_stats.rs`; бар-виджет на shared-модуле;
-    5 тестов services + 14 UI-тестов бара. Отчёт:
-    `report-log/cline-report-1.md`. (Исполнено Архитектором под
-    именем Cline — точность зоны.)
-  - **В working tree чужой WIP** (не коммитить вслепую):
-    `services/audio/*` (AudioStream — Task 6?), `side_panel_right/`,
-    `main.rs`. Развести перед следующим коммитом shared-файлов.
-  - Task 2–12 плана — **не начаты** (кроме возможных partial WIP
-    выше). Cline свободен.
+**3. Working tree — чужой WIP (не коммитить вслепую).**
+`services/audio/*` (Task 6?), правки `main.rs` / `side_panel_right/`
+сверх `da744a2`. Развести перед shared-коммитами.
 
 ---
 
