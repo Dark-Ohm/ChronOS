@@ -1,12 +1,10 @@
-//! Power row: Switch user (always disabled — no login manager), Log out,
-//! Restart, Shutdown. Arm/confirm instead of a modal: first click arms
-//! (label → "Confirm?" for 3s), second click within the window executes,
-//! anything else disarms.
+//! Power footer grid: Switch / Log out / Restart / Power.
+//! Visual from mockup (4-col grid, red Power). Arm/confirm 3s preserved.
 
 use std::time::Duration;
 
-use chronos_ui::Theme;
-use gpui::{Context, IntoElement, div, prelude::*, px};
+use chrono::{Datelike, Local};
+use gpui::{Context, IntoElement, div, img, prelude::*, px, rgb, rgba};
 
 use crate::side_panel_right::view::SidePanelRightView;
 
@@ -50,85 +48,155 @@ fn label_for(action: PowerAction, arm: &ArmState) -> &'static str {
     }
 }
 
-fn power_button(action: PowerAction, label: &str, theme: &Theme) -> gpui::Stateful<gpui::Div> {
-    let armed = matches!(label, "Confirm?");
+/// Russian month abbreviations (same as bar clock).
+const MONTHS_RU: [&str; 12] = [
+    "янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек",
+];
+
+fn clock_label() -> String {
+    let now = Local::now();
+    let month_idx = now.month0() as usize;
+    format!(
+        "{} · {} {}",
+        now.format("%H:%M"),
+        now.day(),
+        MONTHS_RU.get(month_idx).copied().unwrap_or("???"),
+    )
+}
+
+fn power_tile(
+    id: &'static str,
+    icon: &'static str,
+    label: &str,
+    danger: bool,
+    disabled: bool,
+    armed: bool,
+) -> gpui::Stateful<gpui::Div> {
+    let border = if danger || armed {
+        rgb(0xf3_8b_a8)
+    } else {
+        rgb(0x45_47_5a)
+    };
+    let text = if disabled {
+        rgb(0x6c_70_86)
+    } else if danger || armed {
+        rgb(0xf3_8b_a8)
+    } else {
+        rgb(0xcd_d6_f4)
+    };
+
     div()
-        .id(("power-btn", action as usize))
+        .id(id)
         .flex_1()
         .flex()
-        .flex_col()
         .items_center()
-        .gap(px(6.))
-        .p(px(10.))
-        .rounded(theme.radius)
-        .cursor_pointer()
-        .text_color(if armed {
-            theme.status.warning
-        } else {
-            theme.text.secondary
+        .justify_center()
+        .gap(px(4.))
+        .py(px(5.))
+        .rounded(px(5.))
+        .border_1()
+        .border_color(border)
+        .text_color(text)
+        .text_size(px(10.5))
+        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .when(!disabled, |d| {
+            d.cursor_pointer().hover(|s| {
+                if danger {
+                    s.bg(rgba(0xf38b_a81f))
+                } else {
+                    s.bg(rgb(0x23_23_36)).border_color(rgb(0x00_7a_cc))
+                }
+            })
         })
-        .text_size(px(8.5))
-        .font_family(theme.font_mono)
-        .hover(|s| s.bg(theme.interactive.hover))
-        .when(armed, |d| d.bg(theme.bg.elevated))
+        .when(armed, |d| d.bg(rgba(0xf38b_a81f)))
+        .child(img(icon).w(px(10.)).h(px(10.)))
         .child(label.to_string())
 }
 
-pub fn render_power_row(
-    theme: &Theme,
+/// Full footer: net status line (static summary + live clock) + power grid.
+pub fn render_footer(
+    net_summary: &str,
     arm: ArmState,
     cx: &mut Context<SidePanelRightView>,
 ) -> impl IntoElement {
+    let clock = clock_label();
+
     div()
+        .flex_none()
+        .border_t_1()
+        .border_color(rgb(0x23_23_36))
+        .bg(rgb(0x1e_1e_2e))
+        .px(px(12.))
+        .py(px(10.))
         .flex()
-        .gap(px(2.))
-        .mt_auto()
+        .flex_col()
+        .gap(px(8.))
         .child(
-            // Switch user — always disabled, never armed, no listener.
-            // Same tile shape as the three action buttons so the row reads as
-            // four even buttons.
             div()
-                .flex_1()
                 .flex()
-                .flex_col()
                 .items_center()
-                .gap(px(6.))
-                .p(px(10.))
-                .rounded(theme.radius)
-                .text_color(theme.text.disabled)
-                .text_size(px(8.5))
-                .font_family(theme.font_mono)
-                .child("Switch user"),
+                .justify_between()
+                .text_size(px(10.5))
+                .text_color(rgb(0x6c_70_86))
+                .child(net_summary.to_string())
+                .child(
+                    div()
+                        .font_family("JetBrains Mono")
+                        .child(clock),
+                ),
         )
         .child(
-            power_button(
-                PowerAction::LogOut,
-                label_for(PowerAction::LogOut, &arm),
-                theme,
-            )
-            .on_click(cx.listener(move |this, _event, _window, cx| {
-                this.on_power_click(PowerAction::LogOut, cx);
-            })),
-        )
-        .child(
-            power_button(
-                PowerAction::Restart,
-                label_for(PowerAction::Restart, &arm),
-                theme,
-            )
-            .on_click(cx.listener(move |this, _event, _window, cx| {
-                this.on_power_click(PowerAction::Restart, cx);
-            })),
-        )
-        .child(
-            power_button(
-                PowerAction::Shutdown,
-                label_for(PowerAction::Shutdown, &arm),
-                theme,
-            )
-            .on_click(cx.listener(move |this, _event, _window, cx| {
-                this.on_power_click(PowerAction::Shutdown, cx);
-            })),
+            div()
+                .flex()
+                .gap(px(4.))
+                // Switch — always disabled
+                .child(power_tile(
+                    "power-switch",
+                    "icons/users.svg",
+                    "Switch",
+                    false,
+                    true,
+                    false,
+                ))
+                .child(
+                    power_tile(
+                        "power-logout",
+                        "icons/sign-out.svg",
+                        label_for(PowerAction::LogOut, &arm),
+                        false,
+                        false,
+                        arm == ArmState::Armed(PowerAction::LogOut),
+                    )
+                    .on_click(cx.listener(move |this, _event, _window, cx| {
+                        this.on_power_click(PowerAction::LogOut, cx);
+                    })),
+                )
+                .child(
+                    power_tile(
+                        "power-restart",
+                        "icons/arrows-clockwise.svg",
+                        label_for(PowerAction::Restart, &arm),
+                        false,
+                        false,
+                        arm == ArmState::Armed(PowerAction::Restart),
+                    )
+                    .on_click(cx.listener(move |this, _event, _window, cx| {
+                        this.on_power_click(PowerAction::Restart, cx);
+                    })),
+                )
+                .child(
+                    power_tile(
+                        "power-shutdown",
+                        "icons/power.svg",
+                        label_for(PowerAction::Shutdown, &arm),
+                        true,
+                        false,
+                        arm == ArmState::Armed(PowerAction::Shutdown),
+                    )
+                    .on_click(cx.listener(move |this, _event, _window, cx| {
+                        this.on_power_click(PowerAction::Shutdown, cx);
+                    })),
+                ),
         )
 }
 

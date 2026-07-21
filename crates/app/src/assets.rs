@@ -24,6 +24,7 @@ macro_rules! icons {
 
 icons!(
     "arrow-up.svg",
+    "arrows-clockwise.svg",
     "battery.svg",
     "battery-charging.svg",
     "bell.svg",
@@ -34,10 +35,16 @@ icons!(
     "hexagon-sigil.svg",
     "pause.svg",
     "play.svg",
+    "power.svg",
+    "sign-out.svg",
+    "skip-back.svg",
+    "skip-forward.svg",
     "speaker-high.svg",
     "speaker-low.svg",
     "speaker-mute.svg",
     "speaker-none.svg",
+    "users.svg",
+    "x.svg",
 );
 
 pub struct Assets;

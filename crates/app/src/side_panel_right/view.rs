@@ -1,30 +1,33 @@
-//! Right side panel view — MPRIS (T9), spectrum meters (T10), power row (T11).
+//! Right side panel view — sidebar v2 (mockup → layout, flagship rsx sections).
 //!
 //! ## `on_hover` / animation split (fork rule)
 //! Our gpui fork stores a **single** `Option` hover handler per element and
 //! `debug_assert!`s if `.on_hover` is set twice. Consequences:
 //! - Root node: **only** the peek close-debounce `on_hover` (this file).
-//! - Spectrum / power-row are children — they get **no** extra root hover.
+//! - Children: **no** extra root hover.
 //! - Peek motion: state-driven `.transition_when` on an **inner** wrapper.
 
 use std::time::{Duration, Instant};
 
 use chronos_services::net_stats::{self, NetState};
 use chronos_services::{MprisState, Service, SystemResourcesState};
-use chronos_ui::Theme;
 use gpui::{
-    AsyncApp, Context, IntoElement, Render, Window, div, prelude::*, px, rgb,
+    AsyncApp, Context, IntoElement, Render, ScrollHandle, Window, div, prelude::*, px, rgb,
 };
 use gpui_animation::animation::TransitionExt;
 use gpui_animation::transition::general::Linear;
 
+use crate::side_panel_right::disks::render_disks_section;
+use crate::side_panel_right::header::render_header;
 use crate::side_panel_right::mpris_card::render_mpris_card;
+use crate::side_panel_right::permission::render_permission_card;
 use crate::side_panel_right::power_row::{
-    is_confirming_click, on_click as arm_on_click, on_timeout, render_power_row, ArmState,
+    is_confirming_click, on_click as arm_on_click, on_timeout, render_footer, ArmState,
     PowerAction, ARM_TIMEOUT,
 };
 use crate::side_panel_right::spectrum_row::{
-    push_sample, render_spectrum_row, SpectrumHistory,
+    color_cpu, color_gpu, color_net, color_ram, color_value_default, push_sample,
+    render_spectrum_row, SpectrumHistory, H_CPU, H_GPU, H_NET, H_RAM,
 };
 use crate::state::{self, AppState};
 
@@ -32,23 +35,6 @@ use crate::state::{self, AppState};
 const PEEK_LEAVE_DEBOUNCE: Duration = Duration::from_millis(280);
 
 const REVEAL_MS: u64 = 180;
-
-// Plan palette — blue-cyan only (no rainbow).
-fn color_cpu() -> gpui::Hsla {
-    rgb(0x5f_d3_e8).into()
-}
-fn color_ram() -> gpui::Hsla {
-    rgb(0x4f_a3_c9).into()
-}
-fn color_gpu() -> gpui::Hsla {
-    rgb(0x33_63_8a).into()
-}
-fn color_dn() -> gpui::Hsla {
-    rgb(0x7c_c4_e8).into()
-}
-fn color_up() -> gpui::Hsla {
-    rgb(0x3d_6d_94).into()
-}
 
 pub struct SidePanelRightView {
     mpris: MprisState,
@@ -62,6 +48,7 @@ pub struct SidePanelRightView {
     power_arm: ArmState,
     /// State-driven reveal for `transition_when` (not hover-driven).
     revealed: bool,
+    scroll: ScrollHandle,
 }
 
 impl SidePanelRightView {
@@ -114,6 +101,7 @@ impl SidePanelRightView {
             net_ul_history: SpectrumHistory::default(),
             power_arm: ArmState::default(),
             revealed: false,
+            scroll: ScrollHandle::new(),
         }
     }
 
@@ -159,7 +147,6 @@ impl SidePanelRightView {
 
         cx.spawn(async move |view, cx| {
             cx.background_executor().timer(ARM_TIMEOUT).await;
-            // NOT `let _ = view.update(..)` — swallowed Err hid ghost windows.
             match view.update(cx, |view, cx| {
                 if view.power_arm == armed {
                     view.power_arm = on_timeout(armed);
@@ -181,10 +168,14 @@ impl SidePanelRightView {
 impl Render for SidePanelRightView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sample_network();
-        let theme = *Theme::global(cx);
         let revealed = self.revealed;
         let power_arm = self.power_arm;
         let gpu = self.system.gpu_percent;
+
+        let dl = format_bytes_per_sec(self.net_state.cached_dl);
+        let ul = format_bytes_per_sec(self.net_state.cached_ul);
+        // Footer net summary — static pattern from mockup shape with live rates.
+        let net_summary = format!("↓ {dl}  ↑ {ul}");
 
         // OUTER: sole window-level `on_hover` (debounce). No transition_on_hover.
         div()
@@ -202,13 +193,12 @@ impl Render for SidePanelRightView {
                     .id("side-panel-body")
                     .with_transition("side-panel-body")
                     .size_full()
-                    .bg(theme.bg.secondary)
+                    .bg(rgb(0x18_18_25))
                     .border_l_1()
-                    .border_color(theme.border.default)
-                    .p(px(16.))
+                    .border_color(rgb(0x31_32_44))
                     .flex()
                     .flex_col()
-                    .gap(px(14.))
+                    .overflow_hidden()
                     .opacity(if revealed { 1.0 } else { 0.0 })
                     .transition_when(
                         revealed,
@@ -216,66 +206,92 @@ impl Render for SidePanelRightView {
                         Linear,
                         |s| s.opacity(1.0),
                     )
-                    .child(render_mpris_card(&self.mpris, &theme, cx))
+                    // 1. Header (flex:none) — rsx
+                    .child(render_header())
+                    // 2. Permission card (flex:none) — rsx
+                    .child(render_permission_card())
+                    // 3. Scrollable middle
                     .child(
                         div()
+                            .id("side-panel-scroll")
+                            .flex_1()
+                            .min_h(px(0.))
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scroll)
                             .flex()
                             .flex_col()
-                            .child(render_spectrum_row(
-                                "CPU",
-                                &self.cpu_history,
-                                &format!("{:.0}%", self.system.cpu_percent),
-                                color_cpu(),
-                                &theme,
-                            ))
-                            .child(render_spectrum_row(
-                                "RAM",
-                                &self.ram_history,
-                                &format!("{:.0}%", self.system.ram_percent),
-                                color_ram(),
-                                &theme,
-                            ))
-                            .when_some(gpu, |d, gpu_pct| {
-                                d.child(render_spectrum_row(
-                                    "GPU",
-                                    &self.gpu_history,
-                                    &format!("{gpu_pct:.0}%"),
-                                    color_gpu(),
-                                    &theme,
-                                ))
-                            }),
+                            .gap(px(14.))
+                            .p(px(14.))
+                            .child(render_mpris_card(&self.mpris, cx))
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(10.))
+                                    .child(render_spectrum_row(
+                                        "CPU",
+                                        &self.cpu_history,
+                                        &format!("{:.0}%", self.system.cpu_percent),
+                                        color_cpu(),
+                                        color_cpu(),
+                                        H_CPU,
+                                    ))
+                                    .child(render_spectrum_row(
+                                        "RAM",
+                                        &self.ram_history,
+                                        &format!("{:.0}%", self.system.ram_percent),
+                                        color_ram(),
+                                        color_ram(),
+                                        H_RAM,
+                                    ))
+                                    .when_some(gpu, |d, gpu_pct| {
+                                        d.child(render_spectrum_row(
+                                            "GPU",
+                                            &self.gpu_history,
+                                            &format!("{gpu_pct:.0}%"),
+                                            color_gpu(),
+                                            color_gpu(),
+                                            H_GPU,
+                                        ))
+                                    }),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(10.))
+                                    .child(render_spectrum_row(
+                                        "↓ down",
+                                        &self.net_dl_history,
+                                        &dl,
+                                        color_net(),
+                                        color_value_default(),
+                                        H_NET,
+                                    ))
+                                    .child(render_spectrum_row(
+                                        "↑ up",
+                                        &self.net_ul_history,
+                                        &ul,
+                                        color_net(),
+                                        color_value_default(),
+                                        H_NET,
+                                    )),
+                            )
+                            .child(render_disks_section()),
                     )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .child(render_spectrum_row(
-                                "dn",
-                                &self.net_dl_history,
-                                &format_bytes_per_sec(self.net_state.cached_dl),
-                                color_dn(),
-                                &theme,
-                            ))
-                            .child(render_spectrum_row(
-                                "up",
-                                &self.net_ul_history,
-                                &format_bytes_per_sec(self.net_state.cached_ul),
-                                color_up(),
-                                &theme,
-                            )),
-                    )
-                    .child(render_power_row(&theme, power_arm, cx)),
+                    // 4. Footer (flex:none)
+                    .child(render_footer(&net_summary, power_arm, cx)),
             )
     }
 }
 
 fn format_bytes_per_sec(bps: f64) -> String {
     if bps >= 1_000_000.0 {
-        format!("{:.1}M", bps / 1_000_000.0)
+        format!("{:.1} MB/s", bps / 1_000_000.0)
     } else if bps >= 1_000.0 {
-        format!("{:.0}K", bps / 1_000.0)
+        format!("{:.0} KB/s", bps / 1_000.0)
     } else {
-        format!("{bps:.0}")
+        format!("{bps:.0} B/s")
     }
 }
 

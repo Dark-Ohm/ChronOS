@@ -10,8 +10,11 @@
 //! `KeyboardInteractivity::None` doesn't deliver key events). Dismiss is
 //! re-toggle / click-away (pinned) / mouse-leave debounce (peek).
 
+mod disks;
+mod header;
 mod hover_strip;
 mod mpris_card;
+mod permission;
 mod power_row;
 mod spectrum_row;
 pub mod view;
@@ -24,13 +27,12 @@ use gpui::{
 
 use crate::side_panel_right::view::SidePanelRightView;
 
-const PANEL_WIDTH: f32 = 300.;
+/// Mockup width (`design/System Sidebar.dc.html` = 352px).
+const PANEL_WIDTH: f32 = 352.;
 
-/// Gap from the panel to the display top **and** bottom. Equals bar height
-/// so the panel sits flush under the bar (no overlap) with the same air
-/// above the bottom bezel. Do **not** use TOP|BOTTOM stretch + dual
-/// margins on Hyprland Overlay — exclusive zone + stretch skews the gaps
-/// (measured unequal). Fixed height + TOP|RIGHT is the reliable path.
+/// Top air under the bar. Height = display − this gap reaches the bottom
+/// bezel (see `b120a3d`). Do **not** use TOP|BOTTOM stretch + dual margins
+/// on Hyprland Overlay — exclusive zone + stretch skews the gaps.
 const PANEL_EDGE_GAP: f32 = BAR_HEIGHT;
 
 #[derive(Default)]

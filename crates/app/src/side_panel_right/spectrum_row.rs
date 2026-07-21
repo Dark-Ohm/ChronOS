@@ -1,14 +1,39 @@
-//! Reusable spectrum-bar row: label, N thin vertical bars (history), and
-//! a right-aligned formatted value. Used for CPU/RAM/GPU and network
-//! down/up — one component, five call sites.
+//! Spectrum-bar row for sidebar meters (CPU/RAM/GPU/net).
+//! Mockup layout: label row above, then N thin vertical bars.
+//! `HISTORY_LEN` = 24 (System Sidebar.dc.html).
 
 use std::collections::VecDeque;
 
-use chronos_ui::Theme;
-use gpui::{Hsla, IntoElement, div, prelude::*, px};
+use gpui::{Hsla, IntoElement, div, prelude::*, px, rgb};
 
-const HISTORY_LEN: usize = 14;
-const BAR_HEIGHT_PX: f32 = 52.;
+/// Ring depth — mockup renders 24 bars.
+pub const HISTORY_LEN: usize = 24;
+
+/// Mockup track heights (px).
+pub const H_CPU: f32 = 38.;
+pub const H_RAM: f32 = 34.;
+pub const H_GPU: f32 = 26.;
+pub const H_NET: f32 = 26.;
+
+/// Mockup palette (hex literals — pixel parity, not Theme tokens).
+pub fn color_cpu() -> Hsla {
+    rgb(0x89_dc_eb).into()
+}
+pub fn color_ram() -> Hsla {
+    rgb(0x89_b4_fa).into()
+}
+pub fn color_gpu() -> Hsla {
+    rgb(0xf9_e2_af).into()
+}
+pub fn color_net() -> Hsla {
+    rgb(0x6c_70_86).into()
+}
+pub fn color_label() -> Hsla {
+    rgb(0xa6_ad_c8).into()
+}
+pub fn color_value_default() -> Hsla {
+    rgb(0xcd_d6_f4).into()
+}
 
 #[derive(Default)]
 pub struct SpectrumHistory {
@@ -24,58 +49,72 @@ pub fn push_sample(history: &mut SpectrumHistory, value: f32) {
     }
 }
 
+/// Label above, bars below (mockup structure). `value_color` tints the
+/// right-hand value (CPU/RAM/GPU match bar color; net uses text primary).
 pub fn render_spectrum_row(
     label: &str,
     history: &SpectrumHistory,
     value_text: &str,
-    color: Hsla,
-    theme: &Theme,
+    bar_color: Hsla,
+    value_color: Hsla,
+    bar_height: f32,
 ) -> impl IntoElement {
     let max = history.samples.iter().cloned().fold(1.0_f32, f32::max);
-    let bars: Vec<_> = history
-        .samples
+    // Always paint HISTORY_LEN columns (pad leading zeros) — mockup is 24-wide.
+    let pad = HISTORY_LEN.saturating_sub(history.samples.len());
+    let mut values: Vec<f32> = std::iter::repeat_n(0.0, pad)
+        .chain(history.samples.iter().copied())
+        .collect();
+    if values.len() > HISTORY_LEN {
+        values.drain(0..values.len() - HISTORY_LEN);
+    }
+    let bars: Vec<_> = values
         .iter()
         .map(|&v| {
             let height_pct = (v / max).clamp(0.0, 1.0);
-            // Floor of 2px so a zero-ish sample still reads as a tick.
-            let h = (BAR_HEIGHT_PX * height_pct).max(if history.samples.is_empty() {
-                0.0
-            } else {
+            let h = if history.samples.is_empty() {
                 2.0
-            });
-            div().flex_1().h(px(h)).bg(color)
+            } else {
+                (bar_height * height_pct).max(2.0)
+            };
+            div()
+                .flex_1()
+                .h(px(h))
+                .rounded(px(1.))
+                .bg(bar_color)
         })
         .collect();
 
     div()
         .flex()
-        .items_center()
-        .gap(px(12.))
-        .py(px(10.))
+        .flex_col()
+        .gap(px(6.))
         .child(
             div()
-                .w(px(34.))
-                .font_family(theme.font_mono)
-                .text_size(px(10.))
-                .text_color(theme.text.secondary)
-                .child(label.to_string()),
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(
+                    div()
+                        .text_size(px(11.))
+                        .text_color(color_label())
+                        .child(label.to_string()),
+                )
+                .child(
+                    div()
+                        .font_family("JetBrains Mono")
+                        .text_size(px(11.))
+                        .text_color(value_color)
+                        .child(value_text.to_string()),
+                ),
         )
         .child(
             div()
-                .flex_1()
                 .flex()
                 .items_end()
                 .gap(px(2.))
-                .h(px(BAR_HEIGHT_PX))
+                .h(px(bar_height))
                 .children(bars),
-        )
-        .child(
-            div()
-                .w(px(48.))
-                .font_family(theme.font_mono)
-                .text_size(px(12.))
-                .text_color(theme.text.primary)
-                .child(value_text.to_string()),
         )
 }
 
@@ -84,19 +123,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ring_buffer_holds_at_most_14_samples_oldest_dropped_first() {
+    fn ring_buffer_holds_at_most_24_samples_oldest_dropped_first() {
         let mut history = SpectrumHistory::default();
-        for i in 0..20 {
+        for i in 0..30 {
             push_sample(&mut history, i as f32);
         }
-        assert_eq!(history.samples.len(), 14);
+        assert_eq!(history.samples.len(), 24);
         assert_eq!(history.samples.front().copied(), Some(6.0));
-        assert_eq!(history.samples.back().copied(), Some(19.0));
+        assert_eq!(history.samples.back().copied(), Some(29.0));
     }
 
     #[test]
     fn empty_history_has_no_samples() {
         let history = SpectrumHistory::default();
         assert!(history.samples.is_empty());
+    }
+
+    #[test]
+    fn history_len_matches_mockup() {
+        assert_eq!(HISTORY_LEN, 24);
     }
 }
