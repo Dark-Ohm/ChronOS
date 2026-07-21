@@ -1,8 +1,14 @@
-//! Media card for the right side panel — mockup layout (16:9 art, progress
-//! stub, transport tray). Live: title + prev/play/next + mute. Static: art
-//! placeholder, progress bar + timecode (no Position/length in MprisState).
+//! Media card for the right side panel — 16:9 art, live progress, transport.
+//!
+//! Live: title, album art (`file://` only), position/length progress + remaining
+//! timecode, prev/play/next + stream mute. http(s) art URLs stay on placeholder
+//! (no network fetch in this track).
 
-use gpui::{Context, IntoElement, div, img, prelude::*, px, relative, rgb, rgba};
+use std::path::{Path, PathBuf};
+
+use gpui::{
+    Context, ImageSource, IntoElement, ObjectFit, div, img, prelude::*, px, relative, rgb, rgba,
+};
 
 use chronos_services::MprisState;
 
@@ -34,6 +40,130 @@ fn display_title(state: &MprisState) -> &str {
     }
 }
 
+/// Decode `file://…` art URLs to a local path. http(s) / empty / garbage → None.
+pub fn art_file_path(art_url: Option<&str>) -> Option<PathBuf> {
+    let uri = art_url?;
+    file_uri_to_path(uri).filter(|p| p.is_file())
+}
+
+/// `file:///home/x/my%20dir` → `/home/x/my dir`. Non-file schemes → None.
+pub fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
+    let encoded = uri.strip_prefix("file://")?;
+    let mut bytes = Vec::with_capacity(encoded.len());
+    let mut chars = encoded.bytes();
+    while let Some(b) = chars.next() {
+        if b == b'%' {
+            let hi = chars.next()?;
+            let lo = chars.next()?;
+            let hex = [hi, lo];
+            let hex = std::str::from_utf8(&hex).ok()?;
+            bytes.push(u8::from_str_radix(hex, 16).ok()?);
+        } else {
+            bytes.push(b);
+        }
+    }
+    use std::os::unix::ffi::OsStringExt;
+    Some(PathBuf::from(std::ffi::OsString::from_vec(bytes)))
+}
+
+/// `position / length` clamped to [0, 1]. Missing / non-positive length → None.
+pub fn progress_ratio(position_us: Option<i64>, length_us: Option<i64>) -> Option<f32> {
+    let length = length_us.filter(|l| *l > 0)?;
+    let position = position_us.unwrap_or(0).max(0);
+    let ratio = position as f64 / length as f64;
+    Some(ratio.clamp(0.0, 1.0) as f32)
+}
+
+/// Remaining time as mockup `-M:SS` (or `-H:MM:SS` when ≥1h). None if no length.
+pub fn remaining_timecode(position_us: Option<i64>, length_us: Option<i64>) -> Option<String> {
+    let length = length_us.filter(|l| *l > 0)?;
+    let position = position_us.unwrap_or(0).max(0);
+    let remain_us = (length - position).max(0);
+    Some(format_remaining_us(remain_us))
+}
+
+fn format_remaining_us(us: i64) -> String {
+    let total_secs = us / 1_000_000;
+    let hours = total_secs / 3600;
+    let mins = (total_secs % 3600) / 60;
+    let secs = total_secs % 60;
+    if hours > 0 {
+        format!("-{hours}:{mins:02}:{secs:02}")
+    } else {
+        format!("-{mins}:{secs:02}")
+    }
+}
+
+fn render_art_frame(
+    art_path: Option<&Path>,
+    position_us: Option<i64>,
+    length_us: Option<i64>,
+) -> impl IntoElement {
+    let timecode = remaining_timecode(position_us, length_us);
+
+    let frame = div()
+        .w_full()
+        .h(px(198.))
+        .bg(rgb(0x00_00_00))
+        .flex()
+        .items_center()
+        .justify_center()
+        .relative()
+        .overflow_hidden();
+
+    let frame = if let Some(path) = art_path {
+        let src: ImageSource = path.to_path_buf().into();
+        frame.child(
+            img(src)
+                .w_full()
+                .h_full()
+                .object_fit(ObjectFit::Cover),
+        )
+    } else {
+        frame.child(
+            img("icons/play.svg")
+                .w(px(34.))
+                .h(px(34.))
+                .text_color(rgb(0xe0_e0_e6))
+                .opacity(0.9),
+        )
+    };
+
+    frame.when_some(timecode, |d, code| {
+        d.child(
+            div()
+                .absolute()
+                .bottom(px(8.))
+                .right(px(10.))
+                .font_family("JetBrains Mono")
+                .text_size(px(10.))
+                .text_color(rgb(0xe0_e0_e6))
+                .bg(rgba(0x0000_0080))
+                .px(px(5.))
+                .py(px(1.))
+                .rounded(px(4.))
+                .child(code),
+        )
+    })
+}
+
+fn render_progress_bar(ratio: Option<f32>) -> impl IntoElement {
+    let fill = ratio.unwrap_or(0.0);
+    div()
+        .h(px(3.))
+        .w_full()
+        .rounded(px(2.))
+        .bg(rgb(TRACK))
+        .mb(px(8.))
+        .child(
+            div()
+                .h_full()
+                .w(relative(fill))
+                .rounded(px(2.))
+                .bg(rgb(ACCENT)),
+        )
+}
+
 pub fn render_mpris_card(
     state: &MprisState,
     _cx: &mut Context<SidePanelRightView>,
@@ -47,6 +177,8 @@ pub fn render_mpris_card(
     } else {
         "icons/play.svg"
     };
+    let art_path = art_file_path(state.art_url.as_deref());
+    let ratio = progress_ratio(state.position_us, state.length_us);
 
     div()
         .flex()
@@ -57,37 +189,11 @@ pub fn render_mpris_card(
         .border_1()
         .border_color(rgb(BORDER))
         // ~16:9 of 352 content width
-        .child(
-            div()
-                .w_full()
-                .h(px(198.))
-                .bg(rgb(0x00_00_00))
-                .flex()
-                .items_center()
-                .justify_center()
-                .relative()
-                .child(
-                    img("icons/play.svg")
-                        .w(px(34.))
-                        .h(px(34.))
-                        .text_color(rgb(0xe0_e0_e6))
-                        .opacity(0.9),
-                )
-                .child(
-                    div()
-                        .absolute()
-                        .bottom(px(8.))
-                        .right(px(10.))
-                        .font_family("JetBrains Mono")
-                        .text_size(px(10.))
-                        .text_color(rgb(0xe0_e0_e6))
-                        .bg(rgba(0x0000_0080))
-                        .px(px(5.))
-                        .py(px(1.))
-                        .rounded(px(4.))
-                        .child("-14:22"),
-                ),
-        )
+        .child(render_art_frame(
+            art_path.as_deref(),
+            state.position_us,
+            state.length_us,
+        ))
         .child(
             div()
                 .px(px(11.))
@@ -104,21 +210,7 @@ pub fn render_mpris_card(
                         .mb(px(6.))
                         .child(title),
                 )
-                .child(
-                    div()
-                        .h(px(3.))
-                        .w_full()
-                        .rounded(px(2.))
-                        .bg(rgb(TRACK))
-                        .mb(px(8.))
-                        .child(
-                            div()
-                                .h_full()
-                                .w(relative(0.38))
-                                .rounded(px(2.))
-                                .bg(rgb(ACCENT)),
-                        ),
-                )
+                .child(render_progress_bar(ratio))
                 .child(
                     div()
                         .flex()
@@ -276,6 +368,7 @@ mod tests {
             player_count: 1,
             player_index: 1,
             player_id: "vivaldi".into(),
+            ..Default::default()
         };
         assert_eq!(display_title(&state), "Colour Temperature");
     }
@@ -290,9 +383,64 @@ mod tests {
             player_count: 1,
             player_index: 1,
             player_id: "mpv".into(),
+            ..Default::default()
         };
         assert_eq!(display_title(&state), "Only Artist");
         state.artist.clear();
         assert_eq!(display_title(&state), "mpv");
+    }
+
+    #[test]
+    fn file_uri_to_path_decodes_percent() {
+        let p = file_uri_to_path("file:///tmp/my%20cover.png").unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/my cover.png"));
+    }
+
+    #[test]
+    fn file_uri_rejects_http() {
+        assert!(file_uri_to_path("https://cdn.example/art.jpg").is_none());
+        assert!(art_file_path(Some("https://cdn.example/art.jpg")).is_none());
+    }
+
+    #[test]
+    fn art_file_path_requires_existing_file() {
+        // Machine-local path used as fixture elsewhere; must exist.
+        let path = "/usr/share/pixmaps/archlinux-logo.png";
+        assert!(
+            Path::new(path).is_file(),
+            "fixture image missing on host: {path}"
+        );
+        let uri = format!("file://{path}");
+        assert_eq!(
+            art_file_path(Some(&uri)).as_deref(),
+            Some(Path::new(path))
+        );
+        assert!(art_file_path(Some("file:///no/such/cover.png")).is_none());
+    }
+
+    #[test]
+    fn progress_ratio_clamps_and_hides_without_length() {
+        assert_eq!(progress_ratio(Some(50), None), None);
+        assert_eq!(progress_ratio(Some(50), Some(0)), None);
+        let r = progress_ratio(Some(50_000_000), Some(100_000_000)).unwrap();
+        assert!((r - 0.5).abs() < 1e-5);
+        assert_eq!(progress_ratio(Some(200), Some(100)).unwrap(), 1.0);
+        assert_eq!(progress_ratio(Some(0), Some(100)).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn remaining_timecode_formats_like_mockup() {
+        // length 14:22, position 0 → -14:22
+        let len = (14 * 60 + 22) * 1_000_000;
+        assert_eq!(
+            remaining_timecode(Some(0), Some(len)).as_deref(),
+            Some("-14:22")
+        );
+        // 1:00 remaining
+        assert_eq!(
+            remaining_timecode(Some(len - 60_000_000), Some(len)).as_deref(),
+            Some("-1:00")
+        );
+        assert_eq!(remaining_timecode(Some(10), None), None);
     }
 }

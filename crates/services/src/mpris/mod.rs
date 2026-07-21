@@ -42,6 +42,11 @@ trait MprisPlayer {
     #[zbus(property)]
     fn metadata(&self) -> zbus::Result<HashMap<String, OwnedValue>>;
 
+    /// Playback position in microseconds. Must be polled — does not fire
+    /// PropertiesChanged on most players.
+    #[zbus(property)]
+    fn position(&self) -> zbus::Result<i64>;
+
     fn play_pause(&self) -> zbus::Result<()>;
     fn next(&self) -> zbus::Result<()>;
     fn previous(&self) -> zbus::Result<()>;
@@ -263,11 +268,46 @@ pub fn parse_metadata(map: &HashMap<String, OwnedValue>) -> (String, String) {
     (title, artist)
 }
 
+/// `mpris:artUrl` (Str). Empty string → `None`.
+pub fn extract_art_url(map: &HashMap<String, OwnedValue>) -> Option<String> {
+    let s = extract_string(map, "mpris:artUrl")?;
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+/// `mpris:length` in microseconds. Missing / non-positive → `None`.
+///
+/// Players emit `x` (i64) or sometimes `t`/`i`/`u` wrapped in a variant.
+pub fn extract_length_us(map: &HashMap<String, OwnedValue>) -> Option<i64> {
+    let n = extract_i64(map, "mpris:length")?;
+    if n > 0 { Some(n) } else { None }
+}
+
+/// True when the UI can render a meaningful progress bar.
+pub fn has_position(position_us: Option<i64>, length_us: Option<i64>) -> bool {
+    matches!((position_us, length_us), (Some(_), Some(len)) if len > 0)
+}
+
 fn extract_string(map: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
     let owned = map.get(key)?;
     let value = unwrap_variant(Value::from(owned.try_clone().ok()?));
     match value {
         Value::Str(s) => Some(s.to_string()),
+        _ => None,
+    }
+}
+
+fn extract_i64(map: &HashMap<String, OwnedValue>, key: &str) -> Option<i64> {
+    let owned = map.get(key)?;
+    let value = unwrap_variant(Value::from(owned.try_clone().ok()?));
+    match value {
+        Value::I64(n) => Some(n),
+        Value::U64(n) => i64::try_from(n).ok(),
+        Value::I32(n) => Some(i64::from(n)),
+        Value::U32(n) => Some(i64::from(n)),
         _ => None,
     }
 }
@@ -381,6 +421,14 @@ async fn read_active_state(
         .unwrap_or_else(|_| "Stopped".into());
     let metadata = proxy.metadata().await.unwrap_or_default();
     let (title, artist) = parse_metadata(&metadata);
+    let art_url = extract_art_url(&metadata);
+    let length_us = extract_length_us(&metadata);
+    // Position must be polled (no PropertiesChanged on most players).
+    let position_us = match proxy.position().await {
+        Ok(p) if p >= 0 => Some(p),
+        Ok(_) => None,
+        Err(_) => None,
+    };
     let playing = status.eq_ignore_ascii_case("Playing");
 
     Ok((
@@ -392,6 +440,9 @@ async fn read_active_state(
             player_count,
             player_index,
             player_id,
+            art_url,
+            position_us,
+            length_us,
         },
         Some(active),
         clear_pin,
@@ -739,6 +790,77 @@ mod tests {
         );
         let (_, artist) = parse_metadata(&map);
         assert_eq!(artist, "Solo");
+    }
+
+    /// Fixture shape from live idle Vivaldi on this host (2026-07-21):
+    /// `busctl --user get-property … Metadata` → `a{sv} 1 "mpris:length" x 0`
+    /// (no art, zero length). Plus a full synthetic frame matching a real
+    /// playing track (file:// art + positive length).
+    #[test]
+    fn extract_art_and_length_from_metadata_fixture() {
+        let mut idle = HashMap::new();
+        idle.insert(
+            "mpris:length".into(),
+            OwnedValue::try_from(Value::I64(0)).unwrap(),
+        );
+        assert_eq!(extract_length_us(&idle), None);
+        assert_eq!(extract_art_url(&idle), None);
+
+        let mut playing = HashMap::new();
+        // Real-shape values: i64 length in μs, file:// artUrl, title/artist.
+        // length = 3m 42.2s = 222_200_000 μs (typical track).
+        playing.insert(
+            "mpris:length".into(),
+            OwnedValue::try_from(Value::I64(222_200_000)).unwrap(),
+        );
+        playing.insert(
+            "mpris:artUrl".into(),
+            Str::from("file:///usr/share/pixmaps/archlinux-logo.png")
+                .try_into()
+                .unwrap(),
+        );
+        playing.insert(
+            "xesam:title".into(),
+            Str::from("Colour Temperature").try_into().unwrap(),
+        );
+        let art_arr_artist = Array::from(vec![Value::from("Ambient Systems")]);
+        playing.insert(
+            "xesam:artist".into(),
+            OwnedValue::try_from(art_arr_artist).unwrap(),
+        );
+
+        assert_eq!(
+            extract_art_url(&playing).as_deref(),
+            Some("file:///usr/share/pixmaps/archlinux-logo.png")
+        );
+        assert_eq!(extract_length_us(&playing), Some(222_200_000));
+        let (title, artist) = parse_metadata(&playing);
+        assert_eq!(title, "Colour Temperature");
+        assert_eq!(artist, "Ambient Systems");
+    }
+
+    #[test]
+    fn extract_length_variant_wrapped_and_u64() {
+        let mut map = HashMap::new();
+        let wrapped = Value::Value(Box::new(Value::I64(90_000_000)));
+        map.insert("mpris:length".into(), OwnedValue::try_from(wrapped).unwrap());
+        assert_eq!(extract_length_us(&map), Some(90_000_000));
+
+        let mut map_u = HashMap::new();
+        map_u.insert(
+            "mpris:length".into(),
+            OwnedValue::try_from(Value::U64(15_000_000)).unwrap(),
+        );
+        assert_eq!(extract_length_us(&map_u), Some(15_000_000));
+    }
+
+    #[test]
+    fn has_position_requires_positive_length_and_readable_pos() {
+        assert!(!has_position(None, Some(100)));
+        assert!(!has_position(Some(10), None));
+        assert!(!has_position(Some(10), Some(0)));
+        assert!(has_position(Some(10), Some(100)));
+        assert!(has_position(Some(0), Some(100)));
     }
 
     #[test]

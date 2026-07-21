@@ -15,6 +15,12 @@ pub struct MprisState {
     pub player_index: usize,
     /// Short id of the active player (suffix after `org.mpris.MediaPlayer2.`).
     pub player_id: String,
+    /// `mpris:artUrl` from Metadata (often `file://…`; http(s) left as-is for UI).
+    pub art_url: Option<String>,
+    /// Player `Position` property, microseconds. `None` if Get failed.
+    pub position_us: Option<i64>,
+    /// `mpris:length` from Metadata, microseconds. `None` if missing or ≤0.
+    pub length_us: Option<i64>,
 }
 
 /// Direction for cycling the sticky user-selected player.

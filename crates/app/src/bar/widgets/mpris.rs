@@ -190,6 +190,7 @@ mod tests {
             player_count,
             player_index,
             player_id: "mock".into(),
+            ..Default::default()
         }
     }
 
