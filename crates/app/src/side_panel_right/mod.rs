@@ -12,8 +12,11 @@
 
 mod hover_strip;
 mod mpris_card;
+mod power_row;
+mod spectrum_row;
 pub mod view;
 
+use chronos_luau::bar::BAR_HEIGHT;
 use gpui::{
     App, Bounds, DisplayId, Global, Size, Window, WindowBackgroundAppearance, WindowBounds,
     WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
@@ -22,6 +25,13 @@ use gpui::{
 use crate::side_panel_right::view::SidePanelRightView;
 
 const PANEL_WIDTH: f32 = 300.;
+
+/// Gap from the panel to the display top **and** bottom. Equals bar height
+/// so the panel sits flush under the bar (no overlap) with the same air
+/// above the bottom bezel. Do **not** use TOP|BOTTOM stretch + dual
+/// margins on Hyprland Overlay — exclusive zone + stretch skews the gaps
+/// (measured unequal). Fixed height + TOP|RIGHT is the reliable path.
+const PANEL_EDGE_GAP: f32 = BAR_HEIGHT;
 
 #[derive(Default)]
 pub struct SidePanelRightState {
@@ -55,22 +65,38 @@ pub(crate) fn schedule_release_peek(cx: &mut App) {
     view::schedule_release_from_app(cx, generation);
 }
 
-fn window_options(display_id: Option<DisplayId>) -> WindowOptions {
+fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
+    display_id
+        .and_then(|id| cx.find_display(id))
+        .or_else(|| cx.primary_display())
+        .map(|d| f32::from(d.bounds().size.height))
+        .unwrap_or(1080.)
+}
+
+fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
+    let display_h = display_height(display_id, cx);
+    // Equal top/bottom air: height = display − 2×gap.
+    let panel_h = (display_h - 2. * PANEL_EDGE_GAP).max(100.);
     WindowOptions {
         display_id,
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: point(px(0.), px(0.)),
-            // Height is filled by TOP|BOTTOM anchor; compositor owns that axis.
-            size: Size::new(px(PANEL_WIDTH), px(0.)),
+            size: Size::new(px(PANEL_WIDTH), px(panel_h)),
         })),
         app_id: Some("chronos-side-panel-right".to_string()),
         window_background: WindowBackgroundAppearance::Transparent,
         kind: WindowKind::LayerShell(LayerShellOptions {
             namespace: "side_panel_right".to_string(),
             layer: Layer::Overlay,
-            anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::RIGHT,
-            exclusive_zone: Some(px(0.)),
+            // TOP|RIGHT only (not BOTTOM): fixed height + top margin gives
+            // symmetric vertical inset without Hyprland stretch skew.
+            anchor: Anchor::TOP | Anchor::RIGHT,
+            exclusive_zone: None,
+            // (top, right, bottom, left)
+            // Top margin 0: bar exclusive zone already places TOP-anchored
+            // Overlay under the bar (y=BAR_HEIGHT). Height = display−2×gap
+            // so bottom air equals top air.
             margin: None,
             keyboard_interactivity: KeyboardInteractivity::None,
             ..Default::default()
@@ -89,7 +115,7 @@ fn open_window(cx: &mut App, pinned: bool) {
         return;
     }
     let display_id = crate::monitor::pult_display(cx);
-    match cx.open_window(window_options(display_id), |_, view_cx| {
+    match cx.open_window(window_options(display_id, cx), |_, view_cx| {
         view_cx.new(|cx| SidePanelRightView::new(cx))
     }) {
         Ok(handle) => {

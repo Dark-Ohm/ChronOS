@@ -7,12 +7,15 @@
 //! in the spec's open question §8.1 and rejected here as unnecessary
 //! complexity once GPUI's own hover event was confirmed sufficient).
 
+use chronos_luau::bar::BAR_HEIGHT;
 use gpui::{
     App, Bounds, DisplayId, IntoElement, Render, Size, Window, WindowBackgroundAppearance,
     WindowBounds, WindowKind, WindowOptions, div, layer_shell::*, point, prelude::*, px,
 };
 
 const STRIP_WIDTH: f32 = 4.;
+/// Match panel vertical inset (`mod.rs` PANEL_EDGE_GAP).
+const STRIP_EDGE_GAP: f32 = BAR_HEIGHT;
 
 struct HoverStripView {}
 
@@ -21,32 +24,42 @@ impl Render for HoverStripView {
         // Transparent hit surface. Enter → peek open + hold generation.
         // Leave → schedule release (panel enter will bump generation and
         // cancel the close if the user crossed onto the panel).
-        div().size_full().id("side-panel-hover-strip").on_hover(|hovered, _window, cx| {
-            if *hovered {
-                super::hold_peek(cx);
-                super::open_peek(cx);
-            } else {
-                super::schedule_release_peek(cx);
-            }
-        })
+        div()
+            .size_full()
+            .id("side-panel-hover-strip")
+            .on_hover(|hovered, _window, cx| {
+                if *hovered {
+                    super::hold_peek(cx);
+                    super::open_peek(cx);
+                } else {
+                    super::schedule_release_peek(cx);
+                }
+            })
     }
 }
 
-fn strip_window_options(display_id: Option<DisplayId>) -> WindowOptions {
+fn strip_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
+    let display_h = display_id
+        .and_then(|id| cx.find_display(id))
+        .or_else(|| cx.primary_display())
+        .map(|d| f32::from(d.bounds().size.height))
+        .unwrap_or(1080.);
+    let strip_h = (display_h - 2. * STRIP_EDGE_GAP).max(100.);
     WindowOptions {
         display_id,
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: point(px(0.), px(0.)),
-            size: Size::new(px(STRIP_WIDTH), px(0.)),
+            size: Size::new(px(STRIP_WIDTH), px(strip_h)),
         })),
         app_id: Some("chronos-side-panel-hover-strip".to_string()),
         window_background: WindowBackgroundAppearance::Transparent,
         kind: WindowKind::LayerShell(LayerShellOptions {
             namespace: "side_panel_hover_strip".to_string(),
             layer: Layer::Overlay,
-            anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::RIGHT,
-            exclusive_zone: Some(px(0.)),
+            anchor: Anchor::TOP | Anchor::RIGHT,
+            exclusive_zone: None,
+            // See panel `window_options`: bar exclusive places us under the bar.
             margin: None,
             keyboard_interactivity: KeyboardInteractivity::None,
             ..Default::default()
@@ -61,7 +74,7 @@ fn strip_window_options(display_id: Option<DisplayId>) -> WindowOptions {
 pub fn init_hover_strip(cx: &mut App) {
     let display_id = crate::monitor::pult_display(cx);
     tracing::info!("side_panel_right: hover strip on display_id={display_id:?}");
-    match cx.open_window(strip_window_options(display_id), |_, view_cx| {
+    match cx.open_window(strip_window_options(display_id, cx), |_, view_cx| {
         view_cx.new(|_| HoverStripView {})
     }) {
         Ok(_) => tracing::info!("side_panel_right: hover strip opened"),
