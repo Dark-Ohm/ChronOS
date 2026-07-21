@@ -85,6 +85,8 @@ pub fn render_power_row(
         .mt_auto()
         .child(
             // Switch user — always disabled, never armed, no listener.
+            // Same tile shape as the three action buttons so the row reads as
+            // four even buttons.
             div()
                 .flex_1()
                 .flex()
@@ -92,14 +94,11 @@ pub fn render_power_row(
                 .items_center()
                 .gap(px(6.))
                 .p(px(10.))
+                .rounded(theme.radius)
                 .text_color(theme.text.disabled)
-                .child("User")
-                .child(
-                    div()
-                        .text_size(px(8.5))
-                        .font_family(theme.font_mono)
-                        .child("SWITCH USER"),
-                ),
+                .text_size(px(8.5))
+                .font_family(theme.font_mono)
+                .child("Switch user"),
         )
         .child(
             power_button(

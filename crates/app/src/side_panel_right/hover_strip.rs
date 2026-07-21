@@ -44,7 +44,8 @@ fn strip_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOption
         .or_else(|| cx.primary_display())
         .map(|d| f32::from(d.bounds().size.height))
         .unwrap_or(1080.);
-    let strip_h = (display_h - 2. * STRIP_EDGE_GAP).max(100.);
+    // Top gap only (under bar); reach display bottom like the panel.
+    let strip_h = (display_h - STRIP_EDGE_GAP).max(100.);
     WindowOptions {
         display_id,
         titlebar: None,

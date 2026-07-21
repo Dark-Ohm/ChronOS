@@ -76,7 +76,10 @@ fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
 fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     let display_h = display_height(display_id, cx);
     // Equal top/bottom air: height = display − 2×gap.
-    let panel_h = (display_h - 2. * PANEL_EDGE_GAP).max(100.);
+    // Only the top gap: bar exclusive zone pushes the TOP-anchored overlay to
+    // y=BAR_HEIGHT; height = display − that one gap makes the panel reach the
+    // display bottom (no bottom void).
+    let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
     WindowOptions {
         display_id,
         titlebar: None,
