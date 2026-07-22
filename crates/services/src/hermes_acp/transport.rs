@@ -1,9 +1,12 @@
 use agent_client_protocol::schema::{InitializeRequest, ProtocolVersion};
-use agent_client_protocol::{Client, Error as AcpError};
+use agent_client_protocol::{Agent, Client, ConnectionTo, Error as AcpError};
 use agent_client_protocol_tokio::AcpAgent;
 use anyhow::{Context, Result};
 use std::str::FromStr;
+use tokio::sync::oneshot;
 use tracing::{debug, error, info};
+
+use super::client::Command;
 
 /// Configuration for spawning the Hermes agent process.
 #[derive(Debug, Clone)]
@@ -35,19 +38,21 @@ pub struct HermesTransport {
 }
 
 impl HermesTransport {
-    /// Spawn the Hermes agent process and establish an ACP connection.
+    /// Spawn the Hermes agent process, establish an ACP connection,
+    /// and return a handle for sending commands.
     ///
     /// The connection is initialized (ACP protocol handshake) before returning.
-    /// Returns immediately; the connection event loop runs in the background.
-    pub async fn spawn(config: HermesConfig) -> Result<Self> {
+    /// Commands are processed sequentially through the returned channel.
+    pub(crate) async fn spawn(config: HermesConfig) -> Result<(Self, tokio::sync::mpsc::UnboundedSender<Command>)> {
         let command_str = format!("{} {}", config.command, config.args.join(" "));
         debug!("Spawning Hermes agent: {command_str}");
 
         let agent =
             AcpAgent::from_str(&command_str).context("failed to parse ACP agent command")?;
 
-        // Drive the ACP connection in a background tokio task.
-        // connect_with spawns the subprocess and runs our init closure alongside it.
+        let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<Command>();
+        let (conn_tx, conn_rx) = oneshot::channel::<ConnectionTo<Agent>>();
+
         let handle = tokio::spawn(async move {
             let result = Client
                 .builder()
@@ -61,9 +66,16 @@ impl HermesTransport {
 
                     info!("ACP connection initialized with Hermes agent");
 
-                    // Keep the connection alive until the transport is dropped.
-                    // The event loop will process incoming messages from the agent.
-                    std::future::pending::<Result<(), AcpError>>().await
+                    // Send the connection handle back to the caller.
+                    let _ = conn_tx.send(cx.clone());
+
+                    // Process commands from the client.
+                    while let Some(cmd) = cmd_rx.recv().await {
+                        let _ = super::client::execute_command(cmd, &cx).await;
+                    }
+
+                    info!("Hermes ACP command channel closed");
+                    Ok::<(), AcpError>(())
                 })
                 .await;
 
@@ -72,8 +84,13 @@ impl HermesTransport {
             }
         });
 
+        // Wait for the connection to be established.
+        conn_rx
+            .await
+            .context("failed to receive ACP connection handle")?;
+
         info!("Hermes ACP transport spawned");
-        Ok(Self { _handle: handle })
+        Ok((Self { _handle: handle }, cmd_tx))
     }
 
     /// Shut down the transport by aborting the background connection task.
