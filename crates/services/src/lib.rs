@@ -10,6 +10,7 @@ pub mod aur;
 pub mod brightness;
 pub mod cava;
 pub mod compositor;
+pub mod hermes_acp;
 pub mod mpris;
 pub mod net_stats;
 pub mod network;
