@@ -61,6 +61,7 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
 pub struct SidePanelLeft {
     state: state::SidePanelLeftState,
     sessions: Vec<sessions_list::SessionItem>,
+    pub(crate) chat: chat_view::ChatView,
     pub(crate) composer_focus: gpui::FocusHandle,
     pub(crate) composer_text: String,
     pub(crate) composer_cursor: usize,
@@ -88,6 +89,7 @@ impl SidePanelLeft {
         Self {
             state: state::SidePanelLeftState::new(),
             sessions: Vec::new(),
+            chat: chat_view::ChatView::new(),
             composer_focus: cx.focus_handle(),
             composer_text: String::new(),
             composer_cursor: 0,

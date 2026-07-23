@@ -231,9 +231,10 @@ pub fn render_panel(
             .id("chat-area")
             .flex_1()
             .min_h(px(0.))
-            .p(px(14.))
-            .text_color(rgb(0xa6_ad_c8))
-            .child("Chat goes here"),
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            .child(panel.chat.render(panel, _window, cx)),
     );
 
     let composer = super::composer::render_composer(panel, _window, cx);
