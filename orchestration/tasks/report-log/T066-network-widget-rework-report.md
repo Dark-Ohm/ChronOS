@@ -1,3 +1,5 @@
+<!-- T066 — migrated 2026-07-22 from orchestration/report-log/deepseek-report-2.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: Theme::font_ui (Inter) — Task 2 правой панели — 2026-07-21
 
 ## Сделано (факт, не намерение)

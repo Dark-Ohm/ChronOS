@@ -1,3 +1,5 @@
+<!-- T095 — migrated 2026-07-22 from orchestration/report-log/hermes-report-20.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: Hermes №20 — Tasks 8+9 hover-peek + MPRIS card — 2026-07-21
 
 **Агент:** Hermes (исполнение Lead Architect / Grok).  

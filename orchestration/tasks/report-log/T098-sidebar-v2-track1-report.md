@@ -1,3 +1,5 @@
+<!-- T098 — migrated 2026-07-22 from orchestration/report-log/hermes-report-22.md — see orchestration/tasks/MIGRATION.md -->
+
 # hermes-report-22 — SIDEBAR V2 (мокап → rsx)
 
 **Исход:** DELIVERED (не коммит — по брифу).  

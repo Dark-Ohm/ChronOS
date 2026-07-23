@@ -31,3 +31,9 @@ orchestration/
 
 # lean-ctx / codebase-context cache
 contexts/
+
+# Local agent/tooling state — never committed
+.opencode/
+.superpowers/
+.rules
+_ds/

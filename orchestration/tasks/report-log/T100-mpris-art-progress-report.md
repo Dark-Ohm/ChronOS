@@ -1,3 +1,5 @@
+<!-- T100 — migrated 2026-07-22 from orchestration/report-log/grok-report-20.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: Трек 3 — MPRIS art+progress + media card live — 2026-07-21
 
 **Исход: сдано.** Backend `art_url`/`position_us`/`length_us` + карточка рисует

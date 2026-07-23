@@ -1,3 +1,5 @@
+<!-- T099 — migrated 2026-07-22 from orchestration/report-log/zed-report-7.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: Zed №7 — Трек 2: udisks2-сервис + живая секция дисков — 2026-07-21
 
 **Исход: DONE** (unit+live enumerate зелёные; release binary; grim с живыми дисками; mount/unmount на VTOYEFI через тот же udisks2 API; PowerOff/Eject на Ventoy **не** гонялся — данные).

@@ -1,3 +1,5 @@
+<!-- T092 — migrated 2026-07-22 from orchestration/report-log/grok-report-19.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: Tasks 3+4 system_resources (CPU/RAM/GPU) — 2026-07-21
 
 ## Сделано (факт, не намерение)

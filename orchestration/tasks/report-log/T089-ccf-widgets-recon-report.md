@@ -1,3 +1,5 @@
+<!-- T089 — migrated 2026-07-22 from orchestration/report-log/hermes-report-widgets-recon.md — see orchestration/tasks/MIGRATION.md -->
+
 # SESSION_REPORT — Разведка `ccf-gpui-widgets` против форка gpui
 
 **Агент:** Hermes. **Дата:** 2026-07-21. **Режим:** read-only разведка компиляцией.

@@ -1,3 +1,5 @@
+<!-- T064 — migrated 2026-07-22 from orchestration/report-log/grok-report-animation-vendor.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: вендор gpui-animation в Source/ — 2026-07-21
 
 ## Сделано (факт, не намерение)

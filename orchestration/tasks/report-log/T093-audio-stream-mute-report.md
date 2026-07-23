@@ -1,3 +1,5 @@
+<!-- T093 — migrated 2026-07-22 from orchestration/report-log/zed-report-6.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: Zed №6 — per-app stream mute в audio-сервисе (Task 6, правая панель) — 2026-07-21
 
 **Исход: DONE** (unit-зелень + workspace build; UI не в зоне; live mute-клик не гонялся — это Task 9).

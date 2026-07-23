@@ -1,3 +1,5 @@
+<!-- T094 — migrated 2026-07-22 from orchestration/report-log/hermes-report-7.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: side_panel_right Task 7 — оконный скелет — 2026-07-21
 
 ## Сделано (факт, не намерение)

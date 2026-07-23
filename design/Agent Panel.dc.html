@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0d0d15;font-family:'Inter',sans-serif}
+::selection{background:#cba6f7;color:#11111b}
+.ap-scroll{scrollbar-width:thin}
+.ap-scroll::-webkit-scrollbar{width:6px}
+.ap-scroll::-webkit-scrollbar-thumb{background:#45475a;border-radius:3px}
+.ap-ta::placeholder{color:#6c7086}
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;gap:0">
+  <sc-for list="{{ variants }}" as="v" hint-placeholder-count="4">
+    <div style="width:352px;height:860px;background:{{ v.panelBg }};display:flex;flex-direction:column;font-family:'Inter',sans-serif;box-sizing:border-box;border-right:1px solid rgba(0,0,0,0.2);position:relative;overflow:hidden">
+
+      <div style="position:absolute;top:8px;left:10px;font-size:9.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:{{ v.labelMuted }};z-index:5">{{ v.frameLabel }}</div>
+
+      <div style="height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid {{ v.cardBorder }};margin-top:20px;position:relative">
+        <div style="display:flex;align-items:center;gap:7px;cursor:pointer;border-radius:6px;padding:3px 6px;margin:-3px -6px" style-hover="background:{{ v.hoverBg }}">
+          <div style="width:7px;height:7px;border-radius:50%;background:{{ v.statusColor }};flex:none"></div>
+          <span style="font-size:12.5px;font-weight:600;color:{{ v.labelText }}">Claude Code</span>
+          <span style="font-size:10.5px;color:{{ v.mutedText }}">{{ v.statusText }}</span>
+          <svg width="9" height="9" viewBox="0 0 256 256" fill="{{ v.mutedText }}"><path d="M213.66 101.66l-80 80a8 8 0 01-11.32 0l-80-80a8 8 0 0111.32-11.32L128 164.69l74.34-74.35a8 8 0 0111.32 11.32z"/></svg>
+        </div>
+        <div style="width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:{{ v.mutedText }};cursor:pointer" style-hover="background:{{ v.hoverBg }};color:{{ v.hoverText }}">
+          <svg width="12" height="12" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66 194.34a8 8 0 01-11.32 11.32L128 139.31l-66.34 66.35a8 8 0 01-11.32-11.32L116.69 128 50.34 61.66a8 8 0 0111.32-11.32L128 116.69l66.34-66.35a8 8 0 0111.32 11.32L139.31 128z"/></svg>
+        </div>
+
+        <sc-if value="{{ v.showAgentMenu }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;top:38px;left:8px;width:172px;background:{{ v.toolCardBg }};border:1px solid {{ v.cardBorder }};border-radius:8px;padding:4px;z-index:20;display:flex;flex-direction:column">
+            <sc-for list="{{ v.agents }}" as="ag" hint-placeholder-count="7">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:11.5px;color:{{ v.labelText }}" style-hover="background:{{ v.hoverBg }}">
+                <span>{{ ag.name }}</span>
+                <sc-if value="{{ ag.selected }}" hint-placeholder-val="{{ false }}">
+                  <svg width="11" height="11" viewBox="0 0 256 256" fill="{{ v.accent }}"><path d="M229.66 77.66l-128 128a8 8 0 01-11.32 0l-56-56a8 8 0 0111.32-11.32L96 188.69 218.34 66.34a8 8 0 0111.32 11.32z"/></svg>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="flex:1;min-height:0;display:flex">
+
+        <sc-if value="{{ v.sidebarExpanded }}" hint-placeholder-val="{{ true }}">
+          <div style="width:118px;flex:none;display:flex;flex-direction:column;border-right:1px solid {{ v.cardBorder }};background:{{ v.sidebarBg }}">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 9px 6px">
+              <span style="font-size:10px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:{{ v.mutedText }}">Sessions</span>
+              <div style="width:16px;height:16px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:{{ v.mutedText }};cursor:pointer" style-hover="background:{{ v.hoverBg }}">
+                <svg width="9" height="9" viewBox="0 0 256 256" fill="currentColor"><path d="M181.66 133.66l-80 80a8 8 0 01-11.32-11.32L164.69 128 90.34 53.66a8 8 0 0111.32-11.32l80 80a8 8 0 010 11.32z" transform="rotate(180 128 128)"/></svg>
+              </div>
+            </div>
+            <div style="padding:0 9px 9px">
+              <div style="display:flex;align-items:center;justify-content:center;gap:4px;padding:5px 0;border-radius:6px;border:1px solid {{ v.borderMid }};color:{{ v.labelText }};font-size:10.5px;font-weight:600;cursor:pointer" style-hover="background:{{ v.hoverBg }}">
+                <svg width="9" height="9" viewBox="0 0 256 256" fill="currentColor"><path d="M224 128a8 8 0 01-8 8h-80v80a8 8 0 01-16 0v-80H40a8 8 0 010-16h80V40a8 8 0 0116 0v80h80a8 8 0 018 8z"/></svg>
+                New session
+              </div>
+            </div>
+            <div class="ap-scroll" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:1px;padding:0 5px">
+              <sc-for list="{{ v.sessions }}" as="sess" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:6px;padding:6px 6px;border-radius:6px;background:{{ sess.rowBg }};cursor:pointer" style-hover="background:{{ v.hoverBg }}">
+                  <div style="width:6px;height:6px;border-radius:50%;flex:none;background:{{ sess.dotColor }}"></div>
+                  <span style="font-size:11px;color:{{ sess.textColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ sess.name }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ v.sidebarCollapsed }}" hint-placeholder-val="{{ false }}">
+          <div style="width:40px;flex:none;display:flex;flex-direction:column;align-items:center;gap:6px;border-right:1px solid {{ v.cardBorder }};background:{{ v.sidebarBg }};padding:9px 0">
+            <div style="width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:{{ v.mutedText }};cursor:pointer" style-hover="background:{{ v.hoverBg }}">
+              <svg width="9" height="9" viewBox="0 0 256 256" fill="currentColor"><path d="M181.66 133.66l-80 80a8 8 0 01-11.32-11.32L164.69 128 90.34 53.66a8 8 0 0111.32-11.32l80 80a8 8 0 010 11.32z"/></svg>
+            </div>
+            <div style="width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:{{ v.labelText }};cursor:pointer;border:1px solid {{ v.borderMid }}" style-hover="background:{{ v.hoverBg }}">
+              <svg width="9" height="9" viewBox="0 0 256 256" fill="currentColor"><path d="M224 128a8 8 0 01-8 8h-80v80a8 8 0 01-16 0v-80H40a8 8 0 010-16h80V40a8 8 0 0116 0v80h80a8 8 0 018 8z"/></svg>
+            </div>
+            <div style="height:1px;width:20px;background:{{ v.cardBorder }};margin:2px 0"></div>
+            <sc-for list="{{ v.sessions }}" as="sess" hint-placeholder-count="3">
+              <div style="width:{{ sess.dotSize }}px;height:{{ sess.dotSize }}px;border-radius:50%;background:{{ sess.dotColor }};cursor:pointer"></div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+
+          <sc-if value="{{ v.chatEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;display:flex;align-items:center;justify-content:center">
+              <span style="font-size:12px;color:{{ v.mutedText }}">No messages yet</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ v.chatHasMessages }}" hint-placeholder-val="{{ true }}">
+            <div class="ap-scroll" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:9px;padding:12px">
+
+              <div style="align-self:flex-end;max-width:82%;background:{{ v.userBubbleBg }};border-radius:9px 9px 3px 9px;padding:7px 10px;font-size:11.5px;line-height:1.4;color:{{ v.hoverText }}">
+                Find where session state gets persisted and check the resize handler
+              </div>
+
+              <div style="align-self:flex-start;max-width:88%;display:flex;flex-direction:column;gap:6px">
+                <div style="background:{{ v.agentBubbleBg }};border:1px solid {{ v.agentBubbleBorder }};border-radius:9px 9px 9px 3px;padding:7px 10px;font-size:11.5px;line-height:1.45;color:{{ v.labelText }}">
+                  Looking through the panel crate now — checking session_state.rs and the resize handler in mod.rs.
+                </div>
+
+                <div style="background:{{ v.toolCardBg }};border:1px solid {{ v.cardBorder }};border-radius:8px;overflow:hidden">
+                  <div style="display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer">
+                    <div style="width:6px;height:6px;border-radius:50%;flex:none;background:{{ v.toolDone }}"></div>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:{{ v.labelText }};flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">search_files("session_state")</span>
+                    <svg width="9" height="9" viewBox="0 0 256 256" fill="{{ v.mutedText }}"><path d="M213.66 101.66l-80 80a8 8 0 01-11.32 0l-80-80a8 8 0 0111.32-11.32L128 164.69l74.34-74.35a8 8 0 0111.32 11.32z"/></svg>
+                  </div>
+                </div>
+
+                <div style="background:{{ v.toolCardBg }};border:1px solid {{ v.cardBorder }};border-radius:8px;overflow:hidden">
+                  <div style="display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;border-bottom:1px solid {{ v.cardBorder }}">
+                    <div style="width:6px;height:6px;border-radius:50%;flex:none;background:{{ v.toolRunning }}"></div>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:{{ v.labelText }};flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">read_file("side_panel_left/mod.rs")</span>
+                    <svg width="9" height="9" viewBox="0 0 256 256" fill="{{ v.mutedText }}" style="transform:rotate(180deg)"><path d="M213.66 101.66l-80 80a8 8 0 01-11.32 0l-80-80a8 8 0 0111.32-11.32L128 164.69l74.34-74.35a8 8 0 0111.32 11.32z"/></svg>
+                  </div>
+                  <div style="padding:7px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.5;color:{{ v.mutedText }};white-space:pre">fn handle_resize(&amp;mut self, dx: f32) {
+    self.width = (self.width + dx)
+        .clamp(280.0, 960.0);
+}</div>
+                </div>
+              </div>
+
+            </div>
+          </sc-if>
+
+          <div style="flex:none;border-top:1px solid {{ v.cardBorder }};padding:9px;display:flex;flex-direction:column;gap:7px;opacity:{{ v.composerOpacity }};pointer-events:{{ v.composerPointer }}">
+            <div style="display:flex;gap:6px">
+              <div style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:6px;border:1px solid {{ v.borderMid }};color:{{ v.labelText }};font-size:10.5px;cursor:pointer" style-hover="background:{{ v.hoverBg }}">
+                Claude Sonnet
+                <svg width="8" height="8" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66 101.66l-80 80a8 8 0 01-11.32 0l-80-80a8 8 0 0111.32-11.32L128 164.69l74.34-74.35a8 8 0 0111.32 11.32z"/></svg>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:6px;border:1px solid {{ v.borderMid }};color:{{ v.labelText }};font-size:10.5px;cursor:pointer" style-hover="background:{{ v.hoverBg }}">
+                Act
+                <svg width="8" height="8" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66 101.66l-80 80a8 8 0 01-11.32 0l-80-80a8 8 0 0111.32-11.32L128 164.69l74.34-74.35a8 8 0 0111.32 11.32z"/></svg>
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-end;gap:6px;background:{{ v.composerBg }};border:1px solid {{ v.borderMid }};border-radius:8px;padding:6px 7px">
+              <div style="width:18px;height:18px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:{{ v.mutedText }};cursor:pointer;flex:none" style-hover="background:{{ v.hoverBg }}">
+                <svg width="11" height="11" viewBox="0 0 256 256" fill="currentColor"><path d="M224.49 103.51a8 8 0 000-11.32l-56-56a8 8 0 00-11.32 0L84 109.37A24 24 0 1084 145l73-73a8 8 0 0111.31 11.31l-73 73a40 40 0 1056.6 56.6l73-73a8 8 0 00.58-.4z"/></svg>
+              </div>
+              <textarea class="ap-ta" placeholder="Message the agent…" style="flex:1;resize:none;border:none;outline:none;background:transparent;color:{{ v.hoverText }};font-family:'Inter',sans-serif;font-size:11.5px;line-height:1.4;height:16px"></textarea>
+              <div style="width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:{{ v.panelBg }};background:{{ v.accent }};cursor:pointer;flex:none" style-hover="background:#cba6f7">
+                <svg width="11" height="11" viewBox="0 0 256 256" fill="currentColor"><path d="M231.4 44.34l-96 224a8 8 0 01-14.5.4l-40.9-88.8-88.8-40.9a8 8 0 01.4-14.5l224-96a8 8 0 0110.8 15.8z"/></svg>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div style="position:absolute;top:0;right:0;bottom:0;width:4px;cursor:ew-resize"><div style="position:absolute;top:0;bottom:0;left:1.5px;width:1px;background:{{ v.resizeHandle }}"></div></div>
+    </div>
+  </sc-for>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1408,&quot;height&quot;:880}}">
+class Component extends DCLogic {
+  agentNames = ['Claude Code', 'Hermes', 'Mimo', 'Cline', 'OpenCode', 'Kilo', 'Grok'];
+
+  mkAgents() {
+    return this.agentNames.map(name => ({ name, selected: name === 'Claude Code' }));
+  }
+
+  renderVals() {
+    const darkBase = {
+      panelBg: '#181825', sidebarBg: '#181825', cardBorder: '#232336', toolCardBg: '#1e1e2e',
+      borderMid: '#45475a', labelText: '#a6adc8', mutedText: '#6c7086', hoverText: '#cdd6f4',
+      hoverBg: '#232336', userBubbleBg: '#313244', agentBubbleBg: '#1e1e30', agentBubbleBorder: '#26263c',
+      resizeHandle: '#45475a', accent: '#007acc', labelMuted: '#3a3a52',
+      toolDone: '#a6e3a1', toolRunning: '#f9e2af',
+      composerOpacity: 1, composerPointer: 'auto', composerBg: '#1e1e2e',
+    };
+    const lightBase = {
+      panelBg: '#dde0f2', sidebarBg: '#d5d9ee', cardBorder: '#c4c8e6', toolCardBg: '#eceefa',
+      borderMid: '#c4c8e6', labelText: '#2c2e4a', mutedText: '#5a5d80', hoverText: '#2c2e4a',
+      hoverBg: '#e0e3f4', userBubbleBg: '#c9cfec', agentBubbleBg: '#eceefa', agentBubbleBorder: '#c4c8e6',
+      resizeHandle: '#a8adce', accent: '#007acc', labelMuted: '#9296bb',
+      toolDone: '#40a02b', toolRunning: '#df8e1d',
+      composerOpacity: 1, composerPointer: 'auto', composerBg: '#eceefa',
+    };
+
+    const sessionsDark = [
+      { name: 'Refactor resize handler', dotColor: '#a6adc8', textColor: '#cdd6f4', rowBg: '#232336', dotSize: 8 },
+      { name: 'Fix session persist bug', dotColor: '#6c7086', textColor: '#a6adc8', rowBg: 'transparent', dotSize: 6 },
+      { name: 'Add tool-call collapse', dotColor: '#6c7086', textColor: '#a6adc8', rowBg: 'transparent', dotSize: 6 },
+    ];
+    const sessionsLight = [
+      { name: 'Refactor resize handler', dotColor: '#2c2e4a', textColor: '#2c2e4a', rowBg: '#c9cfec', dotSize: 8 },
+      { name: 'Fix session persist bug', dotColor: '#8b8fb5', textColor: '#5a5d80', rowBg: 'transparent', dotSize: 6 },
+      { name: 'Add tool-call collapse', dotColor: '#8b8fb5', textColor: '#5a5d80', rowBg: 'transparent', dotSize: 6 },
+    ];
+
+    return {
+      variants: [
+        { ...darkBase, frameLabel: '1 — Dark, expanded sidebar', sidebarExpanded: true, sidebarCollapsed: false,
+          chatEmpty: false, chatHasMessages: true, sessions: sessionsDark,
+          statusColor: '#a6e3a1', statusText: 'Connected', showAgentMenu: true, agents: this.mkAgents() },
+        { ...darkBase, frameLabel: '2 — Dark, collapsed sidebar', sidebarExpanded: false, sidebarCollapsed: true,
+          chatEmpty: false, chatHasMessages: true, sessions: sessionsDark,
+          statusColor: '#a6e3a1', statusText: 'Connected', showAgentMenu: false, agents: this.mkAgents() },
+        { ...darkBase, frameLabel: '3 — Dark, empty + disconnected', sidebarExpanded: true, sidebarCollapsed: false,
+          chatEmpty: true, chatHasMessages: false, sessions: sessionsDark,
+          statusColor: '#f38ba8', statusText: 'Disconnected',
+          composerOpacity: 0.4, composerPointer: 'none', showAgentMenu: false, agents: this.mkAgents() },
+        { ...lightBase, frameLabel: '4 — Light C, expanded sidebar', sidebarExpanded: true, sidebarCollapsed: false,
+          chatEmpty: false, chatHasMessages: true, sessions: sessionsLight,
+          statusColor: '#40a02b', statusText: 'Connected', showAgentMenu: false, agents: this.mkAgents() },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

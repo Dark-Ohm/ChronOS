@@ -8,7 +8,96 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-21 — Task 7 side_panel_right ПРИНЯТ (`da744a2`).**
+**Обновлено: 2026-07-23 — T107 (левая agent-панель) ПРИНЯТ целиком, T108
+(мульти-агентный свитчер) в работе. Resize-регрессия ЗАКРЫТА (flexbox, не
+Wayland — коммит `fbcadd6`), UX-фиксы композера/сайдбара закоммичены.
+Открыто: ghost-trail (форк, отложено), дропдаун-jank. Детали ниже, раздел
+`### T107/T108 — LEFT AGENT PANEL`.**
+
+> **Переворот оркестрации (2026-07-22):** per-agent журналы →
+> per-task T-ID. Брифы теперь `orchestration/tasks/active/TNNN-slug.md`,
+> отчёты — `orchestration/tasks/report/` (inbox) →
+> `orchestration/tasks/report-log/`/`rejected/`. Полная сквозная
+> история (T001..T106+) — `orchestration/tasks/MIGRATION.md`. Роль
+> архитектора и живой список дисциплины — `ARCHITECT.md` (корень).
+> `orchestration/agents/<ИМЯ>.md` теперь тонкий указатель на активный
+> T-номер, не журнал. Открытые сейчас задачи:
+>
+> **⚠ Потеря данных при исполнении миграции (2026-07-22).** Форк-исполнитель
+> при сокращении `orchestration/agents/bench/MIMO.md` (1462 строки),
+> `bench/OMP.md`, `fired/AUTOHAND.md` до тонких указателей прочитал только
+> ~30 строк каждого файла и переписал их целиком через `Write`, не проверив
+> git-статус. Эти три файла НИКОГДА не были в git (весь `orchestration/` в
+> `.gitignore` с 2026-07-19) и не имели `archive/`-копии (в отличие от
+> CLINE/HERMES/GROK/ZED). **История MIMO/OMP/Autohand потеряна безвозвратно**
+> — не в trash, не в git log, snapper есть только для `root`-конфига (не
+> `/home`). Урок зафиксирован — см. `## Git` в CLAUDE.md.
+
+| Task | Путь брифа | Статус |
+|---|---|---|
+| T102 (Task 12, бар-триггер) | `orchestration/tasks/active/T102-bar-trigger-integration.md` | OPEN, не назначен |
+| T103 (Chronos-AUR Трек A, Cline) | `orchestration/tasks/active/T103-chronos-aur-track-a-engine.md` | WIP |
+| T104 (Chronos-AUR Трек B, Grok) | `orchestration/tasks/active/T104-chronos-aur-track-b-shell-exec.md` | WIP |
+| T105 (Chronos-AUR Трек C, Hermes) | `orchestration/tasks/active/T105-chronos-aur-track-c-app-shell.md` | WIP |
+| T106 (Chronos-AUR Трек D, Zed) | `orchestration/tasks/active/T106-chronos-aur-track-d-pages.md` | WIP |
+| T107 (левая agent-панель) | `orchestration/tasks/done/T107-left-agent-panel.md` | **ПРИНЯТ** |
+| T108 (мульти-агентный свитчер) | `orchestration/tasks/active/T108-left-panel-agent-switcher.md` | WIP, некоммиченный дифф в `ChronOS-wt-left-panel` |
+
+### T107/T108 — LEFT AGENT PANEL (2026-07-23)
+
+**T107 принят целиком** (13 подзадач, ветка `feat/left-agent-panel`,
+ворктри `/home/neo/projects/chronos-ecosystem/ChronOS-wt-left-panel`).
+Layer-shell overlay слева (peek/pin, hover-strip зеркально правой панели),
+Hermes ACP чат, sessions sidebar, tool-call карточки, drag-resize,
+композер. Все отчёты в `report-log/T107-*`.
+
+**Дисциплина сессии — миньоны дважды фабриковали результаты тестов**
+(заявляли "4/4 pass" с именами тестов, которых нет в коде). Пойман сверкой
+`cargo test` вывода с реальным деревом, не на слово. `side_panel_left`
+объявлен в `main.rs` (бинарная цель) — `cargo test -p chronos --lib` даёт
+0 релевантных тестов, нужен `--bin chronos` (или без флага цели вообще).
+
+**T108 — мульти-агентный свитчер.** Пользовательское решение, которое
+раньше дважды терялось при планировании (не зафиксировано ни принятым,
+ни отклонённым) — теперь явно записано в `DECISIONS.log` (2026-07-23,
+"мульти-агентный свитчер"). Task1 (реестр агентов + multi-instance
+`HermesClient` + дропдаун в хедере) и Task2 (реальные модели/режимы из
+ACP `NewSessionResponse`, подтверждено по исходнику Hermes
+`~/.hermes/hermes-agent/acp_adapter/server.py`) — приняты, в
+`report-log/T108-*`.
+
+**Живая сессия отладки после task2 (архитектор + пользователь) —
+закоммичено `fbcadd6` на `origin/feat/T108-agent-switcher`:**
+- Починено и подтверждено живьём: сворачивание sessions-сайдбара (у
+  `sessions-expand`/`sessions-collapse` не было `.on_click` вообще —
+  потеряно при task1 rsx→builder рерайте `panel.rs`), плейсхолдер
+  "Model"/"Mode" на пустых пикерах, composer собран в одну строку
+  `[attach][model][input][mode][send]` по требованию пользователя.
+- **РЕГРЕССИЯ resize-ручки — ЗАКРЫТА.** Симптом ("умирает на min-width")
+  оказался НЕ Wayland/GPUI (три сессии гадали по трейсам форка впустую), а
+  **flexbox min-width**: `main-content` (`flex_1`, дефолтный
+  `min-width:auto`) не ужимался ниже контента и съедал слот fixed-ручки на
+  минимуме → хитбокс ручки в ноль. Фикс: `main-content`
+  `.min_w(0).overflow_hidden()` + ручка `.flex_none()` (+ грэб-зона 4→10px).
+  Вскрыто зондом `capture_any_mouse_down` на root. Разбор + метод — item #9
+  в `T108-...md`, дисциплинарный урок — `ARCHITECT.md` (2026-07-23).
+- **Открыто, вынесено отдельной задачей:** ghost-trail при быстром резайзе
+  (item #8-bis) — форк-уровневый рассинхрон буфера
+  (`gpui_linux/.../wayland/window.rs:1548-1559`: `set_size` синхронно,
+  ресайз буфера рендерера спавном на тик позже). НЕ призрачное окно (1
+  surface) и НЕ анимация Hyprland (`layer_rule noanim` не помог). Фикс —
+  gpui-ребилд + вынос `window.resize()` из пейнт-фазы, по дисциплине
+  `wayland-window-lifecycle`, осознанно отложено. Плюс item #7
+  (дропдаун-jank, вероятно тот же тайминг) и рассинхрон ширины сайдбара
+  мокап(118/40)↔код(200/48).
+- **Повторяющийся класс бага за вечер:** Rust 2024 RPIT lifetime capture —
+  любая функция `panel.rs`, возвращающая `impl IntoElement` и зовущая
+  `cx.listener(...)` внутри, держит `cx` заимствованным до последнего
+  использования результата. Ловили трижды (E0502/E0499) на разных
+  функциях (`render_composer`, `build_sessions_sidebar`). Фикс каждый
+  раз один из двух: либо строить такую функцию РАНЬШЕ любых будущих
+  `cx.listener(...)`, либо явно пометить возврат `+ use<>`, если функция
+  не должна жить дольше вызова.
 
 ### АКТУАЛЬНОЕ ПОЛЕ (2026-07-21)
 

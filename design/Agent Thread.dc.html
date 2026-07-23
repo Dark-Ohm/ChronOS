@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0d0d15;font-family:'Inter',sans-serif}
+::selection{background:#cba6f7;color:#11111b}
+.at-scroll{scrollbar-width:thin;scrollbar-color:#45475a #181825}
+.at-scroll::-webkit-scrollbar{width:6px}
+.at-scroll::-webkit-scrollbar-thumb{background:#45475a;border-radius:3px}
+.at-ta::placeholder{color:#6c7086}
+</style>
+</helmet>
+<div style="width:420px;height:960px;background:#181825;display:flex;flex-direction:column;font-family:'Inter',sans-serif;color:#cdd6f4;box-sizing:border-box;border:1px solid #232336;border-radius:10px;overflow:hidden">
+
+  <div style="height:38px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid #232336">
+    <div style="display:flex;align-items:center;gap:7px;min-width:0">
+      <svg width="13" height="13" viewBox="0 0 256 256" fill="#007acc" style="flex:none"><path d="M228.6 128.86l-48.8-19.5-19.5-48.8a8 8 0 00-14.6 0l-19.5 48.8-48.8 19.5a8 8 0 000 14.6l48.8 19.5 19.5 48.8a8 8 0 0014.6 0l19.5-48.8 48.8-19.5a8 8 0 000-14.6z"/></svg>
+      <span style="font-size:12.5px;font-weight:600;color:#cdd6f4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">New Agent Thread</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:2px;flex:none">
+      <div style="width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer" style-hover="background:#232336;color:#cdd6f4">
+        <svg width="11" height="11" viewBox="0 0 256 256" fill="currentColor"><path d="M224 128a8 8 0 01-8 8h-80v80a8 8 0 01-16 0v-80H40a8 8 0 010-16h80V40a8 8 0 0116 0v80h80a8 8 0 018 8z"/></svg>
+      </div>
+      <div style="width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer" style-hover="background:#232336;color:#cdd6f4">
+        <svg width="11" height="11" viewBox="0 0 256 256" fill="currentColor"><path d="M136 32v55.06l23-23a8 8 0 0111.31 11.32l-36.62 36.62a8 8 0 01-11.31 0L85.76 75.38a8 8 0 0111.31-11.32l23 23V32a8 8 0 0116 0zM40 208h176a8 8 0 000-16H40a8 8 0 000 16zm0-56h176a8 8 0 000-16H40a8 8 0 000 16z" style="display:none"/><path d="M228.28 84.28l-40 40a8 8 0 01-11.32-11.31L206.06 84H160a8 8 0 010-16h46.06l-29.1-29.1a8 8 0 0111.31-11.31l40 40a8 8 0 010 11.31zM40 156h116a8 8 0 000-16H40a8 8 0 000 16zm0 52h176a8 8 0 000-16H40a8 8 0 000 16z"/></svg>
+      </div>
+      <div style="width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer" style-hover="background:#232336;color:#cdd6f4">
+        <svg width="11" height="11" viewBox="0 0 256 256" fill="currentColor"><circle cx="128" cy="60" r="16"/><circle cx="128" cy="128" r="16"/><circle cx="128" cy="196" r="16"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="at-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:11px;font-size:12px;line-height:1.55">
+
+    <div style="color:#a6e3a1;font-weight:600;font-size:12.5px">Files touched</div>
+
+    <div style="border:1px solid #232336;border-radius:7px;overflow:hidden;flex-shrink:0">
+      <div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px;background:#1e1e2e;padding:6px 9px;font-size:10.5px;font-weight:600;color:#6c7086;border-bottom:1px solid #232336">
+        <span>File</span><span>Change</span><span style="text-align:right">Diff</span>
+      </div>
+      <sc-for list="{{ files }}" as="f" hint-placeholder-count="6">
+        <div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px;padding:6px 9px;border-bottom:1px solid #1e1e2e;align-items:baseline">
+          <div style="display:flex;align-items:center;gap:5px;min-width:0;cursor:pointer;border-radius:4px;padding:1px 3px;margin:-1px -3px" style-hover="background:#1e1e30">
+            <span style="width:5px;height:5px;border-radius:1px;flex:none;background:{{ f.dotColor }}"></span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#89b4fa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:underline;text-decoration-color:transparent" style-hover="text-decoration-color:#89b4fa">{{ f.path }}</span>
+          </div>
+          <span style="font-size:10.5px;color:#a6adc8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" style-hover="color:#cdd6f4">{{ f.change }}</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;white-space:nowrap"><span style="color:#a6e3a1">+{{ f.added }}</span> <span style="color:#f38ba8">-{{ f.removed }}</span></span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="background:#11111b;border:1px solid #232336;border-radius:7px;padding:9px 10px;font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.6;flex-shrink:0">
+      <div style="color:#89b4fa;cursor:pointer;display:inline-block" style-hover="text-decoration:underline">composer.rs</div>
+      <div style="color:#6c7086;cursor:pointer" style-hover="color:#a6adc8">@@ -42,7 +42,11 @@ fn available_models(&amp;self)</div>
+      <div><span style="color:#f38ba8">-    vec!["claude-sonnet-4".into()]</span></div>
+      <div><span style="color:#a6e3a1">+    self.session.available_models</span></div>
+      <div><span style="color:#a6e3a1">+        .iter()</span></div>
+      <div><span style="color:#a6e3a1">+        .map(|m| m.id.clone())</span></div>
+      <div><span style="color:#a6e3a1">+        .collect()</span></div>
+    </div>
+
+    <div style="height:1px;background:#232336;margin:2px 0"></div>
+
+    <div style="color:#f38ba8;font-weight:600;font-size:12.5px">Verification</div>
+    <div style="background:#0d0d15;border:1px solid #232336;border-radius:7px;padding:9px 10px;display:flex;flex-direction:column;gap:5px;font-family:'JetBrains Mono',monospace;font-size:10.5px">
+      <div style="color:#cdd6f4;cursor:pointer;border-radius:4px;padding:1px 3px;margin:-1px -3px" style-hover="background:#1a1a26"><span style="color:#89dceb">➜</span> <span style="color:#f9e2af">chronos</span> <span style="color:#6c7086">git:(</span><span style="color:#f38ba8">feat/left-agent-panel</span><span style="color:#6c7086">)</span> cargo check -p chronos</div>
+      <div style="padding-left:14px;color:#a6e3a1;cursor:pointer" style-hover="color:#c8f5c1">    Finished dev profile [unoptimized] in 4.12s — 0 errors, 0 warnings</div>
+      <div style="color:#cdd6f4;cursor:pointer;border-radius:4px;padding:1px 3px;margin:-1px -3px" style-hover="background:#1a1a26"><span style="color:#89dceb">➜</span> <span style="color:#f9e2af">chronos</span> <span style="color:#6c7086">git:(</span><span style="color:#f38ba8">feat/left-agent-panel</span><span style="color:#6c7086">)</span> cargo test -p chronos side_panel_left</div>
+      <div style="padding-left:14px;display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;align-items:center;gap:6px;color:#a6adc8;cursor:pointer;border-radius:4px;padding:1px 3px;margin:-1px -3px" style-hover="background:#1a1a26;color:#cdd6f4"><svg width="10" height="10" viewBox="0 0 256 256" fill="#a6e3a1" style="flex:none"><path d="M229.66 77.66l-128 128a8 8 0 01-11.32 0l-56-56a8 8 0 0111.32-11.32L96 188.69 218.34 66.34a8 8 0 0111.32 11.32z"/></svg>test state_starts_as_peek ... ok</div>
+        <div style="display:flex;align-items:center;gap:6px;color:#a6adc8;cursor:pointer;border-radius:4px;padding:1px 3px;margin:-1px -3px" style-hover="background:#1a1a26;color:#cdd6f4"><svg width="10" height="10" viewBox="0 0 256 256" fill="#a6e3a1" style="flex:none"><path d="M229.66 77.66l-128 128a8 8 0 01-11.32 0l-56-56a8 8 0 0111.32-11.32L96 188.69 218.34 66.34a8 8 0 0111.32 11.32z"/></svg>test state_default_width ... ok</div>
+        <div style="color:#a6e3a1">    test result: ok. 2 passed; 0 failed; 0 ignored; finished in 0.03s</div>
+      </div>
+    </div>
+
+    <div style="height:1px;background:#232336;margin:2px 0"></div>
+
+    <div style="color:#f38ba8;font-weight:600;font-size:12.5px">Live verification — <span style="color:#f9e2af">NOT DONE</span></div>
+    <div style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#a6adc8">
+      <div style="cursor:pointer;border-radius:4px;padding:1px 4px;margin:-1px -4px" style-hover="background:#1e1e30;color:#cdd6f4">1. Build release binary</div>
+      <div style="cursor:pointer;border-radius:4px;padding:1px 4px;margin:-1px -4px" style-hover="background:#1e1e30;color:#cdd6f4">2. Open left panel, send first prompt</div>
+      <div style="cursor:pointer;border-radius:4px;padding:1px 4px;margin:-1px -4px" style-hover="background:#1e1e30;color:#cdd6f4">3. Verify model picker shows real Hermes models</div>
+      <div style="cursor:pointer;border-radius:4px;padding:1px 4px;margin:-1px -4px" style-hover="background:#1e1e30;color:#cdd6f4">4. Verify mode picker shows "default", "accept-edits", "dont-ask"</div>
+      <div style="cursor:pointer;border-radius:4px;padding:1px 4px;margin:-1px -4px" style-hover="background:#1e1e30;color:#cdd6f4">5. Verify switching model/mode works</div>
+    </div>
+
+    <div style="height:1px;background:#232336;margin:2px 0"></div>
+
+    <div style="color:#f38ba8;font-weight:600;font-size:12.5px">What's NOT in this task</div>
+    <div style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#a6adc8">
+      <div style="cursor:pointer;border-radius:4px;padding:1px 4px;margin:-1px -4px" style-hover="background:#1e1e30;color:#cdd6f4">— Item #7/#8 (ghost trail during resize + dropdown jank) — separate issue</div>
+      <div style="cursor:pointer;border-radius:4px;padding:1px 4px;margin:-1px -4px" style-hover="background:#1e1e30;color:#cdd6f4">— Hermes set_session_model/set_session_mode commands not wired yet</div>
+    </div>
+
+    <div style="height:1px;background:#232336;margin:2px 0"></div>
+
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#6c7086;border-radius:4px;padding:2px 4px;margin:-2px -4px" style-hover="color:#a6adc8;background:#1e1e30">
+        <svg width="9" height="9" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66 101.66l-80 80a8 8 0 01-11.32 0l-80-80a8 8 0 0111.32-11.32L128 164.69l74.34-74.35a8 8 0 0111.32 11.32z"/></svg>
+        <span style="font-size:11px">Thinking</span>
+      </div>
+      <div style="font-size:12px;line-height:1.55;color:#cdd6f4">
+        Записал: <a href="#" style="color:#89b4fa;text-decoration:none" style-hover="text-decoration:underline">orchestration/tasks/report/T108-left-panel-agent-switcher-task2-report.md</a><br/>
+        Пункт #6 (реальные модели/режимы) — закрыт. Остался <span style="color:#89b4fa;cursor:pointer;text-decoration:underline">#7</span>/<span style="color:#89b4fa;cursor:pointer;text-decoration:underline">#8</span> (ghost + jank при резайзе).
+      </div>
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;color:#6c7086">
+        <div style="width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:#232336;color:#cdd6f4">
+          <svg width="11" height="11" viewBox="0 0 256 256" fill="currentColor"><path d="M216 32H88a8 8 0 00-8 8v40H40a8 8 0 00-8 8v128a8 8 0 008 8h128a8 8 0 008-8v-40h40a8 8 0 008-8V40a8 8 0 00-8-8zm-56 176H48V96h112zm48-48h-32V88a8 8 0 00-8-8H96V48h112z"/></svg>
+        </div>
+        <div style="width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:#232336;color:#cdd6f4">
+          <svg width="11" height="11" viewBox="0 0 256 256" fill="currentColor"><path d="M230.14 175.62l-104-176a15.71 15.71 0 00-27.9 0l-104 176A16 16 0 008 199.62v.38a16 16 0 0016 16h208a16 16 0 0016-16v-.38a16 16 0 00-17.86-23.62zM128 128a12 12 0 1112-12 12 12 0 01-12 12z" style="display:none"/><path d="M232 220.94a8 8 0 01-4 6.93A15.86 15.86 0 01220 232H36a15.86 15.86 0 01-8-2.14 8 8 0 01-4-6.93v-.13a16 16 0 011.9-7.55l92-171.87a16 16 0 0128.2 0l92 171.87a16 16 0 011.9 7.55zM128 96a8 8 0 00-8 8v40a8 8 0 0016 0v-40a8 8 0 00-8-8z" style="display:none"/><path d="M60.34 197.66a8 8 0 01-11.32-11.32l160-160a8 8 0 0111.32 11.32z" style="display:none"/><path d="M117.34 178.34a12 12 0 1016.94 0 12 12 0 00-16.94 0zM128 40a12 12 0 00-12 12v80a12 12 0 0024 0V52a12 12 0 00-12-12z" style="display:none"/><path d="M12 216a8 8 0 01-6.31-12.94l112-144a8 8 0 0112.62 0l112 144A8 8 0 01236 216z" style="display:none"/><path d="M128 32a8 8 0 018 8v112a8 8 0 01-16 0V40a8 8 0 018-8zm0 152a12 12 0 1012 12 12 12 0 00-12-12z"/></svg>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="flex:none;border-top:1px solid #232336;background:#1e1e2e;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+
+    <textarea class="at-ta" placeholder="Message MiMo — @ to include context, / for commands" style="resize:none;border:none;outline:none;background:transparent;color:#cdd6f4;font-family:'Inter',sans-serif;font-size:12.5px;line-height:1.5;height:64px"></textarea>
+
+    <div style="display:flex;align-items:center;gap:4px">
+      <div style="width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer" style-hover="background:#232336;color:#cdd6f4">
+        <svg width="12" height="12" viewBox="0 0 256 256" fill="currentColor"><path d="M224 128a8 8 0 01-8 8h-80v80a8 8 0 01-16 0v-80H40a8 8 0 010-16h80V40a8 8 0 0116 0v80h80a8 8 0 018 8z"/></svg>
+      </div>
+      <div style="width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#007acc;cursor:pointer" style-hover="background:#232336">
+        <svg width="12" height="12" viewBox="0 0 256 256" fill="currentColor"><path d="M228.6 128.86l-48.8-19.5-19.5-48.8a8 8 0 00-14.6 0l-19.5 48.8-48.8 19.5a8 8 0 000 14.6l48.8 19.5 19.5 48.8a8 8 0 0014.6 0l19.5-48.8 48.8-19.5a8 8 0 000-14.6z"/></svg>
+      </div>
+      <div style="width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer" style-hover="background:#232336;color:#cdd6f4">
+        <svg width="12" height="12" viewBox="0 0 256 256" fill="currentColor"><path d="M229.66 218.34l-50.07-50.06a88.11 88.11 0 10-11.31 11.31l50.06 50.07a8 8 0 0011.32-11.32zM40 112a72 72 0 1172 72 72.08 72.08 0 01-72-72z"/></svg>
+      </div>
+      <div style="width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#6c7086;cursor:pointer" style-hover="background:#232336;color:#cdd6f4">
+        <svg width="12" height="12" viewBox="0 0 256 256" fill="currentColor"><path d="M212.92 74.2l-72-40a8 8 0 00-7.84 0l-72 40a8 8 0 00-4.16 7v79.6a8 8 0 004.16 7l72 40a8 8 0 007.84 0l72-40a8 8 0 004.16-7V81.2a8 8 0 00-4.16-7z" style="display:none"/><path d="M231.35 82.55l-96-56a8 8 0 00-8.68 0l-96 56A8 8 0 0026 89.66v104.68a8 8 0 004.03 6.95l96 56a8 8 0 008.68 0l96-56a8 8 0 004.03-6.95V89.66a8 8 0 00-3.39-7.11zM128 41.35l80.62 47-32.13 18.75-80.62-47zM128 128 47.38 81l32.62-19 80.62 47zM40 103.44l80 46.67v87.5l-80-46.67zM216 190.94l-80 46.67v-87.5l80-46.66z" style="display:none"/><path d="M136 32a8 8 0 00-16 0v22.06L83.5 34.53a8 8 0 10-7.9 13.9L112.06 68 88 82.07l-63.44-37a8 8 0 00-8 13.83l55.79 32.5-6.35 3.7a8 8 0 108 13.86L82 105.17V128a8 8 0 0016 0v-22.83l6.4-3.72a8 8 0 10-8-13.86L88 90.9l24-14-.06 47.1a8 8 0 0016 0V76.92l24 14-8.06 4.69a8 8 0 108 13.86l6.4-3.72V128a8 8 0 0016 0v-22.83l7.61-4.43a8 8 0 00-8-13.86l-6.35-3.7 55.79-32.5a8 8 0 00-8-13.83l-63.44 37-24.06-14.07 36.46-19.57a8 8 0 00-7.9-13.9L136 54.06z" style="display:none"/><path d="M120 32a8 8 0 0116 0v18.29l71.16-41.16a8 8 0 018 13.86L143.9 64l63.5 36.7A8 8 0 01204 116l-72-41.6L60 116a8 8 0 01-7.9-13.94L116 64 43.94 23a8 8 0 018-13.85L120 50.29z" style="display:none"/><path d="M128 16a8 8 0 018 8v9.94l84.83 49a8 8 0 010 13.85L136 145.94V216a8 8 0 01-16 0v-70.06L35.17 96.79a8 8 0 010-13.85L120 33.94V24a8 8 0 018-8zm0 25.86L54.9 89.86 128 130.1l73.1-40.24z"/></svg>
+      </div>
+      <div style="width:1px;height:14px;background:#313244;margin:0 4px"></div>
+      <div style="display:flex;align-items:center;gap:3px;font-size:10.5px;color:#f38ba8">
+        <svg width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M128 24a104 104 0 10104 104A104.11 104.11 0 00128 24zm0 192a88 88 0 1188-88 88.1 88.1 0 01-88 88zm-8-56a8 8 0 0016 0v-48a8 8 0 00-16 0zm8 88a12 12 0 1112-12 12 12 0 01-12 12z" style="display:none"/><circle cx="128" cy="180" r="10"/><path d="M118 96h20v72h-20zM128 24a104 104 0 10104 104A104.11 104.11 0 00128 24zm0 192a88 88 0 1188-88 88.1 88.1 0 01-88 88z" style="display:none"/></svg>
+        8
+      </div>
+      <div style="display:flex;align-items:center;gap:3px;font-size:10.5px;color:#f9e2af">
+        <svg width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M236.8 188.09L149.35 32.44a24.76 24.76 0 00-42.7 0L19.2 188.09a23.51 23.51 0 000 23.72A24.35 24.35 0 0040.55 224h174.9a24.35 24.35 0 0021.33-12.19 23.51 23.51 0 00.02-23.72zM120 96a8 8 0 0116 0v56a8 8 0 01-16 0zm8 92a12 12 0 1112-12 12 12 0 01-12 12z"/></svg>
+        43
+      </div>
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:4px;padding:3px 7px;border-radius:6px;color:#a6adc8;font-size:10.5px;cursor:pointer" style-hover="background:#232336">
+        MiMo Auto (free)
+        <svg width="8" height="8" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66 101.66l-80 80a8 8 0 01-11.32 0l-80-80a8 8 0 0111.32-11.32L128 164.69l74.34-74.35a8 8 0 0111.32 11.32z"/></svg>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;padding:3px 7px;border-radius:6px;color:#a6adc8;font-size:10.5px;cursor:pointer" style-hover="background:#232336">
+        build
+        <svg width="8" height="8" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66 101.66l-80 80a8 8 0 01-11.32 0l-80-80a8 8 0 0111.32-11.32L128 164.69l74.34-74.35a8 8 0 0111.32 11.32z"/></svg>
+      </div>
+      <div style="width:24px;height:24px;border-radius:6px;background:#007acc;display:flex;align-items:center;justify-content:center;color:#181825;cursor:pointer" style-hover="background:#cba6f7">
+        <svg width="11" height="11" viewBox="0 0 256 256" fill="currentColor"><path d="M231.4 44.34l-96 224a8 8 0 01-14.5.4l-40.9-88.8-88.8-40.9a8 8 0 01.4-14.5l224-96a8 8 0 0110.8 15.8z"/></svg>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:460,&quot;height&quot;:980}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      files: [
+        { path: 'crates/services/Cargo.toml', change: 'Added unstable_session_model feature', added: 3, removed: 0, dotColor: '#a6e3a1' },
+        { path: 'crates/services/src/hermes_acp/session.rs', change: 'New types: SessionMode, SessionModes', added: 28, removed: 0, dotColor: '#a6e3a1' },
+        { path: 'crates/services/src/hermes_acp/client.rs', change: 'send_prompt returns PromptResponse', added: 14, removed: 6, dotColor: '#f9e2af' },
+        { path: 'crates/services/src/hermes_acp/mod.rs', change: 'Re-export PromptResponse', added: 2, removed: 0, dotColor: '#a6e3a1' },
+        { path: 'crates/services/src/lib.rs', change: 'Re-export ModelInfo, SessionMode', added: 2, removed: 0, dotColor: '#a6e3a1' },
+        { path: 'crates/app/src/side_panel_left/mod.rs', change: 'Store available_modes/available_models', added: 19, removed: 3, dotColor: '#f9e2af' },
+        { path: 'crates/app/src/side_panel_left/composer.rs', change: 'Use real modes/models instead of hardcoded', added: 11, removed: 8, dotColor: '#f9e2af' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

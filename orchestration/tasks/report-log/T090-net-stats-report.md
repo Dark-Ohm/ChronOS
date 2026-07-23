@@ -1,3 +1,5 @@
+<!-- T090 — migrated 2026-07-22 from orchestration/report-log/cline-report-1.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: Task 1 — net_stats extract — 2026-07-21
 
 **Исход: DONE.** Сэмплинг сетевой скорости вынесен в `chronos_services::net_stats`, бар-виджет переключён, покрытие не упало.

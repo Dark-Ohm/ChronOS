@@ -1,3 +1,5 @@
+<!-- T096 — migrated 2026-07-22 from orchestration/report-log/hermes-report-21.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: Hermes №21 — Tasks 10+11 spectrum + power-row — 2026-07-21
 
 **Агент:** Hermes (Lead Architect / Grok).  

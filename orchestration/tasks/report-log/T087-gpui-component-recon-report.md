@@ -1,3 +1,5 @@
+<!-- T087 — migrated 2026-07-22 from orchestration/report-log/hermes-report-18.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: Hermes №18 — разведка `gpui-component` (Longbridge) об наш форк — 2026-07-21
 
 **Агент:** Hermes (исполнение Lead Architect / Grok по запросу пользователя).

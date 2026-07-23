@@ -1,3 +1,5 @@
+<!-- T062 — migrated 2026-07-22 from orchestration/report-log/cline-report-rsx-vendor.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: вендор gpui-rsx в Source/gpui-rsx/ — 2026-07-21
 
 ## Сделано (факт, не намерение)

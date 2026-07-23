@@ -1,3 +1,5 @@
+<!-- T088 — migrated 2026-07-22 from orchestration/report-log/hermes-report-19.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: Hermes №19 — пилот-спайк цена `gpui-component` в ChronOS — 2026-07-21
 
 **Агент:** Hermes (исполнение Lead Architect / Grok).  

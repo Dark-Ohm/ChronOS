@@ -1,3 +1,5 @@
+<!-- T092 — migrated 2026-07-22 from orchestration/report-log/glm-report-3.md — see orchestration/tasks/MIGRATION.md -->
+
 # Session: Task 5 power service — 2026-07-21
 
 **Исход:** PASS — `power` модуль + wiring; 3 unit-теста зелёные; workspace
