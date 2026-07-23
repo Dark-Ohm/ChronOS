@@ -1,10 +1,10 @@
-mod state;
-mod panel;
-pub mod sessions_list;
 mod chat_view;
 mod composer;
-mod tool_card;
 mod hover_strip;
+mod panel;
+pub mod sessions_list;
+mod state;
+mod tool_card;
 
 pub use state::{PanelState, SidePanelLeftState};
 
@@ -21,6 +21,17 @@ pub struct LeftPanelResize;
 
 const PANEL_WIDTH: f32 = 352.;
 const PANEL_EDGE_GAP: f32 = BAR_HEIGHT;
+
+/// Sidebar width when the panel is dragged all the way down to a rail —
+/// no thread column, just the sidebar as a slim dock (2026-07-23 request:
+/// "чуть тоньше кнопки лаунчера" — a bit thinner than the bar's 24px
+/// `dock-start` button, `crates/app/src/bar/widgets/dock.rs`).
+pub(crate) const PANEL_RAIL_WIDTH: f32 = 26.;
+/// Total panel width at the rail: sidebar rail + the resize-handle strip
+/// (`panel.rs` `HANDLE_WIDTH`), duplicated as a literal here because
+/// `state.rs` (where `min_width` lives) can't see `panel.rs`'s private
+/// const without a visibility change neither module otherwise needs.
+pub(crate) const PANEL_RAIL_TOTAL_WIDTH: f32 = PANEL_RAIL_WIDTH + 10.;
 
 #[derive(Default)]
 pub struct SidePanelLeftState_ {
@@ -55,6 +66,15 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
             namespace: "side_panel_left".to_string(),
             layer: Layer::Overlay,
             anchor: Anchor::LEFT | Anchor::TOP,
+            // Tried live 2026-07-23: exclusive zone reserved space like the
+            // bar, tiled windows reflowed correctly around it (verified via
+            // `hyprctl monitors` reserved + `hyprctl clients` geometry) —
+            // but shoving windows around every time the panel opens/
+            // resizes is bad UX for a chat panel someone keeps open while
+            // working. Reverted to `None` (overlay, no reflow) per user
+            // call on the live test. Idea worth revisiting as an opt-in
+            // toggle (tied to hover or a separate keybind), not the
+            // default — deliberately not bolted on today.
             exclusive_zone: None,
             margin: None,
             keyboard_interactivity: KeyboardInteractivity::OnDemand,
@@ -85,6 +105,10 @@ pub struct SidePanelLeft {
     pub(crate) composer_cursor: usize,
     pub(crate) composer_selected_model: String,
     pub(crate) composer_selected_mode: String,
+    /// The mode ID that was active before YOLO toggle, to restore on toggle-off.
+    pub(crate) composer_previous_mode: String,
+    /// Cached ID of the bypass/YOLO mode found in available_modes, if any.
+    pub(crate) composer_yolo_bypass_id: Option<String>,
     pub(crate) composer_model_dropdown_open: bool,
     pub(crate) composer_mode_dropdown_open: bool,
     pub(crate) composer_focused: bool,
@@ -104,6 +128,7 @@ impl Render for SidePanelLeft {
             let display_id = crate::monitor::pult_display(cx);
             let display_h = display_height(display_id, cx);
             let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
+            self.state.height = panel_h;
             window.resize(Size::new(px(self.state.width), px(panel_h)));
             self.last_resized_width = Some(self.state.width);
         }
@@ -120,24 +145,35 @@ impl Focusable for SidePanelLeft {
 impl SidePanelLeft {
     fn new(cx: &mut Context<Self>) -> Self {
         let agents = known_agents();
-        let active_agent_id = agents
-            .first()
-            .map(|a| a.id.to_string())
-            .unwrap_or_default();
+        let active_agent_id = agents.first().map(|a| a.id.to_string()).unwrap_or_default();
 
         // Lazy-spawn the default agent (first in registry).
-        let default_config = agents
-            .first()
-            .map(|a| a.config.clone())
-            .unwrap_or_default();
+        let default_config = agents.first().map(|a| a.config.clone()).unwrap_or_default();
         let agent_id = active_agent_id.clone();
-        cx.spawn(async move |this, cx| {
-            match HermesClient::new(default_config).await {
+        cx.spawn(
+            async move |this, cx| match HermesClient::new(default_config).await {
                 Ok(client) => {
+                    // Fetch modes/models at connect time, not just after the
+                    // first prompt — otherwise the model/mode pickers stay
+                    // hidden for the entire life of a thread nobody has
+                    // messaged yet (live smoke, 2026-07-23: composer showed
+                    // only attach/send, no indicators, on a fresh thread).
+                    let session = client.create_session().await;
                     let _ = this.update(cx, |this, _cx| {
                         this.clients.insert(agent_id, client);
                         this.state.agent_status = state::AgentStatus::Connected;
                         tracing::info!("side_panel_left: ACP client connected");
+                        if let Ok(session) = session {
+                            if let Some(modes) = session.modes {
+                                this.composer_selected_mode = modes.current_id;
+                                this.available_modes = modes.available;
+                                this.detect_yolo_bypass_mode();
+                            }
+                            if let Some(models) = session.models {
+                                this.composer_selected_model = models.current_id;
+                                this.available_models = models.available;
+                            }
+                        }
                     });
                 }
                 Err(e) => {
@@ -146,8 +182,8 @@ impl SidePanelLeft {
                         this.state.agent_status = state::AgentStatus::Disconnected;
                     });
                 }
-            }
-        })
+            },
+        )
         .detach();
 
         Self {
@@ -165,6 +201,8 @@ impl SidePanelLeft {
             composer_cursor: 0,
             composer_selected_model: String::new(),
             composer_selected_mode: String::new(),
+            composer_previous_mode: String::new(),
+            composer_yolo_bypass_id: None,
             composer_model_dropdown_open: false,
             composer_mode_dropdown_open: false,
             composer_focused: false,
@@ -263,13 +301,28 @@ impl SidePanelLeft {
         cx.notify();
 
         let agent_id = agent_id.to_string();
-        cx.spawn(async move |this, cx| {
-            match HermesClient::new(desc.config).await {
+        cx.spawn(
+            async move |this, cx| match HermesClient::new(desc.config).await {
                 Ok(client) => {
+                    let session = client.create_session().await;
                     let _ = this.update(cx, |this, _cx| {
                         this.clients.insert(agent_id, client);
                         this.state.agent_status = state::AgentStatus::Connected;
-                        tracing::info!("side_panel_left: switched to agent {}", this.active_agent_id);
+                        tracing::info!(
+                            "side_panel_left: switched to agent {}",
+                            this.active_agent_id
+                        );
+                        if let Ok(session) = session {
+                            if let Some(modes) = session.modes {
+                                this.composer_selected_mode = modes.current_id;
+                                this.available_modes = modes.available;
+                                this.detect_yolo_bypass_mode();
+                            }
+                            if let Some(models) = session.models {
+                                this.composer_selected_model = models.current_id;
+                                this.available_models = models.available;
+                            }
+                        }
                     });
                 }
                 Err(e) => {
@@ -278,8 +331,8 @@ impl SidePanelLeft {
                         this.state.agent_status = state::AgentStatus::Disconnected;
                     });
                 }
-            }
-        })
+            },
+        )
         .detach();
     }
 }
@@ -388,11 +441,7 @@ pub(crate) fn schedule_release_from_app(cx: &mut gpui::App, generation: u64) {
             .timer(PEEK_LEAVE_DEBOUNCE)
             .await;
         app_cx.update(|app_cx| {
-            if app_cx
-                .global::<SidePanelLeftState_>()
-                .peek_generation
-                != generation
-            {
+            if app_cx.global::<SidePanelLeftState_>().peek_generation != generation {
                 return;
             }
             close_peek_if_not_pinned(app_cx);
@@ -401,7 +450,9 @@ pub(crate) fn schedule_release_from_app(cx: &mut gpui::App, generation: u64) {
     .detach();
 }
 
-pub fn toggle(_window: &mut Window, cx: &mut App) {
+/// Toggle the pinned panel open/closed. Called from the IPC handler (no
+/// `Window` in scope there — matches `launcher::toggle(cx)`'s shape).
+pub fn toggle(cx: &mut App) {
     if cx.global::<SidePanelLeftState_>().handle.is_some() {
         close(cx);
     } else {
@@ -420,7 +471,16 @@ pub fn init(cx: &mut App) {
             .timer(std::time::Duration::from_millis(50))
             .await;
         cx.update(|cx| {
-            hover_strip::init_hover_strip(cx);
+            // Hover-peek disabled by design decision (2026-07-23): the
+            // panel is now a keybind-toggled, pinned-only dock — auto-open
+            // on hover fought with "stays put until I close it" (the user
+            // kept nudging the edge and getting an unwanted peek). The
+            // strip + `hold_peek`/`schedule_release_peek`/`close_peek_if_
+            // not_pinned` debounce machinery in this module is kept
+            // working and unit-tested — flip this back on if hover-peek is
+            // ever wanted again as an *additional* quick-look mode
+            // alongside the keybind toggle, not a replacement for it.
+            // hover_strip::init_hover_strip(cx);
             // Optional smoke: pin-open for grim without hover/ydotool.
             // Not product wiring — only when env is set.
             if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL_LEFT").is_some() {

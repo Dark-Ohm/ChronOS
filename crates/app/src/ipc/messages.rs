@@ -1,5 +1,6 @@
 pub const PING_PAYLOAD: &str = "ping";
 pub const TOGGLE_LAUNCHER_PAYLOAD: &str = "toggle-launcher";
+pub const TOGGLE_SIDE_PANEL_LEFT_PAYLOAD: &str = "toggle-side-panel-left";
 pub const WALLPAPER_NEXT_PAYLOAD: &str = "wallpaper-next";
 const WALLPAPER_SET_PREFIX: &str = "wallpaper-set:";
 
@@ -21,6 +22,17 @@ pub fn encode_toggle_launcher() -> String {
 
 pub fn is_toggle_launcher(payload: &str) -> bool {
     payload.trim() == TOGGLE_LAUNCHER_PAYLOAD
+}
+
+// Same contract as `encode_toggle_launcher` above — external keybind
+// daemons trigger the left agent panel (pinned-only, no hover-peek).
+#[allow(dead_code)]
+pub fn encode_toggle_side_panel_left() -> String {
+    TOGGLE_SIDE_PANEL_LEFT_PAYLOAD.to_string()
+}
+
+pub fn is_toggle_side_panel_left(payload: &str) -> bool {
+    payload.trim() == TOGGLE_SIDE_PANEL_LEFT_PAYLOAD
 }
 
 pub fn is_wallpaper_next(payload: &str) -> bool {
@@ -92,6 +104,17 @@ mod tests {
     #[test]
     fn rejects_non_toggle_launcher_payload() {
         assert!(!is_toggle_launcher("ping"));
+    }
+
+    #[test]
+    fn encodes_and_recognizes_toggle_side_panel_left() {
+        let payload = encode_toggle_side_panel_left();
+        assert!(is_toggle_side_panel_left(&payload));
+    }
+
+    #[test]
+    fn rejects_non_toggle_side_panel_left_payload() {
+        assert!(!is_toggle_side_panel_left("toggle-launcher"));
     }
 
     #[test]

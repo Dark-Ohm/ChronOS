@@ -7,11 +7,13 @@ use tokio::sync::mpsc;
 
 use super::messages::{
     WallpaperIpcCmd, classify_wallpaper, encode_ping, is_ping, is_toggle_launcher,
+    is_toggle_side_panel_left,
 };
 
 pub type IpcReceiver = mpsc::UnboundedReceiver<()>;
 pub type IpcToggleReceiver = mpsc::UnboundedReceiver<()>;
 pub type IpcWallpaperReceiver = mpsc::UnboundedReceiver<WallpaperIpcCmd>;
+pub type IpcSidePanelLeftToggleReceiver = mpsc::UnboundedReceiver<()>;
 
 pub enum AcquireResult {
     Primary(IpcSubscriber),
@@ -47,24 +49,44 @@ impl IpcSubscriber {
     /// Starts the accept loop. Must be called from within a tokio runtime.
     /// Returns receivers that yield `()` once per received ping / toggle request,
     /// plus a wallpaper command receiver.
-    pub fn start_listener(&mut self) -> (IpcReceiver, IpcToggleReceiver, IpcWallpaperReceiver) {
+    pub fn start_listener(
+        &mut self,
+    ) -> (
+        IpcReceiver,
+        IpcToggleReceiver,
+        IpcWallpaperReceiver,
+        IpcSidePanelLeftToggleReceiver,
+    ) {
         let (ping_sender, ping_receiver) = mpsc::unbounded_channel();
         let (toggle_sender, toggle_receiver) = mpsc::unbounded_channel();
         let (wallpaper_sender, wallpaper_receiver) = mpsc::unbounded_channel();
+        let (side_panel_toggle_sender, side_panel_toggle_receiver) = mpsc::unbounded_channel();
 
         if let Some(std_listener) = self.listener.take() {
             // `from_std` requires a running tokio reactor, which is active here.
             match TokioUnixListener::from_std(std_listener) {
                 Ok(listener) => {
                     tokio::spawn(async move {
-                        accept_loop(listener, ping_sender, toggle_sender, wallpaper_sender).await;
+                        accept_loop(
+                            listener,
+                            ping_sender,
+                            toggle_sender,
+                            wallpaper_sender,
+                            side_panel_toggle_sender,
+                        )
+                        .await;
                     });
                 }
                 Err(e) => tracing::error!("Failed to convert IPC listener: {e}"),
             }
         }
 
-        (ping_receiver, toggle_receiver, wallpaper_receiver)
+        (
+            ping_receiver,
+            toggle_receiver,
+            wallpaper_receiver,
+            side_panel_toggle_receiver,
+        )
     }
 }
 
@@ -138,6 +160,7 @@ async fn accept_loop(
     ping_sender: mpsc::UnboundedSender<()>,
     toggle_sender: mpsc::UnboundedSender<()>,
     wallpaper_sender: mpsc::UnboundedSender<WallpaperIpcCmd>,
+    side_panel_toggle_sender: mpsc::UnboundedSender<()>,
 ) {
     use tokio::io::AsyncReadExt;
 
@@ -147,6 +170,7 @@ async fn accept_loop(
                 let ping_sender = ping_sender.clone();
                 let toggle_sender = toggle_sender.clone();
                 let wallpaper_sender = wallpaper_sender.clone();
+                let side_panel_toggle_sender = side_panel_toggle_sender.clone();
                 tokio::spawn(async move {
                     let mut buffer = Vec::with_capacity(64);
                     let read = tokio::time::timeout(
@@ -166,6 +190,9 @@ async fn accept_loop(
                         } else if is_toggle_launcher(&payload) {
                             let _ = toggle_sender.send(());
                             tracing::info!("IPC toggle-launcher received");
+                        } else if is_toggle_side_panel_left(&payload) {
+                            let _ = side_panel_toggle_sender.send(());
+                            tracing::info!("IPC toggle-side-panel-left received");
                         } else if let Some(cmd) = classify_wallpaper(&payload) {
                             let _ = wallpaper_sender.send(cmd);
                             tracing::info!("IPC wallpaper command received");

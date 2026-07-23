@@ -35,6 +35,17 @@ pub fn render_panel(
         .map(|a| a.display_name)
         .unwrap_or("Agent");
 
+    // Thread title: active session's title, or a placeholder for a fresh
+    // thread. Deliberately NOT `agent_name` — the outer header already
+    // shows the agent (agent-cluster dot + name + switcher); repeating it
+    // here reads as a duplicate label.
+    let thread_title = panel
+        .sessions
+        .iter()
+        .find(|s| s.active)
+        .map(|s| s.title.clone())
+        .unwrap_or_else(|| "New Agent Thread".to_string());
+
     // Resize handlers (borrows cx) — must be built before ANY other call
     // that returns `impl IntoElement` and stays alive past this point
     // (sidebar/composer/chat): their RPIT return captures `cx`'s lifetime
@@ -48,14 +59,17 @@ pub fn render_panel(
         },
     );
 
-    let resize_mouse_handler = cx.listener(
-        |this, ev: &gpui::MouseDownEvent, _window, _cx| {
-            this.start_resize(f32::from(ev.position.x));
-        },
-    );
+    let resize_mouse_handler = cx.listener(|this, ev: &gpui::MouseDownEvent, _window, _cx| {
+        this.start_resize(f32::from(ev.position.x));
+    });
 
     // Build sidebar (now borrows cx — click handlers on collapse/expand)
     let sidebar = build_sessions_sidebar(panel, collapsed, cx);
+
+    // Thread header listener (built before any RPIT that captures cx)
+    let thread_new_chat_handler = cx.listener(|_, _, _, _cx| {
+        tracing::info!("thread header: new chat (stub)");
+    });
 
     // Build chat (borrows cx)
     let chat = div()
@@ -107,11 +121,13 @@ pub fn render_panel(
                         .text_color(rgb(0xa6_ad_c8))
                         .hover(|s| s.bg(rgb(0x23_23_36)))
                         .child(
-                            div().text_color(if is_selected {
-                                rgb(0xcd_d6_f4)
-                            } else {
-                                rgb(0xa6_ad_c8)
-                            }).child(name),
+                            div()
+                                .text_color(if is_selected {
+                                    rgb(0xcd_d6_f4)
+                                } else {
+                                    rgb(0xa6_ad_c8)
+                                })
+                                .child(name),
                         )
                         .when(is_selected, |el| {
                             el.child(
@@ -127,17 +143,118 @@ pub fn render_panel(
         None
     };
 
-    // Clipped content
+    // Thread header (block A) — static chrome
+    // Use builder for the header because rsx! with cx.listener listeners
+    // hits RPIT capture issues (see rakes §Rust 2024 RPIT capture).
+    let thread_header = div()
+        .id("thread-header")
+        .flex_none()
+        .h(px(38.))
+        .px(px(12.))
+        .border_b_1()
+        .border_color(rgb(0x23_23_36))
+        .flex()
+        .items_center()
+        .justify_between()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .text_color(rgb(0x00_7a_cc))
+                        .child("✦"),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(rgb(0xcd_d6_f4))
+                        .child(thread_title),
+                ),
+        )
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(4.))
+                .child(
+                    div()
+                        .id("thread-new-chat")
+                        .w(px(20.))
+                        .h(px(20.))
+                        .rounded(px(5.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(12.))
+                        .text_color(rgb(0x6c_70_86))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
+                        .on_click(thread_new_chat_handler)
+                        .child("＋"),
+                )
+                .child(
+                    div()
+                        .id("thread-history")
+                        .w(px(20.))
+                        .h(px(20.))
+                        .rounded(px(5.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(12.))
+                        .text_color(rgb(0x6c_70_86))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
+                        .child("☰"),
+                )
+                .child(
+                    div()
+                        .id("thread-more")
+                        .w(px(20.))
+                        .h(px(20.))
+                        .rounded(px(5.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(12.))
+                        .text_color(rgb(0x6c_70_86))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
+                        .child("⋯"),
+                ),
+        );
+
+    // Clipped content — sidebar beside the thread column, NOT stacked above
+    // it. `flex_col` here (both were siblings of sidebar in one vertical
+    // stack) made sidebar's `.h_full()` compete for vertical space against
+    // thread_header/chat/composer instead of sitting in its own column —
+    // sidebar came up short of the panel bottom and the thread column got
+    // squeezed into a sliver near the bottom (live smoke, 2026-07-23).
+    let thread_column = div()
+        .id("thread-column")
+        .flex_1()
+        .min_w(px(0.))
+        .h_full()
+        .flex()
+        .flex_col()
+        .overflow_hidden()
+        .child(thread_header)
+        .child(chat)
+        .child(composer);
+
     let clipped_content = div()
         .id("clipped-content")
         .flex_1()
         .min_h(px(0.))
         .flex()
-        .flex_col()
+        .flex_row()
         .overflow_hidden()
         .child(sidebar)
-        .child(chat)
-        .child(composer);
+        .child(thread_column);
 
     // Header with listeners
     let header = div()
@@ -213,6 +330,23 @@ pub fn render_panel(
         }))
     });
 
+    // Rail mode: dragged (or opened) at/near `PANEL_RAIL_TOTAL_WIDTH` —
+    // "a sidebar I pull the chat out of when I need it" (2026-07-23). The
+    // full header/sessions-list/thread-column don't fit and shouldn't try;
+    // show just the status dot as a slim dock. Pull back out via the same
+    // resize-handle drag, unchanged — this only swaps what main-content
+    // renders, not the resize mechanics from fbcadd6.
+    let is_rail = panel.state.width <= super::PANEL_RAIL_TOTAL_WIDTH + 4.;
+    let rail_view = div()
+        .id("side-panel-rail")
+        .size_full()
+        .flex()
+        .flex_col()
+        .items_center()
+        .pt(px(10.))
+        .bg(rgb(0x1e_1e_2e))
+        .child(div().w(px(7.)).h(px(7.)).rounded_full().bg(dot_color));
+
     div()
         .id("side-panel-left-root")
         .w(px(panel.state.width))
@@ -245,9 +379,10 @@ pub fn render_panel(
                 .flex()
                 .flex_col()
                 .bg(rgb(0x1e_1e_2e))
-                .child(header)
-                .children(dropdown)
-                .child(clipped_content),
+                .when(is_rail, |el| el.child(rail_view))
+                .when(!is_rail, |el| {
+                    el.child(header).children(dropdown).child(clipped_content)
+                }),
         )
         .child(
             div()
@@ -270,12 +405,7 @@ pub fn render_panel(
                     cx.new(|_| gpui::EmptyView)
                 })
                 .on_drag_move(resize_drag_handler)
-                .child(
-                    div()
-                        .w(px(1.))
-                        .h_full()
-                        .bg(rgb(0x45_47_5a)),
-                ),
+                .child(div().w(px(1.)).h_full().bg(rgb(0x45_47_5a))),
         )
 }
 
@@ -346,17 +476,11 @@ fn build_sessions_sidebar(
                     .rounded_full()
                     .when(is_active, |el| el.bg(rgb(0x45_47_5a)))
                     .when(!is_active, |el| el.cursor_pointer())
-                    .child(
-                        div()
-                            .w(px(6.))
-                            .h(px(6.))
-                            .rounded_full()
-                            .bg(if is_active {
-                                rgb(0xa6_e3_a1)
-                            } else {
-                                rgb(0x58_5b_70)
-                            }),
-                    )
+                    .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(if is_active {
+                        rgb(0xa6_e3_a1)
+                    } else {
+                        rgb(0x58_5b_70)
+                    }))
             }))
             .into_any()
     } else {
@@ -450,17 +574,11 @@ fn build_sessions_sidebar(
                             .cursor_pointer()
                             .when(is_active, |el| el.bg(rgb(0x31_32_44)))
                             .when(!is_active, |el| el.hover(|s| s.bg(rgb(0x23_23_36))))
-                            .child(
-                                div()
-                                    .w(px(6.))
-                                    .h(px(6.))
-                                    .rounded_full()
-                                    .bg(if is_active {
-                                        rgb(0xa6_e3_a1)
-                                    } else {
-                                        rgb(0x58_5b_70)
-                                    }),
-                            )
+                            .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(if is_active {
+                                rgb(0xa6_e3_a1)
+                            } else {
+                                rgb(0x58_5b_70)
+                            }))
                             .child(
                                 div()
                                     .text_size(px(11.5))

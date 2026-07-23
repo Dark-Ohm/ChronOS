@@ -64,7 +64,9 @@ impl ChatView {
             .track_scroll(&self.scroll)
             .flex()
             .flex_col()
-            .gap(px(2.))
+            .gap(px(11.))
+            .px(px(14.))
+            .py(px(14.))
             .when(has_messages, |el| {
                 let mut el = el;
                 for (msg_idx, msg) in self.messages.iter().enumerate() {
@@ -104,26 +106,24 @@ fn render_tool_cards(
         .enumerate()
         .map(|(tc_idx, tc)| {
             let is_expanded = expanded.contains(&(msg_idx, tc_idx));
-            div()
-                .id(format!("tool-card-{msg_idx}-{tc_idx}"))
-                .child(
-                    ToolCard {
-                        name: &tc.name,
-                        status: &tc.status,
-                        args: tc.args.as_deref(),
-                        result: tc.result.as_deref(),
-                        expanded: is_expanded,
+            div().id(format!("tool-card-{msg_idx}-{tc_idx}")).child(
+                ToolCard {
+                    name: &tc.name,
+                    status: &tc.status,
+                    args: tc.args.as_deref(),
+                    result: tc.result.as_deref(),
+                    expanded: is_expanded,
+                }
+                .render(Some(cx.listener(move |this, _, _, cx| {
+                    let key = (msg_idx, tc_idx);
+                    if this.chat.expanded_tool_calls.contains(&key) {
+                        this.chat.expanded_tool_calls.remove(&key);
+                    } else {
+                        this.chat.expanded_tool_calls.insert(key);
                     }
-                    .render(Some(cx.listener(move |this, _, _, cx| {
-                        let key = (msg_idx, tc_idx);
-                        if this.chat.expanded_tool_calls.contains(&key) {
-                            this.chat.expanded_tool_calls.remove(&key);
-                        } else {
-                            this.chat.expanded_tool_calls.insert(key);
-                        }
-                        cx.notify();
-                    }))),
-                )
+                    cx.notify();
+                }))),
+            )
         })
         .collect();
 
@@ -143,49 +143,43 @@ fn render_message(
     expanded: &std::collections::HashSet<(usize, usize)>,
     cx: &mut Context<SidePanelLeft>,
 ) -> impl IntoElement {
-    let (bg, label, text_color) = match msg.role {
-        MessageRole::User => (rgb(0x31_32_44), "You", rgb(0xcd_d6_f4)),
-        MessageRole::Agent => (rgb(0x1e_1e_30), "Agent", rgb(0xa6_ad_c8)),
-    };
-
     let is_user = msg.role == MessageRole::User;
 
-    let role_label = div()
-        .text_size(px(10.))
-        .font_weight(gpui::FontWeight::SEMIBOLD)
-        .mb(px(4.))
-        .text_color(if is_user {
-            rgb(0x89_b4_fa)
-        } else {
-            rgb(0xa6_e3_a1)
-        })
-        .child(label.to_string());
-
-    let content_block = div()
+    let content = div()
         .text_size(px(12.))
-        .text_color(text_color)
+        .line_height(px(18.))
+        .text_color(if is_user {
+            rgb(0xcd_d6_f4)
+        } else {
+            rgb(0xcd_d6_f4)
+        })
         .child(msg.content.clone());
 
     let tool_cards_section = render_tool_cards(&msg.tool_calls, msg_idx, expanded, cx);
 
-    let bubble = div()
-        .max_w(px(290.))
-        .px(px(12.))
-        .py(px(8.))
-        .rounded(px(8.))
-        .bg(bg)
-        .flex()
-        .flex_col()
-        .child(role_label)
-        .child(content_block)
-        .children(tool_cards_section);
-
-    div()
-        .px(px(12.))
-        .py(px(2.))
-        .w_full()
-        .flex()
-        .when(is_user, |el| el.justify_end())
-        .when(!is_user, |el| el.justify_start())
-        .child(bubble)
+    if is_user {
+        // User message: card on #1e1e2e bg with border
+        div().w_full().flex().flex_col().child(
+            div()
+                .w_full()
+                .bg(rgb(0x1e_1e_2e))
+                .border_1()
+                .border_color(rgb(0x23_23_36))
+                .rounded(px(7.))
+                .px(px(10.))
+                .py(px(8.))
+                .flex()
+                .flex_col()
+                .child(content)
+                .children(tool_cards_section),
+        )
+    } else {
+        // Agent message: flat text, no bg
+        div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .child(content)
+            .children(tool_cards_section)
+    }
 }

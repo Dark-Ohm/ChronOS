@@ -15,6 +15,7 @@ pub enum AgentStatus {
 pub struct SidePanelLeftState {
     pub state: PanelState,
     pub width: f32,
+    pub height: f32,
     pub min_width: f32,
     pub max_width: f32,
     pub session_id: Option<String>,
@@ -28,7 +29,8 @@ impl SidePanelLeftState {
         Self {
             state: PanelState::Peek,
             width: 352.0,
-            min_width: 280.0,
+            height: 1080.0,
+            min_width: super::PANEL_RAIL_TOTAL_WIDTH,
             max_width: 960.0,
             session_id: None,
             agent_status: AgentStatus::Connected,
