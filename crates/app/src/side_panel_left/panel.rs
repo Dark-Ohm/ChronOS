@@ -4,7 +4,12 @@ use super::SidePanelLeft;
 use super::sessions_list::{SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_EXPANDED_WIDTH};
 use super::state::AgentStatus;
 
-const HANDLE_WIDTH: f32 = 4.;
+// Grab zone width, not the visible line — the divider inside stays 1px
+// (see `.child(div().w(px(1.))...)` below). Wider than the old 4px purely
+// for easier pointer targeting; the "resize dies at min width" bug was a
+// flex min-width issue (see main-content `.min_w(0)` / handle `.flex_none`),
+// not the strip being too thin.
+const HANDLE_WIDTH: f32 = 10.;
 
 fn status_color(status: AgentStatus) -> gpui::Rgba {
     match status {
@@ -30,13 +35,12 @@ pub fn render_panel(
         .map(|a| a.display_name)
         .unwrap_or("Agent");
 
-    // Build sidebar (no listeners)
-    let sidebar = build_sessions_sidebar(panel, collapsed);
-
-    // Resize handlers (borrows cx) — must be built before `composer`/`chat`
-    // below: their RPIT return captures `cx`'s lifetime for as long as the
-    // resulting element is alive (Rust 2024 impl Trait capture rules), so
-    // any `cx.listener(...)` call in between would conflict (E0502).
+    // Resize handlers (borrows cx) — must be built before ANY other call
+    // that returns `impl IntoElement` and stays alive past this point
+    // (sidebar/composer/chat): their RPIT return captures `cx`'s lifetime
+    // for as long as the resulting element is alive (Rust 2024 impl Trait
+    // capture rules), so any `cx.listener(...)` call after them would
+    // conflict (E0502).
     let resize_drag_handler = cx.listener(
         |this, ev: &gpui::DragMoveEvent<super::LeftPanelResize>, window, cx| {
             let current_x = f32::from(ev.event.position.x);
@@ -49,6 +53,9 @@ pub fn render_panel(
             this.start_resize(f32::from(ev.position.x));
         },
     );
+
+    // Build sidebar (now borrows cx — click handlers on collapse/expand)
+    let sidebar = build_sessions_sidebar(panel, collapsed, cx);
 
     // Build chat (borrows cx)
     let chat = div()
@@ -223,6 +230,17 @@ pub fn render_panel(
             div()
                 .id("main-content")
                 .flex_1()
+                // A flex item's default `min-width: auto` refuses to shrink
+                // below its content's min-content width. Near the panel's
+                // min width the composer/chat content hit that floor,
+                // main-content overflowed to the right and ate the fixed
+                // resize handle's slot — its hitbox collapsed to zero, so
+                // clicks landed inside the handle geometrically yet its
+                // `on_mouse_down` never fired ("resize dies at rest width").
+                // `min_w(0)` lets it shrink; `overflow_hidden` clips the
+                // content instead of spilling over the handle.
+                .min_w(px(0.))
+                .overflow_hidden()
                 .h_full()
                 .flex()
                 .flex_col()
@@ -234,6 +252,10 @@ pub fn render_panel(
         .child(
             div()
                 .id("resize-handle")
+                // Never let flex shrink the grab strip — it must keep its
+                // full width at every panel size (paired with main-content's
+                // `min_w(0)` above).
+                .flex_none()
                 .w(px(HANDLE_WIDTH))
                 .h_full()
                 .cursor_col_resize()
@@ -257,11 +279,11 @@ pub fn render_panel(
         )
 }
 
-/// Build sessions sidebar without cx.listeners.
 fn build_sessions_sidebar(
     panel: &SidePanelLeft,
     collapsed: bool,
-) -> impl IntoElement {
+    cx: &mut Context<SidePanelLeft>,
+) -> impl IntoElement + use<> {
     let sessions = &panel.sessions;
 
     if collapsed {
@@ -290,6 +312,9 @@ fn build_sessions_sidebar(
                     .text_color(rgb(0x6c_70_86))
                     .cursor_pointer()
                     .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.toggle_collapse(cx);
+                    }))
                     .child(">"),
             )
             .child(
@@ -375,6 +400,9 @@ fn build_sessions_sidebar(
                             .text_color(rgb(0x6c_70_86))
                             .cursor_pointer()
                             .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_collapse(cx);
+                            }))
                             .child("<"),
                     ),
             )

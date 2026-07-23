@@ -90,11 +90,24 @@ pub struct SidePanelLeft {
     pub(crate) composer_focused: bool,
     resize_start_x: Option<f32>,
     resize_start_width: Option<f32>,
+    /// Width the platform window was last physically resized to. `render`
+    /// only issues `window.resize()` when `state.width` has drifted from
+    /// this, so a fast drag (many `DragMoveEvent`s between paints) collapses
+    /// to at most one Wayland `set_size` protocol round-trip per frame
+    /// instead of one per raw pointer-motion event.
+    last_resized_width: Option<f32>,
 }
 
 impl Render for SidePanelLeft {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        panel::render_panel(self, _window, cx)
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.last_resized_width != Some(self.state.width) {
+            let display_id = crate::monitor::pult_display(cx);
+            let display_h = display_height(display_id, cx);
+            let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
+            window.resize(Size::new(px(self.state.width), px(panel_h)));
+            self.last_resized_width = Some(self.state.width);
+        }
+        panel::render_panel(self, window, cx)
     }
 }
 
@@ -157,6 +170,7 @@ impl SidePanelLeft {
             composer_focused: false,
             resize_start_x: None,
             resize_start_width: None,
+            last_resized_width: None,
         }
     }
 
@@ -194,7 +208,7 @@ impl SidePanelLeft {
         self.resize_start_width = Some(self.state.width);
     }
 
-    fn update_resize(&mut self, current_x: f32, window: &mut Window, cx: &mut Context<Self>) {
+    fn update_resize(&mut self, current_x: f32, _window: &mut Window, cx: &mut Context<Self>) {
         let (start_x, start_width) = match (self.resize_start_x, self.resize_start_width) {
             (Some(x), Some(w)) => (x, w),
             _ => return, // Resize not armed — ignore stray drag events.
@@ -208,15 +222,12 @@ impl SidePanelLeft {
         hold_peek(cx);
         let delta = current_x - start_x;
         self.state.resize(start_width + delta);
-        // Must resolve the same display the panel was actually opened on
-        // (`crate::monitor::pult_display`), not `None`/primary — on a
-        // multi-monitor setup the OS-primary display can be a different,
-        // shorter monitor than the one showing this panel, which silently
-        // shrinks the window height on every resize tick.
-        let display_id = crate::monitor::pult_display(cx);
-        let display_h = display_height(display_id, cx);
-        let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
-        window.resize(Size::new(px(self.state.width), px(panel_h)));
+        // The actual `window.resize()` Wayland round-trip happens in
+        // `render()`, coalesced to once per paint via `last_resized_width`.
+        // Doing it here fires once per raw DragMoveEvent (per pointer
+        // motion), flooding `zwlr_layer_surface_v1.set_size`; the throttle
+        // is a set_size-rate optimization only. (The "resize dies at rest
+        // width" bug was unrelated — a flex min-width issue in `panel.rs`.)
         cx.notify();
     }
 

@@ -12,6 +12,16 @@ pub fn render_composer(
     let text = &panel.composer_text;
     let selected_model = panel.composer_selected_model.clone();
     let selected_mode = panel.composer_selected_mode.clone();
+    let selected_model_display = if selected_model.is_empty() {
+        "Model".to_string()
+    } else {
+        selected_model.clone()
+    };
+    let selected_mode_display = if selected_mode.is_empty() {
+        "Mode".to_string()
+    } else {
+        selected_mode.clone()
+    };
     let model_open = panel.composer_model_dropdown_open;
     let mode_open = panel.composer_mode_dropdown_open;
     let has_text = !text.is_empty();
@@ -81,7 +91,7 @@ pub fn render_composer(
                     this.composer_mode_dropdown_open = false;
                     cx.notify();
                 }))
-                .child(selected_model),
+                .child(selected_model_display),
         )
         .when(model_open, |el| {
             el.child(
@@ -153,7 +163,7 @@ pub fn render_composer(
                     this.composer_model_dropdown_open = false;
                     cx.notify();
                 }))
-                .child(selected_mode),
+                .child(selected_mode_display),
         )
         .when(mode_open, |el| {
             el.child(
@@ -252,14 +262,11 @@ pub fn render_composer(
         .gap(px(6.))
         .when(!enabled, |el| el.opacity(0.5))
         .child(
-            div().flex().flex_row().gap(px(6.))
-                .child(model_picker)
-                .child(mode_picker),
-        )
-        .child(
             div().flex().flex_row().items_end().gap(px(6.))
                 .child(attach_button)
+                .child(model_picker)
                 .child(text_input)
+                .child(mode_picker)
                 .child(send_button),
         )
 }
