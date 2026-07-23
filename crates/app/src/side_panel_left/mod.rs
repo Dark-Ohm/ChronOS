@@ -1,6 +1,6 @@
 mod state;
 mod panel;
-mod sessions_list;
+pub mod sessions_list;
 mod chat_view;
 mod composer;
 mod tool_card;
@@ -60,11 +60,12 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
 
 pub struct SidePanelLeft {
     state: state::SidePanelLeftState,
+    sessions: Vec<sessions_list::SessionItem>,
 }
 
 impl Render for SidePanelLeft {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        panel::render_panel(self, _window, _cx)
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        panel::render_panel(self, _window, cx)
     }
 }
 
@@ -72,7 +73,37 @@ impl SidePanelLeft {
     fn new(_cx: &mut Context<Self>) -> Self {
         Self {
             state: state::SidePanelLeftState::new(),
+            sessions: Vec::new(),
         }
+    }
+
+    fn toggle_collapse(&mut self, cx: &mut Context<Self>) {
+        self.state.sessions_collapsed = !self.state.sessions_collapsed;
+        cx.notify();
+    }
+
+    fn create_new_session(&mut self, cx: &mut Context<Self>) {
+        let id = uuid::Uuid::new_v4().to_string();
+        let title = format!("Session {}", self.sessions.len() + 1);
+        self.sessions.push(sessions_list::SessionItem {
+            id: id.clone(),
+            title,
+            active: true,
+        });
+        // Deactivate previous active sessions
+        for s in self.sessions.iter_mut().rev().skip(1) {
+            s.active = false;
+        }
+        self.state.active_session_id = Some(id);
+        cx.notify();
+    }
+
+    fn select_session(&mut self, session_id: &str, cx: &mut Context<Self>) {
+        for s in &mut self.sessions {
+            s.active = s.id == session_id;
+        }
+        self.state.active_session_id = Some(session_id.to_string());
+        cx.notify();
     }
 }
 

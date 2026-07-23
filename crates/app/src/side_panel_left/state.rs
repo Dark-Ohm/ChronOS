@@ -17,6 +17,8 @@ pub struct SidePanelLeftState {
     pub width: f32,
     pub session_id: Option<String>,
     pub agent_status: AgentStatus,
+    pub sessions_collapsed: bool,
+    pub active_session_id: Option<String>,
 }
 
 impl SidePanelLeftState {
@@ -26,6 +28,8 @@ impl SidePanelLeftState {
             width: 352.0,
             session_id: None,
             agent_status: AgentStatus::Connected,
+            sessions_collapsed: false,
+            active_session_id: None,
         }
     }
 }
