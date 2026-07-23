@@ -229,12 +229,14 @@ pub fn render_panel(
     let body = body.child(
         div()
             .id("chat-area")
-            .w(px(body_width))
-            .h_full()
+            .flex_1()
+            .min_h(px(0.))
             .p(px(14.))
             .text_color(rgb(0xa6_ad_c8))
             .child("Chat goes here"),
     );
+
+    let composer = super::composer::render_composer(panel, _window, cx);
 
     rsx! {
         <div
@@ -286,7 +288,10 @@ pub fn render_panel(
                     {img("icons/x.svg").w(px(12.)).h(px(12.))}
                 </div>
             </div>
+            // Body: sessions sidebar + chat area (flex_1)
             {body}
+            // Composer at bottom
+            {composer}
         </div>
     }
 }

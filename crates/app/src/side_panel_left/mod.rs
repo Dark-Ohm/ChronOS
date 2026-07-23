@@ -9,8 +9,8 @@ pub use state::{PanelState, SidePanelLeftState};
 
 use chronos_luau::bar::BAR_HEIGHT;
 use gpui::{
-    App, Bounds, DisplayId, Global, Size, Window, WindowBackgroundAppearance, WindowBounds,
-    WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
+    App, Bounds, DisplayId, Focusable, Global, Size, Window, WindowBackgroundAppearance,
+    WindowBounds, WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
 };
 
 const PANEL_WIDTH: f32 = 352.;
@@ -61,6 +61,14 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
 pub struct SidePanelLeft {
     state: state::SidePanelLeftState,
     sessions: Vec<sessions_list::SessionItem>,
+    pub(crate) composer_focus: gpui::FocusHandle,
+    pub(crate) composer_text: String,
+    pub(crate) composer_cursor: usize,
+    pub(crate) composer_selected_model: String,
+    pub(crate) composer_selected_mode: String,
+    pub(crate) composer_model_dropdown_open: bool,
+    pub(crate) composer_mode_dropdown_open: bool,
+    pub(crate) composer_focused: bool,
 }
 
 impl Render for SidePanelLeft {
@@ -69,11 +77,25 @@ impl Render for SidePanelLeft {
     }
 }
 
+impl Focusable for SidePanelLeft {
+    fn focus_handle(&self, _cx: &gpui::App) -> gpui::FocusHandle {
+        self.composer_focus.clone()
+    }
+}
+
 impl SidePanelLeft {
-    fn new(_cx: &mut Context<Self>) -> Self {
+    fn new(cx: &mut Context<Self>) -> Self {
         Self {
             state: state::SidePanelLeftState::new(),
             sessions: Vec::new(),
+            composer_focus: cx.focus_handle(),
+            composer_text: String::new(),
+            composer_cursor: 0,
+            composer_selected_model: "claude-sonnet-4-20250514".to_string(),
+            composer_selected_mode: "ask".to_string(),
+            composer_model_dropdown_open: false,
+            composer_mode_dropdown_open: false,
+            composer_focused: false,
         }
     }
 
