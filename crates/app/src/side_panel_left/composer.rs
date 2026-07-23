@@ -1,6 +1,7 @@
 use gpui::{IntoElement, SharedString, Window, div, prelude::*, px, rgb};
 
 use super::SidePanelLeft;
+use super::chat_view::{ChatMessage, MessageRole};
 use super::state::AgentStatus;
 
 const MODELS: &[&str] = &[
@@ -358,6 +359,57 @@ impl SidePanelLeft {
 
         self.composer_text.clear();
         self.composer_cursor = 0;
+
+        self.chat.push_message(ChatMessage {
+            role: MessageRole::User,
+            content: text.clone(),
+            tool_calls: Vec::new(),
+        });
+        self.chat.scroll_to_bottom();
+
+        if let Some(client) = self.client.clone() {
+            self.state.agent_status = AgentStatus::Thinking;
+            cx.notify();
+
+            cx.spawn(async move |this, cx| {
+                match client.send_prompt(&text).await {
+                    Ok(response) => {
+                        let _ = this.update(cx, |this, cx| {
+                            this.chat.push_message(ChatMessage {
+                                role: MessageRole::Agent,
+                                content: response,
+                                tool_calls: Vec::new(),
+                            });
+                            this.chat.scroll_to_bottom();
+                            this.state.agent_status = AgentStatus::Connected;
+                            cx.notify();
+                        });
+                    }
+                    Err(e) => {
+                        tracing::warn!("composer: ACP send failed: {e}");
+                        let _ = this.update(cx, |this, cx| {
+                            this.chat.push_message(ChatMessage {
+                                role: MessageRole::Agent,
+                                content: format!("Error: {e}"),
+                                tool_calls: Vec::new(),
+                            });
+                            this.chat.scroll_to_bottom();
+                            this.state.agent_status = AgentStatus::Connected;
+                            cx.notify();
+                        });
+                    }
+                }
+            })
+            .detach();
+        } else {
+            self.chat.push_message(ChatMessage {
+                role: MessageRole::Agent,
+                content: "ACP client not connected. Please wait for initialization.".to_string(),
+                tool_calls: Vec::new(),
+            });
+            self.chat.scroll_to_bottom();
+        }
+
         cx.notify();
     }
 }

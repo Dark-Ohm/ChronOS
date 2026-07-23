@@ -83,8 +83,9 @@ async fn send_prompt(cx: &ConnectionTo<Agent>, prompt: &str) -> Result<String> {
 }
 
 /// Client for communicating with the Hermes agent via ACP.
+#[derive(Clone)]
 pub struct HermesClient {
-    _transport: HermesTransport,
+    _transport: std::sync::Arc<HermesTransport>,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<Command>,
 }
 
@@ -93,7 +94,7 @@ impl HermesClient {
     pub async fn new() -> Result<Self, anyhow::Error> {
         let (transport, cmd_tx) = HermesTransport::spawn(Default::default()).await?;
         Ok(Self {
-            _transport: transport,
+            _transport: std::sync::Arc::new(transport),
             cmd_tx,
         })
     }
