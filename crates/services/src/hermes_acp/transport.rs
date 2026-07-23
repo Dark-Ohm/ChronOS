@@ -2,7 +2,6 @@ use agent_client_protocol::schema::{InitializeRequest, ProtocolVersion};
 use agent_client_protocol::{Agent, Client, ConnectionTo, Error as AcpError};
 use agent_client_protocol_tokio::AcpAgent;
 use anyhow::{Context, Result};
-use std::str::FromStr;
 use tokio::sync::oneshot;
 use tracing::{debug, error, info};
 
@@ -44,11 +43,12 @@ impl HermesTransport {
     /// The connection is initialized (ACP protocol handshake) before returning.
     /// Commands are processed sequentially through the returned channel.
     pub(crate) async fn spawn(config: HermesConfig) -> Result<(Self, tokio::sync::mpsc::UnboundedSender<Command>)> {
-        let command_str = format!("{} {}", config.command, config.args.join(" "));
-        debug!("Spawning Hermes agent: {command_str}");
+        debug!("Spawning Hermes agent: {} {:?}", config.command, config.args);
 
+        let mut agent_args = vec![config.command.clone()];
+        agent_args.extend(config.args.iter().cloned());
         let agent =
-            AcpAgent::from_str(&command_str).context("failed to parse ACP agent command")?;
+            AcpAgent::from_args(agent_args).context("failed to create ACP agent from args")?;
 
         let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<Command>();
         let (conn_tx, conn_rx) = oneshot::channel::<ConnectionTo<Agent>>();
