@@ -8,11 +8,21 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-23 — T107 (левая agent-панель) ПРИНЯТ целиком, T108
-(мульти-агентный свитчер) в работе. Resize-регрессия ЗАКРЫТА (flexbox, не
-Wayland — коммит `fbcadd6`), UX-фиксы композера/сайдбара закоммичены.
-Открыто: ghost-trail (форк, отложено), дропдаун-jank. Детали ниже, раздел
-`### T107/T108 — LEFT AGENT PANEL`.**
+**Обновлено: 2026-07-23 (вечер) — T107/T108/T109 (левая agent-панель) ВСЕ
+ТРИ ПРИНЯТЫ, коммит `10fa206`. T109 (Agent Thread canvas по мокапу) сдан
+Zed с C-2 fallback (gpui-component заблокирован конфликтом версий gpui),
+архитектор нашёл и живьём поправил 3 структурных бага (дубль "Hermes" в
+шапке, sidebar не доходил до низа, chat/composer разными оттенками фона)
++ провёл живую переделку поведения панели с пользователем: hover-peek
+ОТКЛЮЧЁН (панель теперь keybind-toggled dock, IPC
+`toggle-side-panel-left`), rail-схлопывание мышкой до ~36px, exclusive
+zone ПОПРОБОВАНА и ОТКЛОНЕНА в тот же вечер (плохой UX — двигает тайловые
+окна на каждый ресайз чат-панели). Resize-регрессия ЗАКРЫТА (flexbox, не
+Wayland — коммит `fbcadd6`). Открыто: ghost-trail (форк, отложено),
+дропдаун-jank, нет каретки в композере (`ccf-gpui-widgets` вендоринг —
+теперь на критическом пути, см. `roadmap.md`). Детали ниже, раздел
+`### T107/T108/T109 — LEFT AGENT PANEL`, полный разбор — `DECISIONS.log`
+2026-07-23 (три записи) и `ARCHITECT.md` (два новых урока дисциплины).**
 
 > **Переворот оркестрации (2026-07-22):** per-agent журналы →
 > per-task T-ID. Брифы теперь `orchestration/tasks/active/TNNN-slug.md`,
@@ -41,9 +51,10 @@ Wayland — коммит `fbcadd6`), UX-фиксы композера/сайдб
 | T105 (Chronos-AUR Трек C, Hermes) | `orchestration/tasks/active/T105-chronos-aur-track-c-app-shell.md` | WIP |
 | T106 (Chronos-AUR Трек D, Zed) | `orchestration/tasks/active/T106-chronos-aur-track-d-pages.md` | WIP |
 | T107 (левая agent-панель) | `orchestration/tasks/done/T107-left-agent-panel.md` | **ПРИНЯТ** |
-| T108 (мульти-агентный свитчер) | `orchestration/tasks/active/T108-left-panel-agent-switcher.md` | WIP, некоммиченный дифф в `ChronOS-wt-left-panel` |
+| T108 (мульти-агентный свитчер) | `orchestration/tasks/active/T108-left-panel-agent-switcher.md` | **ПРИНЯТ** (`fbcadd6`, real modes/models) |
+| T109 (Agent Thread canvas) | `orchestration/tasks/active/T109-agent-thread-canvas.md` | **ПРИНЯТ** с правками архитектора (`10fa206`) |
 
-### T107/T108 — LEFT AGENT PANEL (2026-07-23)
+### T107/T108/T109 — LEFT AGENT PANEL (2026-07-23)
 
 **T107 принят целиком** (13 подзадач, ветка `feat/left-agent-panel`,
 ворктри `/home/neo/projects/chronos-ecosystem/ChronOS-wt-left-panel`).
@@ -98,6 +109,59 @@ ACP `NewSessionResponse`, подтверждено по исходнику Herme
   раз один из двух: либо строить такую функцию РАНЬШЕ любых будущих
   `cx.listener(...)`, либо явно пометить возврат `+ use<>`, если функция
   не должна жить дольше вызова.
+
+**T109 — Agent Thread canvas (2026-07-23 вечер), коммит `10fa206`.**
+Zed сдал чат-канвас по мокапу `design/Agent Thread.dc.html` (единый
+холст треда+композера, тёмная send-кнопка, YOLO=bypass-режим), с честно
+помеченным C-2 fallback (`gpui-component` не собрался против нашего
+форка — конфликт версий gpui, `E0432` на `AsyncApp/Result/SharedString`;
+самопальный текст-ввод остался без каретки/выделения). Живой смок
+пользователем (архитектор, с GUI-сессией — у Zed её не было) поймал 3
+структурных бага, поправлены на месте:
+1. Дубль "Hermes" в шапке треда (`agent_name` → заголовок сессии/
+   плейсхолдер "New Agent Thread").
+2. Sidebar не доходил до низа панели — `clipped_content` был `.flex_col()`
+   с сайдбаром/шапкой/чатом/композером как прямыми братьями в одной
+   вертикальной стопке (баг СТАРШЕ T109, просто впервые прогнан
+   развёрнутый sessions-сайдбар живьём); фикс — `.flex_row()`, сайдбар +
+   отдельная `thread-column` (`.flex_col()`, `min_w(0)` — та же дисциплина,
+   что и `main-content` из fbcadd6).
+3. Composer/chat разными оттенками фона (`#181825` vs `#1e1e2e`) — визуально
+   два окна вместо одного; унифицировано на `#1e1e2e`.
+
+Затем живая переделка поведения панели по прямому запросу пользователя
+(полный разбор — `DECISIONS.log` 2026-07-23, две записи):
+- **Model/mode пикеры были невидимы на свежем треде** — брифовое правило
+  "прятать пикер, если данных нет" (по мотивам zed-thread-view) столкнулось
+  с реальностью: наш Hermes ACP отдаёт capabilities только в ответе
+  `session/new`, не в `initialize`. Фикс: `create_session()` на connect
+  (не ждём первого промпта) + видимый disabled-плейсхолдер вместо полного
+  скрытия. Подтверждено протокольным логом (`RUST_LOG=debug`):
+  `session/new` реально возвращает `models.availableModels` (opus-4..4.7 и
+  т.д.) и `modes.availableModes` (`default`="Ask before edits",
+  `accept_edits`, `dont_ask"` — YOLO матчит на `dont_ask`). Нет режима
+  буквально названного "ASK" — это реальные данные агента, не баг.
+- **Hover-peek отключён** (закомментирован в `side_panel_left::init`, не
+  удалён) — панель теперь keybind-toggled dock. IPC
+  `toggle-side-panel-left` (зеркалит `toggle-launcher`,
+  `crates/app/src/ipc/messages.rs`) → `side_panel_left::toggle(cx)`.
+  Hyprland-bind (кандидат `SUPER+A`) пользователь добавляет сам по
+  образцу `SUPER+L` в своём `~/.config/hypr/hyprland.lua:129-131`.
+- **Rail-схлопывание** — `min_width` панели теперь `PANEL_RAIL_TOTAL_WIDTH`
+  (26px сайдбар-рельс + 10px ручка = 36px, "чуть тоньше кнопки лаунчера"),
+  тянешь резайз-ручку до упора — thread-column прячется, остаётся только
+  статус-точка. Существующая resize-ручка (fbcadd6) не тронута.
+- **Exclusive zone — попробована и откачена в тот же вечер.** Реализовано
+  честно: `exclusive_zone` + обязательный `exclusive_edge: Some(Anchor::
+  LEFT)` (наш якорь `LEFT|TOP` — угол, wlr-layer-shell трактует
+  exclusive_zone на углу как неоднозначный без явного edge — без него
+  `hyprctl monitors` тихо показывал `reserved:[0,30,0,0]`, зона
+  игнорировалась без протокольной ошибки). С обоими вызовами `hyprctl
+  monitors`/`clients` подтвердили реальный reflow тайловых окон. Пользователь
+  вживую пожил с этим и отверг: двигать окна на каждый ресайз чат-панели
+  (не бар — открывается редко) — плохой UX. `window.set_exclusive_zone`
+  живо перевызываем (`gpui/src/window.rs:2005`, не create-time-only) —
+  технический путь к opt-in-режиму (по ховеру) открыт, не реализован.
 
 ### АКТУАЛЬНОЕ ПОЛЕ (2026-07-21)
 

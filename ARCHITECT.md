@@ -97,6 +97,34 @@ reports, accepts or rejects, and keeps project docs honest.
   straight at "click inside the handle, hitbox not hovered." Put the
   hypothesis-halving probe in FIRST, and suspect your own layout before the
   platform.)
+- Ship a compositor-level behavior change (exclusive zone, anchor, keyboard
+  interactivity) as the new default without a live trial the same session.
+  (2026-07-23: implemented tiled-window reflow for the left panel —
+  `exclusive_zone` + `exclusive_edge: Some(Anchor::LEFT)` — on the user's own
+  explicit request, verified it worked correctly via `hyprctl monitors`
+  reserved + `hyprctl clients` geometry, then had to revert it whole within
+  the same hour once the user actually lived with it: "чат не должен толкать
+  окна... это пиздец." The zone shifting on every open/resize of a panel kept
+  open during work reads completely differently than a bar that opens rarely.
+  Correctly identified/fixed technically ≠ correctly scoped as a *default*.
+  For anything that changes how OTHER windows behave, not just this one's own
+  surface, propose it as an opt-in trial first, or at minimum flag "you may
+  want to live with this for a few minutes before I call it done" instead of
+  moving straight to commit.)
+- Trust a "hide the control when data is empty" pattern from a borrowed
+  design convention without checking what THIS backend actually sends.
+  (2026-07-23: T109's brief cited zed-thread-view's "selectors are optional
+  entities, hide when absent" and had the minion hide model/mode pickers
+  entirely on empty `available_models`/`available_modes`. Live smoke showed
+  an agent thread with literally no send/model/mode affordance visible at
+  all — Hermes's ACP agent only returns capabilities in the `session/new`
+  response, not in `initialize`, and per-prompt refresh was the only path
+  wired. Fixed two ways: fetch `create_session()` proactively at connect
+  time instead of waiting for the first prompt, AND stopped hiding the pill
+  entirely — show it muted/disabled with a placeholder label so the
+  affordance is never invisible, only inert. A convention borrowed from
+  another product's skill file is a hypothesis about THIS backend, not a
+  fact about it — check the wire before applying the "hide" branch.)
 - Trust an archived report file by name alone. (`orchestration/report-log/
   grok-report-3.md` was found silently overwritten with different content by
   an unknown source, source never identified — see `orchestration/tasks/
