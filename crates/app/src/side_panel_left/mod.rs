@@ -10,6 +10,7 @@ pub use state::{PanelState, SidePanelLeftState};
 
 use chronos_luau::bar::BAR_HEIGHT;
 use chronos_services::hermes_acp::{AgentDescriptor, HermesClient, known_agents};
+use chronos_services::{ModelInfo, SessionMode};
 use gpui::{
     App, Bounds, DisplayId, Focusable, Global, Size, Window, WindowBackgroundAppearance,
     WindowBounds, WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
@@ -74,6 +75,10 @@ pub struct SidePanelLeft {
     /// Whether the agent switcher dropdown is open.
     agent_menu_open: bool,
     sessions: Vec<sessions_list::SessionItem>,
+    /// Available modes from the active ACP session.
+    available_modes: Vec<chronos_services::SessionMode>,
+    /// Available models from the active ACP session.
+    available_models: Vec<chronos_services::ModelInfo>,
     pub(crate) chat: chat_view::ChatView,
     pub(crate) composer_focus: gpui::FocusHandle,
     pub(crate) composer_text: String,
@@ -139,12 +144,14 @@ impl SidePanelLeft {
             active_agent_id,
             agent_menu_open: false,
             sessions: Vec::new(),
+            available_modes: Vec::new(),
+            available_models: Vec::new(),
             chat: chat_view::ChatView::new(),
             composer_focus: cx.focus_handle(),
             composer_text: String::new(),
             composer_cursor: 0,
-            composer_selected_model: "claude-sonnet-4-20250514".to_string(),
-            composer_selected_mode: "ask".to_string(),
+            composer_selected_model: String::new(),
+            composer_selected_mode: String::new(),
             composer_model_dropdown_open: false,
             composer_mode_dropdown_open: false,
             composer_focused: false,

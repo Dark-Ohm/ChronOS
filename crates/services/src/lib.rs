@@ -56,6 +56,7 @@ pub use wallpaper::{
     AWWW_BIN, AWWW_DAEMON_BIN, Backend, IMAGE_EXTENSIONS, WallpaperCommand, WallpaperState,
     WallpaperSubscriber, command_to_awww_args, is_image, parse_query,
 };
+pub use hermes_acp::{AgentDescriptor, ModelInfo, SessionMode, known_agents};
 
 /// Container holding all system-integration subscribers.
 #[derive(Clone)]

@@ -4,13 +4,6 @@ use super::SidePanelLeft;
 use super::chat_view::{ChatMessage, MessageRole};
 use super::state::AgentStatus;
 
-const MODELS: &[&str] = &[
-    "claude-sonnet-4-20250514",
-    "claude-opus-4-20250514",
-    "claude-haiku-35-20241022",
-];
-const MODES: &[&str] = &["ask", "act"];
-
 pub fn render_composer(
     panel: &SidePanelLeft,
     _window: &mut Window,
@@ -39,12 +32,14 @@ pub fn render_composer(
     let focus = panel.composer_focus.clone();
 
     // ── Model picker ──────────────────────────────────────────────
-    let model_items: Vec<_> = MODELS
+    let model_items: Vec<_> = panel
+        .available_models
         .iter()
         .enumerate()
         .map(|(i, m)| {
-            let m_str = m.to_string();
-            let is_active = *m == selected_model.as_str();
+            let m_id = m.id.clone();
+            let m_name = if m.name.is_empty() { m.id.clone() } else { m.name.clone() };
+            let is_active = m.id == selected_model;
             div()
                 .id(format!("model-item-{i}"))
                 .w_full()
@@ -57,11 +52,11 @@ pub fn render_composer(
                 .when(!is_active, |el| el.hover(|s| s.bg(rgb(0x23_23_36))))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.composer_selected_model = m_str.clone();
+                    this.composer_selected_model = m_id.clone();
                     this.composer_model_dropdown_open = false;
                     cx.notify();
                 }))
-                .child(m.to_string())
+                .child(m_name)
         })
         .collect();
 
@@ -109,12 +104,14 @@ pub fn render_composer(
         });
 
     // ── Mode picker ───────────────────────────────────────────────
-    let mode_items: Vec<_> = MODES
+    let mode_items: Vec<_> = panel
+        .available_modes
         .iter()
         .enumerate()
         .map(|(i, m)| {
-            let m_str = m.to_string();
-            let is_active = *m == selected_mode.as_str();
+            let m_id = m.id.clone();
+            let m_name = if m.name.is_empty() { m.id.clone() } else { m.name.clone() };
+            let is_active = m.id == selected_mode;
             div()
                 .id(format!("mode-item-{i}"))
                 .w_full()
@@ -127,11 +124,11 @@ pub fn render_composer(
                 .when(!is_active, |el| el.hover(|s| s.bg(rgb(0x23_23_36))))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.composer_selected_mode = m_str.clone();
+                    this.composer_selected_mode = m_id.clone();
                     this.composer_mode_dropdown_open = false;
                     cx.notify();
                 }))
-                .child(m.to_uppercase())
+                .child(m_name)
         })
         .collect();
 
@@ -373,15 +370,28 @@ impl SidePanelLeft {
 
             cx.spawn(async move |this, cx| {
                 match client.send_prompt(&text).await {
-                    Ok(response) => {
+                    Ok(prompt_response) => {
                         let _ = this.update(cx, |this, cx| {
                             this.chat.push_message(ChatMessage {
                                 role: MessageRole::Agent,
-                                content: response,
+                                content: prompt_response.text,
                                 tool_calls: Vec::new(),
                             });
                             this.chat.scroll_to_bottom();
                             this.state.agent_status = AgentStatus::Connected;
+                            // Update available modes/models from the session.
+                            if let Some(modes) = prompt_response.modes {
+                                this.available_modes = modes.available;
+                                if this.composer_selected_mode.is_empty() {
+                                    this.composer_selected_mode = modes.current_id;
+                                }
+                            }
+                            if let Some(models) = prompt_response.models {
+                                this.available_models = models.available;
+                                if this.composer_selected_model.is_empty() {
+                                    this.composer_selected_model = models.current_id;
+                                }
+                            }
                             cx.notify();
                         });
                     }
