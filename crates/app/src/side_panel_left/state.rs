@@ -15,6 +15,8 @@ pub enum AgentStatus {
 pub struct SidePanelLeftState {
     pub state: PanelState,
     pub width: f32,
+    pub min_width: f32,
+    pub max_width: f32,
     pub session_id: Option<String>,
     pub agent_status: AgentStatus,
     pub sessions_collapsed: bool,
@@ -26,10 +28,16 @@ impl SidePanelLeftState {
         Self {
             state: PanelState::Peek,
             width: 352.0,
+            min_width: 280.0,
+            max_width: 960.0,
             session_id: None,
             agent_status: AgentStatus::Connected,
             sessions_collapsed: false,
             active_session_id: None,
         }
+    }
+
+    pub fn resize(&mut self, new_width: f32) {
+        self.width = new_width.clamp(self.min_width, self.max_width);
     }
 }

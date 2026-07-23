@@ -5,6 +5,8 @@ use super::SidePanelLeft;
 use super::sessions_list::{SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_EXPANDED_WIDTH};
 use super::state::AgentStatus;
 
+const HANDLE_WIDTH: f32 = 4.;
+
 fn status_color(status: AgentStatus) -> gpui::Rgba {
     match status {
         AgentStatus::Connected => rgb(0xa6_e3_a1),
@@ -25,7 +27,6 @@ pub fn render_panel(
     } else {
         SIDEBAR_EXPANDED_WIDTH
     };
-    let body_width = 352. - sidebar_width;
     let sessions = &panel.sessions;
 
     let body = div()
@@ -237,62 +238,106 @@ pub fn render_panel(
             .child(panel.chat.render(panel, _window, cx)),
     );
 
+    let resize_drag_handler = cx.listener(
+        |this, ev: &gpui::DragMoveEvent<super::LeftPanelResize>, window, cx| {
+            let current_x = f32::from(ev.event.position.x);
+            this.update_resize(current_x, window, cx);
+        },
+    );
+
+    let resize_mouse_handler = cx.listener(
+        |this, ev: &gpui::MouseDownEvent, _window, _cx| {
+            this.start_resize(f32::from(ev.position.x));
+        },
+    );
+
     let composer = super::composer::render_composer(panel, _window, cx);
 
     rsx! {
         <div
-            w={px(352.)}
+            w={px(panel.state.width)}
             h_full
             flex
-            flex_col
+            flex_row
+            onDragMove={resize_drag_handler}
         >
-            // Header
+            // Main content area
             <div
-                class="flex items-center justify-between"
-                flex_none
-                px={px(14.)}
-                py={px(10.)}
-                border_b_1
-                border_color={rgb(0x23_23_36)}
+                flex_1
+                h_full
+                flex
+                flex_col
+                overflow_hidden
             >
+                // Header
                 <div
-                    class="flex items-center"
-                    gap={px(8.)}
+                    class="flex items-center justify-between"
+                    flex_none
+                    px={px(14.)}
+                    py={px(10.)}
+                    border_b_1
+                    border_color={rgb(0x23_23_36)}
                 >
                     <div
-                        w={px(8.)}
-                        h={px(8.)}
-                        rounded_full
-                        bg={dot_color}
-                    />
-                    <div
-                        text_size={px(11.5)}
-                        font_weight={gpui::FontWeight::SEMIBOLD}
-                        text_color={rgb(0xa6_ad_c8)}
+                        class="flex items-center"
+                        gap={px(8.)}
                     >
-                        {"Agent"}
+                        <div
+                            w={px(8.)}
+                            h={px(8.)}
+                            rounded_full
+                            bg={dot_color}
+                        />
+                        <div
+                            text_size={px(11.5)}
+                            font_weight={gpui::FontWeight::SEMIBOLD}
+                            text_color={rgb(0xa6_ad_c8)}
+                        >
+                            {"Agent"}
+                        </div>
+                    </div>
+                    <div
+                        id="side-panel-left-close"
+                        w={px(20.)}
+                        h={px(20.)}
+                        rounded={px(6.)}
+                        class="flex items-center justify-center"
+                        text_color={rgb(0x6c_70_86)}
+                        cursor_pointer
+                        hover={|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4))}
+                        onClick={|_ev, window, cx| {
+                            crate::side_panel_left::close_this(window, cx);
+                        }}
+                    >
+                        {img("icons/x.svg").w(px(12.)).h(px(12.))}
                     </div>
                 </div>
-                <div
-                    id="side-panel-left-close"
-                    w={px(20.)}
-                    h={px(20.)}
-                    rounded={px(6.)}
-                    class="flex items-center justify-center"
-                    text_color={rgb(0x6c_70_86)}
-                    cursor_pointer
-                    hover={|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4))}
-                    onClick={|_ev, window, cx| {
-                        crate::side_panel_left::close_this(window, cx);
-                    }}
-                >
-                    {img("icons/x.svg").w(px(12.)).h(px(12.))}
-                </div>
+                // Body: sessions sidebar + chat area (flex_1)
+                {body}
+                // Composer at bottom
+                {composer}
             </div>
-            // Body: sessions sidebar + chat area (flex_1)
-            {body}
-            // Composer at bottom
-            {composer}
+            // Resize handle (right edge)
+            <div
+                id="resize-handle"
+                w={px(HANDLE_WIDTH)}
+                h_full
+                cursor_col_resize
+                flex
+                items_center
+                justify_center
+                bg={rgb(0x18_18_25)}
+                border_l_1
+                border_color={rgb(0x23_23_36)}
+                onMouseDown={(gpui::MouseButton::Left, resize_mouse_handler)}
+                onDrag={(super::LeftPanelResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))}
+            >
+                <div
+                    w={px(1.)}
+                    h_full
+                    bg={rgb(0x45_47_5a)}
+                />
+            </div>
         </div>
     }
 }

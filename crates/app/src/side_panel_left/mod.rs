@@ -8,10 +8,13 @@ mod tool_card;
 pub use state::{PanelState, SidePanelLeftState};
 
 use chronos_luau::bar::BAR_HEIGHT;
+use chronos_services::hermes_acp::HermesClient;
 use gpui::{
     App, Bounds, DisplayId, Focusable, Global, Size, Window, WindowBackgroundAppearance,
     WindowBounds, WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
 };
+
+pub struct LeftPanelResize;
 
 const PANEL_WIDTH: f32 = 352.;
 const PANEL_EDGE_GAP: f32 = BAR_HEIGHT;
@@ -60,6 +63,7 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
 
 pub struct SidePanelLeft {
     state: state::SidePanelLeftState,
+    client: Option<HermesClient>,
     sessions: Vec<sessions_list::SessionItem>,
     pub(crate) chat: chat_view::ChatView,
     pub(crate) composer_focus: gpui::FocusHandle,
@@ -70,6 +74,8 @@ pub struct SidePanelLeft {
     pub(crate) composer_model_dropdown_open: bool,
     pub(crate) composer_mode_dropdown_open: bool,
     pub(crate) composer_focused: bool,
+    resize_start_x: f32,
+    resize_start_width: f32,
 }
 
 impl Render for SidePanelLeft {
@@ -86,8 +92,28 @@ impl Focusable for SidePanelLeft {
 
 impl SidePanelLeft {
     fn new(cx: &mut Context<Self>) -> Self {
+        cx.spawn(async move |this, cx| {
+            match HermesClient::new().await {
+                Ok(client) => {
+                    let _ = this.update(cx, |this, _cx| {
+                        this.client = Some(client);
+                        this.state.agent_status = state::AgentStatus::Connected;
+                        tracing::info!("side_panel_left: ACP client connected");
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!("side_panel_left: ACP client init failed: {e}");
+                    let _ = this.update(cx, |this, _cx| {
+                        this.state.agent_status = state::AgentStatus::Disconnected;
+                    });
+                }
+            }
+        })
+        .detach();
+
         Self {
             state: state::SidePanelLeftState::new(),
+            client: None,
             sessions: Vec::new(),
             chat: chat_view::ChatView::new(),
             composer_focus: cx.focus_handle(),
@@ -98,6 +124,8 @@ impl SidePanelLeft {
             composer_model_dropdown_open: false,
             composer_mode_dropdown_open: false,
             composer_focused: false,
+            resize_start_x: 0.0,
+            resize_start_width: 0.0,
         }
     }
 
@@ -127,6 +155,20 @@ impl SidePanelLeft {
             s.active = s.id == session_id;
         }
         self.state.active_session_id = Some(session_id.to_string());
+        cx.notify();
+    }
+
+    fn start_resize(&mut self, start_x: f32) {
+        self.resize_start_x = start_x;
+        self.resize_start_width = self.state.width;
+    }
+
+    fn update_resize(&mut self, current_x: f32, window: &mut Window, cx: &mut Context<Self>) {
+        let delta = current_x - self.resize_start_x;
+        self.state.resize(self.resize_start_width + delta);
+        let display_h = display_height(None, &*cx);
+        let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
+        window.resize(Size::new(px(self.state.width), px(panel_h)));
         cx.notify();
     }
 }
