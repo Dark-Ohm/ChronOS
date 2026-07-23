@@ -255,11 +255,18 @@ pub fn render_panel(
 
     rsx! {
         <div
+            id="side-panel-left-root"
             w={px(panel.state.width)}
             h_full
             flex
             flex_row
-            onDragMove={resize_drag_handler}
+            on_hover={|hovered, _window, cx| {
+                if *hovered {
+                    super::hold_peek(cx);
+                } else {
+                    super::schedule_release_peek(cx);
+                }
+            }}
         >
             // Main content area
             <div
@@ -331,6 +338,7 @@ pub fn render_panel(
                 border_color={rgb(0x23_23_36)}
                 onMouseDown={(gpui::MouseButton::Left, resize_mouse_handler)}
                 onDrag={(super::LeftPanelResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))}
+                onDragMove={resize_drag_handler}
             >
                 <div
                     w={px(1.)}

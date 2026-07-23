@@ -4,6 +4,7 @@ pub mod sessions_list;
 mod chat_view;
 mod composer;
 mod tool_card;
+mod hover_strip;
 
 pub use state::{PanelState, SidePanelLeftState};
 
@@ -74,8 +75,8 @@ pub struct SidePanelLeft {
     pub(crate) composer_model_dropdown_open: bool,
     pub(crate) composer_mode_dropdown_open: bool,
     pub(crate) composer_focused: bool,
-    resize_start_x: f32,
-    resize_start_width: f32,
+    resize_start_x: Option<f32>,
+    resize_start_width: Option<f32>,
 }
 
 impl Render for SidePanelLeft {
@@ -124,8 +125,8 @@ impl SidePanelLeft {
             composer_model_dropdown_open: false,
             composer_mode_dropdown_open: false,
             composer_focused: false,
-            resize_start_x: 0.0,
-            resize_start_width: 0.0,
+            resize_start_x: None,
+            resize_start_width: None,
         }
     }
 
@@ -159,13 +160,17 @@ impl SidePanelLeft {
     }
 
     fn start_resize(&mut self, start_x: f32) {
-        self.resize_start_x = start_x;
-        self.resize_start_width = self.state.width;
+        self.resize_start_x = Some(start_x);
+        self.resize_start_width = Some(self.state.width);
     }
 
     fn update_resize(&mut self, current_x: f32, window: &mut Window, cx: &mut Context<Self>) {
-        let delta = current_x - self.resize_start_x;
-        self.state.resize(self.resize_start_width + delta);
+        let (start_x, start_width) = match (self.resize_start_x, self.resize_start_width) {
+            (Some(x), Some(w)) => (x, w),
+            _ => return, // Resize not armed — ignore stray drag events.
+        };
+        let delta = current_x - start_x;
+        self.state.resize(start_width + delta);
         let display_h = display_height(None, &*cx);
         let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
         window.resize(Size::new(px(self.state.width), px(panel_h)));
@@ -242,6 +247,54 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
     tracing::info!("side_panel_left: close_this");
 }
 
+/// Pure decision: should a peek-leave request close the panel?
+fn should_close_on_peek_leave(state: &SidePanelLeftState_) -> bool {
+    !state.pinned
+}
+
+/// Cursor entered strip or panel — cancel any pending peek-close.
+pub(crate) fn hold_peek(cx: &mut App) {
+    let state = cx.global_mut::<SidePanelLeftState_>();
+    state.peek_generation = state.peek_generation.wrapping_add(1);
+}
+
+/// Cursor left strip or panel — close after debounce if still unpinned
+/// and no later enter bumped the generation.
+pub(crate) fn schedule_release_peek(cx: &mut App) {
+    let generation = cx.global::<SidePanelLeftState_>().peek_generation;
+    schedule_release_from_app(cx, generation);
+}
+
+/// Mouse left the strip and the panel. Closes only if not pinned.
+pub fn close_peek_if_not_pinned(cx: &mut App) {
+    if !should_close_on_peek_leave(cx.global::<SidePanelLeftState_>()) {
+        return;
+    }
+    close(cx);
+}
+
+const PEEK_LEAVE_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(280);
+
+pub(crate) fn schedule_release_from_app(cx: &mut gpui::App, generation: u64) {
+    cx.spawn(async move |app_cx: &mut gpui::AsyncApp| {
+        app_cx
+            .background_executor()
+            .timer(PEEK_LEAVE_DEBOUNCE)
+            .await;
+        app_cx.update(|app_cx| {
+            if app_cx
+                .global::<SidePanelLeftState_>()
+                .peek_generation
+                != generation
+            {
+                return;
+            }
+            close_peek_if_not_pinned(app_cx);
+        });
+    })
+    .detach();
+}
+
 pub fn toggle(_window: &mut Window, cx: &mut App) {
     if cx.global::<SidePanelLeftState_>().handle.is_some() {
         close(cx);
@@ -252,11 +305,18 @@ pub fn toggle(_window: &mut Window, cx: &mut App) {
 
 pub fn init(cx: &mut App) {
     cx.set_global(SidePanelLeftState_::default());
+    // Defer the strip one tick so `cx.displays()` / pult uuid match what
+    // `bar::init` sees a moment later. Opening the strip synchronously in
+    // `main` before the bar historically landed it on the wrong output
+    // (HDMI-A-1) while the panel+bar bound to DP-1 (pult).
     cx.spawn(async move |cx| {
         cx.background_executor()
             .timer(std::time::Duration::from_millis(50))
             .await;
         cx.update(|cx| {
+            hover_strip::init_hover_strip(cx);
+            // Optional smoke: pin-open for grim without hover/ydotool.
+            // Not product wiring — only when env is set.
             if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL_LEFT").is_some() {
                 open_pinned(cx);
             }
