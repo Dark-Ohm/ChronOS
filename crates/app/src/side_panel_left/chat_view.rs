@@ -1,6 +1,7 @@
 use gpui::{Context, IntoElement, ScrollHandle, Window, div, point, prelude::*, px, rgb};
 
 use super::SidePanelLeft;
+use super::tool_card::ToolCard;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum MessageRole {
@@ -12,6 +13,8 @@ pub enum MessageRole {
 pub struct ToolCallPreview {
     pub name: String,
     pub status: String,
+    pub args: Option<String>,
+    pub result: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -24,6 +27,7 @@ pub struct ChatMessage {
 pub struct ChatView {
     messages: Vec<ChatMessage>,
     scroll: ScrollHandle,
+    pub expanded_tool_calls: std::collections::HashSet<(usize, usize)>,
 }
 
 impl ChatView {
@@ -31,6 +35,7 @@ impl ChatView {
         Self {
             messages: Vec::new(),
             scroll: ScrollHandle::new(),
+            expanded_tool_calls: std::collections::HashSet::new(),
         }
     }
 
@@ -39,8 +44,6 @@ impl ChatView {
     }
 
     pub fn scroll_to_bottom(&self) {
-        // ScrollHandle doesn't expose a direct "scroll to bottom" in gpui-ce,
-        // but setting the offset to f32::MAX effectively does it on next layout.
         self.scroll.set_offset(point(px(f32::MAX), px(f32::MAX)));
     }
 
@@ -48,9 +51,10 @@ impl ChatView {
         &self,
         panel: &SidePanelLeft,
         _window: &mut Window,
-        _cx: &mut Context<SidePanelLeft>,
+        cx: &mut Context<SidePanelLeft>,
     ) -> impl IntoElement {
         let has_messages = !self.messages.is_empty();
+        let expanded = &panel.chat.expanded_tool_calls;
 
         let messages_el = div()
             .id("chat-messages-scroll")
@@ -62,7 +66,11 @@ impl ChatView {
             .flex_col()
             .gap(px(2.))
             .when(has_messages, |el| {
-                el.children(self.messages.iter().map(|msg| render_message(msg)))
+                let mut el = el;
+                for (msg_idx, msg) in self.messages.iter().enumerate() {
+                    el = el.child(render_message(msg, msg_idx, expanded, cx));
+                }
+                el
             })
             .when(!has_messages, |el| {
                 el.child(
@@ -81,20 +89,63 @@ impl ChatView {
     }
 }
 
-fn render_message(msg: &ChatMessage) -> impl IntoElement {
-    let (bg, align, label, text_color) = match msg.role {
-        MessageRole::User => (
-            rgb(0x31_32_44),
-            "flex-end",
-            "You",
-            rgb(0xcd_d6_f4),
-        ),
-        MessageRole::Agent => (
-            rgb(0x1e_1e_30),
-            "flex-start",
-            "Agent",
-            rgb(0xa6_ad_c8),
-        ),
+fn render_tool_cards(
+    tool_calls: &[ToolCallPreview],
+    msg_idx: usize,
+    expanded: &std::collections::HashSet<(usize, usize)>,
+    cx: &mut Context<SidePanelLeft>,
+) -> Option<impl IntoElement> {
+    if tool_calls.is_empty() {
+        return None;
+    }
+
+    let cards: Vec<_> = tool_calls
+        .iter()
+        .enumerate()
+        .map(|(tc_idx, tc)| {
+            let is_expanded = expanded.contains(&(msg_idx, tc_idx));
+            div()
+                .id(format!("tool-card-{msg_idx}-{tc_idx}"))
+                .child(
+                    ToolCard {
+                        name: &tc.name,
+                        status: &tc.status,
+                        args: tc.args.as_deref(),
+                        result: tc.result.as_deref(),
+                        expanded: is_expanded,
+                    }
+                    .render(Some(cx.listener(move |this, _, _, cx| {
+                        let key = (msg_idx, tc_idx);
+                        if this.chat.expanded_tool_calls.contains(&key) {
+                            this.chat.expanded_tool_calls.remove(&key);
+                        } else {
+                            this.chat.expanded_tool_calls.insert(key);
+                        }
+                        cx.notify();
+                    }))),
+                )
+        })
+        .collect();
+
+    Some(
+        div()
+            .mt(px(6.))
+            .flex()
+            .flex_col()
+            .gap(px(4.))
+            .children(cards),
+    )
+}
+
+fn render_message(
+    msg: &ChatMessage,
+    msg_idx: usize,
+    expanded: &std::collections::HashSet<(usize, usize)>,
+    cx: &mut Context<SidePanelLeft>,
+) -> impl IntoElement {
+    let (bg, label, text_color) = match msg.role {
+        MessageRole::User => (rgb(0x31_32_44), "You", rgb(0xcd_d6_f4)),
+        MessageRole::Agent => (rgb(0x1e_1e_30), "Agent", rgb(0xa6_ad_c8)),
     };
 
     let is_user = msg.role == MessageRole::User;
@@ -103,7 +154,11 @@ fn render_message(msg: &ChatMessage) -> impl IntoElement {
         .text_size(px(10.))
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .mb(px(4.))
-        .text_color(if is_user { rgb(0x89_b4_fa) } else { rgb(0xa6_e3_a1) })
+        .text_color(if is_user {
+            rgb(0x89_b4_fa)
+        } else {
+            rgb(0xa6_e3_a1)
+        })
         .child(label.to_string());
 
     let content_block = div()
@@ -111,42 +166,7 @@ fn render_message(msg: &ChatMessage) -> impl IntoElement {
         .text_color(text_color)
         .child(msg.content.clone());
 
-    let tool_calls_section = if msg.tool_calls.is_empty() {
-        None
-    } else {
-        Some(
-            div()
-                .mt(px(6.))
-                .flex()
-                .flex_col()
-                .gap(px(4.))
-                .children(msg.tool_calls.iter().map(|tc| {
-                    let status_color = match tc.status.as_str() {
-                        "running" => rgb(0xf9_e2_af),
-                        "done" => rgb(0xa6_e3_a1),
-                        "error" => rgb(0xf3_8b_a8),
-                        _ => rgb(0x58_5b_70),
-                    };
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.))
-                        .text_size(px(10.))
-                        .child(
-                            div()
-                                .w(px(5.))
-                                .h(px(5.))
-                                .rounded_full()
-                                .bg(status_color),
-                        )
-                        .child(
-                            div()
-                                .text_color(rgb(0x6c_70_86))
-                                .child(format!("{}: {}", tc.name, tc.status)),
-                        )
-                })),
-        )
-    };
+    let tool_cards_section = render_tool_cards(&msg.tool_calls, msg_idx, expanded, cx);
 
     let bubble = div()
         .max_w(px(290.))
@@ -158,7 +178,7 @@ fn render_message(msg: &ChatMessage) -> impl IntoElement {
         .flex_col()
         .child(role_label)
         .child(content_block)
-        .children(tool_calls_section);
+        .children(tool_cards_section);
 
     div()
         .px(px(12.))
