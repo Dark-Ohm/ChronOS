@@ -367,7 +367,7 @@ impl SidePanelLeft {
         });
         self.chat.scroll_to_bottom();
 
-        if let Some(client) = self.client.clone() {
+        if let Some(client) = self.clients.get(&self.active_agent_id).cloned() {
             self.state.agent_status = AgentStatus::Thinking;
             cx.notify();
 

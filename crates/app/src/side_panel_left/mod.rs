@@ -9,11 +9,12 @@ mod hover_strip;
 pub use state::{PanelState, SidePanelLeftState};
 
 use chronos_luau::bar::BAR_HEIGHT;
-use chronos_services::hermes_acp::HermesClient;
+use chronos_services::hermes_acp::{AgentDescriptor, HermesClient, known_agents};
 use gpui::{
     App, Bounds, DisplayId, Focusable, Global, Size, Window, WindowBackgroundAppearance,
     WindowBounds, WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
 };
+use std::collections::HashMap;
 
 pub struct LeftPanelResize;
 
@@ -64,7 +65,14 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
 
 pub struct SidePanelLeft {
     state: state::SidePanelLeftState,
-    client: Option<HermesClient>,
+    /// Available agent backends from the registry.
+    agents: Vec<AgentDescriptor>,
+    /// Lazy-spawned clients keyed by agent id.
+    clients: HashMap<String, HermesClient>,
+    /// Which agent backend is currently active.
+    active_agent_id: String,
+    /// Whether the agent switcher dropdown is open.
+    agent_menu_open: bool,
     sessions: Vec<sessions_list::SessionItem>,
     pub(crate) chat: chat_view::ChatView,
     pub(crate) composer_focus: gpui::FocusHandle,
@@ -93,11 +101,23 @@ impl Focusable for SidePanelLeft {
 
 impl SidePanelLeft {
     fn new(cx: &mut Context<Self>) -> Self {
+        let agents = known_agents();
+        let active_agent_id = agents
+            .first()
+            .map(|a| a.id.to_string())
+            .unwrap_or_default();
+
+        // Lazy-spawn the default agent (first in registry).
+        let default_config = agents
+            .first()
+            .map(|a| a.config.clone())
+            .unwrap_or_default();
+        let agent_id = active_agent_id.clone();
         cx.spawn(async move |this, cx| {
-            match HermesClient::new().await {
+            match HermesClient::new(default_config).await {
                 Ok(client) => {
                     let _ = this.update(cx, |this, _cx| {
-                        this.client = Some(client);
+                        this.clients.insert(agent_id, client);
                         this.state.agent_status = state::AgentStatus::Connected;
                         tracing::info!("side_panel_left: ACP client connected");
                     });
@@ -114,7 +134,10 @@ impl SidePanelLeft {
 
         Self {
             state: state::SidePanelLeftState::new(),
-            client: None,
+            agents,
+            clients: HashMap::new(),
+            active_agent_id,
+            agent_menu_open: false,
             sessions: Vec::new(),
             chat: chat_view::ChatView::new(),
             composer_focus: cx.focus_handle(),
@@ -169,12 +192,77 @@ impl SidePanelLeft {
             (Some(x), Some(w)) => (x, w),
             _ => return, // Resize not armed — ignore stray drag events.
         };
+        // The window shrinks/grows under the cursor mid-drag, which can
+        // transiently put the pointer outside the window's current bounds
+        // and fire a hover-leave — that would schedule a peek-close while
+        // still dragging (ghost-window: the handle keeps receiving
+        // DragMoveEvent for a window that's gone). Re-arm the peek hold on
+        // every tick so a resize drag can never trigger the leave-debounce.
+        hold_peek(cx);
         let delta = current_x - start_x;
         self.state.resize(start_width + delta);
-        let display_h = display_height(None, &*cx);
+        // Must resolve the same display the panel was actually opened on
+        // (`crate::monitor::pult_display`), not `None`/primary — on a
+        // multi-monitor setup the OS-primary display can be a different,
+        // shorter monitor than the one showing this panel, which silently
+        // shrinks the window height on every resize tick.
+        let display_id = crate::monitor::pult_display(cx);
+        let display_h = display_height(display_id, cx);
         let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
         window.resize(Size::new(px(self.state.width), px(panel_h)));
         cx.notify();
+    }
+
+    /// Switch the active agent backend. Closes the dropdown, lazily spawns
+    /// the client if it hasn't been created yet, and updates the status.
+    fn switch_agent(&mut self, agent_id: &str, cx: &mut Context<Self>) {
+        if agent_id == self.active_agent_id {
+            self.agent_menu_open = false;
+            return;
+        }
+
+        self.active_agent_id = agent_id.to_string();
+        self.agent_menu_open = false;
+        self.sessions.clear();
+        self.state.active_session_id = None;
+
+        // If client already exists, just mark connected.
+        if self.clients.contains_key(agent_id) {
+            self.state.agent_status = state::AgentStatus::Connected;
+            cx.notify();
+            return;
+        }
+
+        // Lazy-spawn: find the descriptor, spawn the client in background.
+        let descriptor = self.agents.iter().find(|a| a.id == agent_id).cloned();
+        let Some(desc) = descriptor else {
+            self.state.agent_status = state::AgentStatus::Disconnected;
+            cx.notify();
+            return;
+        };
+
+        self.state.agent_status = state::AgentStatus::Thinking;
+        cx.notify();
+
+        let agent_id = agent_id.to_string();
+        cx.spawn(async move |this, cx| {
+            match HermesClient::new(desc.config).await {
+                Ok(client) => {
+                    let _ = this.update(cx, |this, _cx| {
+                        this.clients.insert(agent_id, client);
+                        this.state.agent_status = state::AgentStatus::Connected;
+                        tracing::info!("side_panel_left: switched to agent {}", this.active_agent_id);
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!("side_panel_left: agent spawn failed: {e}");
+                    let _ = this.update(cx, |this, _cx| {
+                        this.state.agent_status = state::AgentStatus::Disconnected;
+                    });
+                }
+            }
+        })
+        .detach();
     }
 }
 

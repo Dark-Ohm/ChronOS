@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use tracing::debug;
 
 use super::session::AcpSession;
-use super::transport::HermesTransport;
+use super::transport::{HermesConfig, HermesTransport};
 
 /// Commands sent from the client to the background connection task.
 pub(crate) enum Command {
@@ -90,9 +90,9 @@ pub struct HermesClient {
 }
 
 impl HermesClient {
-    /// Create a new client, spawning the Hermes agent process.
-    pub async fn new() -> Result<Self, anyhow::Error> {
-        let (transport, cmd_tx) = HermesTransport::spawn(Default::default()).await?;
+    /// Create a new client, spawning the agent process with the given config.
+    pub async fn new(config: HermesConfig) -> Result<Self, anyhow::Error> {
+        let (transport, cmd_tx) = HermesTransport::spawn(config).await?;
         Ok(Self {
             _transport: std::sync::Arc::new(transport),
             cmd_tx,
