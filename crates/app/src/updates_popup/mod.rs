@@ -215,6 +215,31 @@ pub(crate) fn upgrade_all(_window: &mut Window, cx: &mut App) {
     tracing::info!("updates_popup: dispatched UpgradeAll");
 }
 
+/// Dispatch "Upgrade selected" — targeted install of `packages` (NO
+/// `-Syu`). Called from the popup's footer button when the user has rows
+/// selected. Empty `packages` is impossible from the UI (the footer label
+/// flips back to "Upgrade all" at zero selection); the service also
+/// refuses to spawn `pkexec` on an empty list, so this is double-guarded.
+pub(crate) fn upgrade_selected(packages: Vec<String>, _window: &mut Window, cx: &mut App) {
+    if packages.is_empty() {
+        tracing::warn!("updates_popup: upgrade_selected called with empty package list — no-op");
+        return;
+    }
+    let count = packages.len();
+    AppState::aur(cx).dispatch(AurCommand::UpgradeSelected { packages });
+    tracing::info!("updates_popup: dispatched UpgradeSelected ({count} packages)");
+}
+
+/// Dispatch "Check for updates" — forces an immediate re-check instead of
+/// waiting for the 15-min poll loop. Reuses the existing
+/// `AurCommand::Refresh` path that `open()` already fires when the popup
+/// first appears, so behavior is identical CLI-wide (checkupdates/yay
+/// spawn under `tokio::spawn`, reactive state push to the popup).
+pub(crate) fn refresh(cx: &mut App) {
+    AppState::aur(cx).dispatch(AurCommand::Refresh);
+    tracing::info!("updates_popup: dispatched Refresh (check for updates)");
+}
+
 /// Wire the updates popup to the live aur service. Called once from
 /// `main.rs`.
 pub fn init(cx: &mut App) {

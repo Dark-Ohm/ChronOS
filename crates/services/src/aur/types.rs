@@ -81,6 +81,13 @@ pub enum AurCommand {
     /// The ONLY privileged operation in this service — never invoked by the
     /// poll loop itself, only from the popup's "Upgrade all" button.
     UpgradeAll,
+    /// Upgrade only the named packages — `pkexec yay -S --noconfirm --
+    /// <pkgs>` / `pkexec pacman -S --noconfirm -- <pkgs>` (no `-Sy`, no `-u`;
+    /// this is a targeted install, not a full sysupgrade). Same streaming
+    /// path as `UpgradeAll`. Dispatch refuses to spawn `pkexec` on an empty
+    /// list (no-op) — the popup guards this in the footer, but the service
+    /// also defends itself.
+    UpgradeSelected { packages: Vec<String> },
 }
 
 #[cfg(test)]

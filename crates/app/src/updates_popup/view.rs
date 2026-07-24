@@ -4,15 +4,17 @@
 //! Light C variant). Every hex, padding, radius, font-size, font-weight here
 //! comes from that mockup — do not re-derive by eye.
 
+use std::collections::HashSet;
+
 use gpui::{
     AnyElement, App, BoxShadow, Context, InteractiveElement, IntoElement, Render, ScrollHandle,
     Styled, Window, div, prelude::*, px, svg,
 };
 
-use chronos_services::{PackageUpdate, Service, UpdateSource, UpgradeProgress, UpgradeState};
+use chronos_services::{PackageUpdate, Service, UpdateSource, UpgradeState};
 
 use crate::state::AppState;
-use crate::updates_popup::{MAX_LIST_H, close_this, upgrade_all};
+use crate::updates_popup::{MAX_LIST_H, close_this, refresh, upgrade_all, upgrade_selected};
 
 use chronos_ui::Theme;
 
@@ -25,14 +27,26 @@ const FOOTER_PY: f32 = 12.;
 const FOOTER_PX: f32 = 14.;
 const BTN_PY: f32 = 8.;
 
+/// Width of the left gutter that carries the selection indicator (px).
+/// Mockup-fixed: smaller reads as noise, larger eats the name column.
+/// Task constraint: <= 18px (T119 §1).
+const SELECTION_GUTTER: f32 = 16.;
+
 pub struct UpdatesPopupView {
     scroll: ScrollHandle,
+    /// Ephemeral UI-only selection of package names (toggled by row
+    /// clicks). Lives on the view, NOT the service — selection vanishes
+    /// whenever the popup closes (mirrors how a combobox's highlight is
+    /// per-session), and a `Running` upgrade disables further toggles so
+    /// the user can't scramble the in-flight package set.
+    selection: HashSet<String>,
 }
 
 impl UpdatesPopupView {
     pub fn new(_cx: &mut App) -> Self {
         Self {
             scroll: ScrollHandle::new(),
+            selection: HashSet::new(),
         }
     }
 }
@@ -43,7 +57,7 @@ impl Render for UpdatesPopupView {
         let updates = state.updates.clone();
         let count = updates.len();
 
-        let theme = Theme::global(cx);
+        let theme = *Theme::global(cx);
         let bg = theme.bg.primary;
         let text_primary = theme.text.primary;
         let text_muted = theme.text.muted;
@@ -68,12 +82,27 @@ impl Render for UpdatesPopupView {
             .collect();
         let visible_count = visible_updates.len();
 
+        // ── Selection hygiene ───────────────────────────────────────
+        // Drop any names that no longer appear in the list (e.g. after a
+        // `Refresh` shrunk the pending set) so the footer label doesn't
+        // mysteriously stay on "Upgrade selected" with zero visible rows.
+        // Mutating `self.selection` inside `render` is fine — it's a
+        // generic `&mut self` borrow, `cx.listener` is reserved for
+        // event-driven mutations only.
+        self.selection.retain(|n| visible_updates.iter().any(|u| &u.name == n));
+        let is_running = matches!(state.upgrade_state, UpgradeState::Running(_));
+        // Snapshot the selection for the render pass — `self` is borrowed
+        // by `render` for the entire frame, but `cx.listener` closures
+        // borrow `&mut this` only at click time, so a captured-into-closure
+        // borrowed snapshot of `self.selection` is unnecessary.
+        let selection_snapshot: HashSet<String> = self.selection.clone();
+
         // ── Header ──────────────────────────────────────────────────
+        //  Title (left) ── spacer ── [Check for updates] [✕]
         let header = div()
             .w_full()
             .flex()
             .items_center()
-            .justify_between()
             .px(px(HEADER_PX))
             .py(px(HEADER_PY))
             .border_b_1()
@@ -91,6 +120,43 @@ impl Render for UpdatesPopupView {
                         "Updates".to_string()
                     }),
             )
+            .child(div().flex_1())
+            .child(
+                // Check for updates — forces a re-check (`AurCommand::Refresh`)
+                // without waiting for the 15-min poll. Sits left of the close
+                // button; close stays the rightmost control. Disabled-look
+                // during an active upgrade: it can't cancel anything, but
+                // hammering Refresh while pacman is running just wastes a
+                // `checkupdates` spawn. The icon is the existing
+                // `arrows-clockwise.svg` (same asset the running-spinner uses).
+                div()
+                    .id("updates-popup-check")
+                    .cursor_pointer()
+                    .flex_none()
+                    .h(px(22.))
+                    .px(px(6.))
+                    .rounded(radius)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(4.))
+                    .text_color(if is_running { text_muted } else { text_secondary })
+                    .when(!is_running, |el| el.hover(|s| s.bg(hover)))
+                    .child(svg().path("icons/arrows-clockwise.svg").size(px(13.)))
+                    .child(
+                        div()
+                            .text_color(if is_running { text_muted } else { text_secondary })
+                            .font_family(font_mono)
+                            .text_size(theme.font_sizes.sm)
+                            .child("Check"),
+                    )
+                    // Refresh during Running is harmless but wasteful; still allow —
+                    // muted style only (no separate disabled branch for Style type).
+                    .on_click(|_event, _window, cx: &mut App| {
+                        refresh(cx);
+                    }),
+            )
+            .child(div().w(px(6.)))
             .child(
                 div()
                     .id("updates-popup-close")
@@ -124,8 +190,11 @@ impl Render for UpdatesPopupView {
             let rows: Vec<AnyElement> = visible_updates
                 .iter()
                 .map(|u| {
+                    let is_selected = selection_snapshot.contains(&u.name);
                     render_row(
                         u,
+                        is_selected,
+                        is_running,
                         text_primary,
                         text_secondary,
                         text_muted,
@@ -134,6 +203,7 @@ impl Render for UpdatesPopupView {
                         border,
                         font_mono,
                         radius,
+                        cx,
                     )
                 })
                 .collect();
@@ -261,8 +331,24 @@ impl Render for UpdatesPopupView {
                     )
                     .into_any_element()
             } else if !updates.is_empty() {
+                // Footer label flips per selection: empty selection →
+                // "Upgrade all" (full sysupgrade), non-empty → "Upgrade
+                // selected" (targeted `-S` install of those names). The
+                // button's `id` keeps the same shape T118 relied on so the
+                // running-mode display path is untouched.
+                let has_selection = !selection_snapshot.is_empty();
+                let label: &'static str = if has_selection {
+                    "Upgrade selected"
+                } else {
+                    "Upgrade all"
+                };
+                let selected_pkgs: Vec<String> = if has_selection {
+                    selection_snapshot.iter().cloned().collect()
+                } else {
+                    Vec::new()
+                };
                 div()
-                    .id("updates-popup-upgrade-all")
+                    .id("updates-popup-upgrade-action")
                     .w_full()
                     .flex()
                     .items_center()
@@ -277,9 +363,13 @@ impl Render for UpdatesPopupView {
                     .text_size(px(12.5))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .hover(|s| s.border_color(accent_hover).text_color(accent_hover))
-                    .child("Upgrade all")
-                    .on_click(|_event, window, cx: &mut App| {
-                        upgrade_all(window, cx);
+                    .child(label)
+                    .on_click(move |_event, window, cx: &mut App| {
+                        if selected_pkgs.is_empty() {
+                            upgrade_all(window, cx);
+                        } else {
+                            upgrade_selected(selected_pkgs.clone(), window, cx);
+                        }
                     })
                     .into_any_element()
             } else {
@@ -349,6 +439,8 @@ impl Render for UpdatesPopupView {
 #[allow(clippy::too_many_arguments)]
 fn render_row(
     update: &PackageUpdate,
+    is_selected: bool,
+    is_running: bool,
     text_primary: gpui::Hsla,
     text_secondary: gpui::Hsla,
     text_muted: gpui::Hsla,
@@ -357,10 +449,41 @@ fn render_row(
     border: gpui::Hsla,
     font_mono: &'static str,
     radius: gpui::Pixels,
+    cx: &mut Context<UpdatesPopupView>,
 ) -> AnyElement {
     let is_aur = matches!(update.source, UpdateSource::Aur);
+    let name = update.name.clone();
 
-    // ── Row layout: [name] [AUR?] ──gap── [old → new] ──
+    // ── Selection gutter: 16px column, no SVG asset needed ───
+    // Selected → 10px accent-filled rounded square. Unselected → 10px
+    // transparent square with a 1px muted border outline. Same outer
+    // footprint in both states — pixel layout stays identical whether or
+    // not a row is selected, so the right-column version string never
+    // shifts left/right as you toggle.
+    let indicator = div()
+        .flex_none()
+        .w(px(SELECTION_GUTTER))
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(if is_selected {
+            div()
+                .w(px(10.))
+                .h(px(10.))
+                .rounded(px(2.))
+                .bg(accent)
+                .into_any_element()
+        } else {
+            div()
+                .w(px(10.))
+                .h(px(10.))
+                .rounded(px(2.))
+                .border_1()
+                .border_color(text_muted)
+                .into_any_element()
+        });
+
+    // ── Row layout: [indicator] [name] [AUR?] ──gap── [old → new] ──
     let name_el = div()
         .flex_1()
         .min_w(px(0.))
@@ -407,18 +530,57 @@ fn render_row(
                 .child(update.new_version.clone()),
         );
 
-    div()
-        .w_full()
-        .flex()
-        .items_center()
-        .gap(px(10.))
-        .px(px(ROW_PX))
-        .py(px(ROW_PY))
-        .border_b_1()
-        .border_color(border)
-        .hover(|s| s.bg(hover))
-        .child(name_el)
-        .child(aur_badge)
-        .child(versions)
-        .into_any_element()
+    // Clicking a row toggles its membership in the selection — but only
+    // when no upgrade is in flight. During `Running` the user can still
+    // scroll/read the list; we just freeze the selection so the dispatched
+    // package set (captured at the moment the user clicked "Upgrade
+    // selected") stays honest. `cx.listener` lets us reach `&mut this`
+    // from the click handler without re-entering `handle.update`.
+    if is_running {
+        div()
+            .w_full()
+            .flex()
+            .items_center()
+            .gap(px(10.))
+            .px(px(ROW_PX))
+            .py(px(ROW_PY))
+            .border_b_1()
+            .border_color(border)
+            .child(indicator)
+            .child(name_el)
+            .child(aur_badge)
+            .child(versions)
+            .into_any_element()
+    } else {
+        // Stable id for the row so toggles keep state across re-renders;
+        // GPUI takes `Into<SharedString>` hierea, so `format!` is fine —
+        // no `.leak()` (which would leak every render frame).
+        let row_id = format!("updates-popup-row-{name}");
+        div()
+            .id(row_id)
+            .w_full()
+            .flex()
+            .items_center()
+            .gap(px(10.))
+            .px(px(ROW_PX))
+            .py(px(ROW_PY))
+            .border_b_1()
+            .border_color(border)
+            .hover(|s| s.bg(hover))
+            .child(indicator)
+            .child(name_el)
+            .child(aur_badge)
+            .child(versions)
+            .on_click(cx.listener(move |this, _event, _window, cx| {
+                if this.selection.contains(&name) {
+                    this.selection.remove(&name);
+                    tracing::debug!(target: "chronos::updates_popup", "deselected {name}");
+                } else {
+                    this.selection.insert(name.clone());
+                    tracing::debug!(target: "chronos::updates_popup", "selected {name}");
+                }
+                cx.notify();
+            }))
+            .into_any_element()
+    }
 }

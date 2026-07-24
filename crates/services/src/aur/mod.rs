@@ -138,6 +138,51 @@ impl AurSubscriber {
                     }
                 });
             }
+            AurCommand::UpgradeSelected { packages } => {
+                // Defensive guard: an empty selection must NEVER spawn
+                // `pkexec yay -S --noconfirm --` — that's not a no-op, it
+                // re-enters yay's interactive target picker and hangs the
+                // auth prompt. The popup's footer already switches the
+                // label to "Upgrade all" when the selection is empty, so
+                // under normal UX this arm is never hit with `[]`; the log
+                // is a backstop.
+                if packages.is_empty() {
+                    warn!("AurSubscriber: UpgradeSelected dispatched with empty package list — no-op");
+                    return;
+                }
+                let data = self.data.clone();
+                let status = self.status.clone();
+                self.runtime.spawn(async move {
+                    {
+                        let mut s = data.get_cloned();
+                        s.upgrade_state = UpgradeState::Running(UpgradeProgress::default());
+                        data.set(s);
+                    }
+
+                    let upgrade_result = run_upgrade_selected(packages, data.clone()).await;
+
+                    match read_state().await {
+                        Ok(mut state) => {
+                            state.upgrade_state = match &upgrade_result {
+                                Ok(()) => UpgradeState::Done,
+                                Err(_) => UpgradeState::Failed,
+                            };
+                            data.set(state);
+                            status.set(ServiceStatus::Available);
+                        }
+                        Err(e) => {
+                            warn!("AurSubscriber re-read after upgrade-selected failed: {e:?}");
+                            let mut s = data.get_cloned();
+                            s.upgrade_state = UpgradeState::Failed;
+                            data.set(s);
+                        }
+                    }
+
+                    if let Err(e) = upgrade_result {
+                        warn!("AurSubscriber upgrade-selected failed: {e:?}");
+                    }
+                });
+            }
         }
     }
 }
@@ -303,28 +348,92 @@ pub fn upgrade_command_args(has_yay: bool) -> (&'static str, Vec<&'static str>) 
     }
 }
 
-/// Launch the real upgrade, stream stderr line-by-line into reactive state.
-/// `pacman` writes progress to stderr (not stdout), so we pipe stderr and
-/// parse `(N/M) upgrading|installing <name>...` patterns live.
+/// Pure mapping for "Upgrade selected" — argv after `pkexec`. Uses `-S`
+/// (sync/install the named targets), **not** `-Syu`/`-u` (no full
+/// sysupgrade): this installs or upgrades exactly the named packages.
+/// `--noconfirm` skips prompts; `--` separates options from targets (a
+/// package named like `-foo` would otherwise be ambiguous). Flags
+/// verified on this host against `yay --help` / `pacman --help` on
+/// 2026-07-24 (`yay {-S --sync} [options] <package(s)>`, `--noconfirm`,
+/// and the pacman-standard `--` end-of-options terminator).
+///
+/// Empty `packages` is the caller's concern — this helper still returns
+/// a valid argv (with `--` terminator and no targets); the dispatcher
+/// refuses to spawn `pkexec` on an empty list (no-op) rather than firing
+/// a bare `yay -S` which would re-trigger interactive selection.
+pub fn upgrade_selected_command_args(
+    has_yay: bool,
+    packages: &[String],
+) -> (&'static str, Vec<String>) {
+    let mut args: Vec<String> = if has_yay {
+        vec!["yay", "-S", "--noconfirm", "--"]
+            .into_iter()
+            .map(String::from)
+            .collect()
+    } else {
+        vec!["pacman", "-S", "--noconfirm", "--"]
+            .into_iter()
+            .map(String::from)
+            .collect()
+    };
+    for p in packages {
+        args.push(p.clone());
+    }
+    ("pkexec", args)
+}
+
+/// Launch the real full sysupgrade, stream stderr line-by-line into
+/// reactive state. `pacman` writes progress to stderr (not stdout), so we
+/// pipe stderr and parse `(N/M) upgrading|installing <name>...` patterns
+/// live.
 async fn run_upgrade_all(data: Mutable<UpdatesState>) -> anyhow::Result<()> {
+    let has_yay = binary_available("yay");
+    let (bin, args) = upgrade_command_args(has_yay);
+    // `upgrade_command_args` returns `Vec<&'static str>`; widen to owned
+    // for the shared helper without touching the existing test contract.
+    let args_owned: Vec<String> = args.into_iter().map(String::from).collect();
+    run_upgrade_command(bin, args_owned, data).await
+}
+
+/// Launch a targeted upgrade of the named packages. Caller MUST guarantee
+/// `packages` is non-empty (the `dispatch` arm rejects an empty list
+/// before reaching here — see `AurCommand::UpgradeSelected`).
+async fn run_upgrade_selected(
+    packages: Vec<String>,
+    data: Mutable<UpdatesState>,
+) -> anyhow::Result<()> {
+    debug_assert!(
+        !packages.is_empty(),
+        "run_upgrade_selected called with empty packages — dispatcher must guard this"
+    );
+    let has_yay = binary_available("yay");
+    let (bin, args) = upgrade_selected_command_args(has_yay, &packages);
+    run_upgrade_command(bin, args, data).await
+}
+
+/// Shared streaming-upgrade runner: spawn `bin args...`, pipe stderr,
+/// parse `(N/M)` progress lines, push live state into `data`. Used by both
+/// `UpgradeAll` and `UpgradeSelected` — they differ only in the argv, the
+/// line-driven progress/staircase update path is identical.
+async fn run_upgrade_command(
+    bin: &'static str,
+    args: Vec<String>,
+    data: Mutable<UpdatesState>,
+) -> anyhow::Result<()> {
     let data_clone = data.clone();
+    let args_for_log = args.join(" ");
     tokio::task::spawn_blocking(move || {
-        let has_yay = binary_available("yay");
-        let (bin, args) = upgrade_command_args(has_yay);
-        info!(
-            "AurSubscriber: launching upgrade — {bin} {}",
-            args.join(" ")
-        );
+        info!("AurSubscriber: launching upgrade — {bin} {args_for_log}");
 
         // stdout is discarded: pacman/yay progress is on stderr. Piping
         // stdout without a reader can fill the pipe buffer and deadlock
-        // the child mid-upgrade (classic trap).
+        // the child mid-upgrade (classic trap — T118 errata).
         let mut child = Command::new(bin)
             .args(&args)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| anyhow::anyhow!("failed to spawn {bin} {}: {e}", args.join(" ")))?;
+            .map_err(|e| anyhow::anyhow!("failed to spawn {bin} {args_for_log}: {e}"))?;
 
         // Read stderr line by line (pacman writes progress there).
         let stderr = child.stderr.take().expect("piped stderr");
@@ -378,7 +487,7 @@ async fn run_upgrade_all(data: Mutable<UpdatesState>) -> anyhow::Result<()> {
         }
     })
     .await
-    .map_err(|e| anyhow::anyhow!("upgrade-all join error: {e}"))?
+    .map_err(|e| anyhow::anyhow!("upgrade join error: {e}"))?
 }
 
 /// Parsed progress from a pacman-style line: `(N/M) upgrading name...`
@@ -542,6 +651,68 @@ mod tests {
         let (bin, args) = upgrade_command_args(false);
         assert_eq!(bin, "pkexec");
         assert_eq!(args, vec!["pacman", "-Syu", "--noconfirm"]);
+    }
+
+    /// Targeted install: `-S` (NOT `-Syu`/`-u`), `--noconfirm`, `--`
+    /// separator, packages after it. Verified against `yay --help` +
+    /// `pacman --help` on the dev host 2026-07-24 — `yay {-S --sync}
+    /// [options] <package(s)>`, `--noconfirm`, and the pacman-standard
+    /// `--` end-of-options terminator.
+    #[test]
+    fn upgrade_selected_command_args_yay_includes_packages() {
+        let pkgs: Vec<String> = vec!["firefox".into(), "discord".into()];
+        let (bin, args) = upgrade_selected_command_args(true, &pkgs);
+        assert_eq!(bin, "pkexec");
+        assert_eq!(
+            args,
+            vec![
+                "yay".to_string(),
+                "-S".into(),
+                "--noconfirm".into(),
+                "--".into(),
+                "firefox".into(),
+                "discord".into(),
+            ]
+        );
+    }
+
+    #[test]
+    fn upgrade_selected_command_args_pacman_fallback() {
+        let pkgs: Vec<String> = vec!["linux".into()];
+        let (bin, args) = upgrade_selected_command_args(false, &pkgs);
+        assert_eq!(bin, "pkexec");
+        assert_eq!(
+            args,
+            vec![
+                "pacman".to_string(),
+                "-S".into(),
+                "--noconfirm".into(),
+                "--".into(),
+                "linux".into(),
+            ]
+        );
+    }
+
+    /// Empty selection: the pure helper returns a valid argv with the `--`
+    /// terminator and no targets. The dispatcher itself rejects an empty
+    /// list *before* spawning `pkexec` (a bare `yay -S` re-enters
+    /// interactive selection and hangs the agent); we test that shape
+    /// here, and the runtime guard is documented in the dispatch arm.
+    #[test]
+    fn upgrade_selected_command_args_empty_yields_terminator_only() {
+        let pkgs: Vec<String> = vec![];
+        let (bin, args) = upgrade_selected_command_args(true, &pkgs);
+        assert_eq!(bin, "pkexec");
+        assert_eq!(
+            args,
+            vec![
+                "yay".to_string(),
+                "-S".into(),
+                "--noconfirm".into(),
+                "--".into(),
+            ]
+        );
+        assert!(pkgs.is_empty());
     }
 
     #[test]
