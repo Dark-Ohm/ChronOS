@@ -8,6 +8,17 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
+**Обновлено: 2026-07-24 — T108 ПРИНЯТ (core agent switcher).** Task3
+(клик по пунктам dropdown) сверен с диффом: absolute `size_full` оверлеи
+сняты, `on_click` на строках, build-order dropdown→chat/composer.
+`cargo test -p chronos --lib` 26/26, `side_panel_left` bin-тесты 2/2.
+Фикс закоммичен (`side_panel_left : fix agent dropdown click (T108 task3)`).
+Бриф → `done/T108-...`, отчёты task1–3 + review → `report-log/`.
+**Долг вне T108:** #7 jank dropdown, #8/#8-bis ghost-trail (форк), live
+round-trip models после prompt, второй ACP backend в реестре (сейчас
+только Hermes). Живой клик после ребилда в этой сессии не гонялся —
+running release был pre-task3; код-паттерн однозначный.
+
 **Обновлено: 2026-07-24 (глубокая ночь) — T117 ПРИНЯТ пользователем
 живьём ("справился почти прекрасно, готов на 90%"), T118 роздан.**
 Anchored-позиционирование, реальный скролл, pixel-faithful визуал
@@ -100,12 +111,10 @@ master, 3 вкладки IDE-панели розданы (T113-T115).**
    правка пользователя). Известный косметический долг: `mix-blend-mode:
    destination-out` в SVG-иконках не рендерится этим `usvg`-рантаймом
    (сплошные глифы вместо вырезов) — не блокер, будущий полироль.
-3. **T108 (мульти-агентный свитчер) — пункт #6 (real modes/models)
-   ACCEPTED**, код проверен (`cargo check`/`test` зелёные). Живой
-   round-trip (реальный список после отправки промпта) НЕ подтверждён —
-   не удалось надёжно симулировать текстовый ввод через `ydotool` в этой
-   среде. Остальные пункты T108 (#7/#8 resize/ghost-trail) остаются
-   открытыми.
+3. **T108 (мульти-агентный свитчер) — ACCEPTED целиком (core)** 2026-07-24.
+   Task1–3 + #6 modes/models + #9 resize. Долг (#7 jank, #8 ghost-trail
+   fork, live round-trip после prompt) — **не** блокирует done; отдельные
+   future items. `done/T108-...`, `report-log/T108-*`.
 4. **T109 (Agent Thread canvas) — ACCEPTED.** Отчёт был честно помечен
    "screenshots PENDING — нет GUI-сессии"; архитектор прогнал живой смок
    лично (`CHRONOS_SMOKE_SIDE_PANEL_LEFT=1`) — рендер подтверждён, ACP
@@ -213,7 +222,7 @@ Wayland — коммит `fbcadd6`). Открыто: ghost-trail (форк, от
 | T105 (Chronos-AUR Трек C, Hermes) | `orchestration/tasks/active/T105-chronos-aur-track-c-app-shell.md` | WIP |
 | T106 (Chronos-AUR Трек D, Zed) | `orchestration/tasks/active/T106-chronos-aur-track-d-pages.md` | WIP |
 | T107 (левая agent-панель) | `orchestration/tasks/done/T107-left-agent-panel.md` | **ПРИНЯТ** |
-| T108 (мульти-агентный свитчер) | `orchestration/tasks/active/T108-left-panel-agent-switcher.md` | пункт #6 **ПРИНЯТ**, #7/#8 OPEN |
+| T108 (мульти-агентный свитчер) | `orchestration/tasks/done/T108-left-panel-agent-switcher.md` | **ACCEPTED** core; долг #7/#8 → future |
 | T109 (Agent Thread canvas) | `orchestration/tasks/done/T109-agent-thread-canvas.md` | **ПРИНЯТ** (живой смок 07-24) |
 | T110 (hot-reload Track A, OpenCode) | `orchestration/tasks/done/T110-hot-reload-track-a-hotlibreloader.md` | **ПРИНЯТ, победитель**, смержен `b07eacd` |
 | T111 (hot-reload Track B, GLM) | `orchestration/tasks/done/T111-hot-reload-track-b-subsecond.md` | **ПРИНЯТ, проиграл валидно** (unsafe API), архивирован |
