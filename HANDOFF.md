@@ -8,18 +8,15 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-24 — очередь updates_popup после T118 (пользователь).**
-Сейчас **ждём отчёт T118** (live upgrade output). Следующий бриф
-(ещё не роздан, T-ID после приёмки T118) — **selective upgrade + refresh**:
-1. Строки пакетов уже кликабельны → multi-select кликами.
-2. Футер: кнопка «Upgrade all»; если есть выделение — переименовывается
-   в «Upgrade selected» / «Обновить выбранное» и апгрейдит только selection
-   (не `-Syu` всего мира — отдельный backend-path на выбранные пакеты).
-3. Правый верх хедера: кнопка «Check for updates» / «Проверить
-   обновления» → force re-check (в типах уже есть задел
-   `AurCommand` force-refresh / poll, сверить при брифе, не выдумывать).
-Не писать полный T-бриф, пока T118 не принят — иначе параллельные
-правки `updates_popup/view.rs` + `aur/*` сойдутся в кровавый merge.
+**Обновлено: 2026-07-24 — T118 ПРИНЯТ WITH CAVEATS; T119 роздан в active.**
+T118: streaming upgrade (`7329106`), 22 aur unit-тестов зелёные, live
+e2e PENDING в отчёте; errata `stdout(Stdio::null())` (pipe deadlock).
+Caveats: spinner static, staircase=filter. Review → `report-log/T118-*-review.md`.
+**T119** (следующий, по решению пользователя): multi-select строк,
+footer `Upgrade all`→`Upgrade selected`, header `Check for updates`
+(`AurCommand::Refresh` уже есть). Бриф:
+`orchestration/tasks/active/T119-updates-popup-select-and-refresh.md`.
+Строки **ещё не** on_click — в брифе честно, selection писать с нуля.
 
 **Обновлено: 2026-07-24 — T108 ПРИНЯТ (core agent switcher).** Task3
 (клик по пунктам dropdown) сверен с диффом: absolute `size_full` оверлеи

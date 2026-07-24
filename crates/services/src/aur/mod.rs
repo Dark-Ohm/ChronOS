@@ -316,9 +316,12 @@ async fn run_upgrade_all(data: Mutable<UpdatesState>) -> anyhow::Result<()> {
             args.join(" ")
         );
 
+        // stdout is discarded: pacman/yay progress is on stderr. Piping
+        // stdout without a reader can fill the pipe buffer and deadlock
+        // the child mid-upgrade (classic trap).
         let mut child = Command::new(bin)
             .args(&args)
-            .stdout(Stdio::piped())
+            .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| anyhow::anyhow!("failed to spawn {bin} {}: {e}", args.join(" ")))?;
