@@ -8,9 +8,55 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-24 — три новых фронта заведены (T107-T109 из вчера
-не переоткрывались, всё ещё приняты).** Сессия началась как «hot patch/
-hot reload», после уточнений оказалась тремя разными вещами. Полный
+**Обновлено: 2026-07-24 (вечер) — T110/T111/T112 закрыты, Track A в
+master, 3 вкладки IDE-панели розданы (T113-T115).**
+
+1. **Hot-reload bake-off закрыт.** Track A (OpenCode, `hot-lib-reloader`
+   + `crates/hotview`) — победитель, 0 крашей за 10 правок, ~2 сек
+   сохранил→увидел. Смержен в master (`b07eacd`), собран и с фичей
+   `hot-reload`, и без неё (release), проверено архитектором лично.
+   Track B (GLM, `subsecond`) — проиграл ВАЛИДНО: `subsecond::apply_patch`/
+   `get_jump_table` — публичный `unsafe` API, требует `unsafe {}` в
+   `crates/app`, упирается в workspace `unsafe_code = "deny"` —
+   воспроизведено архитектором лично на том же ворктри. Ветка
+   `spike/hot-reload-track-b` archived, не удалена. Оба зафиксированы в
+   `orchestration/tasks/done/T110-*`/`T111-*`. Находки задокументированы:
+   `skills/hot-lib-reloader/`, `skills/evaluating-hot-reload-solutions/`
+   (коммит `8822319`).
+2. **T112 (IDE-панель, фундамент таб-контейнера) принят**, коммит
+   `0e10e51`. Живой смок прогнан лично (`CHRONOS_SMOKE_SIDE_PANEL=1`):
+   560px, rail с 10 иконками, System-таб byte-for-byte. **Правка сверх
+   плана:** rail перенесён на правый край экрана (был слева от контента —
+   для право-докнутой панели это выглядело развёрнутым не в ту сторону,
+   правка пользователя). Известный косметический долг: `mix-blend-mode:
+   destination-out` в SVG-иконках не рендерится этим `usvg`-рантаймом
+   (сплошные глифы вместо вырезов) — не блокер, будущий полироль.
+3. **T108 (мульти-агентный свитчер) — пункт #6 (real modes/models)
+   ACCEPTED**, код проверен (`cargo check`/`test` зелёные). Живой
+   round-trip (реальный список после отправки промпта) НЕ подтверждён —
+   не удалось надёжно симулировать текстовый ввод через `ydotool` в этой
+   среде. Остальные пункты T108 (#7/#8 resize/ghost-trail) остаются
+   открытыми.
+4. **T109 (Agent Thread canvas) — ACCEPTED.** Отчёт был честно помечен
+   "screenshots PENDING — нет GUI-сессии"; архитектор прогнал живой смок
+   лично (`CHRONOS_SMOKE_SIDE_PANEL_LEFT=1`) — рендер подтверждён, ACP
+   реально подключился к живому Hermes, ни одного краша.
+5. **Розданы T113 (Terminal tab), T114 (ACP settings tab), T115 (Files
+   tab)** — три из девяти оставшихся вкладок IDE-панели, без привязки к
+   конкретному минону (`orchestration/tasks/active/T11{3,4,5}-*.md`).
+   Каждая пишет свой новый файл, НЕ трогает общий `view.rs`/`tabs.rs`/
+   `mod.rs` — dispatch подключает архитектор сам после приёмки (иначе три
+   минона дерутся за один файл). Оставшиеся 5 вкладок (Editor/MCP/LSP/
+   API-providers/Hyprland-binds) НЕ розданы — каждая требует нового
+   `crates/services/*` с нуля или отдельного скоупинга.
+
+Пуш: `origin/master` на `8822319`.
+
+---
+
+**Обновлено: 2026-07-24 (день) — три новых фронта заведены (T107-T109 из
+вчера не переоткрывались, всё ещё приняты).** Сессия началась как «hot
+patch/ hot reload», после уточнений оказалась тремя разными вещами. Полный
 разбор решений — `DECISIONS.log` 2026-07-24 (три записи).
 
 1. **Dev hot-reload bake-off (спайк, не продукт).** Полный hot-swap
@@ -98,8 +144,14 @@ Wayland — коммит `fbcadd6`). Открыто: ghost-trail (форк, от
 | T105 (Chronos-AUR Трек C, Hermes) | `orchestration/tasks/active/T105-chronos-aur-track-c-app-shell.md` | WIP |
 | T106 (Chronos-AUR Трек D, Zed) | `orchestration/tasks/active/T106-chronos-aur-track-d-pages.md` | WIP |
 | T107 (левая agent-панель) | `orchestration/tasks/done/T107-left-agent-panel.md` | **ПРИНЯТ** |
-| T108 (мульти-агентный свитчер) | `orchestration/tasks/active/T108-left-panel-agent-switcher.md` | **ПРИНЯТ** (`fbcadd6`, real modes/models) |
-| T109 (Agent Thread canvas) | `orchestration/tasks/active/T109-agent-thread-canvas.md` | **ПРИНЯТ** с правками архитектора (`10fa206`) |
+| T108 (мульти-агентный свитчер) | `orchestration/tasks/active/T108-left-panel-agent-switcher.md` | пункт #6 **ПРИНЯТ**, #7/#8 OPEN |
+| T109 (Agent Thread canvas) | `orchestration/tasks/done/T109-agent-thread-canvas.md` | **ПРИНЯТ** (живой смок 07-24) |
+| T110 (hot-reload Track A, OpenCode) | `orchestration/tasks/done/T110-hot-reload-track-a-hotlibreloader.md` | **ПРИНЯТ, победитель**, смержен `b07eacd` |
+| T111 (hot-reload Track B, GLM) | `orchestration/tasks/done/T111-hot-reload-track-b-subsecond.md` | **ПРИНЯТ, проиграл валидно** (unsafe API), архивирован |
+| T112 (IDE-панель фундамент, DeepSeek) | `orchestration/tasks/done/T112-ide-panel-tab-container.md` | **ПРИНЯТ** `0e10e51` |
+| T113 (IDE-панель, Terminal tab) | `orchestration/tasks/active/T113-ide-panel-terminal-tab.md` | OPEN, не назначен |
+| T114 (IDE-панель, ACP settings tab) | `orchestration/tasks/active/T114-ide-panel-acp-settings-tab.md` | OPEN, не назначен |
+| T115 (IDE-панель, Files tab) | `orchestration/tasks/active/T115-ide-panel-files-tab.md` | OPEN, не назначен |
 
 ### T107/T108/T109 — LEFT AGENT PANEL (2026-07-23)
 

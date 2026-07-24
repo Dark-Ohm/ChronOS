@@ -81,6 +81,17 @@ and isolated (see §5).
 API, PluginManager, clock example. inotify hot-reload watcher — NOT YET
 IMPLEMENTED (see §9). `crates/services` and `crates/ui` not yet created.
 
+**`crates/hotview` (added 2026-07-24, dev-only).** Cdylib+rlib crate,
+own `[lints]` (NOT `workspace = true` — the only place workspace
+`unsafe_code = "deny"` is deliberately not inherited, isolated to this
+one crate). Holds pure render functions extracted from `crates/app` bar
+widgets (currently `network.rs`), reloaded at dev-time via
+`hot_lib_reloader::hot_module!` under the `hot-reload` Cargo feature
+(absent from the release profile). Winner of a bake-off against
+`subsecond`-style function patching (rejected: leaks `unsafe` into
+`crates/app` call sites, violates the workspace deny — `DECISIONS.log`
+2026-07-24). Setup + pitfalls: `skills/hot-lib-reloader/`.
+
 ## 4. Layer-shell windowing
 
 Window creation is declarative via GPUI:

@@ -5,22 +5,28 @@
 за оперативным полем (кто чем занят прямо сейчас) — `HANDOFF.md`. Этот файл
 отвечает на один вопрос: «куда мы идём и в каком порядке».
 
-Обновлено: 2026-07-24 (три новых фронта заведены, детали — `HANDOFF.md`).
+Обновлено: 2026-07-24 (вечер) — hot-reload bake-off и IDE-панель фундамент
+закрыты, детали — `HANDOFF.md`.
 
 ## Волна «Shell-IDE + dev hot-reload + bar layout» — В ПОЛЕ (2026-07-24)
 
 Настоящая конечная цель проекта уточнилась: ChronOS — shell-IDE гибрид
 (агент слева, IDE-панель на 10 вкладок справа), не только desktop shell.
-Полный разбор решений — `DECISIONS.log` 2026-07-24 (три записи).
+Полный разбор решений — `DECISIONS.log` 2026-07-24 (пять записей).
 
-- [ ] **Shell-IDE правая панель** — фундамент (rail + System-таб +
-      9 заглушек) роздан T112 (DeepSeek). 9 реальных вкладок — впереди,
-      4 из них (MCP/LSP/API-providers/Hyprland-binds) требуют новых
-      backend-сервисов с нуля (в дереве их сегодня нет).
-- [ ] **Dev hot-reload bake-off** — спайк T110 (OpenCode, Track A
-      `hot-lib-reloader`) / T111 (GLM, Track B `subsecond`), полигон
-      `network.rs`. Победитель становится dev-инструментом Архитектора,
-      не продуктовой фичей.
+- [x] **Dev hot-reload bake-off** — Track A (`hot-lib-reloader` +
+      `crates/hotview`) победил, смержен в master (`b07eacd`). Track B
+      (`subsecond`) архивирован веткой, проиграл валидно (unsafe API
+      против `unsafe_code=deny`). Задокументировано:
+      `skills/hot-lib-reloader/`, `skills/evaluating-hot-reload-solutions/`.
+- [x] **Shell-IDE правая панель — фундамент** — таб-контейнер (rail +
+      System-таб byte-for-byte + 9 заглушек) принят, `0e10e51`.
+- [ ] **Shell-IDE правая панель — 9 реальных вкладок.** 3 розданы без
+      привязки к минону (T113 Terminal, T114 ACP settings, T115 Files —
+      `orchestration/tasks/active/`). Остальные 6 (Editor, MCP, LSP,
+      API-providers, Hyprland binds) НЕ розданы — 4 из них требуют новых
+      backend-сервисов с нуля (в дереве их сегодня нет), Editor —
+      крупнейший кусок, нужен отдельный скоупинг.
 - [ ] **Bar widget layout config** — спека готова
       (`docs/superpowers/specs/2026-07-24-bar-widget-layout-config-design.md`),
       план/T-задача ещё не роздана. Выносит хардкоженный порядок
