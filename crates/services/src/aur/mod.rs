@@ -387,30 +387,38 @@ pub fn upgrade_command_args(has_yay: bool) -> (&'static str, Vec<&'static str>) 
     }
 }
 
-/// Pure mapping for "Upgrade selected" — argv after `pkexec`. Uses `-S`
-/// (sync/install the named targets), **not** `-Syu`/`-u` (no full
-/// sysupgrade): this installs or upgrades exactly the named packages.
-/// `--noconfirm` skips prompts; `--` separates options from targets (a
-/// package named like `-foo` would otherwise be ambiguous). Flags
-/// verified on this host against `yay --help` / `pacman --help` on
-/// 2026-07-24 (`yay {-S --sync} [options] <package(s)>`, `--noconfirm`,
-/// and the pacman-standard `--` end-of-options terminator).
+/// Pure mapping for "Upgrade selected" — argv after `pkexec`.
 ///
-/// Empty `packages` is the caller's concern — this helper still returns
-/// a valid argv (with `--` terminator and no targets); the dispatcher
-/// refuses to spawn `pkexec` on an empty list (no-op) rather than firing
-/// a bare `yay -S` which would re-trigger interactive selection.
+/// Uses **`-Sy`** (refresh package DBs, then install/upgrade the named
+/// targets), **not** bare `-S` and **not** full `-Syu`:
+///
+/// * Bare `-S` only looks at the **local** sync DB. That DB is often
+///   hours/days older than what `checkupdates` sees (checkupdates keeps
+///   its own temp mirror). Symptom we hit live 2026-07-24: popup listed
+///   kitty 0.48.0→0.48.1, `pkexec yay -S --noconfirm -- kitty` exited 0
+///   in ~13s, `pacman -Q kitty` stayed 0.48.0, Check still showed kitty —
+///   because local DB still thought 0.48.0 was current ("already up to
+///   date" no-op success).
+/// * `-Sy pkgs` refreshes mirrors then upgrades only those packages
+///   (partial upgrade — what the user asked for with selection). Full
+///   system upgrade remains `UpgradeAll` (`-Syu`).
+///
+/// `--noconfirm` skips prompts; `--` separates options from targets.
+///
+/// Empty `packages` is the caller's concern — helper still returns a
+/// valid argv with `--` terminator; the dispatcher refuses to spawn
+/// `pkexec` on an empty list.
 pub fn upgrade_selected_command_args(
     has_yay: bool,
     packages: &[String],
 ) -> (&'static str, Vec<String>) {
     let mut args: Vec<String> = if has_yay {
-        vec!["yay", "-S", "--noconfirm", "--"]
+        vec!["yay", "-Sy", "--noconfirm", "--"]
             .into_iter()
             .map(String::from)
             .collect()
     } else {
-        vec!["pacman", "-S", "--noconfirm", "--"]
+        vec!["pacman", "-Sy", "--noconfirm", "--"]
             .into_iter()
             .map(String::from)
             .collect()
@@ -692,11 +700,8 @@ mod tests {
         assert_eq!(args, vec!["pacman", "-Syu", "--noconfirm"]);
     }
 
-    /// Targeted install: `-S` (NOT `-Syu`/`-u`), `--noconfirm`, `--`
-    /// separator, packages after it. Verified against `yay --help` +
-    /// `pacman --help` on the dev host 2026-07-24 — `yay {-S --sync}
-    /// [options] <package(s)>`, `--noconfirm`, and the pacman-standard
-    /// `--` end-of-options terminator.
+    /// Targeted install: `-Sy` (refresh DBs + install named pkgs; NOT full
+    /// `-Syu`). Bare `-S` is wrong — local sync DB lags `checkupdates`.
     #[test]
     fn upgrade_selected_command_args_yay_includes_packages() {
         let pkgs: Vec<String> = vec!["firefox".into(), "discord".into()];
@@ -706,7 +711,7 @@ mod tests {
             args,
             vec![
                 "yay".to_string(),
-                "-S".into(),
+                "-Sy".into(),
                 "--noconfirm".into(),
                 "--".into(),
                 "firefox".into(),
@@ -724,7 +729,7 @@ mod tests {
             args,
             vec![
                 "pacman".to_string(),
-                "-S".into(),
+                "-Sy".into(),
                 "--noconfirm".into(),
                 "--".into(),
                 "linux".into(),
@@ -732,11 +737,8 @@ mod tests {
         );
     }
 
-    /// Empty selection: the pure helper returns a valid argv with the `--`
-    /// terminator and no targets. The dispatcher itself rejects an empty
-    /// list *before* spawning `pkexec` (a bare `yay -S` re-enters
-    /// interactive selection and hangs the agent); we test that shape
-    /// here, and the runtime guard is documented in the dispatch arm.
+    /// Empty selection: valid argv with `--` terminator, no targets.
+    /// Dispatcher refuses to spawn on empty list.
     #[test]
     fn upgrade_selected_command_args_empty_yields_terminator_only() {
         let pkgs: Vec<String> = vec![];
@@ -746,7 +748,7 @@ mod tests {
             args,
             vec![
                 "yay".to_string(),
-                "-S".into(),
+                "-Sy".into(),
                 "--noconfirm".into(),
                 "--".into(),
             ]
