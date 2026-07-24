@@ -7,14 +7,14 @@
 //!                   something to upgrade.
 
 use gpui::{
-    AnyElement, App, Context, InteractiveElement, IntoElement, Render, Styled, Window, div,
-    prelude::*, px,
+    AnyElement, App, Context, InteractiveElement, IntoElement, Render, ScrollHandle, Styled,
+    Window, div, prelude::*, px,
 };
 
 use chronos_services::{PackageUpdate, Service, UpdateSource, UpgradeState};
 
 use crate::state::AppState;
-use crate::updates_popup::{LIST_MAX_H, close_this, max_visible_rows, upgrade_all};
+use crate::updates_popup::{LIST_MAX_H, close_this, upgrade_all};
 
 use chronos_ui::Theme;
 
@@ -22,11 +22,15 @@ const ROW_PAD_Y: f32 = 6.;
 const ROW_PAD_X: f32 = 12.;
 const HEADER_PAD: f32 = 12.;
 
-pub struct UpdatesPopupView {}
+pub struct UpdatesPopupView {
+    scroll: ScrollHandle,
+}
 
 impl UpdatesPopupView {
     pub fn new(_cx: &mut App) -> Self {
-        Self {}
+        Self {
+            scroll: ScrollHandle::new(),
+        }
     }
 }
 
@@ -85,39 +89,16 @@ impl Render for UpdatesPopupView {
                 .child("System is up to date")
                 .into_any_element()
         } else {
-            // Truncate so the footer's "Upgrade all" button always stays
-            // within the window's visible bounds (see MAX_POPUP_H comment in
-            // mod.rs) — losing rows off the bottom is acceptable, losing the
-            // only way to trigger an upgrade is not.
-            let max_rows = max_visible_rows();
-            let (shown, hidden) = if count > max_rows && max_rows > 0 {
-                (max_rows - 1, count - (max_rows - 1))
-            } else {
-                (count, 0)
-            };
-            let mut rows: Vec<AnyElement> = updates[..shown]
+            let rows: Vec<AnyElement> = updates
                 .iter()
                 .map(|u| render_row(u, text_primary, text_muted, radius, hover, accent_hover))
                 .collect();
-            if hidden > 0 {
-                rows.push(
-                    div()
-                        .w_full()
-                        .px(px(ROW_PAD_X))
-                        .py(px(ROW_PAD_Y))
-                        .text_color(text_muted)
-                        .child(format!("+{hidden} more (run checkupdates for the full list)"))
-                        .into_any_element(),
-                );
-            }
-            // Hard pixel clip: even if the truncation above under- or
-            // over-estimates real row height, this guarantees the list can
-            // never grow past LIST_MAX_H and push the footer out of the
-            // window (see mod.rs `HEADER_BUDGET_H` comment).
             div()
+                .id("updates-popup-list")
                 .w_full()
                 .max_h(px(LIST_MAX_H))
-                .overflow_hidden()
+                .overflow_y_scroll()
+                .track_scroll(&self.scroll)
                 .flex_col()
                 .children(rows)
                 .into_any_element()

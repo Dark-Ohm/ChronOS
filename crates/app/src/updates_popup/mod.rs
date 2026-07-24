@@ -46,27 +46,14 @@ const POPUP_MARGIN_RIGHT: f32 = 8.;
 pub(crate) const HEADER_BUDGET_H: f32 = 48.;
 const DIVIDER_H: f32 = 1.;
 pub(crate) const FOOTER_BUDGET_H: f32 = 64.;
-/// Per-row geometry (px) — used only to pick how many rows to *offer* into
-/// the clipped list, not to size the window (the `max_h` clip is the real
-/// guarantee, this just avoids handing it more rows than can plausibly fit
-/// so the list doesn't cut off mid-row).
-pub(crate) const ROW_H: f32 = 40.;
 /// Height of the "up to date" placeholder row.
 const EMPTY_ROW_H: f32 = 40.;
-/// Hard pixel clip on the row-list container (`view.rs`: `.max_h(px(LIST_MAX_H)).overflow_hidden()`).
-pub(crate) const LIST_MAX_H: f32 = 300.;
+/// Hard pixel clip on the row-list container (`view.rs`: `.max_h(px(LIST_MAX_H)).overflow_y_scroll()`).
+pub(crate) const LIST_MAX_H: f32 = 340.;
 /// Total window height cap. Deliberately `HEADER_BUDGET_H + DIVIDER_H +
 /// LIST_MAX_H + FOOTER_BUDGET_H` plus a small margin — see the comment on
 /// `HEADER_BUDGET_H` for why this isn't computed from real row counts.
 pub(crate) const MAX_POPUP_H: f32 = HEADER_BUDGET_H + DIVIDER_H + LIST_MAX_H + FOOTER_BUDGET_H;
-
-/// How many update rows to hand into the clipped list before switching to a
-/// "+N more" note. Not the layout guarantee itself (`LIST_MAX_H` clip is) —
-/// just keeps the note from being buried under rows that would get clipped
-/// mid-row anyway.
-pub(crate) fn max_visible_rows() -> usize {
-    ((LIST_MAX_H / ROW_H).floor() as usize).max(1)
-}
 
 fn estimate_popup_height(count: usize) -> f32 {
     if count == 0 {
@@ -257,10 +244,14 @@ pub fn init(cx: &mut App) {
                 let handle = cx.global::<UpdatesPopupState>().handle.clone();
                 if let Some(handle) = handle {
                     let height = estimate_popup_height(updates_state.count());
-                    let _ = handle.update(cx, |_, window: &mut Window, _| {
+                    if let Err(e) = handle.update(cx, |_, window: &mut Window, _| {
                         window.resize(Size::new(px(POPUP_WIDTH), px(height)));
-                    });
-                    let _ = handle.update(cx, |_, _window, view_cx| view_cx.notify());
+                    }) {
+                        tracing::warn!("updates_popup: resize failed: {e}");
+                    }
+                    if let Err(e) = handle.update(cx, |_, _window, view_cx| view_cx.notify()) {
+                        tracing::warn!("updates_popup: notify failed: {e}");
+                    }
                 }
             },
         );
