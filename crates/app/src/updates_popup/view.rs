@@ -1,10 +1,8 @@
 //! Updates popup view — pending-update list + "Upgrade all" button.
 //!
-//! Rendering rules:
-//!   * empty list  → "System is up to date", no footer button.
-//!   * each row    → `name (AUR)?` left, `old → new` right.
-//!   * footer      → "Upgrade all" button, only rendered when there is
-//!                   something to upgrade.
+//! Pixel-faithful to `design/Updates Popup.dc.html` (dark reference + light
+//! Light C variant). Every hex, padding, radius, font-size, font-weight here
+//! comes from that mockup — do not re-derive by eye.
 
 use gpui::{
     AnyElement, App, BoxShadow, Context, InteractiveElement, IntoElement, Render, ScrollHandle,
@@ -18,9 +16,14 @@ use crate::updates_popup::{LIST_MAX_H, close_this, upgrade_all};
 
 use chronos_ui::Theme;
 
-const ROW_PAD_Y: f32 = 6.;
-const ROW_PAD_X: f32 = 12.;
-const HEADER_PAD: f32 = 12.;
+// ── Geometry from mockup ────────────────────────────────────────────
+const HEADER_PY: f32 = 12.;
+const HEADER_PX: f32 = 14.;
+const ROW_PY: f32 = 9.;
+const ROW_PX: f32 = 14.;
+const FOOTER_PY: f32 = 12.;
+const FOOTER_PX: f32 = 14.;
+const BTN_PY: f32 = 8.;
 
 pub struct UpdatesPopupView {
     scroll: ScrollHandle,
@@ -45,54 +48,84 @@ impl Render for UpdatesPopupView {
         let text_primary = theme.text.primary;
         let text_muted = theme.text.muted;
         let text_secondary = theme.text.secondary;
-        let divider = theme.bg.secondary;
-        let radius = theme.radius;
-        let radius_lg = theme.radius_lg;
+        let border = theme.border.default;
+        let radius = theme.radius;       // 6px
+        let radius_lg = theme.radius_lg; // 12px
         let accent = theme.accent.primary;
         let accent_hover = theme.accent.hover;
         let hover = theme.interactive.hover;
-        let border_default = theme.border.default;
+        let font_ui = theme.font_ui;
+        let font_mono = theme.font_mono;
+        let is_light = theme.is_light;
 
+        // ── Header ──────────────────────────────────────────────────
         let header = div()
             .w_full()
             .flex()
             .items_center()
             .justify_between()
-            .px(px(HEADER_PAD))
-            .py(px(ROW_PAD_Y))
-            .child(div().text_color(text_primary).child(if count > 0 {
-                format!("Updates ({count})")
-            } else {
-                "Updates".to_string()
-            }))
+            .px(px(HEADER_PX))
+            .py(px(HEADER_PY))
+            .border_b_1()
+            .border_color(border)
+            .child(
+                div()
+                    .text_color(text_primary)
+                    .font_family(font_ui)
+                    .text_size(px(13.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child(if count > 0 {
+                        format!("Updates ({count})")
+                    } else {
+                        "Updates".to_string()
+                    }),
+            )
             .child(
                 div()
                     .id("updates-popup-close")
                     .cursor_pointer()
-                    .px(px(6.))
+                    .w(px(22.))
+                    .h(px(22.))
                     .rounded(radius)
+                    .flex()
+                    .items_center()
+                    .justify_center()
                     .text_color(text_muted)
                     .hover(|s| s.bg(hover))
-                    .child("✕")
+                    .child(svg().path("icons/x.svg").size(px(13.)))
                     .on_click(|_event, window, cx: &mut App| {
                         close_this(window, cx);
                     }),
             );
 
-        let divider_line = div().w_full().h(px(1.)).bg(divider);
-
+        // ── List ────────────────────────────────────────────────────
         let list: AnyElement = if updates.is_empty() {
             div()
                 .w_full()
-                .px(px(ROW_PAD_X))
-                .py(px(ROW_PAD_Y))
+                .px(px(ROW_PX))
+                .py(px(ROW_PY))
                 .text_color(text_muted)
+                .font_family(font_ui)
+                .text_size(px(12.5))
                 .child("System is up to date")
                 .into_any_element()
         } else {
             let rows: Vec<AnyElement> = updates
                 .iter()
-                .map(|u| render_row(u, text_primary, text_secondary, text_muted, radius, hover, accent_hover))
+                .map(|u| {
+                    render_row(
+                        u,
+                        text_primary,
+                        text_secondary,
+                        text_muted,
+                        hover,
+                        accent,
+                        border,
+                        font_ui,
+                        font_mono,
+                        radius,
+                    )
+                })
                 .collect();
             div()
                 .id("updates-popup-list")
@@ -105,46 +138,49 @@ impl Render for UpdatesPopupView {
                 .into_any_element()
         };
 
+        // ── Footer ──────────────────────────────────────────────────
         let upgrade_state = state.upgrade_state;
         let footer: AnyElement = if updates.is_empty() && upgrade_state == UpgradeState::Idle {
             div().into_any_element()
         } else {
             let status_line: AnyElement = match upgrade_state {
                 UpgradeState::Idle => div().into_any_element(),
-                // Во время работы статус несёт САМА кнопка («Upgrading…»),
-                // поэтому отдельной строки нет: она дублировала бы текст и
-                // съедала FOOTER_BUDGET_H, которого при полном списке ровно
-                // 64px на весь футер (эррата Архитектора при приёмке №12).
                 UpgradeState::Running => div().into_any_element(),
                 UpgradeState::Done => div()
                     .w_full()
-                    .px(px(HEADER_PAD))
+                    .px(px(FOOTER_PX))
                     .pb(px(2.))
                     .text_color(theme.status.success)
+                    .font_family(font_ui)
+                    .text_size(px(12.5))
                     .child("Upgrade complete")
                     .into_any_element(),
                 UpgradeState::Failed => div()
                     .w_full()
-                    .px(px(HEADER_PAD))
+                    .px(px(FOOTER_PX))
                     .pb(px(2.))
                     .text_color(theme.status.error)
+                    .font_family(font_ui)
+                    .text_size(px(12.5))
                     .child("Upgrade failed")
                     .into_any_element(),
             };
 
             let button: AnyElement = if upgrade_state == UpgradeState::Running {
-                // Blocked during upgrade.
                 div()
                     .id("updates-popup-upgrade-all")
                     .w_full()
                     .flex()
                     .items_center()
                     .justify_center()
-                    .px(px(ROW_PAD_X))
-                    .py(px(ROW_PAD_Y))
+                    .py(px(BTN_PY))
                     .rounded(radius)
-                    .bg(theme.interactive.active)
+                    .border_1()
+                    .border_color(text_muted)
                     .text_color(text_muted)
+                    .font_family(font_ui)
+                    .text_size(px(12.5))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
                     .child("Upgrading…")
                     .into_any_element()
             } else if !updates.is_empty() {
@@ -155,19 +191,21 @@ impl Render for UpdatesPopupView {
                     .items_center()
                     .justify_center()
                     .cursor_pointer()
-                    .px(px(ROW_PAD_X))
-                    .py(px(ROW_PAD_Y))
+                    .py(px(BTN_PY))
                     .rounded(radius)
-                    .bg(accent)
-                    .hover(|s| s.bg(accent_hover))
-                    .text_color(text_primary)
+                    .border_1()
+                    .border_color(accent)
+                    .text_color(accent)
+                    .font_family(font_ui)
+                    .text_size(px(12.5))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .hover(|s| s.border_color(accent_hover).text_color(accent_hover))
                     .child("Upgrade all")
                     .on_click(|_event, window, cx: &mut App| {
                         upgrade_all(window, cx);
                     })
                     .into_any_element()
             } else {
-                // No updates left after a successful upgrade — no button.
                 div().into_any_element()
             };
 
@@ -178,38 +216,33 @@ impl Render for UpdatesPopupView {
                 .child(
                     div()
                         .w_full()
-                        .px(px(HEADER_PAD))
-                        .py(px(ROW_PAD_Y))
+                        .px(px(FOOTER_PX))
+                        .py(px(FOOTER_PY))
                         .child(button),
                 )
                 .into_any_element()
         };
 
-        let is_light = theme.is_light;
-
+        // ── Card ────────────────────────────────────────────────────
         let mut card = div()
             .relative()
             .flex_col()
-            .rounded(radius_lg)
+            .rounded(px(10.)) // mockup: border-radius:10px
             .bg(bg)
             .border_1()
-            .border_color(border_default)
+            .border_color(border)
             .overflow_hidden();
 
         if is_light {
             card = card
                 .shadow(vec![
-                    // outer elevated shadow
                     BoxShadow::new(px(0.), px(6.), gpui::rgba(0x3c40_6e29).into())
                         .blur_radius(px(24.)),
-                    // inner accent border glow
                     BoxShadow::new(px(0.), px(0.), gpui::rgba(0x007a_cc26).into())
                         .spread_radius(px(1.))
                         .inset(),
                 ])
                 .child(
-                    // glow-top hairline — accent at low opacity
-                    // (CSS gradient approximated as solid line)
                     div()
                         .absolute()
                         .top(px(0.))
@@ -220,7 +253,6 @@ impl Render for UpdatesPopupView {
                         .opacity(0.4),
                 )
                 .child(
-                    // watermark hexagon sigil
                     svg()
                         .path("icons/hexagon-sigil.svg")
                         .absolute()
@@ -232,55 +264,99 @@ impl Render for UpdatesPopupView {
                 );
         }
 
-        card.child(header).child(divider_line).child(list).child(footer)
+        card.child(header).child(list).child(footer)
     }
 }
 
+// ── Row ─────────────────────────────────────────────────────────────
+#[allow(clippy::too_many_arguments)]
 fn render_row(
     update: &PackageUpdate,
     text_primary: gpui::Hsla,
     text_secondary: gpui::Hsla,
     text_muted: gpui::Hsla,
-    radius: gpui::Pixels,
     hover: gpui::Hsla,
-    accent_hover: gpui::Hsla,
+    accent: gpui::Hsla,
+    border: gpui::Hsla,
+    font_ui: &'static str,
+    font_mono: &'static str,
+    radius: gpui::Pixels,
 ) -> AnyElement {
     let is_aur = matches!(update.source, UpdateSource::Aur);
+
     let name_block: AnyElement = if is_aur {
         div()
             .flex()
             .items_center()
-            .gap(px(6.))
-            .child(div().text_color(text_primary).child(update.name.clone()))
+            .gap(px(7.))
+            .min_w(px(0.))
             .child(
                 div()
+                    .text_color(text_primary)
+                    .font_family(font_ui)
+                    .text_size(px(12.5))
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .whitespace_nowrap()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(update.name.clone()),
+            )
+            .child(
+                div()
+                    .flex_none()
                     .rounded(radius)
-                    .px(px(6.))
+                    .px(px(5.))
                     .py(px(1.))
-                    .bg(accent_hover)
-                    .opacity(0.18)
-                    .text_color(accent_hover)
-                    .text_xs()
+                    .border_1()
+                    .border_color(gpui::Hsla::from(gpui::rgba(0xcb_a6_f74d)))
+                    .bg(gpui::Hsla::from(gpui::rgba(0xcb_a6_f71f)))
+                    .text_color(gpui::Hsla::from(gpui::rgba(0xcb_a6_f7ff)))
+                    .font_family(font_ui)
+                    .text_size(px(9.5))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
                     .child("AUR"),
             )
             .into_any_element()
     } else {
-        div().text_color(text_primary).child(update.name.clone()).into_any_element()
+        div()
+            .text_color(text_primary)
+            .font_family(font_ui)
+            .text_size(px(12.5))
+            .font_weight(gpui::FontWeight::MEDIUM)
+            .whitespace_nowrap()
+            .overflow_hidden()
+            .text_ellipsis()
+            .child(update.name.clone())
+            .into_any_element()
     };
+
     div()
         .w_full()
         .flex()
         .items_center()
         .justify_between()
-        .px(px(ROW_PAD_X))
-        .py(px(ROW_PAD_Y))
-        .rounded(radius)
+        .gap(px(10.))
+        .px(px(ROW_PX))
+        .py(px(ROW_PY))
+        .border_b_1()
+        .border_color(border)
         .hover(|s| s.bg(hover))
         .child(name_block)
         .child(
             div()
-                .text_color(text_secondary)
-                .child(format!("{} → {}", update.old_version, update.new_version)),
+                .flex_none()
+                .font_family(font_mono)
+                .text_size(px(11.))
+                .flex()
+                .items_center()
+                .gap(px(5.))
+                .child(div().text_color(text_muted).child(update.old_version.clone()))
+                .child(div().text_color(text_muted).child("→"))
+                .child(
+                    div()
+                        .text_color(text_secondary)
+                        .child(update.new_version.clone()),
+                ),
         )
         .into_any_element()
 }
