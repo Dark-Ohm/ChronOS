@@ -8,6 +8,19 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
+**Обновлено: 2026-07-24 — очередь updates_popup после T118 (пользователь).**
+Сейчас **ждём отчёт T118** (live upgrade output). Следующий бриф
+(ещё не роздан, T-ID после приёмки T118) — **selective upgrade + refresh**:
+1. Строки пакетов уже кликабельны → multi-select кликами.
+2. Футер: кнопка «Upgrade all»; если есть выделение — переименовывается
+   в «Upgrade selected» / «Обновить выбранное» и апгрейдит только selection
+   (не `-Syu` всего мира — отдельный backend-path на выбранные пакеты).
+3. Правый верх хедера: кнопка «Check for updates» / «Проверить
+   обновления» → force re-check (в типах уже есть задел
+   `AurCommand` force-refresh / poll, сверить при брифе, не выдумывать).
+Не писать полный T-бриф, пока T118 не принят — иначе параллельные
+правки `updates_popup/view.rs` + `aur/*` сойдутся в кровавый merge.
+
 **Обновлено: 2026-07-24 — T108 ПРИНЯТ (core agent switcher).** Task3
 (клик по пунктам dropdown) сверен с диффом: absolute `size_full` оверлеи
 сняты, `on_click` на строках, build-order dropdown→chat/composer.
