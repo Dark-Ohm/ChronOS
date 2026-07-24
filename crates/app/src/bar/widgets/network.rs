@@ -35,7 +35,10 @@ use crate::state::AppState;
 // Hot-reloadable render function from the hotview crate.
 // Only compiled when the `hot-reload` feature is enabled (debug builds).
 #[cfg(feature = "hot-reload")]
-#[hot_lib_reloader::hot_module(dylib = "chronos-hotview")]
+#[hot_lib_reloader::hot_module(
+    dylib = "chronos_hotview",
+    lib_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/debug")
+)]
 mod hot_lib {
     use gpui::{AnyElement, Hsla};
     use chronos_ui::Theme;
