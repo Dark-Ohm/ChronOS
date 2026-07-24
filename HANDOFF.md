@@ -8,6 +8,53 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
+**Обновлено: 2026-07-24 — три новых фронта заведены (T107-T109 из вчера
+не переоткрывались, всё ещё приняты).** Сессия началась как «hot patch/
+hot reload», после уточнений оказалась тремя разными вещами. Полный
+разбор решений — `DECISIONS.log` 2026-07-24 (три записи).
+
+1. **Dev hot-reload bake-off (спайк, не продукт).** Полный hot-swap
+   `crates/app` отклонён на берегу (GPUI-подписки держат указатели на
+   код, `unsafe_code=deny` воркспейса) — вместо этого спайк-сравнение
+   Track A (`hot-lib-reloader`, `crates/hotview` dylib) vs Track B
+   (`subsecond`-стиль без выноса в крейт), полигон — `network.rs`.
+   Спека: `docs/superpowers/specs/2026-07-24-dev-hot-reload-bakeoff-design.md`.
+   **T110** (OpenCode, Track A) / **T111** (GLM, Track B) — розданы,
+   оба в изолированных ворктри (`ChronOS-wt-hotreload-{a,b}`), отчётов
+   пока нет.
+2. **Shell-IDE правая панель — настоящая цель проекта, не Plasma.**
+   Уточнилось: `side_panel_right` (принятая System Sidebar v2) → таб-
+   контейнер на 10 вкладок (System + Files + Editor(Kate-стиль) +
+   Terminal + ACP/MCP/LSP/API-provider/Editor settings + Hyprland
+   binds). Левая панель уже физически агент — режим-переключатель НЕ
+   нужен. **MCP/LSP/API-providers/Hyprland-binds не имеют backend-
+   сервиса в дереве вообще** (проверено грепом `crates/services/src/`).
+   Бриф — `design.md` §"Shell-IDE правая панель (таб-контейнер)".
+   Дизайн-ревью поймало реальный брак дважды (первый экспорт
+   `banani-ui-export.zip` отклонён целиком — чужой пайплайн, чужая
+   палитра, выдуманный GTK4-код в проекте на GPUI; второй
+   `shell-ide-panel.zip` принят после ручной правки того же
+   gtk4-огрызка, коммит `545bcbb`). План фундамента (rail + System-таб
+   без изменений + 9 честных заглушек, ширина 352→560px):
+   `docs/superpowers/plans/2026-07-24-ide-panel-tab-container.md`.
+   **T112** (DeepSeek) — роздан, отчёта пока нет. Остальные 9 вкладок —
+   отдельные будущие T-задачи после приёмки фундамента.
+3. **Bar widget layout — конфиг поверх существующей lane-модели.**
+   Находка: `BarSection::{Left,Center,Right}` (`crates/luau/src/bar.rs`)
+   уже ровно та lane-модель, что у референса Noctalia v5
+   (`start/center/end`) — порядок внутри секции просто хардкожен в
+   `register_builtin`. Спека выносит его в `bar.toml` + hot-reload
+   (паттерн `theme.toml`): `docs/superpowers/specs/
+   2026-07-24-bar-widget-layout-config-design.md`. GUI-редактор/новые
+   панели/per-monitor — явно вне этой фазы. **Не роздано миньону** —
+   план и T-задача ещё впереди.
+
+Коммиты сессии: `545bcbb` (дизайн IDE-панели), `1748be6` (план
+фундамента), `cf88598` (спека bar-layout). Рабочее дерево — только эти
+файлы мои, остальной шум (`skills/*`, `Cargo.toml`) не трогал.
+
+---
+
 **Обновлено: 2026-07-23 (вечер) — T107/T108/T109 (левая agent-панель) ВСЕ
 ТРИ ПРИНЯТЫ, коммит `10fa206`. T109 (Agent Thread canvas по мокапу) сдан
 Zed с C-2 fallback (gpui-component заблокирован конфликтом версий gpui),
