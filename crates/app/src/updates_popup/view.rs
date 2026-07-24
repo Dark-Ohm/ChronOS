@@ -9,7 +9,7 @@ use gpui::{
     Styled, Window, div, prelude::*, px, svg,
 };
 
-use chronos_services::{PackageUpdate, Service, UpdateSource, UpgradeState};
+use chronos_services::{PackageUpdate, Service, UpdateSource, UpgradeProgress, UpgradeState};
 
 use crate::state::AppState;
 use crate::updates_popup::{MAX_LIST_H, close_this, upgrade_all};
@@ -57,6 +57,17 @@ impl Render for UpdatesPopupView {
         let font_mono = theme.font_mono;
         let is_light = theme.is_light;
 
+        // ── Visible updates (filter completed during upgrade) ─────
+        let completed: Vec<String> = match &state.upgrade_state {
+            UpgradeState::Running(p) => p.completed_names.clone(),
+            _ => Vec::new(),
+        };
+        let visible_updates: Vec<_> = updates
+            .iter()
+            .filter(|u| !completed.contains(&u.name))
+            .collect();
+        let visible_count = visible_updates.len();
+
         // ── Header ──────────────────────────────────────────────────
         let header = div()
             .w_full()
@@ -72,7 +83,9 @@ impl Render for UpdatesPopupView {
                     .text_color(text_primary)
                     .font_family(font_mono)
                     .text_size(theme.font_sizes.sm)
-                    .child(if count > 0 {
+                    .child(if visible_count > 0 {
+                        format!("Updates ({visible_count})")
+                    } else if count > 0 {
                         format!("Updates ({count})")
                     } else {
                         "Updates".to_string()
@@ -97,7 +110,7 @@ impl Render for UpdatesPopupView {
             );
 
         // ── List ────────────────────────────────────────────────────
-        let list: AnyElement = if updates.is_empty() {
+        let list: AnyElement = if visible_updates.is_empty() && completed.is_empty() {
             div()
                 .w_full()
                 .px(px(ROW_PX))
@@ -108,7 +121,7 @@ impl Render for UpdatesPopupView {
                 .child("System is up to date")
                 .into_any_element()
         } else {
-            let rows: Vec<AnyElement> = updates
+            let rows: Vec<AnyElement> = visible_updates
                 .iter()
                 .map(|u| {
                     render_row(
@@ -136,13 +149,13 @@ impl Render for UpdatesPopupView {
         };
 
         // ── Footer ──────────────────────────────────────────────────
-        let upgrade_state = state.upgrade_state;
-        let footer: AnyElement = if updates.is_empty() && upgrade_state == UpgradeState::Idle {
+        let upgrade_state = state.upgrade_state.clone();
+        let footer: AnyElement = if updates.is_empty() && matches!(upgrade_state, UpgradeState::Idle) {
             div().into_any_element()
         } else {
-            let status_line: AnyElement = match upgrade_state {
+            let status_line: AnyElement = match &upgrade_state {
                 UpgradeState::Idle => div().into_any_element(),
-                UpgradeState::Running => div().into_any_element(),
+                UpgradeState::Running(_) => div().into_any_element(),
                 UpgradeState::Done => div()
                     .w_full()
                     .px(px(FOOTER_PX))
@@ -163,22 +176,89 @@ impl Render for UpdatesPopupView {
                     .into_any_element(),
             };
 
-            let button: AnyElement = if upgrade_state == UpgradeState::Running {
+            let button: AnyElement = if let UpgradeState::Running(ref progress) = upgrade_state {
+                // Spinner + progress bar + live output
+                let pct = progress.percent();
+                let pct_text = format!("{pct}%");
+                let progress_frac = if progress.total > 0 {
+                    progress.current as f32 / progress.total as f32
+                } else {
+                    0.0
+                };
+
                 div()
-                    .id("updates-popup-upgrade-all")
                     .w_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .py(px(BTN_PY))
-                    .rounded(radius)
-                    .border_1()
-                    .border_color(text_muted)
-                    .text_color(text_muted)
-                    .font_family(font_mono)
-                    .text_size(px(12.5))
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .child("Upgrading…")
+                    .flex_col()
+                    .gap(px(6.))
+                    .child(
+                        // Spinner row
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .gap(px(8.))
+                            .child(
+                                svg()
+                                    .path("icons/arrows-clockwise.svg")
+                                    .size(px(14.))
+                                    .text_color(accent),
+                            )
+                            .child(
+                                div()
+                                    .text_color(text_muted)
+                                    .font_family(font_mono)
+                                    .text_size(px(12.))
+                                    .child(format!(
+                                        "Upgrading… {}/{}",
+                                        progress.current, progress.total
+                                    )),
+                            ),
+                    )
+                    .child(
+                        // Progress bar row
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(
+                                // Track
+                                div()
+                                    .flex_1()
+                                    .h(px(4.))
+                                    .rounded(px(2.))
+                                    .bg(hover)
+                                    .child(
+                                        // Fill
+                                        div()
+                                            .h_full()
+                                            .rounded(px(2.))
+                                            .bg(accent)
+                                            .w(gpui::Length::Definite(gpui::DefiniteLength::Fraction(
+                                                progress_frac,
+                                            ))),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .flex_none()
+                                    .text_color(text_secondary)
+                                    .font_family(font_mono)
+                                    .text_size(px(11.))
+                                    .child(pct_text),
+                            ),
+                    )
+                    .child(
+                        // Live output line
+                        div()
+                            .w_full()
+                            .text_color(text_muted)
+                            .font_family(font_mono)
+                            .text_size(px(10.5))
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .child(progress.last_line.clone()),
+                    )
                     .into_any_element()
             } else if !updates.is_empty() {
                 div()

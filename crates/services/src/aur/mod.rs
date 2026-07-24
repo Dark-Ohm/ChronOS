@@ -32,7 +32,9 @@
 //! invented. This path is **never** invoked by the poll loop — only by an
 //! explicit `dispatch(AurCommand::UpgradeAll)` from the popup's button.
 
+use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures_signals::signal::{Mutable, Signal};
@@ -41,7 +43,7 @@ use tracing::{info, warn};
 
 use crate::Service;
 use crate::ServiceStatus;
-pub use types::{AurCommand, PackageUpdate, UpdateSource, UpgradeState, UpdatesState};
+pub use types::{AurCommand, PackageUpdate, UpdateSource, UpgradeProgress, UpgradeState, UpdatesState};
 
 pub mod types;
 
@@ -103,14 +105,14 @@ impl AurSubscriber {
                 let data = self.data.clone();
                 let status = self.status.clone();
                 self.runtime.spawn(async move {
-                    // Signal "running" to the popup.
+                    // Signal "running" to the popup with initial progress.
                     {
                         let mut s = data.get_cloned();
-                        s.upgrade_state = UpgradeState::Running;
+                        s.upgrade_state = UpgradeState::Running(UpgradeProgress::default());
                         data.set(s);
                     }
 
-                    let upgrade_result = run_upgrade_all().await;
+                    let upgrade_result = run_upgrade_all(data.clone()).await;
 
                     // Re-read so the badge/list reflect the new state once
                     // the (blocking, possibly slow) upgrade finishes.
@@ -125,7 +127,6 @@ impl AurSubscriber {
                         }
                         Err(e) => {
                             warn!("AurSubscriber re-read after upgrade-all failed: {e:?}");
-                            // Even if re-read fails, report the upgrade outcome.
                             let mut s = data.get_cloned();
                             s.upgrade_state = UpgradeState::Failed;
                             data.set(s);
@@ -302,12 +303,12 @@ pub fn upgrade_command_args(has_yay: bool) -> (&'static str, Vec<&'static str>) 
     }
 }
 
-/// Launch the real upgrade and block (on a blocking-pool thread, per the
-/// `spawn_blocking` convention used everywhere else in this file — never on
-/// the async loop) until it finishes. `pkexec` pops the desktop's own
-/// PolicyKit dialog; we never feed it a password ourselves.
-async fn run_upgrade_all() -> anyhow::Result<()> {
-    tokio::task::spawn_blocking(|| {
+/// Launch the real upgrade, stream stderr line-by-line into reactive state.
+/// `pacman` writes progress to stderr (not stdout), so we pipe stderr and
+/// parse `(N/M) upgrading|installing <name>...` patterns live.
+async fn run_upgrade_all(data: Mutable<UpdatesState>) -> anyhow::Result<()> {
+    let data_clone = data.clone();
+    tokio::task::spawn_blocking(move || {
         let has_yay = binary_available("yay");
         let (bin, args) = upgrade_command_args(has_yay);
         info!(
@@ -315,19 +316,108 @@ async fn run_upgrade_all() -> anyhow::Result<()> {
             args.join(" ")
         );
 
-        let status = Command::new(bin)
+        let mut child = Command::new(bin)
             .args(&args)
-            .status()
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
             .map_err(|e| anyhow::anyhow!("failed to spawn {bin} {}: {e}", args.join(" ")))?;
+
+        // Read stderr line by line (pacman writes progress there).
+        let stderr = child.stderr.take().expect("piped stderr");
+        let reader = BufReader::new(stderr);
+        let data_for_reader = data_clone.clone();
+
+        // Spawn a thread to read lines and update state reactively.
+        let reader_handle = std::thread::spawn(move || {
+            for line in reader.lines() {
+                let Ok(line) = line else { break };
+                let line = line.trim().to_string();
+                if line.is_empty() {
+                    continue;
+                }
+
+                // Try to parse "(N/M) upgrading|installing <name>..." pattern.
+                if let Some(progress) = parse_progress_line(&line) {
+                    let mut s = data_for_reader.get_cloned();
+                    if let UpgradeState::Running(ref mut p) = s.upgrade_state {
+                        p.current = progress.current;
+                        p.total = progress.total;
+                        p.last_line = line.clone();
+                        if let Some(name) = progress.completed_name {
+                            if !p.completed_names.contains(&name) {
+                                p.completed_names.push(name);
+                            }
+                        }
+                    }
+                    data_for_reader.set(s);
+                } else {
+                    // Non-progress line — just update last_line for live display.
+                    let mut s = data_for_reader.get_cloned();
+                    if let UpgradeState::Running(ref mut p) = s.upgrade_state {
+                        p.last_line = line;
+                    }
+                    data_for_reader.set(s);
+                }
+            }
+        });
+
+        let status = child.wait();
+        let _ = reader_handle.join();
+
+        let status = status.map_err(|e| anyhow::anyhow!("upgrade wait failed: {e}"))?;
         if status.success() {
             info!("AurSubscriber: upgrade command finished successfully");
+            Ok(())
         } else {
             warn!("AurSubscriber: upgrade command exited with {status}");
+            Err(anyhow::anyhow!("upgrade exited with {status}"))
         }
-        Ok(())
     })
     .await
     .map_err(|e| anyhow::anyhow!("upgrade-all join error: {e}"))?
+}
+
+/// Parsed progress from a pacman-style line: `(N/M) upgrading name...`
+struct ParsedProgress {
+    current: usize,
+    total: usize,
+    completed_name: Option<String>,
+}
+
+/// Parse a pacman progress line like `(3/7) upgrading firefox...`.
+/// Returns `None` if the line doesn't match the pattern.
+fn parse_progress_line(line: &str) -> Option<ParsedProgress> {
+    // Must start with `(`
+    let line = line.trim();
+    if !line.starts_with('(') {
+        return None;
+    }
+    let close = line.find(')')?;
+    let inner = &line[1..close]; // "3/7"
+    let mut parts = inner.split('/');
+    let current: usize = parts.next()?.trim().parse().ok()?;
+    let total: usize = parts.next()?.trim().parse().ok()?;
+
+    // After `)` there's a verb and then the package name.
+    let rest = line[close + 1..].trim(); // "upgrading firefox..."
+    let mut words = rest.split_whitespace();
+    let verb = words.next()?; // "upgrading" / "installing" / "reinstalling"
+    let name = words.next()?; // "firefox" / "firefox..."
+
+    // Only count as "completed" for upgrading/installing verbs.
+    let completed_name = match verb {
+        "upgrading" | "installing" | "reinstalling" => {
+            Some(name.trim_end_matches('.').to_string())
+        }
+        _ => None,
+    };
+
+    Some(ParsedProgress {
+        current,
+        total,
+        completed_name,
+    })
 }
 
 #[cfg(test)]
@@ -478,5 +568,51 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(state.count(), 2);
+    }
+
+    #[test]
+    fn parse_progress_line_upgrading() {
+        let p = parse_progress_line("(3/7) upgrading firefox...").unwrap();
+        assert_eq!(p.current, 3);
+        assert_eq!(p.total, 7);
+        assert_eq!(p.completed_name.as_deref(), Some("firefox"));
+    }
+
+    #[test]
+    fn parse_progress_line_installing() {
+        let p = parse_progress_line("(1/5) installing new-pkg...").unwrap();
+        assert_eq!(p.current, 1);
+        assert_eq!(p.total, 5);
+        assert_eq!(p.completed_name.as_deref(), Some("new-pkg"));
+    }
+
+    #[test]
+    fn parse_progress_line_reinstalling() {
+        let p = parse_progress_line("(2/3) reinstalling glibc...").unwrap();
+        assert_eq!(p.current, 2);
+        assert_eq!(p.total, 3);
+        assert_eq!(p.completed_name.as_deref(), Some("glibc"));
+    }
+
+    #[test]
+    fn parse_progress_line_removing_no_name() {
+        let p = parse_progress_line("(4/4) removing old-pkg...").unwrap();
+        assert_eq!(p.current, 4);
+        assert_eq!(p.total, 4);
+        assert_eq!(p.completed_name, None);
+    }
+
+    #[test]
+    fn parse_progress_line_garbage() {
+        assert!(parse_progress_line("some random text").is_none());
+        assert!(parse_progress_line("").is_none());
+        assert!(parse_progress_line("(1/2)").is_none());
+    }
+
+    #[test]
+    fn parse_progress_line_no_dots() {
+        // Some pacman versions don't append "..."
+        let p = parse_progress_line("(1/1) upgrading foo").unwrap();
+        assert_eq!(p.completed_name.as_deref(), Some("foo"));
     }
 }

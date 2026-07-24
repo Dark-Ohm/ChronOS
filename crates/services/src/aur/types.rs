@@ -20,14 +20,38 @@ pub struct PackageUpdate {
 }
 
 /// State of a running "Upgrade all" operation — drives button
-/// enable/disable and footer status text in the popup.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// enable/disable, progress bar, live output, and footer status text.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum UpgradeState {
     #[default]
     Idle,
-    Running,
+    Running(UpgradeProgress),
     Done,
     Failed,
+}
+
+/// Live progress of a running upgrade.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct UpgradeProgress {
+    /// Current step (1-indexed).
+    pub current: usize,
+    /// Total steps to perform.
+    pub total: usize,
+    /// Last line of output from the upgrade process.
+    pub last_line: String,
+    /// Package names that have been fully processed (for staircase removal).
+    pub completed_names: Vec<String>,
+}
+
+impl UpgradeProgress {
+    /// Percentage as 0-100.
+    pub fn percent(&self) -> u8 {
+        if self.total == 0 {
+            0
+        } else {
+            ((self.current as f64 / self.total as f64) * 100.0).min(100.0) as u8
+        }
+    }
 }
 
 /// Reactive snapshot of all pending updates (official + AUR, if `yay` is
@@ -70,10 +94,23 @@ mod tests {
 
     #[test]
     fn upgrade_state_roundtrip() {
-        for s in [UpgradeState::Idle, UpgradeState::Running, UpgradeState::Done, UpgradeState::Failed] {
-            let clone = s;
+        for s in [
+            UpgradeState::Idle,
+            UpgradeState::Running(UpgradeProgress::default()),
+            UpgradeState::Done,
+            UpgradeState::Failed,
+        ] {
+            let clone = s.clone();
             assert_eq!(s, clone);
         }
+    }
+
+    #[test]
+    fn upgrade_progress_percent() {
+        let p = UpgradeProgress { current: 3, total: 10, ..Default::default() };
+        assert_eq!(p.percent(), 30);
+        let zero = UpgradeProgress::default();
+        assert_eq!(zero.percent(), 0);
     }
 
     #[test]
