@@ -339,13 +339,6 @@ fn render_row(
         .hover(|s| s.bg(hover))
         .child(name_el)
         .child(aur_badge)
-        .child(
-            div()
-                .flex_1()
-                .h(px(1.))
-                .bg(border)
-                .opacity(0.4),
-        )
         .child(versions)
         .into_any_element()
 }
