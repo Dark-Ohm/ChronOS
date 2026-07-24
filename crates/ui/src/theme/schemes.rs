@@ -63,6 +63,7 @@ fn light_scheme() -> ThemeScheme {
 
     // Поверхности — холодная сине-лавандовая база Light C.
     theme.bg.primary = hex("dde0f2"); // pageBg — базовый фон страницы/окна
+    theme.is_light = true;
     theme.bg.secondary = hex("e6e9fa"); // cardBg (accepted) — поверхность карточки/попапа
     theme.bg.tertiary = hex("eceefa"); // cardBase (lightBase) — фон пилюли/свёрнутого
     theme.bg.elevated = hex("e0e3f4"); // hoverBg — приподнятый слой/hover-фон
@@ -219,6 +220,12 @@ mod tests {
     fn select_scheme_garbage_falls_back_to_default() {
         let t = Theme::select_scheme(Some("nope-not-a-scheme".to_string()));
         assert_eq!(t, Theme::default());
+    }
+
+    #[test]
+    fn is_light_flag_matches_scheme() {
+        assert!(!default_scheme().theme.is_light);
+        assert!(light_scheme().theme.is_light);
     }
 
     #[test]
