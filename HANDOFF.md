@@ -8,6 +8,16 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
+**Обновлено: 2026-07-24 — T115 (Files tab, pause): Chronos-FM = разрешённый
+source.** Пользователь явно: оба репо свои, **copy-paste из
+`/home/neo/projects/chronos-ecosystem/Chronos-FM` ок** (listing/
+`FileEntry`/explorer state). Не path-dep на FM-crates — встраивать
+копией в ChronOS. Не путать с `reference/` gpui-shell (тот без
+лицензии). Бриф обновлён:
+`orchestration/tasks/active/pause/T115-ide-panel-files-tab.md`.
+T115 всё ещё **pause** (полироль-фронт / T119), не раздавать пока
+не скажет.
+
 **Обновлено: 2026-07-24 — T118 ПРИНЯТ WITH CAVEATS; T119 роздан в active.**
 T118: streaming upgrade (`7329106`), 22 aur unit-тестов зелёные, live
 e2e PENDING в отчёте; errata `stdout(Stdio::null())` (pipe deadlock).
