@@ -30,10 +30,12 @@ const POPUP_WIDTH: f32 = 360.;
 /// Margins for the LayerShell fallback (no anchoring available).
 const POPUP_MARGIN_TOP: f32 = 36.;
 const POPUP_MARGIN_RIGHT: f32 = 8.;
-/// Card row height budget (mockup-measured: padding 10+12 + 2 text rows +
-/// optional actions ≈ 72; rounded to a coarse per-row estimate for height
-/// pre-sizing).
-const ROW_H: f32 = 72.;
+/// Card row height budget. Conservative estimate: padding 10+12 + app_name
+/// 10.5 + summary 12.5 + body 4-line clamp (11.5*1.45*4≈67) + actions ≈30
+/// = ~142, but most cards are shorter. We err on the generous side so the
+/// footer "Clear all" is never clipped on initial render — the resize
+/// watcher will shrink-to-fit on the next state update.
+const ROW_H: f32 = 100.;
 /// Footer "Clear all" strip height budget (12px padding * 2 + 8px btn pad
 /// * 2 + 12.5px label ≈ 53).
 const FOOTER_H: f32 = 53.;
@@ -131,7 +133,10 @@ fn window_options(anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle, height: 
 /// Marks the history read so the bell's unread dot clears the moment the
 /// inbox is viewed. Same reentrancy discipline as `updates_popup::open`.
 pub fn open(cx: &mut App, anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle) {
-    AppState::notification(cx).dispatch(NotificationCommand::MarkAllRead);
+    let svc = AppState::notification(cx).clone();
+    cx.background_spawn(async move {
+        let _ = svc.dispatch(NotificationCommand::MarkAllRead).await;
+    }).detach();
 
     if cx.global::<HistoryPopupState>().handle.is_some() {
         return;

@@ -55,7 +55,7 @@ impl Render for NotificationsView {
                         let svc = AppState::notification(cx).clone();
                         cx.background_spawn(async move {
                             let _ = svc.dispatch(NotificationCommand::Close(id)).await;
-                        });
+                        }).detach();
                     })
                     .child("✕")
                     .into_any_element();
@@ -167,7 +167,7 @@ pub(crate) fn render_notification_card(
                             let _ = svc
                                 .dispatch(NotificationCommand::InvokeAction(id, action_key))
                                 .await;
-                        });
+                        }).detach();
                     })
                     .child(label)
                     .into_any_element()

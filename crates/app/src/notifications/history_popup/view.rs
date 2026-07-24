@@ -13,7 +13,7 @@
 
 use gpui::{
     AnyElement, App, Context, InteractiveElement, IntoElement, Render, ScrollHandle, Styled,
-    Window, div, prelude::*, px, svg,
+    Window, div, prelude::*, px,
 };
 
 use chronos_services::{Notification, NotificationCommand, Service, Urgency};
@@ -40,7 +40,6 @@ const BTN_PAD_Y: f32 = 5.;
 const BTN_GAP: f32 = 6.;
 const ROW_DISMISS_BTN: f32 = 18.;           // 18x18 row ✕ hit area
 const ROW_DISMISS_RADIUS: f32 = 5.;
-const DISMISS_ICON_SZ: f32 = 10.;
 const FOOTER_BTN_RADIUS: f32 = 6.;
 const FOOTER_BTN_PY_OUTER: f32 = 8.;
 const EMPTY_PY: f32 = 36.;
@@ -144,12 +143,10 @@ impl Render for HistoryPopupView {
                         .hover(|s| s.border_color(accent).text_color(accent))
                         .child("Clear all")
                         .on_click(|_event, _window, cx: &mut App| {
-                            // Fire-and-forget via the async dispatch path
-                            // (the same one `open()` uses for `MarkAllRead`).
-                            // Mismatched-future is pre-existing in this code
-                            // base; not T120's dog to walk.
-                            let _ =
-                                AppState::notification(cx).dispatch(NotificationCommand::ClearHistory);
+                            let svc = AppState::notification(cx).clone();
+                            cx.background_spawn(async move {
+                                let _ = svc.dispatch(NotificationCommand::ClearHistory).await;
+                            }).detach();
                         }),
                 )
                 .into_any_element()
@@ -252,10 +249,12 @@ fn render_history_card(
         .text_color(text_muted)
         .cursor_pointer()
         .hover(|s| s.bg(hover).text_color(text_primary))
-        .child(svg().path("icons/x.svg").size(px(DISMISS_ICON_SZ)))
+        .child("✕")
         .on_click(move |_event, _window, cx: &mut App| {
-            let _ = AppState::notification(cx)
-                .dispatch(NotificationCommand::RemoveFromHistory(app_id));
+            let svc = AppState::notification(cx).clone();
+            cx.background_spawn(async move {
+                let _ = svc.dispatch(NotificationCommand::RemoveFromHistory(app_id)).await;
+            }).detach();
         });
 
     let header_row = div()
@@ -322,8 +321,11 @@ fn render_history_card(
                     .hover(|s| s.border_color(accent).text_color(accent))
                     .child(label.clone())
                     .on_click(move |_event, _window, cx: &mut App| {
-                        let _ = AppState::notification(cx)
-                            .dispatch(NotificationCommand::InvokeAction(app_id_c, key_c.clone()));
+                        let svc = AppState::notification(cx).clone();
+                        let key = key_c.clone();
+                        cx.background_spawn(async move {
+                            let _ = svc.dispatch(NotificationCommand::InvokeAction(app_id_c, key)).await;
+                        }).detach();
                     })
                     .into_any_element()
             })
