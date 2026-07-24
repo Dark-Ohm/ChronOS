@@ -26,40 +26,26 @@ use crate::updates_popup::view::UpdatesPopupView;
 
 /// Popup width (px).
 const POPUP_WIDTH: f32 = 360.;
-/// Top + right margin (px) so the card sits just below the bar's top edge —
-/// same margin `tray_menu` uses (bar height assumption).
 const POPUP_MARGIN_TOP: f32 = 36.;
 const POPUP_MARGIN_RIGHT: f32 = 8.;
-/// Safety-margin budgets for header/divider/footer, in px. These are upper
-/// bounds, not measured exact sizes — a first attempt at this popup sized
-/// the window from `count * ROW_H`-style pixel math with an unmeasured
-/// per-row height (32px) and no hard clip on the list; live testing
-/// 2026-07-19 showed the real rendered row height is taller than that
-/// guess, so a 24-row list consumed the entire window and pushed the
-/// "Upgrade all" button below the window's bottom edge — invisible and
-/// unclickable, not just visually truncated. Pixel-perfect math on
-/// unmeasured GPUI text metrics is not reliable enough to build the only
-/// path to a privileged action on, so the fix here does not depend on it:
-/// the list gets a hard `max_h()` + `overflow_hidden()` clip (`LIST_MAX_H`)
-/// and the footer is laid out *after* that clipped box, guaranteeing it
-/// fits inside `MAX_POPUP_H` regardless of how tall rows actually render.
-pub(crate) const HEADER_BUDGET_H: f32 = 48.;
-const DIVIDER_H: f32 = 1.;
-pub(crate) const FOOTER_BUDGET_H: f32 = 64.;
-/// Height of the "up to date" placeholder row.
+
+/// Measured from mockup geometry (padding + text + border):
+/// header: py(12)*2 + text(~16) + border(1) = ~41
+/// row:    py(9)*2 + text(~16) + border(1) = ~35
+/// footer: py(12)*2 + btn(py(8)*2 + text(~16) + border(1)) = ~63
+const HEADER_H: f32 = 41.;
+const ROW_H: f32 = 35.;
+const FOOTER_H: f32 = 63.;
 const EMPTY_ROW_H: f32 = 40.;
-/// Hard pixel clip on the row-list container (`view.rs`: `.max_h(px(LIST_MAX_H)).overflow_y_scroll()`).
-pub(crate) const LIST_MAX_H: f32 = 340.;
-/// Total window height cap. Deliberately `HEADER_BUDGET_H + DIVIDER_H +
-/// LIST_MAX_H + FOOTER_BUDGET_H` plus a small margin — see the comment on
-/// `HEADER_BUDGET_H` for why this isn't computed from real row counts.
-pub(crate) const MAX_POPUP_H: f32 = HEADER_BUDGET_H + DIVIDER_H + LIST_MAX_H + FOOTER_BUDGET_H;
+/// Don't grow beyond this — scroll instead.
+pub(crate) const MAX_LIST_H: f32 = 340.;
 
 fn estimate_popup_height(count: usize) -> f32 {
     if count == 0 {
-        HEADER_BUDGET_H + DIVIDER_H + EMPTY_ROW_H
+        HEADER_H + EMPTY_ROW_H
     } else {
-        MAX_POPUP_H
+        let list_h = (count as f32 * ROW_H).min(MAX_LIST_H);
+        HEADER_H + list_h + FOOTER_H
     }
 }
 

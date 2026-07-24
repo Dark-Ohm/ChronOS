@@ -12,7 +12,7 @@ use gpui::{
 use chronos_services::{PackageUpdate, Service, UpdateSource, UpgradeState};
 
 use crate::state::AppState;
-use crate::updates_popup::{LIST_MAX_H, close_this, upgrade_all};
+use crate::updates_popup::{MAX_LIST_H, close_this, upgrade_all};
 
 use chronos_ui::Theme;
 
@@ -54,7 +54,6 @@ impl Render for UpdatesPopupView {
         let accent = theme.accent.primary;
         let accent_hover = theme.accent.hover;
         let hover = theme.interactive.hover;
-        let font_mono = theme.font_mono;
         let font_mono = theme.font_mono;
         let is_light = theme.is_light;
 
@@ -128,7 +127,7 @@ impl Render for UpdatesPopupView {
             div()
                 .id("updates-popup-list")
                 .w_full()
-                .max_h(px(LIST_MAX_H))
+                .max_h(px(MAX_LIST_H))
                 .overflow_y_scroll()
                 .track_scroll(&self.scroll)
                 .flex_col()
@@ -284,9 +283,10 @@ fn render_row(
     let name_block: AnyElement = if is_aur {
         div()
             .flex()
+            .flex_1()
+            .min_w(px(0.))
             .items_center()
             .gap(px(7.))
-            .min_w(px(0.))
             .child(
                 div()
                     .text_color(text_primary)
@@ -316,6 +316,8 @@ fn render_row(
             .into_any_element()
     } else {
         div()
+            .flex_1()
+            .min_w(px(0.))
             .text_color(text_primary)
             .font_family(font_mono)
             .text_size(px(12.5))
