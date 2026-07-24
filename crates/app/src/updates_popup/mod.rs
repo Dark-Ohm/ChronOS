@@ -178,7 +178,9 @@ pub fn open(cx: &mut App, anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle) 
 /// widget click, external toggle) — uses `handle.update`.
 pub fn close(cx: &mut App) {
     if let Some(handle) = cx.global_mut::<UpdatesPopupState>().handle.take() {
-        let _ = handle.update(cx, |_, window: &mut Window, _| window.remove_window());
+        if let Err(e) = handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
+            tracing::warn!("updates_popup: close remove_window failed (already dead?): {e}");
+        }
     }
 }
 
@@ -244,13 +246,14 @@ pub fn init(cx: &mut App) {
                 let handle = cx.global::<UpdatesPopupState>().handle.clone();
                 if let Some(handle) = handle {
                     let height = estimate_popup_height(updates_state.count());
-                    if let Err(e) = handle.update(cx, |_, window: &mut Window, _| {
+                    let resize_ok = handle.update(cx, |_, window: &mut Window, _| {
                         window.resize(Size::new(px(POPUP_WIDTH), px(height)));
-                    }) {
-                        tracing::warn!("updates_popup: resize failed: {e}");
-                    }
-                    if let Err(e) = handle.update(cx, |_, _window, view_cx| view_cx.notify()) {
-                        tracing::warn!("updates_popup: notify failed: {e}");
+                    });
+                    if resize_ok.is_err() {
+                        // Window is dead — clear the stale handle to stop spamming.
+                        cx.global_mut::<UpdatesPopupState>().handle.take();
+                    } else {
+                        let _ = handle.update(cx, |_, _window, view_cx| view_cx.notify());
                     }
                 }
             },

@@ -44,13 +44,14 @@ impl Render for UpdatesPopupView {
         let bg = theme.bg.primary;
         let text_primary = theme.text.primary;
         let text_muted = theme.text.muted;
+        let text_secondary = theme.text.secondary;
         let divider = theme.bg.secondary;
         let radius = theme.radius;
         let radius_lg = theme.radius_lg;
         let accent = theme.accent.primary;
         let accent_hover = theme.accent.hover;
         let hover = theme.interactive.hover;
-        let border_subtle = theme.border.subtle;
+        let border_default = theme.border.default;
 
         let header = div()
             .w_full()
@@ -91,7 +92,7 @@ impl Render for UpdatesPopupView {
         } else {
             let rows: Vec<AnyElement> = updates
                 .iter()
-                .map(|u| render_row(u, text_primary, text_muted, radius, hover, accent_hover))
+                .map(|u| render_row(u, text_primary, text_secondary, text_muted, radius, hover, accent_hover))
                 .collect();
             div()
                 .id("updates-popup-list")
@@ -192,7 +193,7 @@ impl Render for UpdatesPopupView {
             .rounded(radius_lg)
             .bg(bg)
             .border_1()
-            .border_color(border_subtle)
+            .border_color(border_default)
             .overflow_hidden();
 
         if is_light {
@@ -238,6 +239,7 @@ impl Render for UpdatesPopupView {
 fn render_row(
     update: &PackageUpdate,
     text_primary: gpui::Hsla,
+    text_secondary: gpui::Hsla,
     text_muted: gpui::Hsla,
     radius: gpui::Pixels,
     hover: gpui::Hsla,
@@ -245,9 +247,6 @@ fn render_row(
 ) -> AnyElement {
     let is_aur = matches!(update.source, UpdateSource::Aur);
     let name_block: AnyElement = if is_aur {
-        // AUR badge (pill) instead of a bare " (AUR)" text suffix — visual
-        // parity with the design mockup (rounded pill, accent.hover bg on
-        // lowered alpha, smaller radius). Rendered ONLY for AUR sources.
         div()
             .flex()
             .items_center()
@@ -280,7 +279,7 @@ fn render_row(
         .child(name_block)
         .child(
             div()
-                .text_color(text_muted)
+                .text_color(text_secondary)
                 .child(format!("{} → {}", update.old_version, update.new_version)),
         )
         .into_any_element()

@@ -93,14 +93,7 @@ impl BarWidget for UpdatesWidget {
 
         let bounds_cell = self.bounds.clone();
         div()
-            .child(row.on_mouse_down(MouseButton::Left, {
-                let bounds_cell = self.bounds.clone();
-                move |_event, window, cx: &mut App| {
-                    let anchor_rect = bounds_cell.get();
-                    let parent = window.window_handle();
-                    crate::updates_popup::toggle(anchor_rect, parent, window, cx);
-                }
-            }))
+            .relative()
             .child(
                 canvas(
                     move |bounds, _window, _cx| bounds,
@@ -112,6 +105,14 @@ impl BarWidget for UpdatesWidget {
                 .absolute()
                 .size_full(),
             )
+            .child(row.on_mouse_down(MouseButton::Left, {
+                let bounds_cell = self.bounds.clone();
+                move |_event, window, cx: &mut App| {
+                    let anchor_rect = bounds_cell.get();
+                    let parent = window.window_handle();
+                    crate::updates_popup::toggle(anchor_rect, parent, window, cx);
+                }
+            }))
             .into_any_element()
     }
 }
