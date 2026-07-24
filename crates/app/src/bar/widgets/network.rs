@@ -32,6 +32,20 @@ use chronos_ui::Theme;
 
 use crate::state::AppState;
 
+// Hot-reloadable render function from the hotview crate.
+// Only compiled when the `hot-reload` feature is enabled (debug builds).
+#[cfg(feature = "hot-reload")]
+#[hot_lib_reloader::hot_module(
+    dylib = "chronos_hotview",
+    lib_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/debug")
+)]
+mod hot_lib {
+    use gpui::{AnyElement, Hsla};
+    use chronos_ui::Theme;
+
+    hot_functions_from_file!("crates/hotview/src/lib.rs");
+}
+
 /// Speed below which the link is considered idle (< 1 KB/s).
 const IDLE_THRESHOLD: u64 = 1024;
 
@@ -173,39 +187,47 @@ impl BarWidget for NetworkWidget {
             theme.text.secondary
         };
 
-        div()
-            .flex()
-            .items_center()
-            .gap(px(4.))
-            .child(
-                div()
-                    .w(px(6.))
-                    .h(px(6.))
-                    .rounded_full()
-                    .bg(dot_color)
-                    .flex_none(),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .items_end()
-                    .child(
-                        div()
-                            .child(format!("\u{2193} {}", view.dl))
-                            .text_color(speed_color)
-                            .text_size(theme.font_sizes.xs)
-                            .font_family(theme.font_mono),
-                    )
-                    .child(
-                        div()
-                            .child(format!("\u{2191} {}", view.ul))
-                            .text_color(speed_color)
-                            .text_size(theme.font_sizes.xs)
-                            .font_family(theme.font_mono),
-                    ),
-            )
-            .into_any_element()
+        #[cfg(feature = "hot-reload")]
+        {
+            hot_lib::render_network(&view.dl, &view.ul, dot_color, speed_color, &theme)
+        }
+
+        #[cfg(not(feature = "hot-reload"))]
+        {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(4.))
+                .child(
+                    div()
+                        .w(px(6.))
+                        .h(px(6.))
+                        .rounded_full()
+                        .bg(dot_color)
+                        .flex_none(),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_end()
+                        .child(
+                            div()
+                                .child(format!("\u{2193} {}", view.dl))
+                                .text_color(speed_color)
+                                .text_size(theme.font_sizes.xs)
+                                .font_family(theme.font_mono),
+                        )
+                        .child(
+                            div()
+                                .child(format!("\u{2191} {}", view.ul))
+                                .text_color(speed_color)
+                                .text_size(theme.font_sizes.xs)
+                                .font_family(theme.font_mono),
+                        ),
+                )
+                .into_any_element()
+        }
     }
 }
 

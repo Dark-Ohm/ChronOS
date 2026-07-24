@@ -39,6 +39,14 @@ uuid = "1"
 ashpd = { version = "0.13.13", default-features = false, features = ["async-io"] }
 async-io = "2.6.0"
 
+# Hot-reload dev tooling (debug-only, never in release builds)
+hot-lib-reloader = { version = "0.8", optional = true }
+chronos-hotview = { path = "../hotview", optional = true }
+
+[features]
+default = []
+hot-reload = ["dep:hot-lib-reloader", "dep:chronos-hotview"]
+
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
 
