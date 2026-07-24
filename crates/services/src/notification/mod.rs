@@ -70,6 +70,17 @@ pub enum NotificationCommand {
     DismissAll,
     /// Mark the whole history as read (bell dot clears). Does not delete history.
     MarkAllRead,
+    /// Remove a single entry from the persistent history log by id
+    /// (feature №14 inbox). History-only: does NOT close a live toast
+    /// that shares the id and does NOT emit FDO `NotificationClosed` —
+    /// the inbox is an in-session log, not the live queue. The mockup's
+    /// row ✕ routes through this, not through `Close`.
+    RemoveFromHistory(u32),
+    /// Empty the entire history. Also clears `unread` (an empty inbox
+    /// has nothing unseen — task №14/plan-T120chose to clear the badge
+    /// on `Clear all` rather than pin it at the pre-clear count, which
+    /// would be a footgun).
+    ClearHistory,
 }
 
 /// The subscriber: owns reactive state + the live D-Bus connection.
@@ -148,6 +159,16 @@ impl NotificationSubscriber {
             NotificationCommand::MarkAllRead => {
                 // History stays; only the unread counter clears (bell dot).
                 self.data.lock_mut().mark_all_read();
+            }
+            NotificationCommand::RemoveFromHistory(id) => {
+                // History-only delete. No FDO `NotificationClosed` — the
+                // row ✕ on the inbox is a log delete, not a live dismiss.
+                // Live toast with the same id (if any) stays on screen
+                // until the user closes it or it expires.
+                self.data.lock_mut().remove_from_history(id);
+            }
+            NotificationCommand::ClearHistory => {
+                self.data.lock_mut().clear_history();
             }
         }
         Ok(())
@@ -652,5 +673,92 @@ mod tests {
             "history capped at MAX_HISTORY");
         assert_eq!(state.unread, super::types::MAX_HISTORY + 10,
             "unread tracks every Notify (uncapped), independent of history length");
+    }
+
+    // ── T120: history mutations ───────────────────────────────────
+    // Cover the new `NotificationCommand::{RemoveFromHistory, ClearHistory}`
+    // dispatch arms + the `NotificationState` pure helpers. These are
+    // distinct from `DismissAll`/`Close` (regression guard below).
+
+    async fn seed_three(svc: &NotificationSubscriber) -> Vec<u32> {
+        let mut ids = Vec::new();
+        for app in ["A", "B", "C"] {
+            let id = svc
+                .notify(app.into(), 0, String::new(), format!("s{app}"), String::new(),
+                    vec![], std::collections::HashMap::new(), 0)
+                .await;
+            ids.push(id);
+        }
+        ids
+    }
+
+    /// Pure helper: `remove_from_history` drops exactly the one matching
+    /// id and leaves the rest in order.
+    #[tokio::test]
+    async fn remove_from_history_drops_one_keeps_others() {
+        let svc = NotificationSubscriber::new();
+        let ids = seed_three(&svc).await;
+        assert_eq!(svc.get().history.len(), 3);
+
+        // Drop the middle one (id #2).
+        let removed = svc
+            .dispatch(NotificationCommand::RemoveFromHistory(ids[1]))
+            .await;
+        assert!(removed.is_ok(), "dispatch returns Ok");
+        let state = svc.get();
+        assert_eq!(state.history.len(), 2, "one dropped");
+        let names: Vec<&str> = state.history.iter().map(|n| n.app_name.as_str()).collect();
+        assert_eq!(names, vec!["A", "C"], "order preserved, middle gone");
+    }
+
+    /// Pure helper: missing id is a no-op (returns false-ish / Ok), no
+    /// panic. The popup's row ✕ may fire after a stale redraw where the
+    /// id is already gone — this must not poison the service.
+    #[tokio::test]
+    async fn remove_from_history_missing_id_is_noop() {
+        let svc = NotificationSubscriber::new();
+        seed_three(&svc).await;
+        let bogus = 9999;
+        let res = svc.dispatch(NotificationCommand::RemoveFromHistory(bogus)).await;
+        assert!(res.is_ok(), "missing id is Ok, not error");
+        assert_eq!(svc.get().history.len(), 3, "history untouched");
+    }
+
+    /// `ClearHistory` empties the log AND zeroes `unread` — the inbox is
+    /// empty, so the bell dot must not stay pinned at the pre-clear count.
+    /// Important: this is `ClearHistory`, NOT `DismissAll` (see regression
+    /// below). Live notifications are left untouched — inbox clear is
+    /// orthogonal to the live queue.
+    #[tokio::test]
+    async fn clear_history_empties_and_clears_unread() {
+        let svc = NotificationSubscriber::new();
+        seed_three(&svc).await;
+        assert_eq!(svc.get().unread, 3);
+
+        svc.dispatch(NotificationCommand::ClearHistory).await.unwrap();
+        let state = svc.get();
+        assert_eq!(state.history.len(), 0, "history emptied");
+        assert_eq!(state.unread, 0, "unread zeroed on clear");
+        // Live notifications still present (ClearHistory ≠ DismissAll).
+        assert_eq!(state.notifications.len(), 3, "live untouched");
+    }
+
+    /// Regression: `DismissAll` (the ephemeral-stack mutation) MUST NOT
+    /// clear history. Plan Task №1 reject-condition: "history clear
+    /// implemented by calling `DismissAll`/`Close` only" — this pins that
+    /// `DismissAll` is still live-only, so we cannot accidentally alias
+    /// the two paths later.
+    #[tokio::test]
+    async fn dismiss_all_does_not_clear_history() {
+        let svc = NotificationSubscriber::new();
+        seed_three(&svc).await;
+        assert_eq!(svc.get().history.len(), 3);
+        assert_eq!(svc.get().unread, 3);
+
+        svc.dispatch(NotificationCommand::DismissAll).await.unwrap();
+        let state = svc.get();
+        assert_eq!(state.notifications.len(), 0, "ephemeral all dismissed");
+        assert_eq!(state.history.len(), 3, "history NOT cleared by DismissAll");
+        assert_eq!(state.unread, 3, "unread NOT cleared by DismissAll");
     }
 }

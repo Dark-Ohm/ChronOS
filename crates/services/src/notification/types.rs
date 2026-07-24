@@ -135,4 +135,30 @@ impl NotificationState {
     pub fn mark_all_read(&mut self) {
         self.unread = 0;
     }
+
+    /// Remove a single entry from `history` by id. Returns `true` if a
+    /// matching id was actually removed, `false` if it wasn't in history
+    /// (no panic — the popup deletes by stale id when a `Refresh` shrinks
+    /// the list and the user clicks a row just before the redraw).
+    ///
+    /// History-only: this does NOT close a live notification that happens
+    /// to share the same id. The inbox is an in-session log; the
+    /// per-toast close is still `NotificationCommand::Close` /
+    /// `DismissAll`. The mockup's row ✕ is a history delete, not an FDO
+    /// `CloseNotification` (we don't emit `NotificationClosed` for
+    /// history-only removes — see `mod.rs::dispatch`).
+    pub fn remove_from_history(&mut self, id: u32) -> bool {
+        let before = self.history.len();
+        self.history.retain(|n| n.id != id);
+        self.history.len() != before
+    }
+
+    /// Wipe the whole history. Clearing `unread` too: an empty inbox has
+    /// nothing the user hasn't seen — keeping the badge pinned at its
+    /// pre-clear value would be a footgun, and the mockup's `Clear all` is
+    /// an end-of-inbox action, not "mark everything as still unread".
+    pub fn clear_history(&mut self) {
+        self.history.clear();
+        self.unread = 0;
+    }
 }
