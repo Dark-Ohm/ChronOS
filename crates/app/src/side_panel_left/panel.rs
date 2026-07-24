@@ -71,27 +71,12 @@ pub fn render_panel(
         tracing::info!("thread header: new chat (stub)");
     });
 
-    // Build chat (borrows cx)
-    let chat = div()
-        .id("chat-area")
-        .flex_1()
-        .min_h(px(0.))
-        .flex()
-        .flex_col()
-        .overflow_hidden()
-        .child(panel.chat.render(panel, _window, cx));
-
-    // Build composer (borrows cx)
-    let composer = super::composer::render_composer(panel, _window, cx);
-
-    // Build agent dropdown (no listeners)
+    // Build agent dropdown with click handlers — must be built BEFORE
+    // chat/composer because those call cx.listener() internally and
+    // Rust 2024 RPIT capture rules make the returned elements hold a
+    // mutable borrow on cx for their entire lifetime.
     let active_id = panel.active_agent_id.clone();
     let dropdown = if agent_menu_open {
-        let agents_snapshot: Vec<(&'static str, &'static str)> = panel
-            .agents
-            .iter()
-            .map(|a| (a.id, a.display_name))
-            .collect();
         Some(
             div()
                 .id("agent-dropdown")
@@ -105,10 +90,11 @@ pub fn render_panel(
                 .mt(px(4.))
                 .flex()
                 .flex_col()
-                .children(agents_snapshot.into_iter().map(|(id, name)| {
-                    let is_selected = id == active_id.as_str();
+                .children(panel.agents.iter().map(|agent| {
+                    let is_selected = agent.id == active_id.as_str();
+                    let agent_id = agent.id.to_string();
                     div()
-                        .id(format!("agent-option-{id}"))
+                        .id(format!("agent-option-{}", agent.id))
                         .flex()
                         .items_center()
                         .justify_between()
@@ -120,6 +106,9 @@ pub fn render_panel(
                         .text_size(px(11.5))
                         .text_color(rgb(0xa6_ad_c8))
                         .hover(|s| s.bg(rgb(0x23_23_36)))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.switch_agent(&agent_id, cx);
+                        }))
                         .child(
                             div()
                                 .text_color(if is_selected {
@@ -127,7 +116,7 @@ pub fn render_panel(
                                 } else {
                                     rgb(0xa6_ad_c8)
                                 })
-                                .child(name),
+                                .child(agent.display_name),
                         )
                         .when(is_selected, |el| {
                             el.child(
@@ -142,6 +131,19 @@ pub fn render_panel(
     } else {
         None
     };
+
+    // Build chat (borrows cx)
+    let chat = div()
+        .id("chat-area")
+        .flex_1()
+        .min_h(px(0.))
+        .flex()
+        .flex_col()
+        .overflow_hidden()
+        .child(panel.chat.render(panel, _window, cx));
+
+    // Build composer (borrows cx)
+    let composer = super::composer::render_composer(panel, _window, cx);
 
     // Thread header (block A) — static chrome
     // Use builder for the header because rsx! with cx.listener listeners
@@ -316,19 +318,6 @@ pub fn render_panel(
                 })
                 .child(img("icons/x.svg").w(px(12.)).h(px(12.))),
         );
-
-    let dropdown = dropdown.map(|d| {
-        d.children(panel.agents.iter().map(|agent| {
-            let agent_id = agent.id.to_string();
-            div()
-                .id(format!("agent-click-{}", agent.id))
-                .absolute()
-                .size_full()
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.switch_agent(&agent_id, cx);
-                }))
-        }))
-    });
 
     // Rail mode: dragged (or opened) at/near `PANEL_RAIL_TOTAL_WIDTH` —
     // "a sidebar I pull the chat out of when I need it" (2026-07-23). The
