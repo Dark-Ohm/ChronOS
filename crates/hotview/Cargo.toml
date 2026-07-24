@@ -1,0 +1,17 @@
+[package]
+name = "chronos-hotview"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gpui.workspace = true
+chronos-ui = { path = "../ui" }
+chronos-services = { path = "../services" }
+
+# Intentionally NOT using workspace = true lints.
+# hot-lib-reloader requires unsafe in the generated FFI shims;
+# workspace-level unsafe_code = "deny" must not apply here.
+[lints]
