@@ -8,21 +8,23 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
+**Обновлено: 2026-07-24 — T119 ПРИНЯТ WITH CAVEATS** (`eac0591`).
+Multi-select rows, footer Upgrade all↔selected, header Check→Refresh,
+backend `UpgradeSelected` = `pkexec yay|pacman -S --noconfirm -- pkgs`
+(не `-Syu`), shared stream with T118. aur suite **25/25**. Live smoke
+PENDING (честно). Errata accept: Check button width clip fix.
+Review → `report-log/T119-*-review.md`. Active tasks: **пусто** (T115
+ещё pause).
+
 **Обновлено: 2026-07-24 — T115 бриф ужесточён (под medium), всё ещё PAUSE.**
-Ждём T119. Copy-paste из Chronos-FM ок; path-dep нет; **запрет**
+Copy-paste из Chronos-FM ок; path-dep нет; **запрет**
 `view.rs`/`tabs.rs`/`mod.rs` (wire после приёмки); reject на
 фабрикованные тесты; live smoke + grim обязателен. Бриф:
 `orchestration/tasks/active/pause/T115-ide-panel-files-tab.md`.
 
-**Обновлено: 2026-07-24 — T118 ПРИНЯТ WITH CAVEATS; T119 роздан в active.**
-T118: streaming upgrade (`7329106`), 22 aur unit-тестов зелёные, live
-e2e PENDING в отчёте; errata `stdout(Stdio::null())` (pipe deadlock).
-Caveats: spinner static, staircase=filter. Review → `report-log/T118-*-review.md`.
-**T119** (следующий, по решению пользователя): multi-select строк,
-footer `Upgrade all`→`Upgrade selected`, header `Check for updates`
-(`AurCommand::Refresh` уже есть). Бриф:
-`orchestration/tasks/active/T119-updates-popup-select-and-refresh.md`.
-Строки **ещё не** on_click — в брифе честно, selection писать с нуля.
+**Обновлено: 2026-07-24 — T118 ПРИНЯТ WITH CAVEATS.**
+Streaming upgrade (`7329106` + stdout null errata). Spinner static /
+staircase=filter caveats. Review → `report-log/T118-*-review.md`.
 
 **Обновлено: 2026-07-24 — T108 ПРИНЯТ (core agent switcher).** Task3
 (клик по пунктам dropdown) сверен с диффом: absolute `size_full` оверлеи
