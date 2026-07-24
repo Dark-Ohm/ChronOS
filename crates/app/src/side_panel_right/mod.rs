@@ -16,8 +16,13 @@ mod hover_strip;
 mod mpris_card;
 mod permission;
 mod power_row;
+mod rail;
 mod spectrum_row;
+mod tabs;
 pub mod view;
+
+pub use tabs::PanelTab;
+pub use rail::render_rail;
 
 use chronos_luau::bar::BAR_HEIGHT;
 use gpui::{
@@ -27,8 +32,8 @@ use gpui::{
 
 use crate::side_panel_right::view::SidePanelRightView;
 
-/// Mockup width (`design/System Sidebar.dc.html` = 352px).
-const PANEL_WIDTH: f32 = 352.;
+/// Mockup width (`design/shell-ide-panel.zip` — tab container, 10 tabs).
+const PANEL_WIDTH: f32 = 560.;
 
 /// Top air under the bar. Height = display − this gap reaches the bottom
 /// bezel (see `b120a3d`). Do **not** use TOP|BOTTOM stretch + dual margins

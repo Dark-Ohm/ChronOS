@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use chronos_services::net_stats::{self, NetState};
 use chronos_services::{DiskInfo, MprisState, Service, SystemResourcesState};
 use gpui::{
-    AsyncApp, Context, IntoElement, Render, ScrollHandle, Window, div, prelude::*, px, rgb,
+    App, AsyncApp, Context, IntoElement, Render, ScrollHandle, Window, div, prelude::*, px, rgb,
 };
 use gpui_animation::animation::TransitionExt;
 use gpui_animation::transition::general::Linear;
@@ -25,10 +25,12 @@ use crate::side_panel_right::power_row::{
     is_confirming_click, on_click as arm_on_click, on_timeout, render_footer, ArmState,
     PowerAction, ARM_TIMEOUT,
 };
+use crate::side_panel_right::rail::render_rail;
 use crate::side_panel_right::spectrum_row::{
     color_cpu, color_gpu, color_net, color_ram, color_value_default, push_sample,
     render_spectrum_row, SpectrumHistory, H_CPU, H_GPU, H_NET, H_RAM,
 };
+use crate::side_panel_right::tabs::PanelTab;
 use crate::state::{self, AppState};
 
 /// Delay before peek-close after mouse leaves panel (or strip).
@@ -50,6 +52,7 @@ pub struct SidePanelRightView {
     /// State-driven reveal for `transition_when` (not hover-driven).
     revealed: bool,
     scroll: ScrollHandle,
+    active_tab: PanelTab,
 }
 
 impl SidePanelRightView {
@@ -114,6 +117,7 @@ impl SidePanelRightView {
             power_arm: ArmState::default(),
             revealed: false,
             scroll: ScrollHandle::new(),
+            active_tab: PanelTab::default(),
         }
     }
 
@@ -175,6 +179,17 @@ impl SidePanelRightView {
         })
         .detach();
     }
+
+    /// Pure: clicking a rail button always makes that tab active — no toggle,
+    /// no special-case for re-clicking the already-active tab.
+    fn next_active_tab(_current: PanelTab, clicked: PanelTab) -> PanelTab {
+        clicked
+    }
+
+    pub(crate) fn on_tab_select(&mut self, tab: PanelTab, cx: &mut Context<Self>) {
+        self.active_tab = Self::next_active_tab(self.active_tab, tab);
+        cx.notify();
+    }
 }
 
 impl Render for SidePanelRightView {
@@ -209,7 +224,7 @@ impl Render for SidePanelRightView {
                     .border_l_1()
                     .border_color(rgb(0x31_32_44))
                     .flex()
-                    .flex_col()
+                    .flex_row() // content first, rail last — rail flush against the screen's right edge
                     .overflow_hidden()
                     .opacity(if revealed { 1.0 } else { 0.0 })
                     .transition_when(
@@ -218,81 +233,119 @@ impl Render for SidePanelRightView {
                         Linear,
                         |s| s.opacity(1.0),
                     )
-                    // 1. Header (flex:none) — rsx
-                    .child(render_header())
-                    // 2. Permission card (flex:none) — rsx
-                    .child(render_permission_card())
-                    // 3. Scrollable middle
                     .child(
                         div()
-                            .id("side-panel-scroll")
+                            .id("side-panel-content-column")
                             .flex_1()
-                            .min_h(px(0.))
-                            .overflow_y_scroll()
-                            .track_scroll(&self.scroll)
+                            .min_w(px(0.))
                             .flex()
                             .flex_col()
-                            .gap(px(14.))
-                            .p(px(14.))
-                            .child(render_mpris_card(&self.mpris, cx))
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .gap(px(10.))
-                                    .child(render_spectrum_row(
-                                        "CPU",
-                                        &self.cpu_history,
-                                        &format!("{:.0}%", self.system.cpu_percent),
-                                        color_cpu(),
-                                        color_cpu(),
-                                        H_CPU,
-                                    ))
-                                    .child(render_spectrum_row(
-                                        "RAM",
-                                        &self.ram_history,
-                                        &format!("{:.0}%", self.system.ram_percent),
-                                        color_ram(),
-                                        color_ram(),
-                                        H_RAM,
-                                    ))
-                                    .when_some(gpu, |d, gpu_pct| {
-                                        d.child(render_spectrum_row(
-                                            "GPU",
-                                            &self.gpu_history,
-                                            &format!("{gpu_pct:.0}%"),
-                                            color_gpu(),
-                                            color_gpu(),
-                                            H_GPU,
-                                        ))
-                                    }),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .gap(px(10.))
-                                    .child(render_spectrum_row(
-                                        "↓ down",
-                                        &self.net_dl_history,
-                                        &dl,
-                                        color_net(),
-                                        color_value_default(),
-                                        H_NET,
-                                    ))
-                                    .child(render_spectrum_row(
-                                        "↑ up",
-                                        &self.net_ul_history,
-                                        &ul,
-                                        color_net(),
-                                        color_value_default(),
-                                        H_NET,
-                                    )),
-                            )
-                            .child(render_disks_section(&self.disks, cx)),
+                            .overflow_hidden()
+                            .when(self.active_tab == PanelTab::System, |col| {
+                                col
+                                    // 1. Header (flex:none) — rsx
+                                    .child(render_header())
+                                    // 2. Permission card (flex:none) — rsx
+                                    .child(render_permission_card())
+                                    // 3. Scrollable middle — UNCHANGED body
+                                    .child(
+                                        div()
+                                            .id("side-panel-scroll")
+                                            .flex_1()
+                                            .min_h(px(0.))
+                                            .overflow_y_scroll()
+                                            .track_scroll(&self.scroll)
+                                            .flex()
+                                            .flex_col()
+                                            .gap(px(14.))
+                                            .p(px(14.))
+                                            .child(render_mpris_card(&self.mpris, cx))
+                                            .child(
+                                                div()
+                                                    .flex()
+                                                    .flex_col()
+                                                    .gap(px(10.))
+                                                    .child(render_spectrum_row(
+                                                        "CPU",
+                                                        &self.cpu_history,
+                                                        &format!("{:.0}%", self.system.cpu_percent),
+                                                        color_cpu(),
+                                                        color_cpu(),
+                                                        H_CPU,
+                                                    ))
+                                                    .child(render_spectrum_row(
+                                                        "RAM",
+                                                        &self.ram_history,
+                                                        &format!("{:.0}%", self.system.ram_percent),
+                                                        color_ram(),
+                                                        color_ram(),
+                                                        H_RAM,
+                                                    ))
+                                                    .when_some(gpu, |d, gpu_pct| {
+                                                        d.child(render_spectrum_row(
+                                                            "GPU",
+                                                            &self.gpu_history,
+                                                            &format!("{gpu_pct:.0}%"),
+                                                            color_gpu(),
+                                                            color_gpu(),
+                                                            H_GPU,
+                                                        ))
+                                                    }),
+                                            )
+                                            .child(
+                                                div()
+                                                    .flex()
+                                                    .flex_col()
+                                                    .gap(px(10.))
+                                                    .child(render_spectrum_row(
+                                                        "↓ down",
+                                                        &self.net_dl_history,
+                                                        &dl,
+                                                        color_net(),
+                                                        color_value_default(),
+                                                        H_NET,
+                                                    ))
+                                                    .child(render_spectrum_row(
+                                                        "↑ up",
+                                                        &self.net_ul_history,
+                                                        &ul,
+                                                        color_net(),
+                                                        color_value_default(),
+                                                        H_NET,
+                                                    )),
+                                            )
+                                            .child(render_disks_section(&self.disks, cx)),
+                                    )
+                                    // 4. Footer (flex:none)
+                                    .child(render_footer(&net_summary, power_arm, cx))
+                            })
+                            .when(self.active_tab != PanelTab::System, |col| {
+                                col.child(
+                                    div()
+                                        .size_full()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .child(
+                                            div()
+                                                .text_color(rgb(0x6c_70_86))
+                                                .child(format!("{} — coming soon", self.active_tab.label())),
+                                        ),
+                                )
+                            }),
                     )
-                    // 4. Footer (flex:none)
-                    .child(render_footer(&net_summary, power_arm, cx)),
+                    .child({
+                        let active = self.active_tab;
+                        let this = cx.entity();
+                        let on_select = std::rc::Rc::new(
+                            move |tab: PanelTab, window: &mut Window, cx: &mut gpui::App| {
+                                this.update(cx, |this, cx| {
+                                    this.on_tab_select(tab, cx);
+                                });
+                            },
+                        );
+                        crate::side_panel_right::rail::render_rail(cx, active, on_select)
+                    }),
             )
     }
 }
