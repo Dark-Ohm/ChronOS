@@ -54,7 +54,7 @@ impl Render for UpdatesPopupView {
         let accent = theme.accent.primary;
         let accent_hover = theme.accent.hover;
         let hover = theme.interactive.hover;
-        let font_ui = theme.font_ui;
+        let font_mono = theme.font_mono;
         let font_mono = theme.font_mono;
         let is_light = theme.is_light;
 
@@ -71,9 +71,8 @@ impl Render for UpdatesPopupView {
             .child(
                 div()
                     .text_color(text_primary)
-                    .font_family(font_ui)
-                    .text_size(px(13.))
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .font_family(font_mono)
+                    .text_size(theme.font_sizes.sm)
                     .child(if count > 0 {
                         format!("Updates ({count})")
                     } else {
@@ -105,8 +104,8 @@ impl Render for UpdatesPopupView {
                 .px(px(ROW_PX))
                 .py(px(ROW_PY))
                 .text_color(text_muted)
-                .font_family(font_ui)
-                .text_size(px(12.5))
+                .font_family(font_mono)
+                .text_size(theme.font_sizes.sm)
                 .child("System is up to date")
                 .into_any_element()
         } else {
@@ -121,7 +120,6 @@ impl Render for UpdatesPopupView {
                         hover,
                         accent,
                         border,
-                        font_ui,
                         font_mono,
                         radius,
                     )
@@ -151,7 +149,7 @@ impl Render for UpdatesPopupView {
                     .px(px(FOOTER_PX))
                     .pb(px(2.))
                     .text_color(theme.status.success)
-                    .font_family(font_ui)
+                    .font_family(font_mono)
                     .text_size(px(12.5))
                     .child("Upgrade complete")
                     .into_any_element(),
@@ -160,7 +158,7 @@ impl Render for UpdatesPopupView {
                     .px(px(FOOTER_PX))
                     .pb(px(2.))
                     .text_color(theme.status.error)
-                    .font_family(font_ui)
+                    .font_family(font_mono)
                     .text_size(px(12.5))
                     .child("Upgrade failed")
                     .into_any_element(),
@@ -178,7 +176,7 @@ impl Render for UpdatesPopupView {
                     .border_1()
                     .border_color(text_muted)
                     .text_color(text_muted)
-                    .font_family(font_ui)
+                    .font_family(font_mono)
                     .text_size(px(12.5))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .child("Upgrading…")
@@ -196,7 +194,7 @@ impl Render for UpdatesPopupView {
                     .border_1()
                     .border_color(accent)
                     .text_color(accent)
-                    .font_family(font_ui)
+                    .font_family(font_mono)
                     .text_size(px(12.5))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .hover(|s| s.border_color(accent_hover).text_color(accent_hover))
@@ -278,7 +276,6 @@ fn render_row(
     hover: gpui::Hsla,
     accent: gpui::Hsla,
     border: gpui::Hsla,
-    font_ui: &'static str,
     font_mono: &'static str,
     radius: gpui::Pixels,
 ) -> AnyElement {
@@ -293,7 +290,7 @@ fn render_row(
             .child(
                 div()
                     .text_color(text_primary)
-                    .font_family(font_ui)
+                    .font_family(font_mono)
                     .text_size(px(12.5))
                     .font_weight(gpui::FontWeight::MEDIUM)
                     .whitespace_nowrap()
@@ -311,7 +308,7 @@ fn render_row(
                     .border_color(gpui::Hsla::from(gpui::rgba(0xcb_a6_f74d)))
                     .bg(gpui::Hsla::from(gpui::rgba(0xcb_a6_f71f)))
                     .text_color(gpui::Hsla::from(gpui::rgba(0xcb_a6_f7ff)))
-                    .font_family(font_ui)
+                    .font_family(font_mono)
                     .text_size(px(9.5))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .child("AUR"),
@@ -320,7 +317,7 @@ fn render_row(
     } else {
         div()
             .text_color(text_primary)
-            .font_family(font_ui)
+            .font_family(font_mono)
             .text_size(px(12.5))
             .font_weight(gpui::FontWeight::MEDIUM)
             .whitespace_nowrap()
