@@ -3,7 +3,11 @@
 //!
 //! Data comes from `AppState::aur(cx)` (`UpdatesState`, `crates/services/src/aur/`).
 
-use gpui::{AnyElement, App, Window, div, prelude::*, px, svg};
+use gpui::{
+    AnyElement, App, Bounds, MouseButton, Pixels, Window, canvas, div, prelude::*, px, svg,
+};
+use std::cell::Cell;
+use std::rc::Rc;
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{Service, UpdatesState};
@@ -33,7 +37,17 @@ fn describe(state: &UpdatesState) -> UpdatesView {
     }
 }
 
-pub struct UpdatesWidget;
+pub struct UpdatesWidget {
+    bounds: Rc<Cell<Bounds<Pixels>>>,
+}
+
+impl UpdatesWidget {
+    pub fn new() -> Self {
+        Self {
+            bounds: Rc::new(Cell::new(Bounds::default())),
+        }
+    }
+}
 
 impl BarWidget for UpdatesWidget {
     fn name(&self) -> &str {
@@ -76,10 +90,28 @@ impl BarWidget for UpdatesWidget {
                     .text_size(theme.font_sizes.sm),
             );
         }
-        row
-            .on_click(|_event, window, cx: &mut App| {
-                crate::updates_popup::toggle(window, cx);
-            })
+
+        let bounds_cell = self.bounds.clone();
+        div()
+            .child(row.on_mouse_down(MouseButton::Left, {
+                let bounds_cell = self.bounds.clone();
+                move |_event, window, cx: &mut App| {
+                    let anchor_rect = bounds_cell.get();
+                    let parent = window.window_handle();
+                    crate::updates_popup::toggle(anchor_rect, parent, window, cx);
+                }
+            }))
+            .child(
+                canvas(
+                    move |bounds, _window, _cx| bounds,
+                    move |bounds, captured, _window, _cx| {
+                        bounds_cell.set(captured);
+                        let _ = bounds;
+                    },
+                )
+                .absolute()
+                .size_full(),
+            )
             .into_any_element()
     }
 }
@@ -87,7 +119,7 @@ impl BarWidget for UpdatesWidget {
 /// Register the updates widget with the global bar registry.
 pub fn register(cx: &mut App) {
     cx.global_mut::<chronos_luau::bar::BarWidgetRegistry>()
-        .register(Box::new(UpdatesWidget));
+        .register(Box::new(UpdatesWidget::new()));
 }
 
 #[cfg(test)]
