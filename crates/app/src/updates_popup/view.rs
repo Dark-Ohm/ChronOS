@@ -7,8 +7,8 @@
 //!                   something to upgrade.
 
 use gpui::{
-    AnyElement, App, Context, InteractiveElement, IntoElement, Render, ScrollHandle, Styled,
-    Window, div, prelude::*, px,
+    AnyElement, App, BoxShadow, Context, InteractiveElement, IntoElement, Render, ScrollHandle,
+    Styled, Window, div, prelude::*, px, svg,
 };
 
 use chronos_services::{PackageUpdate, Service, UpdateSource, UpgradeState};
@@ -184,17 +184,54 @@ impl Render for UpdatesPopupView {
                 .into_any_element()
         };
 
-        div()
+        let is_light = theme.is_light;
+
+        let mut card = div()
+            .relative()
             .flex_col()
             .rounded(radius_lg)
             .bg(bg)
             .border_1()
             .border_color(border_subtle)
-            .overflow_hidden()
-            .child(header)
-            .child(divider_line)
-            .child(list)
-            .child(footer)
+            .overflow_hidden();
+
+        if is_light {
+            card = card
+                .shadow(vec![
+                    // outer elevated shadow
+                    BoxShadow::new(px(0.), px(6.), gpui::rgba(0x3c40_6e29).into())
+                        .blur_radius(px(24.)),
+                    // inner accent border glow
+                    BoxShadow::new(px(0.), px(0.), gpui::rgba(0x007a_cc26).into())
+                        .spread_radius(px(1.))
+                        .inset(),
+                ])
+                .child(
+                    // glow-top hairline — accent at low opacity
+                    // (CSS gradient approximated as solid line)
+                    div()
+                        .absolute()
+                        .top(px(0.))
+                        .left(px(0.))
+                        .right(px(0.))
+                        .h(px(1.))
+                        .bg(accent)
+                        .opacity(0.4),
+                )
+                .child(
+                    // watermark hexagon sigil
+                    svg()
+                        .path("icons/hexagon-sigil.svg")
+                        .absolute()
+                        .top(px(-30.))
+                        .right(px(-30.))
+                        .size(px(140.))
+                        .text_color(accent)
+                        .opacity(0.18),
+                );
+        }
+
+        card.child(header).child(divider_line).child(list).child(footer)
     }
 }
 
