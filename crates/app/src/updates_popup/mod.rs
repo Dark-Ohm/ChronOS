@@ -236,10 +236,10 @@ pub fn init(cx: &mut App) {
                         window.resize(Size::new(px(POPUP_WIDTH), px(height)));
                     });
                     if resize_ok.is_err() {
-                        // Window is dead — clear the stale handle to stop spamming.
                         cx.global_mut::<UpdatesPopupState>().handle.take();
                     } else {
                         let _ = handle.update(cx, |_, _window, view_cx| view_cx.notify());
+                        cx.refresh_windows();
                     }
                 }
             },
