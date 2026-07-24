@@ -35,7 +35,7 @@ const POPUP_MARGIN_RIGHT: f32 = 8.;
 /// footer: py(12)*2 + btn(py(8)*2 + text(~16) + border(1)) = ~63
 const HEADER_H: f32 = 41.;
 const ROW_H: f32 = 35.;
-const FOOTER_H: f32 = 63.;
+const FOOTER_H: f32 = 72.;
 const EMPTY_ROW_H: f32 = 40.;
 /// Don't grow beyond this — scroll instead.
 pub(crate) const MAX_LIST_H: f32 = 340.;

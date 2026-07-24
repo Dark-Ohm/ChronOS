@@ -224,7 +224,7 @@ impl Render for UpdatesPopupView {
         let mut card = div()
             .relative()
             .flex_col()
-            .rounded(px(10.)) // mockup: border-radius:10px
+            .rounded(radius) // 6px, not 10px
             .bg(bg)
             .border_1()
             .border_color(border)
@@ -280,82 +280,72 @@ fn render_row(
 ) -> AnyElement {
     let is_aur = matches!(update.source, UpdateSource::Aur);
 
-    let name_block: AnyElement = if is_aur {
+    // ── Row layout: [name] [AUR?] ──gap── [old → new] ──
+    let name_el = div()
+        .flex_1()
+        .min_w(px(0.))
+        .text_color(text_primary)
+        .font_family(font_mono)
+        .text_size(px(12.5))
+        .font_weight(gpui::FontWeight::MEDIUM)
+        .whitespace_nowrap()
+        .overflow_hidden()
+        .text_ellipsis()
+        .child(update.name.clone());
+
+    let aur_badge: AnyElement = if is_aur {
         div()
-            .flex()
-            .flex_1()
-            .min_w(px(0.))
-            .items_center()
-            .gap(px(7.))
-            .child(
-                div()
-                    .text_color(text_primary)
-                    .font_family(font_mono)
-                    .text_size(px(12.5))
-                    .font_weight(gpui::FontWeight::MEDIUM)
-                    .whitespace_nowrap()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .child(update.name.clone()),
-            )
-            .child(
-                div()
-                    .flex_none()
-                    .rounded(radius)
-                    .px(px(5.))
-                    .py(px(1.))
-                    .border_1()
-                    .border_color(gpui::Hsla::from(gpui::rgba(0xcb_a6_f74d)))
-                    .bg(gpui::Hsla::from(gpui::rgba(0xcb_a6_f71f)))
-                    .text_color(gpui::Hsla::from(gpui::rgba(0xcb_a6_f7ff)))
-                    .font_family(font_mono)
-                    .text_size(px(9.5))
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .child("AUR"),
-            )
+            .flex_none()
+            .rounded(radius)
+            .px(px(5.))
+            .py(px(1.))
+            .border_1()
+            .border_color(gpui::Hsla::from(gpui::rgba(0xcb_a6_f74d)))
+            .bg(gpui::Hsla::from(gpui::rgba(0xcb_a6_f71f)))
+            .text_color(gpui::Hsla::from(gpui::rgba(0xcb_a6_f7ff)))
+            .font_family(font_mono)
+            .text_size(px(9.5))
+            .font_weight(gpui::FontWeight::SEMIBOLD)
+            .child("AUR")
             .into_any_element()
     } else {
-        div()
-            .flex_1()
-            .min_w(px(0.))
-            .text_color(text_primary)
-            .font_family(font_mono)
-            .text_size(px(12.5))
-            .font_weight(gpui::FontWeight::MEDIUM)
-            .whitespace_nowrap()
-            .overflow_hidden()
-            .text_ellipsis()
-            .child(update.name.clone())
-            .into_any_element()
+        div().into_any_element()
     };
+
+    let versions = div()
+        .flex_none()
+        .font_family(font_mono)
+        .text_size(px(11.))
+        .flex()
+        .items_center()
+        .gap(px(5.))
+        .child(div().text_color(text_muted).child(update.old_version.clone()))
+        .child(div().text_color(text_muted).child("→"))
+        .child(
+            div()
+                .text_color(text_secondary)
+                .child(update.new_version.clone()),
+        );
 
     div()
         .w_full()
         .flex()
         .items_center()
-        .justify_between()
         .gap(px(10.))
         .px(px(ROW_PX))
         .py(px(ROW_PY))
         .border_b_1()
         .border_color(border)
         .hover(|s| s.bg(hover))
-        .child(name_block)
+        .child(name_el)
+        .child(aur_badge)
         .child(
             div()
-                .flex_none()
-                .font_family(font_mono)
-                .text_size(px(11.))
-                .flex()
-                .items_center()
-                .gap(px(5.))
-                .child(div().text_color(text_muted).child(update.old_version.clone()))
-                .child(div().text_color(text_muted).child("→"))
-                .child(
-                    div()
-                        .text_color(text_secondary)
-                        .child(update.new_version.clone()),
-                ),
+                .flex_1()
+                .h(px(1.))
+                .bg(border)
+                .opacity(0.4),
         )
+        .child(versions)
         .into_any_element()
 }
