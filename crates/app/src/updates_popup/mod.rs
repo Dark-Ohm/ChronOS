@@ -25,7 +25,7 @@ use crate::state::{self, AppState};
 use crate::updates_popup::view::UpdatesPopupView;
 
 /// Popup width (px).
-const POPUP_WIDTH: f32 = 360.;
+const POPUP_WIDTH: f32 = 420.;
 const POPUP_MARGIN_TOP: f32 = 36.;
 const POPUP_MARGIN_RIGHT: f32 = 8.;
 
