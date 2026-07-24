@@ -14,7 +14,7 @@ use gpui::{
 use chronos_services::{PackageUpdate, Service, UpdateSource, UpgradeState};
 
 use crate::state::AppState;
-use crate::updates_popup::{MAX_LIST_H, close_this, refresh, upgrade_all, upgrade_selected};
+use crate::updates_popup::{MAX_LIST_H, refresh, upgrade_all, upgrade_selected};
 
 use chronos_ui::Theme;
 
@@ -91,14 +91,57 @@ impl Render for UpdatesPopupView {
         // event-driven mutations only.
         self.selection.retain(|n| visible_updates.iter().any(|u| &u.name == n));
         let is_running = matches!(state.upgrade_state, UpgradeState::Running(_));
+        let is_checking = state.checking;
         // Snapshot the selection for the render pass — `self` is borrowed
         // by `render` for the entire frame, but `cx.listener` closures
         // borrow `&mut this` only at click time, so a captured-into-closure
         // borrowed snapshot of `self.selection` is unnecessary.
         let selection_snapshot: HashSet<String> = self.selection.clone();
 
+        // Check button is inert during upgrade or mid-refresh.
+        let check_enabled = !is_running && !is_checking;
+        let check_label: &'static str = if is_checking {
+            "Checking…"
+        } else {
+            "Check updates"
+        };
+        let check_color = if check_enabled {
+            text_secondary
+        } else {
+            text_muted
+        };
+
         // ── Header ──────────────────────────────────────────────────
-        //  Title (left) ── spacer ── [Check for updates] [✕]
+        // Title (left) ── spacer ── [Check updates] mono text only.
+        // No icon. No in-popup ✕ — dismiss is bar toggle (user 2026-07-24).
+        let mut check_btn = div()
+            .id("updates-popup-check")
+            .flex_none()
+            .h(px(22.))
+            .px(px(8.))
+            .rounded(radius)
+            .flex()
+            .items_center()
+            .justify_center()
+            .border_1()
+            .border_color(if check_enabled { border } else { hover })
+            .child(
+                div()
+                    .text_color(check_color)
+                    .font_family(font_mono)
+                    .text_size(px(11.))
+                    .child(check_label),
+            );
+
+        if check_enabled {
+            check_btn = check_btn
+                .cursor_pointer()
+                .hover(|s| s.bg(hover).border_color(text_muted))
+                .on_click(|_event, _window, cx: &mut App| {
+                    refresh(cx);
+                });
+        }
+
         let header = div()
             .w_full()
             .flex()
@@ -121,59 +164,7 @@ impl Render for UpdatesPopupView {
                     }),
             )
             .child(div().flex_1())
-            .child(
-                // Check for updates — forces a re-check (`AurCommand::Refresh`)
-                // without waiting for the 15-min poll. Sits left of the close
-                // button; close stays the rightmost control. Disabled-look
-                // during an active upgrade: it can't cancel anything, but
-                // hammering Refresh while pacman is running just wastes a
-                // `checkupdates` spawn. The icon is the existing
-                // `arrows-clockwise.svg` (same asset the running-spinner uses).
-                div()
-                    .id("updates-popup-check")
-                    .cursor_pointer()
-                    .flex_none()
-                    .h(px(22.))
-                    .px(px(6.))
-                    .rounded(radius)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .gap(px(4.))
-                    .text_color(if is_running { text_muted } else { text_secondary })
-                    .when(!is_running, |el| el.hover(|s| s.bg(hover)))
-                    .child(svg().path("icons/arrows-clockwise.svg").size(px(13.)))
-                    .child(
-                        div()
-                            .text_color(if is_running { text_muted } else { text_secondary })
-                            .font_family(font_mono)
-                            .text_size(theme.font_sizes.sm)
-                            .child("Check"),
-                    )
-                    // Refresh during Running is harmless but wasteful; still allow —
-                    // muted style only (no separate disabled branch for Style type).
-                    .on_click(|_event, _window, cx: &mut App| {
-                        refresh(cx);
-                    }),
-            )
-            .child(div().w(px(6.)))
-            .child(
-                div()
-                    .id("updates-popup-close")
-                    .cursor_pointer()
-                    .w(px(22.))
-                    .h(px(22.))
-                    .rounded(radius)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .text_color(text_muted)
-                    .hover(|s| s.bg(hover))
-                    .child(svg().path("icons/x.svg").size(px(13.)))
-                    .on_click(|_event, window, cx: &mut App| {
-                        close_this(window, cx);
-                    }),
-            );
+            .child(check_btn);
 
         // ── List ────────────────────────────────────────────────────
         let list: AnyElement = if visible_updates.is_empty() && completed.is_empty() {

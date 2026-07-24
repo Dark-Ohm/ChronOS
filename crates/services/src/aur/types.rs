@@ -62,6 +62,10 @@ impl UpgradeProgress {
 pub struct UpdatesState {
     pub updates: Vec<PackageUpdate>,
     pub upgrade_state: UpgradeState,
+    /// True while an explicit `AurCommand::Refresh` is in flight (popup
+    /// "Check updates" / open-time re-fetch). Distinct from poll ticks so
+    /// the UI can show a busy affordance instead of a dead-looking button.
+    pub checking: bool,
 }
 
 impl UpdatesState {

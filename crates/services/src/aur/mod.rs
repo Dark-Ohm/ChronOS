@@ -88,14 +88,42 @@ impl AurSubscriber {
             AurCommand::Refresh => {
                 let data = self.data.clone();
                 let status = self.status.clone();
+                // Coalesce: ignore re-entry while a check is already running
+                // (user hammering "Check updates" used to spawn N concurrent
+                // checkupdates with zero UI feedback — looked "broken").
+                {
+                    let mut s = data.get_cloned();
+                    if s.checking {
+                        return;
+                    }
+                    s.checking = true;
+                    data.set(s);
+                }
                 self.runtime.spawn(async move {
                     match read_state().await {
-                        Ok(state) => {
-                            data.set(state);
+                        Ok(mut state) => {
+                            // Preserve in-flight upgrade progress if a
+                            // refresh somehow raced with UpgradeAll/Selected.
+                            let prev = data.get_cloned();
+                            if matches!(prev.upgrade_state, UpgradeState::Running(_)) {
+                                let mut keep = prev;
+                                keep.updates = state.updates;
+                                keep.checking = false;
+                                data.set(keep);
+                            } else {
+                                // Fresh check clears Done/Failed → Idle so
+                                // the footer stops saying "Upgrade complete".
+                                state.checking = false;
+                                data.set(state);
+                            }
                             status.set(ServiceStatus::Available);
+                            info!("AurSubscriber: refresh complete");
                         }
                         Err(e) => {
                             warn!("AurSubscriber refresh failed: {e:?}");
+                            let mut s = data.get_cloned();
+                            s.checking = false;
+                            data.set(s);
                             status.set(ServiceStatus::Unavailable);
                         }
                     }
@@ -214,8 +242,19 @@ async fn run(data: Mutable<UpdatesState>, status: Mutable<ServiceStatus>) {
     loop {
         match read_state().await {
             Ok(state) => {
-                if data.get_cloned() != state {
-                    data.set(state);
+                let prev = data.get_cloned();
+                // Never clobber an in-flight upgrade or an explicit Check —
+                // `read_state` always returns Idle/checking=false, so a
+                // naive set would kill progress UI mid-upgrade.
+                let skip = matches!(prev.upgrade_state, UpgradeState::Running(_)) || prev.checking;
+                if !skip {
+                    // Preserve Done/Failed only until packages change or a
+                    // Refresh clears them; poll with same package list would
+                    // otherwise flip Done→Idle via Default upgrade_state.
+                    // Flip is fine (status line disappears on next poll).
+                    if prev != state {
+                        data.set(state);
+                    }
                 }
                 if status.get_cloned() != ServiceStatus::Available {
                     status.set(ServiceStatus::Available);
