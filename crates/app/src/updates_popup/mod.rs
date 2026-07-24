@@ -13,8 +13,10 @@
 pub mod view;
 
 use gpui::{
-    App, Bounds, Context, DisplayId, Entity, Global, Size, Window, WindowBackgroundAppearance,
-    WindowBounds, WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
+    AnyWindowHandle, App, Bounds, Context, DisplayId, Entity, Global, Pixels, Size, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions,
+    layer_shell::*, point, prelude::*, px,
+    popup::{PopupAnchor, PopupConstraintAdjustment, PopupGravity, PopupNotSupportedError, PopupOptions},
 };
 
 use chronos_services::{AurCommand, Service, UpdatesState};
@@ -95,7 +97,8 @@ fn pick_display(cx: &App) -> Option<DisplayId> {
 
 /// Layer-shell window options for the popup: TOP | RIGHT, overlay, never
 /// exclusive, no keyboard interactivity (mouse-driven, like `tray_menu`).
-fn window_options(display_id: Option<DisplayId>, height: f32) -> WindowOptions {
+/// Used as fallback when `AnchoredPopup` isn't supported on this platform.
+fn fallback_window_options(display_id: Option<DisplayId>, height: f32) -> WindowOptions {
     WindowOptions {
         display_id,
         titlebar: None,
@@ -118,22 +121,64 @@ fn window_options(display_id: Option<DisplayId>, height: f32) -> WindowOptions {
     }
 }
 
+/// Anchored popup window options — popup positioned relative to the trigger
+/// icon's bounds, extending down-and-left from the icon's bottom-right corner.
+fn window_options(anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle, height: f32) -> WindowOptions {
+    WindowOptions {
+        titlebar: None,
+        window_bounds: Some(WindowBounds::Windowed(Bounds {
+            origin: point(px(0.), px(0.)),
+            size: Size::new(px(POPUP_WIDTH), px(height)),
+        })),
+        app_id: Some("chronos-updates-popup".to_string()),
+        window_background: WindowBackgroundAppearance::Transparent,
+        kind: WindowKind::AnchoredPopup(PopupOptions {
+            parent,
+            anchor_rect,
+            anchor: PopupAnchor::BottomRight,
+            gravity: PopupGravity::BottomLeft,
+            constraint_adjustment: PopupConstraintAdjustment::SLIDE_X
+                | PopupConstraintAdjustment::FLIP_X,
+            offset: point(px(0.), px(4.)),
+            grab: true,
+        }),
+        ..Default::default()
+    }
+}
+
 /// Open the popup (idempotent — no-op if already open). Also fires a
 /// `Refresh` so the list is current even if the last poll tick is stale
 /// (mirrors `tray_menu::open`'s re-fetch-on-open).
-pub fn open(cx: &mut App) {
+pub fn open(cx: &mut App, anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle) {
     AppState::aur(cx).dispatch(AurCommand::Refresh);
 
     if cx.global::<UpdatesPopupState>().handle.is_some() {
         return;
     }
 
-    let display_id = pick_display(cx);
     let count = AppState::aur(cx).get().count();
     let height = estimate_popup_height(count);
-    match cx.open_window(window_options(display_id, height), |_, app_cx| {
+
+    let result = cx.open_window(window_options(anchor_rect, parent, height), |_, app_cx| {
         app_cx.new(|view_cx| UpdatesPopupView::new(view_cx))
-    }) {
+    });
+
+    let result = match result {
+        Err(err) => {
+            if err.downcast_ref::<PopupNotSupportedError>().is_some() {
+                tracing::warn!("updates_popup: AnchoredPopup not supported on this platform, falling back to fixed-corner LayerShell");
+                let display_id = pick_display(cx);
+                cx.open_window(fallback_window_options(display_id, height), |_, app_cx| {
+                    app_cx.new(|view_cx| UpdatesPopupView::new(view_cx))
+                })
+            } else {
+                Err(err)
+            }
+        }
+        ok => ok,
+    };
+
+    match result {
         Ok(new_handle) => {
             cx.global_mut::<UpdatesPopupState>().handle = Some(new_handle);
         }
@@ -173,15 +218,15 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
 }
 
 /// Toggle: click on the bar icon closes an open popup, opens a closed one.
-/// Called from the bar widget's `on_click`, which holds `&mut Window` for
+/// Called from the bar widget's `on_mouse_down`, which holds `&mut Window` for
 /// the BAR's window, not the popup's — so closing an already-open popup here
 /// correctly goes through `close(cx)` (`handle.update`), not `close_this`.
-pub fn toggle(_window: &mut Window, cx: &mut App) {
+pub fn toggle(anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle, _window: &mut Window, cx: &mut App) {
     let is_open = cx.global::<UpdatesPopupState>().handle.is_some();
     if is_open {
         close(cx);
     } else {
-        open(cx);
+        open(cx, anchor_rect, parent);
     }
 }
 
