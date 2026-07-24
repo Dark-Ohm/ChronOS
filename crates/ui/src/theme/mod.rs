@@ -167,6 +167,9 @@ pub struct Theme {
     /// number or a mono-styled value. `font_mono` stays reserved for
     /// digits/code/mono-widgets per STYLE.md.
     pub font_ui: &'static str,
+    /// Whether this theme is a light variant (true = light C palette).
+    /// Set to `true` in `light_scheme()`, `false` elsewhere.
+    pub is_light: bool,
 }
 
 impl Default for Theme {
@@ -217,6 +220,7 @@ impl Default for Theme {
             font_sizes: FontSizes::default(),
             font_mono: "JetBrains Mono",
             font_ui: "Inter",
+            is_light: false,
         }
     }
 }
