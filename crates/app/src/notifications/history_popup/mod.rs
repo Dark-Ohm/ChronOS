@@ -15,34 +15,51 @@
 pub mod view;
 
 use gpui::{
-    App, Bounds, Context, DisplayId, Entity, Global, Size, Window, WindowBackgroundAppearance,
-    WindowBounds, WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
+    AnyWindowHandle, App, Bounds, Context, DisplayId, Entity, Global, Pixels, Size, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions,
+    layer_shell::*, point, prelude::*, px,
+    popup::{PopupAnchor, PopupConstraintAdjustment, PopupGravity, PopupNotSupportedError, PopupOptions},
 };
 
 use chronos_services::{NotificationCommand, Service};
 
 use crate::state::{self, AppState};
 
-/// Popup width (px).
+/// Popup width (px) — mockup-fixed.
 const POPUP_WIDTH: f32 = 360.;
-/// Top + right margin (px) — same as `updates_popup` so it sits just under the
-/// bar's top edge, aligned to the right.
+/// Margins for the LayerShell fallback (no anchoring available).
 const POPUP_MARGIN_TOP: f32 = 36.;
 const POPUP_MARGIN_RIGHT: f32 = 8.;
-/// Header row height budget (px).
-const HEADER_H: f32 = 36.;
-/// Hard pixel clip on the history-card list. The window height is a fixed cap
-/// (the `max_h` clip is the real guarantee — same philosophy as №12/№13).
-const LIST_MAX_H: f32 = 380.;
-/// Total window height cap = header + clipped list.
-const POPUP_HEIGHT: f32 = HEADER_H + LIST_MAX_H;
+/// Card row height budget (mockup-measured: padding 10+12 + 2 text rows +
+/// optional actions ≈ 72; rounded to a coarse per-row estimate for height
+/// pre-sizing).
+const ROW_H: f32 = 72.;
+/// Footer "Clear all" strip height budget (12px padding * 2 + 8px btn pad
+/// * 2 + 12.5px label ≈ 53).
+const FOOTER_H: f32 = 53.;
+/// Empty-state height budget ("No notifications" centered with 36px padding
+/// * 2 + 12px line).
+const EMPTY_H: f32 = 84.;
+/// Don't grow beyond this — scroll instead.
+pub(crate) const MAX_LIST_H: f32 = 480.;
+
+/// Estimate popup height from the live history length so the window is
+/// pre-sized close to content (anchor + resize path updates on changes).
+fn estimate_popup_height(count: usize) -> f32 {
+    if count == 0 {
+        EMPTY_H
+    } else {
+        let list_h = (count as f32 * ROW_H).min(MAX_LIST_H);
+        list_h + FOOTER_H
+    }
+}
 
 /// Global state for the history popup.
 #[derive(Default)]
 pub struct HistoryPopupState {
     /// Window handle while the popup is open; `None` when closed.
     handle: Option<WindowHandle<view::HistoryPopupView>>,
-    /// Watcher entity driving repaints on `NotificationState` changes.
+    /// Watcher entity driving repaints/resize on `NotificationState` changes.
     watcher: Option<Entity<HistoryPopupWatcher>>,
 }
 
@@ -56,9 +73,11 @@ fn pick_display(cx: &App) -> Option<DisplayId> {
     crate::monitor::pult_display(cx)
 }
 
-/// Layer-shell window options for the popup: TOP | RIGHT, overlay, never
+/// Layer-shell window options for the popup — fallback when `AnchoredPopup`
+/// is not supported on the current platform. TOP | RIGHT overlay, never
 /// exclusive, no keyboard interactivity (mouse-driven, like `updates_popup`).
-fn window_options(display_id: Option<DisplayId>, height: f32) -> WindowOptions {
+/// Same geometry as `updates_popup::fallback_window_options`.
+fn fallback_window_options(display_id: Option<DisplayId>, height: f32) -> WindowOptions {
     WindowOptions {
         display_id,
         titlebar: None,
@@ -81,19 +100,68 @@ fn window_options(display_id: Option<DisplayId>, height: f32) -> WindowOptions {
     }
 }
 
-/// Open the popup (idempotent — no-op if already open). Also marks the history
-/// read so the bell's unread dot clears the moment the inbox is viewed.
-pub fn open(cx: &mut App) {
+/// Anchored popup window options — popup positioned relative to the bell
+/// icon's bounds, extending down-and-left from the icon's bottom-right
+/// corner. Same anchor/gravity/constraint/offset as `updates_popup` (T117
+/// proven pair — do not invent new geometry).
+fn window_options(anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle, height: f32) -> WindowOptions {
+    WindowOptions {
+        titlebar: None,
+        window_bounds: Some(WindowBounds::Windowed(Bounds {
+            origin: point(px(0.), px(0.)),
+            size: Size::new(px(POPUP_WIDTH), px(height)),
+        })),
+        app_id: Some("chronos-notif-history-popup".to_string()),
+        window_background: WindowBackgroundAppearance::Transparent,
+        kind: WindowKind::AnchoredPopup(PopupOptions {
+            parent,
+            anchor_rect,
+            anchor: PopupAnchor::BottomRight,
+            gravity: PopupGravity::BottomLeft,
+            constraint_adjustment: PopupConstraintAdjustment::SLIDE_X
+                | PopupConstraintAdjustment::FLIP_X,
+            offset: point(px(0.), px(4.)),
+            grab: true,
+        }),
+        ..Default::default()
+    }
+}
+
+/// Open the popup anchored to the bell (idempotent — no-op if already open).
+/// Marks the history read so the bell's unread dot clears the moment the
+/// inbox is viewed. Same reentrancy discipline as `updates_popup::open`.
+pub fn open(cx: &mut App, anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle) {
     AppState::notification(cx).dispatch(NotificationCommand::MarkAllRead);
 
     if cx.global::<HistoryPopupState>().handle.is_some() {
         return;
     }
 
-    let display_id = pick_display(cx);
-    match cx.open_window(window_options(display_id, POPUP_HEIGHT), |_, app_cx| {
+    let count = AppState::notification(cx).get().history.len();
+    let height = estimate_popup_height(count);
+
+    let result = cx.open_window(window_options(anchor_rect, parent, height), |_, app_cx| {
         app_cx.new(|view_cx| view::HistoryPopupView::new(view_cx))
-    }) {
+    });
+
+    // AnchoredPopup may not be supported on this platform/backend — fall
+    // back to fixed-corner LayerShell (mirrors `updates_popup::open`).
+    let result = match result {
+        Err(err) => {
+            if err.downcast_ref::<PopupNotSupportedError>().is_some() {
+                tracing::warn!("history_popup: AnchoredPopup not supported on this platform, falling back to fixed-corner LayerShell");
+                let display_id = pick_display(cx);
+                cx.open_window(fallback_window_options(display_id, height), |_, app_cx| {
+                    app_cx.new(|view_cx| view::HistoryPopupView::new(view_cx))
+                })
+            } else {
+                Err(err)
+            }
+        }
+        ok => ok,
+    };
+
+    match result {
         Ok(new_handle) => {
             cx.global_mut::<HistoryPopupState>().handle = Some(new_handle);
         }
@@ -103,18 +171,22 @@ pub fn open(cx: &mut App) {
 
 /// Close the popup (clears state + destroys the window). Safe to call from
 /// contexts that do NOT already hold `&mut Window` for this popup (bar widget
-/// click, external toggle) — uses `handle.update`.
+/// click, external toggle) — uses `handle.update`. Logs failures instead of
+/// `let _ =` (plan Global Constraints).
 pub fn close(cx: &mut App) {
     if let Some(handle) = cx.global_mut::<HistoryPopupState>().handle.take() {
-        let _ = handle.update(cx, |_, window: &mut Window, _| window.remove_window());
+        if let Err(e) = handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
+            tracing::warn!("history_popup: close remove_window failed (already dead?): {e}");
+        }
     }
 }
 
 /// Close the popup from inside a callback that already holds `&mut Window` for
-/// this popup's window-id (the in-popup "✕" button). A blind `close(cx)` would
-/// re-enter `handle.update` on the same id and silently fail — see HANDOFF.md
-/// "СИСТЕМНЫЙ БАГ: window.remove_window()". Clear the tracked handle and call
-/// `remove_window()` on the live reference directly.
+/// this popup's window-id. A blind `close(cx)` would re-enter `handle.update`
+/// on the same id and silently fail — see HANDOFF.md "СИСТЕМНЫЙ БАГ:
+/// window.remove_window()". Clear the tracked handle and call
+/// `remove_window()` on the live reference directly (same as
+/// `updates_popup::close_this`).
 pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
     let this = window.window_handle();
     let tracked = cx
@@ -130,20 +202,21 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
 }
 
 /// Toggle: click on the bar bell closes an open popup, opens a closed one.
-/// Called from the bell widget's `on_click`, which holds `&mut Window` for the
-/// BAR's window, not the popup's — so closing here correctly goes through
-/// `close(cx)` (`handle.update`), not `close_this`.
-pub fn toggle(_window: &mut Window, cx: &mut App) {
+/// Called from the bell widget's `on_mouse_down(Left)`, which holds `&mut
+/// Window` for the BAR's window, not the popup's — so closing here correctly
+/// goes through `close(cx)` (`handle.update`), not `close_this`.
+pub fn toggle(anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle, _window: &mut Window, cx: &mut App) {
     let is_open = cx.global::<HistoryPopupState>().handle.is_some();
     if is_open {
         close(cx);
     } else {
-        open(cx);
+        open(cx, anchor_rect, parent);
     }
 }
 
 /// Wire the history popup to the live notification service. Called once from
-/// `main.rs` (after `notifications::init`).
+/// `main.rs` (after `notifications::init`). On each `NotificationState`
+/// change, resizes + notifies the popup window (mirrors `updates_popup::init`).
 pub fn init(cx: &mut App) {
     cx.set_global(HistoryPopupState::default());
 
@@ -154,11 +227,22 @@ pub fn init(cx: &mut App) {
             cx,
             signal,
             |_this: &mut HistoryPopupWatcher,
-             _state: chronos_services::NotificationState,
+             state: chronos_services::NotificationState,
              cx: &mut Context<HistoryPopupWatcher>| {
                 let handle = cx.global::<HistoryPopupState>().handle.clone();
                 if let Some(handle) = handle {
-                    let _ = handle.update(cx, |_, _window, view_cx| view_cx.notify());
+                    let height = estimate_popup_height(state.history.len());
+                    let resize_ok = handle.update(cx, |_, window: &mut Window, _| {
+                        window.resize(Size::new(px(POPUP_WIDTH), px(height)));
+                    });
+                    if resize_ok.is_err() {
+                        cx.global_mut::<HistoryPopupState>().handle.take();
+                    } else {
+                        if let Err(e) = handle.update(cx, |_, _window, view_cx| view_cx.notify()) {
+                            tracing::warn!("history_popup: notify update failed: {e}");
+                        }
+                        cx.refresh_windows();
+                    }
                 }
             },
         );

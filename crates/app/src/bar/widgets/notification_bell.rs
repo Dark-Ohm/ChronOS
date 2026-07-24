@@ -5,7 +5,9 @@
 //! `crates/services/src/notification/`). The unread badge is shown only when
 //! `unread > 0`; opening the popup dispatches `MarkAllRead`, clearing it.
 
-use gpui::{AnyElement, App, Window, div, prelude::*, px, svg};
+use gpui::{AnyElement, App, Bounds, MouseButton, Pixels, Window, canvas, div, prelude::*, px, svg};
+use std::cell::Cell;
+use std::rc::Rc;
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{NotificationState, Service};
@@ -29,7 +31,18 @@ fn describe(state: &NotificationState) -> BellView {
     }
 }
 
-pub struct NotificationBellWidget;
+pub struct NotificationBellWidget {
+    /// Captured bell bounds for the anchored popup (T117 pattern).
+    bounds: Rc<Cell<Bounds<Pixels>>>,
+}
+
+impl NotificationBellWidget {
+    pub fn new() -> Self {
+        Self {
+            bounds: Rc::new(Cell::new(Bounds::default())),
+        }
+    }
+}
 
 impl BarWidget for NotificationBellWidget {
     fn name(&self) -> &str {
@@ -83,17 +96,42 @@ impl BarWidget for NotificationBellWidget {
             );
         }
 
-        bell.on_click(|_event, window, cx: &mut App| {
-            crate::notifications::history_popup::toggle(window, cx);
-        })
-        .into_any_element()
+        // T117 lessons: (1) `.relative()` wrapping canvas + hit target;
+        // (2) `on_mouse_down(Left)` for grab-popups, not `on_click`;
+        // (3) bounds captured into a `Rc<Cell<…>>` field, not a local
+        // that dies when `render` returns.
+        let bounds_cell = self.bounds.clone();
+        div()
+            .relative()
+            .child(
+                canvas(
+                    move |bounds, _window, _cx| bounds,
+                    move |bounds, captured, _window, _cx| {
+                        bounds_cell.set(captured);
+                        let _ = bounds;
+                    },
+                )
+                .absolute()
+                .size_full(),
+            )
+            .child(bell.on_mouse_down(MouseButton::Left, {
+                let bounds_cell = self.bounds.clone();
+                move |_event, window, cx: &mut App| {
+                    let anchor_rect = bounds_cell.get();
+                    let parent = window.window_handle();
+                    crate::notifications::history_popup::toggle(
+                        anchor_rect, parent, window, cx,
+                    );
+                }
+            }))
+            .into_any_element()
     }
 }
 
 /// Register the bell widget with the global bar registry.
 pub fn register(cx: &mut App) {
     cx.global_mut::<chronos_luau::bar::BarWidgetRegistry>()
-        .register(Box::new(NotificationBellWidget));
+        .register(Box::new(NotificationBellWidget::new()));
 }
 
 #[cfg(test)]
