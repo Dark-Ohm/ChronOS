@@ -16,9 +16,11 @@
 
 ### Active T
 - **T128** elevated + blur tokens — `active/T128-elevated-surface-blur-tokens.md`
-  (**OPEN**, следующий к раздаче).
-- **T126/T127** panels — code in tree + errata; live ACCEPT still open
-  (hyprctl/grim). Left exclusive = sidebar+handle (46); header only when chat open.
+- **T133** wallpaper ↔ waytrogen **integration** (not rewrite) —
+  `active/T133-wallpaper-waytrogen-integration.md`  
+  Engine already: service+IPC; need: `wallpaper-gallery`, open waytrogen,
+  UI entry, companion docs.
+- **T126/T127** panels — code+errata; live ACCEPT still open.
 - Pause: T115 Files. orchestration/ gitignored.
 
 ### Queued visual (не раздавать до T128)

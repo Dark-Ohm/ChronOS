@@ -149,6 +149,16 @@ layers — do in order, do not parallelize 3D with panel polish.
   otherwise handle overlays tiles. Right = rail+handle (54).
 - Left agent header ("Hermes") only when chat open — not on rail-only.
 
+## Wallpaper / waytrogen (2026-07-25)
+
+- **Engine in shell:** `crates/services/src/wallpaper` (awww), `wallpaper_ctl`
+  (`~/Pictures/Wallpapers`), IPC `wallpaper-next` / `wallpaper-set:`.
+- **Not shipped:** waytrogen binary/UI. Donor = `reference/waytrogen-main`
+  for CLI patterns only (Unlicense → NOTICE).
+- **Policy:** integrate optional gallery (`exec waytrogen`), do **not** rewrite
+  waytrogen. Companion wording OK ("not ours — install together?").
+- **T133** OPEN — gallery IPC + UI entry + docs.
+
 ## На горизонте (known gaps / follow-up specs, not yet built)
 
 _Cross-session durable: these are explicitly deferred, each tied to a named future consumer. Do not start them without the linked spec._
