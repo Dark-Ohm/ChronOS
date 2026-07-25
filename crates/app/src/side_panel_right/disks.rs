@@ -7,6 +7,7 @@ use chronos_services::{DiskInfo, DisksCommand};
 use gpui::{App, ElementId, IntoElement, SharedString, div, prelude::*, px, relative};
 use chronos_ui::Theme;
 
+use crate::side_panel_right::surfaces;
 use crate::state::AppState;
 
 fn usage_card(disk: &DiskInfo, theme: &Theme) -> impl IntoElement {
@@ -21,7 +22,7 @@ fn usage_card(disk: &DiskInfo, theme: &Theme) -> impl IntoElement {
         .gap(px(if action_row { 8. } else { 9. }))
         .p(px(12.))
         .rounded(px(9.))
-        .bg(theme.bg.primary)
+        .bg(surfaces::card(theme))
         .border_1()
         .border_color(theme.border.subtle)
         .child(

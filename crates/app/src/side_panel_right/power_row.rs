@@ -7,6 +7,7 @@ use chrono::{Datelike, Local};
 use gpui::{Context, IntoElement, div, img, prelude::*, px};
 use chronos_ui::Theme;
 
+use crate::side_panel_right::surfaces;
 use crate::side_panel_right::view::SidePanelRightView;
 
 pub(crate) const ARM_TIMEOUT: Duration = Duration::from_secs(3);
@@ -130,7 +131,7 @@ pub fn render_footer(
         .flex_none()
         .border_t_1()
         .border_color(theme.border.subtle)
-        .bg(theme.bg.primary)
+        .bg(surfaces::card(&theme))
         .px(px(12.))
         .py(px(10.))
         .flex()

@@ -4,7 +4,7 @@
 
 use std::collections::VecDeque;
 
-use gpui::{Hsla, IntoElement, div, prelude::*, px};
+use gpui::{Hsla, IntoElement, div, prelude::*, px, rgb};
 use chronos_ui::Theme;
 
 /// Ring depth — mockup renders 24 bars.
@@ -16,15 +16,27 @@ pub const H_RAM: f32 = 34.;
 pub const H_GPU: f32 = 26.;
 pub const H_NET: f32 = 26.;
 
-/// Spectrum bar colors from active Theme.
+/// Spectrum bar colors: mockup accents on dark, status tokens on light.
 pub fn color_cpu(theme: &Theme) -> Hsla {
-    theme.status.info
+    if theme.is_light {
+        theme.status.info
+    } else {
+        rgb(0x89_dc_eb).into()
+    }
 }
 pub fn color_ram(theme: &Theme) -> Hsla {
-    theme.status.info
+    if theme.is_light {
+        theme.status.info
+    } else {
+        rgb(0x89_b4_fa).into()
+    }
 }
 pub fn color_gpu(theme: &Theme) -> Hsla {
-    theme.status.warning
+    if theme.is_light {
+        theme.status.warning
+    } else {
+        rgb(0xf9_e2_af).into()
+    }
 }
 pub fn color_net(theme: &Theme) -> Hsla {
     theme.text.muted

@@ -6,6 +6,7 @@
 use gpui::{App, ElementId, IntoElement, SharedString, div, prelude::*, px};
 use chronos_ui::Theme;
 
+use crate::side_panel_right::surfaces;
 use chronos_services::WallpaperState;
 
 
@@ -50,7 +51,7 @@ pub fn render_wallpaper_card(
         .gap(px(8.))
         .p(px(12.))
         .rounded(px(9.))
-        .bg(theme.bg.primary)
+        .bg(surfaces::card(&theme))
         .border_1()
         .border_color(theme.border.subtle)
         // Title row

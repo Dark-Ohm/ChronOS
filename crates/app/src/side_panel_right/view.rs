@@ -16,7 +16,7 @@ use chronos_services::net_stats::{self, NetState};
 use chronos_services::{DiskInfo, MprisState, Service, SystemResourcesState};
 use gpui::{
     App, AsyncApp, Context, IntoElement, Render, ScrollHandle, Window, div, layer_shell::*,
-    prelude::*, px, rgb,
+    prelude::*, px,
 };
 use gpui_animation::animation::TransitionExt;
 use gpui_animation::transition::general::Linear;
@@ -42,6 +42,8 @@ use crate::side_panel_right::{
 use crate::state::{self, AppState};
 
 use chronos_ui::{Theme, elevation_glow_bar};
+
+use super::surfaces;
 
 /// Delay before peek-close after mouse leaves panel (or strip).
 const PEEK_LEAVE_DEBOUNCE: Duration = Duration::from_millis(280);
@@ -371,7 +373,7 @@ impl Render for SidePanelRightView {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .bg(theme.bg.tertiary)
+                    .bg(surfaces::chrome(&theme))
                     .border_r_1()
                     .border_color(theme.border.subtle)
                     .on_mouse_down(gpui::MouseButton::Left, resize_mouse_handler)
@@ -386,7 +388,7 @@ impl Render for SidePanelRightView {
                     .flex_1()
                     .min_w(px(0.))
                     .h_full()
-                    .bg(theme.bg.tertiary)
+                    .bg(surfaces::chrome(&theme))
                     .border_l_1()
                     .border_color(theme.border.default)
                     .flex()
@@ -405,6 +407,7 @@ impl Render for SidePanelRightView {
                                 .flex()
                                 .flex_col()
                                 .overflow_hidden()
+                                .bg(surfaces::content(&theme))
                                 .shadow(elev.shadows.to_vec());
                             // Light-C glow-ребро на верхней кромке content-колонки.
                             let col = match elev.glow {

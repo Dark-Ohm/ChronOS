@@ -9,10 +9,11 @@ use std::path::{Path, PathBuf};
 use gpui::{
     Context, ImageSource, IntoElement, ObjectFit, div, hsla, img, prelude::*, px, relative,
 };
-use chronos_ui::Theme;
+use chronos_ui::{Theme, on_fill};
 
 use chronos_services::MprisState;
 
+use crate::side_panel_right::surfaces;
 use crate::side_panel_right::view::SidePanelRightView;
 use crate::state::AppState;
 
@@ -98,7 +99,8 @@ fn render_art_frame(
     let frame = div()
         .w_full()
         .h(px(198.))
-        .bg(theme.bg.tertiary)
+        // Mockup art well is pure black (not a theme surface).
+        .bg(hsla(0., 0., 0., 1.0))
         .flex()
         .items_center()
         .justify_center()
@@ -113,7 +115,7 @@ fn render_art_frame(
             img("icons/play.svg")
                 .w(px(34.))
                 .h(px(34.))
-                .text_color(theme.text.primary)
+                .text_color(hsla(0., 0., 0.88, 1.0))
                 .opacity(0.9),
         )
     };
@@ -126,7 +128,7 @@ fn render_art_frame(
                 .right(px(10.))
                 .font_family("JetBrains Mono")
                 .text_size(px(10.))
-                .text_color(theme.text.primary)
+                .text_color(hsla(0., 0., 0.9, 1.0))
                 // Scrim over album art — always dark for contrast on any cover.
                 .bg(hsla(0., 0., 0., 0.5))
                 .px(px(5.))
@@ -176,7 +178,7 @@ pub fn render_mpris_card(
         .flex_col()
         .rounded(px(9.))
         .overflow_hidden()
-        .bg(theme.bg.primary)
+        .bg(surfaces::card(&theme))
         .border_1()
         .border_color(theme.border.subtle)
         // ~16:9 of 352 content width
@@ -210,7 +212,7 @@ pub fn render_mpris_card(
                         .gap(px(2.))
                         .p(px(3.))
                         .rounded(px(8.))
-                        .bg(theme.bg.tertiary)
+                        .bg(surfaces::well(&theme))
                         .border_1()
                         .border_color(theme.border.default)
                         .child(tray_icon_btn(
@@ -288,7 +290,11 @@ fn tray_icon_btn(
         .items_center()
         .justify_center()
         .cursor_pointer()
-        .text_color(if is_play { theme.bg.tertiary } else { theme.text.muted })
+        .text_color(if is_play {
+            on_fill(theme.accent.primary)
+        } else {
+            theme.text.muted
+        })
         .when(is_play, |d| d.bg(theme.accent.primary))
         .hover(|s| {
             if is_play {
@@ -317,13 +323,13 @@ fn tray_play(theme: &Theme, icon_path: &'static str, enabled: bool) -> impl Into
         .justify_center()
         .cursor_pointer()
         .bg(theme.accent.primary)
-        .text_color(theme.bg.tertiary)
+        .text_color(on_fill(theme.accent.primary))
         .hover(|s| s.bg(theme.accent.hover))
         .child(
             img(icon_path)
                 .w(px(17.))
                 .h(px(17.))
-                .text_color(theme.bg.tertiary),
+                .text_color(on_fill(theme.accent.primary)),
         );
 
     if enabled {

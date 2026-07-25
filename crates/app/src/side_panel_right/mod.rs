@@ -18,6 +18,7 @@ mod permission;
 mod power_row;
 mod rail;
 mod spectrum_row;
+mod surfaces;
 mod tabs;
 pub mod view;
 mod wallpaper_card;

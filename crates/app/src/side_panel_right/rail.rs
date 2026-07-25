@@ -4,10 +4,11 @@
 //! `accent.primary` bar on its left edge + `interactive.hover` fill.
 //! Design brief: `design.md` §"Shell-IDE правая панель (таб-контейнер)".
 
-use gpui::{App, Context, Hsla, IntoElement, Window, div, prelude::*, px, rgb, svg};
+use gpui::{App, Context, Hsla, IntoElement, Window, div, prelude::*, px, svg};
 
 use chronos_ui::Theme;
 
+use crate::side_panel_right::surfaces;
 use crate::side_panel_right::tabs::PanelTab;
 
 use std::rc::Rc;
@@ -40,7 +41,7 @@ pub fn render_rail(
         .py(px(8.))
         .w(px(RAIL_WIDTH))
         .h_full()
-        .bg(theme.bg.tertiary)
+        .bg(surfaces::chrome(theme))
         .border_l_1()
         .border_color(theme.border.default)
         .children(PanelTab::ALL.into_iter().map(|tab| {
