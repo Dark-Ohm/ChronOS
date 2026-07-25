@@ -37,7 +37,9 @@ use gpui_rsx::rsx;
 use chronos_services::{
     AudioCommand, AudioDevice, AudioState, EndpointState, Service, audio::clamp_volume,
 };
-use chronos_ui::Theme;
+use chronos_ui::{
+    Theme, elevation_apply_light_chrome, elevation_blur_layer,
+};
 
 use crate::state::AppState;
 use crate::volume_popup::{POPUP_WIDTH, close_this, resize_to_fit};
@@ -135,21 +137,9 @@ impl Render for VolumePopupView {
         // Все параметры (тени / blur / glow / watermark) берутся из
         // `theme.elevation_popup()` — единый язык глубины (T128).
         let elev = theme.elevation_popup();
+        let blur_layer = elevation_blur_layer(&elev, radius_lg);
 
-        let blur_layer = div().absolute().inset_0().child(canvas(
-            |_bounds, _window, _cx| {},
-            move |bounds, _state, window: &mut Window, _cx: &mut App| {
-                window.paint_blur(
-                    bounds,
-                    elev.blur.radius,
-                    Corners::all(radius_lg),
-                    elev.blur.tint,
-                    elev.blur.saturation,
-                );
-            },
-        ));
-
-        let mut card = div()
+        let card = div()
             .relative()
             .flex_col()
             .w(px(POPUP_WIDTH))
@@ -160,30 +150,7 @@ impl Render for VolumePopupView {
             .shadow(elev.shadows.to_vec())
             .child(blur_layer)
             .overflow_hidden();
-
-        if let Some(glow) = elev.glow {
-            card = card
-                .child(
-                    div()
-                        .absolute()
-                        .top(px(0.))
-                        .left(px(0.))
-                        .right(px(0.))
-                        .h(px(1.))
-                        .bg(glow)
-                        .opacity(0.4),
-                )
-                .child(
-                    svg()
-                        .path("icons/hexagon-sigil.svg")
-                        .absolute()
-                        .top(px(-30.))
-                        .right(px(-30.))
-                        .size(px(140.))
-                        .text_color(glow)
-                        .opacity(0.18),
-                );
-        }
+        let mut card = elevation_apply_light_chrome(&elev, card);
 
         // ── Header «Sound» + ✕ (rsx) ────────────────────────────────
         let header = rsx! {

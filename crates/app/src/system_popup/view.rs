@@ -15,7 +15,7 @@ use gpui::{
 };
 
 use chronos_services::{BrightnessCommand, PowerProfile, Service, UPowerData};
-use chronos_ui::Theme;
+use chronos_ui::{Theme, elevation_apply_light_chrome, elevation_blur_layer};
 
 use crate::state::AppState;
 use crate::system_popup::{close_this, gaming_mode, POPUP_WIDTH};
@@ -73,22 +73,9 @@ impl Render for SystemPopupView {
         let font_ui = theme.font_ui;
 
         let elev = theme.elevation_popup();
+        let blur_layer = elevation_blur_layer(&elev, radius_lg);
 
-        // Frosted-glass слой — параметры из токенов (radius + tint + sat).
-        let blur_layer = div().absolute().inset_0().child(canvas(
-            |_bounds, _window, _cx| {},
-            move |bounds, _state, window: &mut Window, _cx: &mut App| {
-                window.paint_blur(
-                    bounds,
-                    elev.blur.radius,
-                    Corners::all(radius_lg),
-                    elev.blur.tint,
-                    elev.blur.saturation,
-                );
-            },
-        ));
-
-        let mut card = div()
+        let card = div()
             .relative()
             .flex_col()
             .w(px(POPUP_WIDTH))
@@ -99,30 +86,7 @@ impl Render for SystemPopupView {
             .shadow(elev.shadows.to_vec())
             .child(blur_layer)
             .overflow_hidden();
-
-        if let Some(glow) = elev.glow {
-            card = card
-                .child(
-                    div()
-                        .absolute()
-                        .top(px(0.))
-                        .left(px(0.))
-                        .right(px(0.))
-                        .h(px(1.))
-                        .bg(glow)
-                        .opacity(0.4),
-                )
-                .child(
-                    svg()
-                        .path("icons/hexagon-sigil.svg")
-                        .absolute()
-                        .top(px(-30.))
-                        .right(px(-30.))
-                        .size(px(140.))
-                        .text_color(glow)
-                        .opacity(0.18),
-                );
-        }
+        let mut card = elevation_apply_light_chrome(&elev, card);
 
         card.child(header(text_primary, text_muted, hover, radius, font_ui))
             .child(div().w_full().h(px(1.)).bg(divider))

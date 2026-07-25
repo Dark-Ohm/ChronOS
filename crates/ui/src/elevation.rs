@@ -1,63 +1,54 @@
 //! Elevated-surface + blur tokens — единый язык глубины для карточек шелла.
 //!
-//! T128 (visual depth wave 1/4). Цель — убрать copy-paste
-//! `BoxShadow::new(px(0.), px(6.), …)` / ad-hoc `paint_blur` из каждого
-//! попапа и дать один продуктовый источник истинны для теней/blur/glow.
+//! T128 (visual depth wave 1/4) + errata helpers: views read
+//! [`Theme::elevation_popup`] and build chrome via
+//! [`elevation_blur_layer`] / [`elevation_glow_bar`] / [`elevation_watermark`].
 //!
-//! Правило из задачи: хелперы обязаны работать БЕЗ `Window` — это только
-//! стиль (тени/цвета/радиусы). `paint_blur` живёт в paint-фазе view
-//! (`canvas`-замыкание) и читает радиус/тинт из [`BlurSpec`].
+//! Style helpers do not need `&mut Window` except the blur paint path, which
+//! runs inside a `canvas` closure (fork `paint_blur`).
 
 use std::sync::OnceLock;
 
-use gpui::{BoxShadow, Hsla, Pixels, px};
+use gpui::{
+    App, BoxShadow, Corners, Div, Hsla, ParentElement, Pixels, Styled, Window, canvas, div, px, svg,
+};
 
 use super::{Theme, parse_hex};
 
-/// Blur-параметры frosted-glass слоя (читаются в `window.paint_blur`).
+/// Blur parameters for frosted-glass (`window.paint_blur`).
 ///
-/// Сигнатура форка: `paint_blur(bounds, blur_radius, corner_radii, tint,
-/// saturation)`. Радиус/углы задаются вызывающим (обычно `theme.radius_lg`);
-/// здесь — только tint + saturation, общие для всех попапов.
+/// Fork: `paint_blur(bounds, blur_radius, corner_radii, tint, saturation)`.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct BlurSpec {
-    /// Радиус размытия (px). Сейчас 18 — эталон из post-T121 volume/system.
+    /// Gaussian radius. Canonical post-T121/T125: 18px.
     pub radius: Pixels,
-    /// Цветовой тинт поверх размытия (light tint, alpha ~0.06).
+    /// Tint over blur (white α≈0.06).
     pub tint: Hsla,
-    /// Насыщенность (fork-параметр `paint_blur`). 1.15 — текущий рецепт.
+    /// Saturation boost (fork param). Canonical: 1.15.
     pub saturation: f32,
 }
 
-/// Токены приподнятой поверхности (popups / cards).
-///
-/// `shadows` пуст в тёмной схеме (там читаемость даёт blur+fill, а не
-/// drop-shadow), и заполнен в светлой (Light C). `glow` — опциональный
-/// Light-C premium-слой (1px акцентное ребро), поэтому `Option`, а не
-/// пустой `Hsla`.
+/// Elevated surface tokens for floating cards / panel content.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ElevationTokens {
-    /// Тени карточки. Пусто в тёмной схеме.
+    /// Card shadows. Empty in dark (blur carries depth).
     pub shadows: &'static [BoxShadow],
-    /// Blur-спецификация frosted-слоя (читается в paint-фазе).
+    /// Frosted blur spec (both schemes share the same numbers).
     pub blur: BlurSpec,
-    /// Радиус скругления карточки (обычно `theme.radius_lg`).
+    /// Card corner radius (usually `theme.radius_lg`).
     pub radius: Pixels,
-    /// Акцент для Light-C glow-ребра. `None` → слой не рисуем.
+    /// Light-C top glow + watermark accent. `None` in dark.
     pub glow: Option<Hsla>,
+    /// Whether to paint hexagon watermark (Light C only).
+    pub watermark: bool,
 }
 
 impl Theme {
-    /// Токены приподнятой поверхности для всплывающих карточек.
+    /// Popup / elevated-card depth language.
     ///
-    /// - **Тёмная:** blur-only (light tint alpha 0.06, radius 18, sat
-    ///   1.15) — эталон post-T121/T125. Теней нет (на тёмном фоне drop-
-    ///   shadow не читается и только замыливает).
-    /// - **Светлая (Light C):** те же blur-параметры + мягкая indigo
-    ///   drop-shadow (y=6, blur 24) + 1px inset accent ring (glow). Тени
-    ///   измерены из канонического рецепта `volume_popup`/`updates_popup`
-    ///   (`BoxShadow::new(0,6, 0x3c40_6e).blur(24)` + inset
-    ///   `0x007a_cc.spread(1).inset()`).
+    /// - **Dark:** blur-only (r18, tint α0.06, sat 1.15), no drop-shadow.
+    /// - **Light (Light C):** same blur + indigo drop (y6/blur24) + inset
+    ///   accent ring + glow + watermark.
     pub fn elevation_popup(&self) -> ElevationTokens {
         let blur = BlurSpec {
             radius: px(18.0),
@@ -76,6 +67,7 @@ impl Theme {
                 blur,
                 radius: self.radius_lg,
                 glow: Some(self.accent.primary),
+                watermark: true,
             }
         } else {
             ElevationTokens {
@@ -83,36 +75,95 @@ impl Theme {
                 blur,
                 radius: self.radius_lg,
                 glow: None,
+                watermark: false,
             }
         }
     }
 }
 
-/// Пустой пул теней (тёмная схема — blur-only).
+/// Empty shadow pool (dark).
 pub static EMPTY_SHADOWS: [BoxShadow; 0] = [];
 
-/// Light-C тени попапа: мягкая indigo drop-shadow + 1px inset accent ring.
-///
-/// `BoxShadow::new` не `const`, поэтому пул строится один раз лениво и
-/// кэшируется в `OnceLock`, отдавая `&'static [BoxShadow]`. [`Theme`] —
-/// `Copy`, а хелперы не должны аллоцировать на каждом render, поэтому
-/// токены ссылаются на этот единственный статический пул.
 static LIGHT_SHADOWS_LOCK: OnceLock<Vec<BoxShadow>> = OnceLock::new();
 
 fn light_popup_shadows() -> &'static [BoxShadow] {
     LIGHT_SHADOWS_LOCK
         .get_or_init(|| {
+            // Fixed hexes — parse cannot fail on these literals.
+            let indigo = parse_hex("3c406e").unwrap_or_else(|_| Hsla::default());
+            let accent = parse_hex("007acc").unwrap_or_else(|_| Hsla::default());
             vec![
-                // 0x3c40_6e — мягкая indigo drop-shadow (y=6, blur 24).
-                BoxShadow::new(px(0.0), px(6.0), parse_hex("3c406e").unwrap())
-                    .blur_radius(px(24.0)),
-                // 0x007a_cc — 1px inset accent ring (Light C glow-ребро).
-                BoxShadow::new(px(0.0), px(0.0), parse_hex("007acc").unwrap())
+                BoxShadow::new(px(0.0), px(6.0), indigo).blur_radius(px(24.0)),
+                BoxShadow::new(px(0.0), px(0.0), accent)
                     .spread_radius(px(1.0))
                     .inset(),
             ]
         })
         .as_slice()
+}
+
+// ── View helpers (shared chrome) ─────────────────────────────────────
+
+/// Absolute frosted layer that paints `elev.blur` inside a `canvas`.
+///
+/// `corner_radius` is the card's corner (often `elev.radius` or a local
+/// override like updates' 6px).
+pub fn elevation_blur_layer(elev: &ElevationTokens, corner_radius: Pixels) -> Div {
+    let radius = elev.blur.radius;
+    let tint = elev.blur.tint;
+    let sat = elev.blur.saturation;
+    div().absolute().inset_0().child(canvas(
+        |_bounds, _window, _cx| {},
+        move |bounds, _state, window: &mut Window, _cx: &mut App| {
+            window.paint_blur(bounds, radius, Corners::all(corner_radius), tint, sat);
+        },
+    ))
+}
+
+/// 1px top accent glow strip (Light C).
+pub fn elevation_glow_bar(glow: Hsla) -> Div {
+    div()
+        .absolute()
+        .top(px(0.))
+        .left(px(0.))
+        .right(px(0.))
+        .h(px(1.))
+        .bg(glow)
+        .opacity(0.4)
+}
+
+/// Corner hexagon watermark (Light C).
+pub fn elevation_watermark(glow: Hsla) -> Div {
+    div()
+        .absolute()
+        .top(px(-30.))
+        .right(px(-30.))
+        .size(px(140.))
+        .child(
+            svg()
+                .path("icons/hexagon-sigil.svg")
+                .size(px(140.))
+                .text_color(glow)
+                .opacity(0.18),
+        )
+}
+
+/// Attach Light-C glow (+ optional watermark) to a card `Div`.
+///
+/// Dark: returns `card` unchanged. Light: glow bar always when `glow` is
+/// set; watermark only if `elev.watermark`.
+pub fn elevation_apply_light_chrome(elev: &ElevationTokens, card: Div) -> Div {
+    match elev.glow {
+        Some(glow) => {
+            let card = card.child(elevation_glow_bar(glow));
+            if elev.watermark {
+                card.child(elevation_watermark(glow))
+            } else {
+                card
+            }
+        }
+        None => card,
+    }
 }
 
 #[cfg(test)]
@@ -121,10 +172,11 @@ mod tests {
 
     #[test]
     fn dark_popup_is_blur_only() {
-        let t = Theme::default(); // тёмная
+        let t = Theme::default();
         let e = t.elevation_popup();
-        assert!(e.shadows.is_empty(), "тёмная схема — без drop-shadow");
-        assert!(e.glow.is_none(), "тёмная схема — без glow-ребра");
+        assert!(e.shadows.is_empty());
+        assert!(e.glow.is_none());
+        assert!(!e.watermark);
         assert_eq!(e.blur.radius, px(18.0));
         assert_eq!(e.blur.saturation, 1.15);
         assert_eq!(e.blur.tint.a, 0.06);
@@ -132,23 +184,18 @@ mod tests {
     }
 
     #[test]
-    fn light_popup_has_shadows_and_glow() {
+    fn light_popup_has_shadows_glow_watermark() {
         let light = Theme::select_scheme(Some("Light".to_string()));
         assert!(light.is_light);
         let e = light.elevation_popup();
-        assert_eq!(e.shadows.len(), 2, "Light C: drop + inset ring");
-        // drop-shadow: offset y=6, blur 24
-        let drop = &e.shadows[0];
-        assert_eq!(drop.offset.y, px(6.0));
-        assert_eq!(drop.blur_radius, px(24.0));
-        assert!(!drop.inset);
-        // inset ring: spread 1, inset
-        let ring = &e.shadows[1];
-        assert!(ring.inset);
-        assert_eq!(ring.spread_radius, px(1.0));
-        // glow = accent.primary (#007acc), не переопределён в Light C
+        assert_eq!(e.shadows.len(), 2);
+        assert_eq!(e.shadows[0].offset.y, px(6.0));
+        assert_eq!(e.shadows[0].blur_radius, px(24.0));
+        assert!(!e.shadows[0].inset);
+        assert!(e.shadows[1].inset);
+        assert_eq!(e.shadows[1].spread_radius, px(1.0));
         assert_eq!(e.glow, Some(light.accent.primary));
-        // blur-параметры идентичны тёмной (общий язык глубины)
+        assert!(e.watermark);
         assert_eq!(e.blur.radius, px(18.0));
         assert_eq!(e.blur.tint.a, 0.06);
     }
@@ -159,13 +206,12 @@ mod tests {
         let light = Theme::select_scheme(Some("Light".to_string())).elevation_popup();
         assert_ne!(dark.shadows.is_empty(), light.shadows.is_empty());
         assert_ne!(dark.glow.is_some(), light.glow.is_some());
-        // но blur-язык общий
+        assert_ne!(dark.watermark, light.watermark);
         assert_eq!(dark.blur, light.blur);
     }
 
     #[test]
     fn light_shadow_pool_is_stable() {
-        // один и тот же 'static-срез между вызовами (без аллокаций на render)
         let a = light_popup_shadows();
         let b = light_popup_shadows();
         assert!(std::ptr::eq(a.as_ptr(), b.as_ptr()));

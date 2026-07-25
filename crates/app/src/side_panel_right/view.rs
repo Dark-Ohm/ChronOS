@@ -40,7 +40,7 @@ use crate::side_panel_right::{
 };
 use crate::state::{self, AppState};
 
-use chronos_ui::Theme;
+use chronos_ui::{Theme, elevation_glow_bar};
 
 /// Delay before peek-close after mouse leaves panel (or strip).
 const PEEK_LEAVE_DEBOUNCE: Duration = Duration::from_millis(280);
@@ -392,16 +392,7 @@ impl Render for SidePanelRightView {
                                 .shadow(elev.shadows.to_vec());
                             // Light-C glow-ребро на верхней кромке content-колонки.
                             let col = match elev.glow {
-                                Some(glow) => col.child(
-                                    div()
-                                        .absolute()
-                                        .top(px(0.))
-                                        .left(px(0.))
-                                        .right(px(0.))
-                                        .h(px(1.))
-                                        .bg(glow)
-                                        .opacity(0.4),
-                                ),
+                                Some(glow) => col.child(elevation_glow_bar(glow)),
                                 None => col,
                             };
                             col.when(self.active_tab == PanelTab::System, |col| {

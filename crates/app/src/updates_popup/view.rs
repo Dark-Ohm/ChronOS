@@ -16,7 +16,7 @@ use chronos_services::{PackageUpdate, Service, UpdateSource, UpgradeState};
 use crate::state::AppState;
 use crate::updates_popup::{MAX_LIST_H, refresh, upgrade_all, upgrade_selected};
 
-use chronos_ui::Theme;
+use chronos_ui::{Theme, elevation_apply_light_chrome, elevation_blur_layer};
 
 // ── Geometry from mockup ────────────────────────────────────────────
 const HEADER_PY: f32 = 12.;
@@ -381,21 +381,10 @@ impl Render for UpdatesPopupView {
         // Тени / blur / glow берём из `theme.elevation_popup()` (T128):
         // light-схема получает тот же Light-C рецепт, что volume/system.
         let elev = theme.elevation_popup();
+        // Keep mockup corner radius 6px (not elev.radius / radius_lg).
+        let blur_layer = elevation_blur_layer(&elev, radius);
 
-        let blur_layer = div().absolute().inset_0().child(canvas(
-            |_bounds, _window, _cx| {},
-            move |bounds, _state, window: &mut Window, _cx: &mut App| {
-                window.paint_blur(
-                    bounds,
-                    elev.blur.radius,
-                    Corners::all(radius),
-                    elev.blur.tint,
-                    elev.blur.saturation,
-                );
-            },
-        ));
-
-        let mut card = div()
+        let card = div()
             .relative()
             .flex_col()
             .rounded(radius) // 6px, not 10px
@@ -405,30 +394,7 @@ impl Render for UpdatesPopupView {
             .shadow(elev.shadows.to_vec())
             .child(blur_layer)
             .overflow_hidden();
-
-        if let Some(glow) = elev.glow {
-            card = card
-                .child(
-                    div()
-                        .absolute()
-                        .top(px(0.))
-                        .left(px(0.))
-                        .right(px(0.))
-                        .h(px(1.))
-                        .bg(glow)
-                        .opacity(0.4),
-                )
-                .child(
-                    svg()
-                        .path("icons/hexagon-sigil.svg")
-                        .absolute()
-                        .top(px(-30.))
-                        .right(px(-30.))
-                        .size(px(140.))
-                        .text_color(glow)
-                        .opacity(0.18),
-                );
-        }
+        let mut card = elevation_apply_light_chrome(&elev, card);
 
         card.child(header).child(list).child(footer)
     }

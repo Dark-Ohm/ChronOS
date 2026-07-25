@@ -1,6 +1,6 @@
 use gpui::{Context, IntoElement, Window, div, img, prelude::*, px, rgb};
 
-use chronos_ui::Theme;
+use chronos_ui::{Theme, elevation_glow_bar};
 
 use super::SidePanelLeft;
 use super::sessions_list::{SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_HANDLE_WIDTH};
@@ -356,18 +356,8 @@ pub fn render_panel(
                 // is sessions sidebar chrome, like the right tab rail.
                 .when(chat_open, |el| {
                     let el = el.child(header).children(dropdown);
-                    // Light-C glow-ребро на верхней кромке content-колонки.
                     match elev.glow {
-                        Some(glow) => el.child(
-                            div()
-                                .absolute()
-                                .top(px(0.))
-                                .left(px(0.))
-                                .right(px(0.))
-                                .h(px(1.))
-                                .bg(glow)
-                                .opacity(0.4),
-                        ),
+                        Some(glow) => el.child(elevation_glow_bar(glow)),
                         None => el,
                     }
                 })

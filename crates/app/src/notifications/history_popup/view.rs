@@ -20,7 +20,7 @@ use chronos_services::{Notification, NotificationCommand, Service, Urgency};
 
 use crate::state::AppState;
 
-use chronos_ui::Theme;
+use chronos_ui::{Theme, elevation_blur_layer, elevation_glow_bar};
 
 // ── Mockup-faithful geometry ────────────────────────────────────────
 const PADDING: f32 = 10.;
@@ -158,19 +158,7 @@ impl Render for HistoryPopupView {
         // Тени / blur / glow — из `theme.elevation_popup()` (T128):
         // light-схема получает Light-C рецепт, тёмная — frosted blur-only.
         let elev = theme.elevation_popup();
-
-        let blur_layer = div().absolute().inset_0().child(canvas(
-            |_bounds, _window, _cx| {},
-            move |bounds, _state, window: &mut Window, _cx: &mut App| {
-                window.paint_blur(
-                    bounds,
-                    elev.blur.radius,
-                    Corners::all(radius_lg),
-                    elev.blur.tint,
-                    elev.blur.saturation,
-                );
-            },
-        ));
+        let blur_layer = elevation_blur_layer(&elev, radius_lg);
 
         let mut panel = div()
             .relative()
@@ -183,17 +171,9 @@ impl Render for HistoryPopupView {
             .child(blur_layer)
             .overflow_hidden();
 
+        // History: glow strip only (no watermark — dense list, mockup has none).
         if let Some(glow) = elev.glow {
-            panel = panel.child(
-                div()
-                    .absolute()
-                    .top(px(0.))
-                    .left(px(0.))
-                    .right(px(0.))
-                    .h(px(1.))
-                    .bg(glow)
-                    .opacity(0.4),
-            );
+            panel = panel.child(elevation_glow_bar(glow));
         }
 
         panel.child(body).child(footer)
