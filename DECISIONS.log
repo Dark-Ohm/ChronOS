@@ -1033,3 +1033,18 @@ full Bevy/egui-wgpu dual loop beside layer-shell.
 
 **Product priority:** T128 first; T129–T130 next; T131–T132 only after polish
 wave is stable.
+
+## 2026-07-25 — Wallpaper: integrate waytrogen, do not rewrite it
+
+**Accepted:** ChronOS owns the **wallpaper engine** (`services/wallpaper` via
+`awww`, IPC `wallpaper-next` / `wallpaper-set`, `wallpaper_ctl` folder
+cycle). **Waytrogen** remains a separate optional **gallery GUI** (Unlicense
+donor for CLI contracts only — already in NOTICE). Product stance:
+cooperate and integrate (`exec waytrogen` / companion install opt-in), not
+port their UI into GPUI and not brand their picker as first-party.
+
+**Rejected:** embedding/shipping waytrogen as "ChronOS wallpaper manager";
+hard package dependency; full in-shell gallery rewrite of waytrogen.
+
+**Follow-up:** T133 — open_gallery + IPC `wallpaper-gallery` + minimal UI
+entry + docs/companion wording.
