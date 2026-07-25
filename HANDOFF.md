@@ -22,9 +22,11 @@
   - **T126** left sessions sidebar + dock exclusive — code+errata
     `f89e27d`, **live smoke still open** (review REJECT until hyprctl/grim).
     `orchestration/tasks/active/T126-left-panel-sessions-sidebar-dock.md`
-  - **T127** right panel exclusive + width resize (always exclusive when
-    open; drag handle; `exclusive_edge: RIGHT`).
+  - **T127** right panel = **mirror left**: tab **rail** exclusive bar;
+    content overlay; Dock → full exclusive; **Super+G** IPC
+    `toggle-side-panel-right`; edge **RIGHT**.
     `orchestration/tasks/active/T127-right-panel-exclusive-resize.md`
+    (черновик «exclusive always» — **отменён**, см. DECISIONS).
   - orchestration gitignored — брифы на диске. Pause: T115.
 
 **Обновлено: 2026-07-24 — T119 ПРИНЯТ WITH CAVEATS** (`eac0591`).
