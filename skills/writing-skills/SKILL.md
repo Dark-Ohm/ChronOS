@@ -590,6 +590,32 @@ Micro-tests verify wording; they do not replace pressure scenarios for disciplin
 - Plugging holes systematically
 - Meta-testing techniques
 
+## A/B Test a Router or Orientation Skill (cheap validation)
+
+When a skill's whole job is *orienting* an agent (e.g. a `start-here` router),
+the normal single-agent pressure scenario under-tests it — the agent may
+comply because the skill is present, but you can't see whether the skill is
+doing the work or whether the repo docs alone would have sufficed.
+
+**Run a controlled A/B instead of one baseline:**
+1. Dispatch **two** leaf subagents (background, parallel) with the SAME
+   read-only task. Give agent A the skill to follow ("load and strictly follow
+   `start-here`"); explicitly forbid agent B from using any skill.
+2. Give both a task that a confused agent would get wrong: identify what was
+   *actually* completed last session (fact, not plan), find an open Critical
+   bug, and judge a deliberately-stale sibling skill ("should a new agent
+   trust `hindsight-cloud` here?").
+3. Compare: did A and B both land correctly? If B also passed, the skill is
+   redundant for that case (fine, but note what actually carried the agent —
+   often a doc note, not the skill). If B failed where A passed, the skill is
+   earning its keep. If A failed, the skill has a gap — patch it.
+4. Have each agent end with a one-line marker ("Ориентировался через
+   start-here: ДА/НЕТ") so you can verify compliance at a glance.
+
+This directly tests the skill's value against the repo's own documentation and
+exposes stale cross-references (dead sibling skills, leaked sibling-project
+content) that a single happy-path run hides.
+
 ## Anti-Patterns
 
 ### ❌ Narrative Example

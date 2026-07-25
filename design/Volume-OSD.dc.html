@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volume OSD — Decorative Bar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#11111b;font-family:'Inter',system-ui,sans-serif;color:#cdd6f4;-webkit-font-smoothing:antialiased}
+
+/* Desktop */
+.desktop{width:100vw;height:100vh;position:relative;background:#181825}
+.desktop-grid{position:absolute;inset:0;background-image:
+  radial-gradient(ellipse 80% 60% at 70% 80%, rgba(0,122,204,0.05) 0%, transparent 70%),
+  radial-gradient(ellipse 60% 50% at 20% 30%, rgba(203,166,247,0.03) 0%, transparent 60%);
+}
+
+/* Top bar hint */
+.topbar{position:absolute;top:0;left:0;right:0;height:30px;background:#11111b;border-bottom:1px solid #232336;display:flex;align-items:center;padding:0 12px}
+.topbar-dot{width:6px;height:6px;border-radius:50%;background:#45475a}
+.topbar-dot.active{background:#007acc}
+.topbar-clock{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:#a6adc8}
+
+/* ===== OSD Volume Bar ===== */
+.osd{
+  position:absolute;
+  bottom:52px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:8px 14px;
+  background:#1e1e2e;
+  border:1px solid #313244;
+  border-radius:8px;
+  box-shadow:0 8px 28px rgba(0,0,0,0.45),0 0 0 1px rgba(0,0,0,0.2);
+  opacity:1;
+  pointer-events:none;
+  font-family:'Inter',system-ui,sans-serif;
+}
+
+/* Speaker icon */
+.osd-icon{
+  width:20px;
+  height:20px;
+  flex:none;
+  color:#89b4fa;
+}
+.osd-icon.muted{color:#f38ba8}
+
+/* Progress track */
+.osd-track{
+  width:160px;
+  height:4px;
+  background:#313244;
+  border-radius:2px;
+  overflow:hidden;
+  flex:none;
+}
+.osd-fill{
+  height:100%;
+  border-radius:2px;
+  background:#89b4fa;
+  transition:width .35s cubic-bezier(.22,1,.36,1);
+}
+.osd-fill.muted{background:#f38ba8}
+
+/* Percentage text */
+.osd-pct{
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px;
+  font-weight:500;
+  color:#cdd6f4;
+  min-width:32px;
+  text-align:right;
+  flex:none;
+}
+
+/* ===== Animation states ===== */
+.osd.hidden{opacity:0;transition:opacity .3s ease}
+.osd.appear{opacity:1}
+
+/* Muted state — cross through icon */
+.osd-icon .bar-off{
+  opacity:0;
+  transition:opacity .15s;
+}
+.osd.muted .osd-icon .bar-off{opacity:1}
+
+/* === Demo: auto-hide after 2.5s === */
+@keyframes osd-fadeout{
+  0%{opacity:1}
+  70%{opacity:1}
+  100%{opacity:0}
+}
+
+/* Variant: bottom-center */
+.osd-variant{font-size:10px;color:#45475a;text-align:center;position:absolute;bottom:28px;left:50%;transform:translateX(-50%);letter-spacing:.04em}
+
+/* ===== Volume variants on screen ===== */
+
+/* 1. Normal: 72% */
+.osd-v1{
+  bottom:52px;
+  left:50%;
+  transform:translateX(-50%);
+}
+.osd-v1 .osd-fill{width:72%}
+.osd-v1 .osd-pct::after{content:"72%"}
+.osd-v1{animation:osd-fadeout 3s ease forwards}
+
+/* 2. Full: 100% */
+.osd-v2{
+  bottom:84px;
+  left:50%;
+  transform:translateX(-50%);
+}
+.osd-v2 .osd-fill{width:100%}
+.osd-v2 .osd-pct::after{content:"100%"}
+
+/* 3. Low: 18% */
+.osd-v3{
+  bottom:116px;
+  left:50%;
+  transform:translateX(-50%);
+}
+.osd-v3 .osd-fill{width:18%}
+.osd-v3 .osd-pct::after{content:"18%"}
+
+/* 4. Muted: 0% */
+.osd-v4{
+  bottom:148px;
+  left:50%;
+  transform:translateX(-50%);
+}
+.osd-v4 .osd-fill{width:0%}
+.osd-v4 .osd-pct::after{content:"Mute"}
+.osd-v4{animation:osd-fadeout 3s ease 0.5s forwards}
+
+/* === Single OSD demo — animate through states === */
+@keyframes vol-rise{
+  0%{width:0%}
+  100%{width:65%}
+}
+
+/* ===== Label on screen ===== */
+.label{
+  position:absolute;
+  font-size:10px;
+  font-family:'JetBrains Mono',monospace;
+  color:#45475a;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  pointer-events:none;
+}
+
+/* Legend */
+.legend{
+  position:absolute;
+  top:50px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:24px;
+  font-size:11px;
+  color:#45475a;
+}
+.legend span{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.legend .dot{
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  flex:none;
+}
+</style>
+</head>
+<body>
+<div class="desktop">
+  <div class="desktop-grid"></div>
+  <div class="topbar">
+    <svg class="topbar-dot" viewBox="0 0 8 8" width="16" height="16" style="width:auto;height:auto;opacity:.5"></svg>
+    <div class="topbar-dot active"></div>
+    <div class="topbar-dot"></div>
+    <div class="topbar-clock">14:37</div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <span><div class="dot" style="background:#89b4fa"></div> Normal</span>
+    <span><div class="dot" style="background:#a6e3a1"></div> Full</span>
+    <span><div class="dot" style="background:#f9e2af"></div> Low</span>
+    <span><div class="dot" style="background:#f38ba8"></div> Muted</span>
+  </div>
+
+  <!-- Variant 1: Normal 72% -->
+  <div class="label" style="bottom:52px;left:50%;transform:translateX(-50%) translateY(22px);">72% — Normal</div>
+  <div class="osd osd-v1" data-osd-id="volume-osd-72">
+    <svg class="osd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+      <path d="M15.54 8.46a5 5 0 010 7.07"/>
+      <path d="M19.07 4.93a10 10 0 010 14.14"/>
+      <line class="bar-off" x1="3" y1="3" x2="21" y2="21" stroke="#f38ba8" stroke-width="2"/>
+    </svg>
+    <div class="osd-track"><div class="osd-fill" style="width:72%"></div></div>
+    <span class="osd-pct" style="display:none">72%</span>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:#cdd6f4;min-width:32px;text-align:right;">72%</span>
+  </div>
+
+  <!-- Variant 2: Full 100% -->
+  <div class="label" style="bottom:84px;left:50%;transform:translateX(-50%) translateY(22px);">100% — Full</div>
+  <div class="osd osd-v2" data-osd-id="volume-osd-100">
+    <svg class="osd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+      <path d="M15.54 8.46a5 5 0 010 7.07"/>
+      <path d="M19.07 4.93a10 10 0 010 14.14"/>
+      <line class="bar-off" x1="3" y1="3" x2="21" y2="21" stroke="#f38ba8" stroke-width="2"/>
+    </svg>
+    <div class="osd-track"><div class="osd-fill" style="width:100%"></div></div>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:#cdd6f4;min-width:32px;text-align:right;">100%</span>
+  </div>
+
+  <!-- Variant 3: Low 18% -->
+  <div class="label" style="bottom:116px;left:50%;transform:translateX(-50%) translateY(22px);">18% — Low</div>
+  <div class="osd osd-v3" data-osd-id="volume-osd-18">
+    <svg class="osd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#f9e2af">
+      <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+      <path d="M15.54 8.46a5 5 0 010 7.07"/>
+      <line class="bar-off" x1="3" y1="3" x2="21" y2="21" stroke="#f38ba8" stroke-width="2"/>
+    </svg>
+    <div class="osd-track"><div class="osd-fill" style="width:18%;background:#f9e2af"></div></div>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:#cdd6f4;min-width:32px;text-align:right;">18%</span>
+  </div>
+
+  <!-- Variant 4: Muted 0% -->
+  <div class="label" style="bottom:148px;left:50%;transform:translateX(-50%) translateY(22px);">Muted</div>
+  <div class="osd osd-v4" data-osd-id="volume-osd-mute">
+    <svg class="osd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#f38ba8">
+      <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+      <line x1="23" y1="9" x2="17" y2="15"/>
+      <line x1="17" y1="9" x2="23" y2="15"/>
+    </svg>
+    <div class="osd-track"><div class="osd-fill" style="width:0%;background:#f38ba8"></div></div>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:#f38ba8;min-width:32px;text-align:right;">Mute</span>
+  </div>
+
+  <!-- Single animated OSD — simulates volume up -->
+  <div class="label" style="top:80px;left:50%;transform:translateX(-50%);color:#6c7086;">Single OSD — animated volume change</div>
+  <div id="animated-osd" class="osd" style="top:100px;left:50%;transform:translateX(-50%);bottom:auto;">
+    <svg class="osd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#89b4fa">
+      <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+      <path d="M15.54 8.46a5 5 0 010 7.07"/>
+      <path d="M19.07 4.93a10 10 0 010 14.14"/>
+    </svg>
+    <div class="osd-track"><div id="anim-fill" class="osd-fill" style="width:0%"></div></div>
+    <span id="anim-pct" style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:#cdd6f4;min-width:32px;text-align:right;">0%</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  // Animated volume-up simulation
+  var fill = document.getElementById('anim-fill');
+  var pctEl = document.getElementById('anim-pct');
+  var level = 0;
+  var target = 65;
+
+  function step(){
+    level += Math.random() * 4 + 1;
+    if(level > target) level = target;
+    fill.style.width = level + '%';
+    pctEl.textContent = Math.round(level) + '%';
+    if(level < target){
+      setTimeout(step, 60 + Math.random() * 80);
+    } else {
+      // Hold, then fade
+      setTimeout(function(){
+        var osd = document.getElementById('animated-osd');
+        osd.style.transition = 'opacity 0.4s ease';
+        osd.style.opacity = '0';
+        // Reset after fade
+        setTimeout(function(){
+          level = 0;
+          fill.style.width = '0%';
+          pctEl.textContent = '0%';
+          osd.style.opacity = '1';
+          osd.style.transition = 'none';
+          setTimeout(step, 1200);
+        }, 2000);
+      }, 1500);
+    }
+  }
+  setTimeout(step, 800);
+})();
+</script>
+</body>
+</html>

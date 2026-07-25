@@ -77,3 +77,11 @@ Zed, not crates.io. Path-deps from ChronOS point here.
 | Generic/upstream GPUI concepts | `gpui` |
 | ChronOS shell code itself | `chronos-shell` |
 | Layer-shell popup sizing recipes | `gpui-layer-shell` |
+| **Changing the fork itself** (Source/) — entry map | `gpui-fork-start-here` (fork-internals layer) |
+| Porting external gpui code / crates.io API drift | `fork-api-drift` |
+| Fork's layer-shell / popup / blur / spring APIs | `layer-shell-windows`, `anchored-popups`, `backdrop-blur`, `easing-and-springs` |
+| Renderer internals, vendoring policy, Wayland lifecycle | `wgpu-render-pipeline`, `workspace-vendoring`, `wayland-window-lifecycle` |
+
+This skill is the **consumer-side** ground truth (using the fork from
+ChronOS). The fork-internals layer above lives in the same `skills/` dir —
+route there when the task is *modifying* `Source/`, not consuming it.

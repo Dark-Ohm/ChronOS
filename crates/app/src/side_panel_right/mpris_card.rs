@@ -113,12 +113,7 @@ fn render_art_frame(
 
     let frame = if let Some(path) = art_path {
         let src: ImageSource = path.to_path_buf().into();
-        frame.child(
-            img(src)
-                .w_full()
-                .h_full()
-                .object_fit(ObjectFit::Cover),
-        )
+        frame.child(img(src).w_full().h_full().object_fit(ObjectFit::Cover))
     } else {
         frame.child(
             img("icons/play.svg")
@@ -271,10 +266,7 @@ pub fn render_mpris_card(
 }
 
 fn tray_divider() -> impl IntoElement {
-    div()
-        .w(px(1.))
-        .h(px(16.))
-        .bg(rgb(TRAY_BORDER))
+    div().w(px(1.)).h(px(16.)).bg(rgb(TRAY_BORDER))
 }
 
 fn tray_icon_btn(
@@ -295,11 +287,7 @@ fn tray_icon_btn(
         .items_center()
         .justify_center()
         .cursor_pointer()
-        .text_color(if is_play {
-            rgb(0x18_18_25)
-        } else {
-            rgb(MUTED)
-        })
+        .text_color(if is_play { rgb(0x18_18_25) } else { rgb(MUTED) })
         .when(is_play, |d| d.bg(rgb(ACCENT)))
         .hover(|s| {
             if is_play {
@@ -411,10 +399,7 @@ mod tests {
             "fixture image missing on host: {path}"
         );
         let uri = format!("file://{path}");
-        assert_eq!(
-            art_file_path(Some(&uri)).as_deref(),
-            Some(Path::new(path))
-        );
+        assert_eq!(art_file_path(Some(&uri)).as_deref(), Some(Path::new(path)));
         assert!(art_file_path(Some("file:///no/such/cover.png")).is_none());
     }
 

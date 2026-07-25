@@ -63,7 +63,7 @@ impl Render for UpdatesPopupView {
         let text_muted = theme.text.muted;
         let text_secondary = theme.text.secondary;
         let border = theme.border.default;
-        let radius = theme.radius;       // 6px
+        let radius = theme.radius; // 6px
         let radius_lg = theme.radius_lg; // 12px
         let accent = theme.accent.primary;
         let accent_hover = theme.accent.hover;
@@ -89,7 +89,8 @@ impl Render for UpdatesPopupView {
         // Mutating `self.selection` inside `render` is fine — it's a
         // generic `&mut self` borrow, `cx.listener` is reserved for
         // event-driven mutations only.
-        self.selection.retain(|n| visible_updates.iter().any(|u| &u.name == n));
+        self.selection
+            .retain(|n| visible_updates.iter().any(|u| &u.name == n));
         let is_running = matches!(state.upgrade_state, UpgradeState::Running(_));
         let is_checking = state.checking;
         // Snapshot the selection for the render pass — `self` is borrowed
@@ -211,7 +212,9 @@ impl Render for UpdatesPopupView {
 
         // ── Footer ──────────────────────────────────────────────────
         let upgrade_state = state.upgrade_state.clone();
-        let footer: AnyElement = if updates.is_empty() && matches!(upgrade_state, UpgradeState::Idle) {
+        let footer: AnyElement = if updates.is_empty()
+            && matches!(upgrade_state, UpgradeState::Idle)
+        {
             div().into_any_element()
         } else {
             let status_line: AnyElement = match &upgrade_state {
@@ -283,21 +286,14 @@ impl Render for UpdatesPopupView {
                             .gap(px(8.))
                             .child(
                                 // Track
-                                div()
-                                    .flex_1()
-                                    .h(px(4.))
-                                    .rounded(px(2.))
-                                    .bg(hover)
-                                    .child(
-                                        // Fill
-                                        div()
-                                            .h_full()
-                                            .rounded(px(2.))
-                                            .bg(accent)
-                                            .w(gpui::Length::Definite(gpui::DefiniteLength::Fraction(
-                                                progress_frac,
-                                            ))),
+                                div().flex_1().h(px(4.)).rounded(px(2.)).bg(hover).child(
+                                    // Fill
+                                    div().h_full().rounded(px(2.)).bg(accent).w(
+                                        gpui::Length::Definite(gpui::DefiniteLength::Fraction(
+                                            progress_frac,
+                                        )),
                                     ),
+                                ),
                             )
                             .child(
                                 div()
@@ -513,7 +509,11 @@ fn render_row(
         .flex()
         .items_center()
         .gap(px(5.))
-        .child(div().text_color(text_muted).child(update.old_version.clone()))
+        .child(
+            div()
+                .text_color(text_muted)
+                .child(update.old_version.clone()),
+        )
         .child(div().text_color(text_muted).child("→"))
         .child(
             div()

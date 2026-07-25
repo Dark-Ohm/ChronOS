@@ -78,8 +78,8 @@ impl Render for ProjectPopupView {
                 .enumerate()
                 .map(|(i, entry)| {
                     let is_active = active.as_deref() == Some(entry.path.as_str());
-                    let branch = current_branch(Path::new(&entry.path))
-                        .unwrap_or_else(|| "—".to_string());
+                    let branch =
+                        current_branch(Path::new(&entry.path)).unwrap_or_else(|| "—".to_string());
                     let path = entry.path.clone();
                     div()
                         .id(("project-row", i))
@@ -98,13 +98,11 @@ impl Render for ProjectPopupView {
                                 .flex()
                                 .items_center()
                                 .gap(px(8.))
-                                .child(
-                                    div()
-                                        .w(px(6.))
-                                        .h(px(6.))
-                                        .rounded_full()
-                                        .bg(if is_active { accent } else { divider }),
-                                )
+                                .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(if is_active {
+                                    accent
+                                } else {
+                                    divider
+                                }))
                                 .child(
                                     div()
                                         .text_color(if is_active {

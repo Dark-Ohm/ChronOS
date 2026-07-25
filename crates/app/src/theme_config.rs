@@ -64,10 +64,7 @@ pub fn load_config() -> ThemeConfig {
             ThemeConfig::default()
         }
         Err(e) => {
-            tracing::warn!(
-                "theme: read {} failed: {e}, using defaults",
-                path.display()
-            );
+            tracing::warn!("theme: read {} failed: {e}, using defaults", path.display());
             ThemeConfig::default()
         }
     }
@@ -168,10 +165,7 @@ pub fn spawn_watcher(cx: &mut App) {
                 .union(WatchMask::DELETE)
                 .union(WatchMask::MODIFY);
             if let Err(e) = inotify.watches().add(&watch_target, mask) {
-                tracing::error!(
-                    "theme: failed to watch {}: {e}",
-                    watch_target.display()
-                );
+                tracing::error!("theme: failed to watch {}: {e}", watch_target.display());
                 return;
             }
 

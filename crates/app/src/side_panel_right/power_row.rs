@@ -139,11 +139,7 @@ pub fn render_footer(
                 .text_size(px(10.5))
                 .text_color(rgb(0x6c_70_86))
                 .child(net_summary.to_string())
-                .child(
-                    div()
-                        .font_family("JetBrains Mono")
-                        .child(clock),
-                ),
+                .child(div().font_family("JetBrains Mono").child(clock)),
         )
         .child(
             div()

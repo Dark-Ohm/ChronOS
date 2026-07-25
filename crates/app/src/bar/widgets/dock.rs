@@ -11,10 +11,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use gpui::{
-    AnyElement, App, InteractiveElement, MouseButton, Window, div, img, prelude::*, px,
-};
 use gpui::ImageSource;
+use gpui::{AnyElement, App, InteractiveElement, MouseButton, Window, div, img, prelude::*, px};
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{AppEntry, Service};
@@ -77,10 +75,7 @@ impl BarWidget for DockWidget {
             );
 
         // Divider after start button.
-        let divider = div()
-            .w(px(1.))
-            .h(px(14.))
-            .bg(theme.bg.secondary);
+        let divider = div().w(px(1.)).h(px(14.)).bg(theme.bg.secondary);
 
         // App icons.
         let app_icons: Vec<AnyElement> = icons
@@ -94,10 +89,7 @@ impl BarWidget for DockWidget {
                 let icon_elem = match icon_path {
                     Some(path) => {
                         let src: ImageSource = path.into();
-                        img(src)
-                            .w(px(ICON_PX))
-                            .h(px(ICON_PX))
-                            .into_any_element()
+                        img(src).w(px(ICON_PX)).h(px(ICON_PX)).into_any_element()
                     }
                     None => {
                         let letter = label
@@ -114,12 +106,7 @@ impl BarWidget for DockWidget {
                             .justify_center()
                             .rounded_md()
                             .bg(theme.bg.elevated)
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.text.primary)
-                                    .child(letter),
-                            )
+                            .child(div().text_sm().text_color(theme.text.primary).child(letter))
                             .into_any_element()
                     }
                 };
@@ -139,12 +126,9 @@ impl BarWidget for DockWidget {
                             tracing::error!("dock: failed to launch {}: {e:#}", entry.name);
                         }
                     })
-                    .on_mouse_down(
-                        MouseButton::Right,
-                        move |_event, _window, cx: &mut App| {
-                            crate::dock::context_menu::open(cx, entry_id.clone());
-                        },
-                    )
+                    .on_mouse_down(MouseButton::Right, move |_event, _window, cx: &mut App| {
+                        crate::dock::context_menu::open(cx, entry_id.clone());
+                    })
                     .child(icon_elem)
                     .into_any_element()
             })

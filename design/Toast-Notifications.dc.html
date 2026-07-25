@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#11111b;font-family:'Inter',sans-serif}
+::selection{background:#cba6f7;color:#11111b}
+
+@keyframes toast-enter {
+  from { opacity:0; transform:translateX(24px) scale(0.96); }
+  to   { opacity:1; transform:translateX(0) scale(1); }
+}
+@keyframes toast-exit {
+  from { opacity:1; transform:translateX(0) scale(1); }
+  to   { opacity:0; transform:translateX(24px) scale(0.96); }
+}
+@keyframes toast-progress {
+  from { width:100%; }
+  to   { width:0%; }
+}
+@keyframes toast-pulse {
+  0%,100% { box-shadow:0 0 0 0 rgba(243,139,168,0.3); }
+  50%     { box-shadow:0 0 0 6px rgba(243,139,168,0); }
+}
+.toast-enter { animation: toast-enter .28s cubic-bezier(.22,1,.36,1) both; }
+.toast-exit  { animation: toast-exit  .22s cubic-bezier(.55,.06,.68,.19) both; }
+.toast-progress { animation: toast-progress var(--dur,5s) linear forwards; }
+.toast-pulse { animation: toast-pulse 1.5s ease-in-out 2; }
+</style>
+</helmet>
+
+<div style="position:relative;width:100vw;height:100vh;background:#11111b;overflow:hidden">
+
+  <!-- Desktop background hint -->
+  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 120%,#1e1e2e 0%,#11111b 70%)"></div>
+
+  <!-- Ghost wallpaper hexagon pattern -->
+  <svg style="position:absolute;inset:0;opacity:.04;pointer-events:none" width="100%" height="100%">
+    <defs>
+      <pattern id="hex" width="60" height="52" patternUnits="userSpaceOnUse" patternTransform="scale(1.2)">
+        <polygon points="30,2 55,15 55,37 30,50 5,37 5,15" fill="none" stroke="#cdd6f4" stroke-width=".6"/>
+      </pattern>
+    </defs>
+    <rect width="100%" height="100%" fill="url(#hex)"/>
+  </svg>
+
+  <!-- Top bar -->
+  <div style="position:absolute;top:0;left:0;right:0;height:30px;background:#181825;border-bottom:1px solid #313244;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-family:'Inter',sans-serif;z-index:100">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#cdd6f4;cursor:pointer" style-hover="background:#313244">
+        <svg width="15" height="15" viewBox="0 0 32 32" fill="none"><path d="M16 2L28 9V23L16 30L4 23V9L16 2Z" stroke="#007acc" stroke-width="2" stroke-linejoin="round"/><path d="M16 2V16L28 9M16 16L4 9M16 16V30" stroke="#007acc" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      </div>
+      <div style="width:1px;height:14px;background:#313244"></div>
+      <div style="font-size:11px;color:#6c7086;letter-spacing:.03em">Desktop 1</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="font-size:11px;color:#a6adc8;font-family:'JetBrains Mono',monospace">14:32</div>
+      <div style="width:1px;height:12px;background:#313244"></div>
+      <div style="width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:#a6adc8;cursor:pointer" style-hover="background:#313244;color:#cdd6f4">
+        <svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor"><path d="M221.8 175.94C216.25 166.38 208 139.33 208 104a80 80 0 10-160 0c0 35.34-8.26 62.38-13.81 71.94A16 16 0 0048 200h40.81a40 40 0 0078.38 0H208a16 16 0 0013.8-24.06z"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST STACK — top-right corner -->
+  <div id="toast-stack" style="position:absolute;top:42px;right:16px;display:flex;flex-direction:column;gap:8px;z-index:200;width:340px">
+
+    <!-- Toast 1: Info (default) -->
+    <div class="toast-enter" style="background:#1e1e2e;border:1px solid #313244;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.45),0 0 0 1px rgba(0,0,0,.2)">
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px">
+        <!-- App icon -->
+        <div style="width:28px;height:28px;border-radius:6px;flex:none;background:#313244;display:flex;align-items:center;justify-content:center">
+          <svg width="14" height="14" viewBox="0 0 32 32" fill="none"><path d="M16 4L23 9V19L16 24L9 19V9L16 4Z" stroke="#89b4fa" stroke-width="2" stroke-linejoin="round"/><path d="M16 4V13M16 13L23 9M16 13L9 9" stroke="#89b4fa" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        </div>
+        <!-- Content -->
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span style="font-size:11px;color:#6c7086;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ChronOS</span>
+            <div style="width:16px;height:16px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#45475a;cursor:pointer;flex:none" style-hover="background:#313244;color:#a6adc8">
+              <svg width="8" height="8" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66 194.34a8 8 0 01-11.32 11.32L128 139.31l-66.34 66.35a8 8 0 01-11.32-11.32L116.69 128 50.34 61.66a8 8 0 0111.32-11.32L128 116.69l66.34-66.35a8 8 0 0111.32 11.32L139.31 128z"/></svg>
+            </div>
+          </div>
+          <div style="margin-top:3px;font-size:12.5px;font-weight:600;color:#cdd6f4;line-height:1.35">Screenshot saved</div>
+          <div style="margin-top:2px;font-size:11px;color:#a6adc8;line-height:1.4">Saved to ~/Pictures/Screenshots/2026-07-24.png</div>
+        </div>
+      </div>
+      <!-- Progress bar (auto-dismiss) -->
+      <div style="height:2px;background:#25253b">
+        <div class="toast-progress" style="height:100%;background:#89b4fa;opacity:.5;--dur:5s"></div>
+      </div>
+    </div>
+
+    <!-- Toast 2: Warning -->
+    <div class="toast-enter" style="background:#1e1e2e;border:1px solid #313244;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.45),0 0 0 1px rgba(0,0,0,.2)">
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px">
+        <div style="width:28px;height:28px;border-radius:6px;flex:none;background:#313244;display:flex;align-items:center;justify-content:center">
+          <svg width="14" height="14" viewBox="0 0 256 256" fill="#f9e2af"><path d="M236.75 200a16 16 0 01-14.1 22.68H33.35A16 16 0 0119.25 200l93.11-160a16 16 0 0127.78 0zM128 144a12 12 0 1012 12 12 12 0 00-12-12zm-4-48h8v32h-8z"/></svg>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span style="font-size:11px;color:#6c7086;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">System</span>
+            <div style="width:16px;height:16px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#45475a;cursor:pointer;flex:none" style-hover="background:#313244;color:#a6adc8">
+              <svg width="8" height="8" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66 194.34a8 8 0 01-11.32 11.32L128 139.31l-66.34 66.35a8 8 0 01-11.32-11.32L116.69 128 50.34 61.66a8 8 0 0111.32-11.32L128 116.69l66.34-66.35a8 8 0 0111.32 11.32L139.31 128z"/></svg>
+            </div>
+          </div>
+          <div style="margin-top:3px;font-size:12.5px;font-weight:600;color:#cdd6f4;line-height:1.35">Battery at 15%</div>
+          <div style="margin-top:2px;font-size:11px;color:#a6adc8;line-height:1.4">Connect charger to keep working</div>
+          <!-- Action button -->
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <div style="padding:4px 10px;border-radius:5px;border:1px solid #45475a;font-size:10.5px;font-weight:600;color:#a6adc8;cursor:pointer;transition:border-color .12s,color .12s" style-hover="border-color:#cba6f7;color:#cba6f7">Power settings</div>
+          </div>
+        </div>
+      </div>
+      <div style="height:2px;background:#25253b">
+        <div class="toast-progress" style="height:100%;background:#f9e2af;opacity:.6;--dur:7s"></div>
+      </div>
+    </div>
+
+    <!-- Toast 3: Error (critical) -->
+    <div class="toast-enter toast-pulse" style="background:#1e1e2e;border:1px solid #f38ba833;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.45),0 0 0 1px rgba(0,0,0,.2)">
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px">
+        <div style="width:28px;height:28px;border-radius:6px;flex:none;background:#f38ba822;display:flex;align-items:center;justify-content:center">
+          <svg width="14" height="14" viewBox="0 0 256 256" fill="#f38ba8"><path d="M128 24a104 104 0 10104 104A104.11 104.11 0 00128 24zm-8 56a8 8 0 0116 0v56a8 8 0 01-16 0zm16 104a12 12 0 1112-12 12 12 0 01-12 12z"/></svg>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span style="font-size:11px;color:#f38ba8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500">Package Manager</span>
+            <div style="width:16px;height:16px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#45475a;cursor:pointer;flex:none" style-hover="background:#313244;color:#a6adc8">
+              <svg width="8" height="8" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66 194.34a8 8 0 01-11.32 11.32L128 139.31l-66.34 66.35a8 8 0 01-11.32-11.32L116.69 128 50.34 61.66a8 8 0 0111.32-11.32L128 116.69l66.34-66.35a8 8 0 0111.32 11.32L139.31 128z"/></svg>
+            </div>
+          </div>
+          <div style="margin-top:3px;font-size:12.5px;font-weight:600;color:#f38ba8;line-height:1.35">Update failed</div>
+          <div style="margin-top:2px;font-size:11px;color:#a6adc8;line-height:1.4">Dependency conflict: mesa requires libdrm≥2.4.120</div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <div style="padding:4px 10px;border-radius:5px;border:1px solid #f38ba844;font-size:10.5px;font-weight:600;color:#f38ba8;cursor:pointer;transition:border-color .12s" style-hover="border-color:#f38ba8;color:#f38ba8">View log</div>
+            <div style="padding:4px 10px;border-radius:5px;border:1px solid #45475a;font-size:10.5px;font-weight:600;color:#a6adc8;cursor:pointer;transition:border-color .12s,color .12s" style-hover="border-color:#cba6f7;color:#cba6f7">Retry</div>
+          </div>
+        </div>
+      </div>
+      <div style="height:2px;background:#25253b">
+        <div class="toast-progress" style="height:100%;background:#f38ba8;opacity:.6;--dur:10s"></div>
+      </div>
+    </div>
+
+    <!-- Toast 4: Success -->
+    <div class="toast-enter" style="background:#1e1e2e;border:1px solid #313244;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.45),0 0 0 1px rgba(0,0,0,.2)">
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px">
+        <div style="width:28px;height:28px;border-radius:6px;flex:none;background:#a6e3a122;display:flex;align-items:center;justify-content:center">
+          <svg width="14" height="14" viewBox="0 0 256 256" fill="#a6e3a1"><path d="M229.66 77.66l-128 128a8 8 0 01-11.32 0l-56-56a8 8 0 0111.32-11.32L96 188.69 218.34 66.34a8 8 0 0111.32 11.32z"/></svg>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span style="font-size:11px;color:#6c7086;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Zed</span>
+            <div style="width:16px;height:16px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#45475a;cursor:pointer;flex:none" style-hover="background:#313244;color:#a6adc8">
+              <svg width="8" height="8" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66 194.34a8 8 0 01-11.32 11.32L128 139.31l-66.34 66.35a8 8 0 01-11.32-11.32L116.69 128 50.34 61.66a8 8 0 0111.32-11.32L128 116.69l66.34-66.35a8 8 0 0111.32 11.32L139.31 128z"/></svg>
+            </div>
+          </div>
+          <div style="margin-top:3px;font-size:12.5px;font-weight:600;color:#cdd6f4;line-height:1.35">Build passed</div>
+          <div style="margin-top:2px;font-size:11px;color:#a6adc8;line-height:1.4">chronos-core compiled in 4.2s — 0 errors, 2 warnings</div>
+        </div>
+      </div>
+      <div style="height:2px;background:#25253b">
+        <div class="toast-progress" style="height:100%;background:#a6e3a1;opacity:.5;--dur:4s"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Label annotations -->
+  <div style="position:absolute;top:52px;left:20px;z-index:50">
+    <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#45475a;margin-bottom:8px">Toast notification stack</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;align-items:center;gap:6px">
+        <div style="width:6px;height:6px;border-radius:50%;background:#89b4fa"></div>
+        <span style="font-size:9px;color:#6c7086">Info — auto-dismiss</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div style="width:6px;height:6px;border-radius:50%;background:#f9e2af"></div>
+        <span style="font-size:9px;color:#6c7086">Warning — longer hold</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div style="width:6px;height:6px;border-radius:50%;background:#f38ba8"></div>
+        <span style="font-size:9px;color:#6c7086">Error — pulse + manual dismiss</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div style="width:6px;height:6px;border-radius:50%;background:#a6e3a1"></div>
+        <span style="font-size:9px;color:#6c7086">Success — quick dismiss</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:560,&quot;height&quot;:700}}">
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

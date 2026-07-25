@@ -38,7 +38,7 @@ const ACTIONS_FZ: f32 = 11.;
 const BTN_PAD_X: f32 = 11.;
 const BTN_PAD_Y: f32 = 5.;
 const BTN_GAP: f32 = 6.;
-const ROW_DISMISS_BTN: f32 = 18.;           // 18x18 row ✕ hit area
+const ROW_DISMISS_BTN: f32 = 18.; // 18x18 row ✕ hit area
 const ROW_DISMISS_RADIUS: f32 = 5.;
 const FOOTER_BTN_RADIUS: f32 = 6.;
 const FOOTER_BTN_PY_OUTER: f32 = 8.;
@@ -73,7 +73,7 @@ impl Render for HistoryPopupView {
         let hover = theme.interactive.hover;
         let accent = theme.accent.primary;
         let radius = theme.radius;
-        let radius_lg = theme.radius_lg;       // 10px mockup panel radius
+        let radius_lg = theme.radius_lg; // 10px mockup panel radius
         let font_mono = theme.font_mono;
         let is_light = theme.is_light;
 
@@ -146,7 +146,8 @@ impl Render for HistoryPopupView {
                             let svc = AppState::notification(cx).clone();
                             cx.background_spawn(async move {
                                 let _ = svc.dispatch(NotificationCommand::ClearHistory).await;
-                            }).detach();
+                            })
+                            .detach();
                         }),
                 )
                 .into_any_element()
@@ -253,8 +254,11 @@ fn render_history_card(
         .on_click(move |_event, _window, cx: &mut App| {
             let svc = AppState::notification(cx).clone();
             cx.background_spawn(async move {
-                let _ = svc.dispatch(NotificationCommand::RemoveFromHistory(app_id)).await;
-            }).detach();
+                let _ = svc
+                    .dispatch(NotificationCommand::RemoveFromHistory(app_id))
+                    .await;
+            })
+            .detach();
         });
 
     let header_row = div()
@@ -274,7 +278,8 @@ fn render_history_card(
         .text_size(px(SUMMARY_FZ))
         .child(n.summary.clone());
 
-    let mut card_body: Vec<AnyElement> = vec![header_row.into_any_element(), summary.into_any_element()];
+    let mut card_body: Vec<AnyElement> =
+        vec![header_row.into_any_element(), summary.into_any_element()];
 
     if !n.body.is_empty() {
         card_body.push(
@@ -324,8 +329,11 @@ fn render_history_card(
                         let svc = AppState::notification(cx).clone();
                         let key = key_c.clone();
                         cx.background_spawn(async move {
-                            let _ = svc.dispatch(NotificationCommand::InvokeAction(app_id_c, key)).await;
-                        }).detach();
+                            let _ = svc
+                                .dispatch(NotificationCommand::InvokeAction(app_id_c, key))
+                                .await;
+                        })
+                        .detach();
                     })
                     .into_any_element()
             })
@@ -340,20 +348,16 @@ fn render_history_card(
         );
     }
 
-    let card_inner = div()
-        .w_full()
-        .flex()
-        .child(strip)
-        .child(
-            div()
-                .flex_1()
-                .min_w(px(0.))
-                .py(px(PADDING))
-                .pr(px(PADDING))
-                .pl(px(PADDING))
-                .flex_col()
-                .children(card_body),
-        );
+    let card_inner = div().w_full().flex().child(strip).child(
+        div()
+            .flex_1()
+            .min_w(px(0.))
+            .py(px(PADDING))
+            .pr(px(PADDING))
+            .pl(px(PADDING))
+            .flex_col()
+            .children(card_body),
+    );
 
     div()
         .w_full()
@@ -380,8 +384,8 @@ fn urgency_hsla(u: Urgency) -> gpui::Hsla {
 /// palette state. Falls back to accent if empty.
 fn monogram_color(app_name: &str) -> gpui::Hsla {
     const PALETTE: [u32; 8] = [
-        0x89b4faff, 0xa6e3a1ff, 0xf38ba8ff, 0xcba6f7ff,
-        0x89dcebff, 0xfab387ff, 0xa6e3a1ff, 0x45475aff,
+        0x89b4faff, 0xa6e3a1ff, 0xf38ba8ff, 0xcba6f7ff, 0x89dcebff, 0xfab387ff, 0xa6e3a1ff,
+        0x45475aff,
     ];
     if app_name.is_empty() {
         return gpui::Hsla::from(gpui::rgba(0x45475aff));

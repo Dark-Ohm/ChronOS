@@ -89,8 +89,7 @@ impl ProjectsConfig {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let content =
-            toml::to_string_pretty(self).expect("ProjectsConfig is always serializable");
+        let content = toml::to_string_pretty(self).expect("ProjectsConfig is always serializable");
         std::fs::write(path, content)
     }
 
@@ -250,7 +249,10 @@ pub(crate) fn add_project(cx: &mut App) {
                 .send()
                 .await;
             match request.and_then(|r| r.response()) {
-                Ok(files) => files.uris().first().and_then(|uri| file_uri_to_path(uri.as_str())),
+                Ok(files) => files
+                    .uris()
+                    .first()
+                    .and_then(|uri| file_uri_to_path(uri.as_str())),
                 Err(e) => {
                     tracing::info!("project_switcher: picker cancelled/failed: {e}");
                     None

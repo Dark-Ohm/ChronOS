@@ -284,9 +284,7 @@ pub fn init(cx: &mut App) {
                         g.handle.clone()
                     };
                     if let Some(handle) = handle {
-                        let height = estimate_menu_height(
-                            &cx.global::<TrayMenuState>().nodes,
-                        );
+                        let height = estimate_menu_height(&cx.global::<TrayMenuState>().nodes);
                         let _ = handle.update(cx, |_, window: &mut gpui::Window, _| {
                             window.resize(Size::new(px(MENU_WIDTH), px(height)));
                         });

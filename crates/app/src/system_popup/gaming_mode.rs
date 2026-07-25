@@ -161,7 +161,10 @@ fn revert(cx: &mut App) {
 /// (UPower) work because zbus is async and spawns its own runtime; a blocking
 /// std::process::Command needs a real OS thread.
 async fn run_hyprctl_eval(payload: &'static str) -> anyhow::Result<()> {
-    info!("gaming mode: run_hyprctl_eval entered, payload len={}", payload.len());
+    info!(
+        "gaming mode: run_hyprctl_eval entered, payload len={}",
+        payload.len()
+    );
     let (tx, rx) = tokio::sync::oneshot::channel();
     std::thread::spawn(move || {
         let result = Command::new("hyprctl").args(["eval", payload]).status();

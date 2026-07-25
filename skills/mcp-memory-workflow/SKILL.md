@@ -39,7 +39,7 @@ For this repo, engram `project` scopes are STRICTLY:
 - `chronos-fm` — file manager (`/home/neo/Projects/chronos-fm`)
 - `hyprland` — system-level Lua compositor config (`~/.config/hypr/`)
 
-**Forbidden:** `chronos-shell` as standalone (it's part of `chronos`); `chronos-ide`/`Chronos-IDE`/`chronos` as interchangeable (they are DIFFERENT projects).
+**Forbidden:** `chronos-shell` as a standalone project scope (it was renamed to `chronos` / ChronOS; `chronos-shell` now exists only as a SKILL inside the `chronos` repo — NOT a sibling repo at `/home/neo/Projects/chronos-shell`, which does NOT exist). `chronos-ide`/`Chronos-IDE`/`chronos` are DIFFERENT projects; don't use them interchangeably.
 
 Every engram record MUST have `topic_key` in format `<project>/<topic>` (e.g. `chronos/bar-widget-contract`). This enables upsert — re-saving same key updates, not duplicates.
 

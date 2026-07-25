@@ -192,7 +192,11 @@ impl Render for LauncherView {
                             .child(name)
                             .on_click(move |_event, window, cx: &mut App| {
                                 if let Err(err) = launch(&entry_for_click.exec) {
-                                    tracing::error!("Failed to launch {}: {:#}", entry_for_click.name, err);
+                                    tracing::error!(
+                                        "Failed to launch {}: {:#}",
+                                        entry_for_click.name,
+                                        err
+                                    );
                                 }
                                 crate::launcher::close_this(window, cx);
                             })

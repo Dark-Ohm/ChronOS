@@ -3,7 +3,7 @@
 use gpui::{AnyElement, App, Window, div, prelude::*, px, svg};
 
 use chronos_luau::bar::{BarSection, BarWidget};
-use chronos_services::{profile_to_str, Service, PowerProfile};
+use chronos_services::{PowerProfile, Service, profile_to_str};
 use chronos_ui::Theme;
 
 use crate::state::AppState;
@@ -90,7 +90,12 @@ impl BarWidget for BatteryWidget {
                     .flex()
                     .items_center()
                     .gap(px(2.))
-                    .child(svg().path(profile_icon).size(px(10.)).text_color(theme.text.muted))
+                    .child(
+                        svg()
+                            .path(profile_icon)
+                            .size(px(10.))
+                            .text_color(theme.text.muted),
+                    )
                     .child(
                         div()
                             .child(profile_to_str(data.power_profile))
@@ -106,7 +111,9 @@ impl BarWidget for BatteryWidget {
                 cx.background_spawn(async move {
                     match svc.set_power_profile(next).await {
                         Ok(()) => tracing::info!("battery widget: set power profile to {:?}", next),
-                        Err(e) => tracing::error!("battery widget: failed to set power profile: {e:?}"),
+                        Err(e) => {
+                            tracing::error!("battery widget: failed to set power profile: {e:?}")
+                        }
                     }
                 })
                 .detach();

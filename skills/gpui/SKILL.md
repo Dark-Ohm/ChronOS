@@ -21,7 +21,7 @@ Load the relevant reference file based on the task:
 | Focus & keyboard nav | [focus-handle.md](references/focus-handle.md) | `FocusHandle`, `track_focus`, Tab navigation |
 | Global state | [global.md](references/global.md) | `Global` trait, `cx.set_global`, app-wide config |
 | Layout & styling | [layout-style.md](references/layout-style.md) | `div()`, `h_flex()`, `v_flex()`, flexbox, overflow, positioning |
-| ElementId | [element-id.md](references/element-id.md) | `ElementId`, `.id()`, uniqueness rules, stateful elements |
+| ElementId | [element-id.md](references/element-id.md) | `ElementId`, `.id()`, uniqueness rules, stateful elements — **HARD RULE: interactive methods (`on_click`, `overflow_y_scroll`, `track_scroll`, `cursor_pointer`, …) need `.id()` FIRST; bare `div()` fails with E0599. Compile to verify, don't infer from the trait block.** |
 | Testing | [test.md](references/test.md) | `#[gpui::test]`, `TestAppContext`, `VisualTestContext` |
 
 ## Extended References
@@ -44,3 +44,25 @@ For deep-dive topics, additional reference files are available:
 **Testing:**
 - [test-examples.md](references/test-examples.md) — testing examples and patterns
 - [test-reference.md](references/test-reference.md) — complete testing API reference
+
+## Verification — compile a throwaway probe, don't infer from trait definitions
+
+When you need to know whether a method/chain is valid on a fork (e.g. the ChronOS gpui-ce
+fork, which DRIFTS from upstream zed `main`), **compile a one-file example and read the
+rustc diagnostic — never conclude from reading the trait `impl` block.** Trait bounds in
+GPUI are subtle: `Div` implements `InteractiveElement` but NOT `StatefulInteractiveElement`,
+so a method that *looks* available from the `impl InteractiveElement for Div` block may be
+missing on bare `Div` and only resolve on `Stateful<Div>` (returned by `.id()`).
+
+Recipe (verified this session, caught a false skill "correction"):
+1. Write `gpui/examples/_probe.rs` containing a `Render` impl that chains the method(s) under
+   test on `div()` (and on `div().id("x")` for the stateful variant).
+2. `cargo check --example _probe -p 'path+file:///<repo>/Source/gpui#0.2.2'` (or `-p gpui` in
+   the app workspace).
+3. Read the rustc output: E0599 `no method named X found for struct gpui::Div` = method is NOT
+   on bare `Div` (needs `.id()` first); clean `Finished` = available.
+4. `rm gpui/examples/_probe.rs` — never commit the probe.
+
+This is the canonical way to settle "does the fork support X" disputes and to verify any
+claim before writing it into a skill or report. Competed by reasoning, it produces confident
+wrong answers.

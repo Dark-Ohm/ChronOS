@@ -387,8 +387,7 @@ impl Render for DesktopTerminalView {
                                     let chars: Vec<char> = line_for_cursor.chars().collect();
                                     let before: String = chars.iter().take(cursor_col).collect();
                                     let at = chars.get(cursor_col).copied().unwrap_or(' ');
-                                    let after: String =
-                                        chars.iter().skip(cursor_col + 1).collect();
+                                    let after: String = chars.iter().skip(cursor_col + 1).collect();
                                     el.child(
                                         div()
                                             .flex()
@@ -618,10 +617,7 @@ mod tests {
 
     #[test]
     fn vt_parser_renders_echo_output() {
-        let size = TermSize {
-            cols: 40,
-            rows: 10,
-        };
+        let size = TermSize { cols: 40, rows: 10 };
         let mut term = Term::new(Config::default(), &size, VoidListener);
         let mut parser: Processor = Processor::new();
         // Simulate shell printing a probe line + newline.

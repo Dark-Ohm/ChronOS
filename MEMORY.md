@@ -112,6 +112,22 @@ _Cross-task facts that survive across sessions. Promoted from session checkpoint
 - **`follow_mouse = 1` в `~/.config/hypr/hyprland.lua:108` ломает любое close-on-blur окно.** Hyprland в этом режиме шлёт `wl_keyboard::Leave` текущему окну и `Enter` тому, что под курсором, ПРИ ЛЮБОМ движении мыши — без клика. Долетает до `set_focused(false)` (`Source/gpui_linux/.../client.rs:1594-1610` → `window.rs:1394`) → `observe_window_activation` видит настоящий true→false переход и не может отличить его от осознанного dismiss. Debounce (подождать N мс перед закрытием) НЕ чинит это — только откладывает неизбежное закрытие на N мс, доказано живым логом (лаунчер терял фокус через ~4мс после создания, если курсор физически не над новым окном — обычный случай открытия по хоткею). Правильная модель — закрывать по осознанному dismiss (Escape/выбор/явный клик снаружи), не по голой потере клавиатурного фокуса, когда в конфиге `follow_mouse=1`. Cline №9 (debounce) отклонён по этой причине 2026-07-18.
 - **Сиблинг-проект: `/home/neo/projects/chronos-ecosystem/Chronos-FM`** — отдельный GPUI-репозиторий пользователя (Launcher × Explorer, свой канон ARCHITECTURE.md/DECISIONS.log/ROADMAP.md), НЕ часть этого воркспейса. Пересечение с ChronOS: свой лаунчер (не решено, сливается ли с `SUPER+L` этого проекта), плагины планируются на WASM Component Model (P4, ещё не реализовано — рассматривается замена на Luau/`chronos_luau`). Подробности — в личной памяти Архитектора, не здесь (отдельный проект, не мешать каноны).
 
+
+## Popup + services (2026-07-25)
+
+- **Popup stack polish done for:** updates (T117–119), history (T120), volume
+  (T121), toasts (T124), system (T125). Tray_menu still older fixed-corner style.
+- **Dev day loop:** `chronos-rebuild && chronos-stop && chronos-start` (see
+  `docs/dev-cli.md`). Never `pkill -f chronos` (kills chronos-fm).
+- **Drag markers must be unique types** per interactive slider in a window.
+- **Notification UI async:** always `.detach()` on `background_spawn` of
+  `NotificationCommand` dispatch.
+- **Brightness:** service debounce + no post-set getvcp; physical lag is DDC
+  (~1s×N monitors) after finger stops, not multi-minute queue if debounce holds.
+- **Audio volume:** service coalesce; UI throttle optional; sink/source markers
+  split (`SinkVolumeSliderDrag` / `SourceVolumeSliderDrag`).
+- **Active queue empty** after T125 except pause/T115 Files tab.
+
 ## На горизонте (known gaps / follow-up specs, not yet built)
 
 _Cross-session durable: these are explicitly deferred, each tied to a named future consumer. Do not start them without the linked spec._

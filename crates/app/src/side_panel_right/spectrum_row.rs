@@ -77,11 +77,7 @@ pub fn render_spectrum_row(
             } else {
                 (bar_height * height_pct).max(2.0)
             };
-            div()
-                .flex_1()
-                .h(px(h))
-                .rounded(px(1.))
-                .bg(bar_color)
+            div().flex_1().h(px(h)).rounded(px(1.)).bg(bar_color)
         })
         .collect();
 

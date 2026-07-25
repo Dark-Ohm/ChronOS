@@ -17,6 +17,48 @@ div().id(ElementId::from(idx))  // Explicit
 
 Without `.id()`, a div cannot receive mouse events or store state.
 
+## HARD RULE — interactive methods need `.id()` FIRST (verified by compilation)
+
+`Div` implements ONLY the `InteractiveElement` trait. The interactive methods live on
+`StatefulInteractiveElement` — which is implemented ONLY for `Stateful<E>`, NOT for bare
+`Div`. So you must call `.id(...)` (which returns `Stateful<Div>`) before any of these:
+
+- `on_click`, `on_mouse_down`, `on_hover`, `on_scroll_wheel`, `cursor_pointer`, `cursor`
+- `overflow_y_scroll()`, `overflow_x_scroll()`, `overflow_scroll()`
+- `track_scroll(&ScrollHandle)`
+
+**Bare `div().overflow_y_scroll()` does NOT compile** — rustc E0599
+`no method named overflow_y_scroll found for struct gpui::Div`. The working form is
+`div().id("x").overflow_y_scroll()`.
+
+> WARNING: the `layout-style.md` reference shows `.overflow_scroll()` / `.overflow_hidden()`
+> on a bare `div()` in its snippets. `.overflow_hidden()` is a pure style (lives on `Styled`,
+> fine on bare `Div`), but `.overflow_scroll()` / `.overflow_y_scroll()` are
+> `StatefulInteractiveElement` methods and REQUIRE `.id()` first — those snippets are
+> misleading. When in doubt, compile.
+
+### Proven by throwaway probe (do this instead of reasoning about the trait block)
+
+```rust
+// pose.rs — drop in gpui/examples/, `cargo check --example pose`, then delete
+#![cfg_attr(target_family = "wasm", no_main)]
+use gpui::{div, prelude::*};
+struct P {}
+impl gpui::Render for P {
+    fn render(&mut self, _w: &mut gpui::Window, _cx: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
+        div().id("x").overflow_y_scroll().on_click(|_,_,_| {})
+    }
+}
+fn main() {}
+```
+- `div().id("x").overflow_y_scroll().on_click(...)` → compiles.
+- `div().overflow_y_scroll()` → E0599 (fails).
+Replace the method to test any other (`on_hover`, `cursor_pointer`, `track_scroll`).
+This pattern caught a real false "correction" of the chronos `gpui-layer-shell` skill:
+an agent reasoned from the `impl InteractiveElement for Div` block that scroll worked on a
+bare div, "refuted" the skill, then a compile probe proved the skill was RIGHT. Compile,
+don't infer.
+
 ## Accepted Types
 
 ```rust

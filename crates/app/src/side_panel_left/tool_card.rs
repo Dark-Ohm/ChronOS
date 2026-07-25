@@ -49,13 +49,7 @@ impl<'a> ToolCard<'a> {
                     .flex()
                     .items_center()
                     .gap(px(6.))
-                    .child(
-                        div()
-                            .w(px(6.))
-                            .h(px(6.))
-                            .rounded_full()
-                            .bg(status_color),
-                    )
+                    .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(status_color))
                     .child(
                         div()
                             .text_size(px(10.))
@@ -98,24 +92,28 @@ impl<'a> ToolCard<'a> {
             if let Some(args) = self.args {
                 if !args.is_empty() {
                     details = details.child(
-                        div().flex().flex_col().gap(px(2.)).child(
-                            div()
-                                .text_size(px(9.))
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(rgb(0x89_b4_fa))
-                                .child("Arguments"),
-                        )
-                        .child(
-                            div()
-                                .w_full()
-                                .px(px(6.))
-                                .py(px(4.))
-                                .rounded(px(4.))
-                                .bg(rgb(0x18_18_25))
-                                .text_size(px(9.))
-                                .text_color(rgb(0xa6_ad_c8))
-                                .child(args.to_string()),
-                        ),
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(9.))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(rgb(0x89_b4_fa))
+                                    .child("Arguments"),
+                            )
+                            .child(
+                                div()
+                                    .w_full()
+                                    .px(px(6.))
+                                    .py(px(4.))
+                                    .rounded(px(4.))
+                                    .bg(rgb(0x18_18_25))
+                                    .text_size(px(9.))
+                                    .text_color(rgb(0xa6_ad_c8))
+                                    .child(args.to_string()),
+                            ),
                     );
                 }
             }
@@ -123,24 +121,28 @@ impl<'a> ToolCard<'a> {
             if let Some(result) = self.result {
                 if !result.is_empty() {
                     details = details.child(
-                        div().flex().flex_col().gap(px(2.)).child(
-                            div()
-                                .text_size(px(9.))
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(rgb(0xa6_e3_a1))
-                                .child("Result"),
-                        )
-                        .child(
-                            div()
-                                .w_full()
-                                .px(px(6.))
-                                .py(px(4.))
-                                .rounded(px(4.))
-                                .bg(rgb(0x18_18_25))
-                                .text_size(px(9.))
-                                .text_color(rgb(0xa6_ad_c8))
-                                .child(result.to_string()),
-                        ),
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(9.))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(rgb(0xa6_e3_a1))
+                                    .child("Result"),
+                            )
+                            .child(
+                                div()
+                                    .w_full()
+                                    .px(px(6.))
+                                    .py(px(4.))
+                                    .rounded(px(4.))
+                                    .bg(rgb(0x18_18_25))
+                                    .text_size(px(9.))
+                                    .text_color(rgb(0xa6_ad_c8))
+                                    .child(result.to_string()),
+                            ),
                     );
                 }
             }

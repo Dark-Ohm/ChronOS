@@ -5,7 +5,9 @@
 //! `crates/services/src/notification/`). The unread badge is shown only when
 //! `unread > 0`; opening the popup dispatches `MarkAllRead`, clearing it.
 
-use gpui::{AnyElement, App, Bounds, MouseButton, Pixels, Window, canvas, div, prelude::*, px, svg};
+use gpui::{
+    AnyElement, App, Bounds, MouseButton, Pixels, Window, canvas, div, prelude::*, px, svg,
+};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -64,7 +66,11 @@ impl BarWidget for NotificationBellWidget {
         let glyph = svg()
             .path(view.icon)
             .size(px(13.))
-            .text_color(if view.unread > 0 { theme.text.primary } else { muted });
+            .text_color(if view.unread > 0 {
+                theme.text.primary
+            } else {
+                muted
+            });
 
         // Bell + optional red badge (count, capped at 99 for the label).
         let mut bell = div()
@@ -119,9 +125,7 @@ impl BarWidget for NotificationBellWidget {
                 move |_event, window, cx: &mut App| {
                     let anchor_rect = bounds_cell.get();
                     let parent = window.window_handle();
-                    crate::notifications::history_popup::toggle(
-                        anchor_rect, parent, window, cx,
-                    );
+                    crate::notifications::history_popup::toggle(anchor_rect, parent, window, cx);
                 }
             }))
             .into_any_element()

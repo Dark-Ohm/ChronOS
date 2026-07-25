@@ -40,8 +40,8 @@ use crate::state::AppState;
     lib_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/debug")
 )]
 mod hot_lib {
-    use gpui::{AnyElement, Hsla};
     use chronos_ui::Theme;
+    use gpui::{AnyElement, Hsla};
 
     hot_functions_from_file!("crates/hotview/src/lib.rs");
 }
@@ -275,7 +275,14 @@ mod tests {
     #[test]
     fn format_stable_width() {
         for v in &[
-            0.0, 5.0, 999.0, 1_000.0, 34_000.0, 999_000.0, 1_000_000.0, 99_000_000.0,
+            0.0,
+            5.0,
+            999.0,
+            1_000.0,
+            34_000.0,
+            999_000.0,
+            1_000_000.0,
+            99_000_000.0,
         ] {
             assert_eq!(format_speed(*v).len(), 4, "failed for {v}");
         }

@@ -610,7 +610,10 @@ mod tests {
     #[test]
     fn bus_name_splits_path_and_wellknown() {
         assert_eq!(bus_name(":1.75"), ":1.75");
-        assert_eq!(bus_name(":1.75/org/chromium/StatusNotifierItem/15"), ":1.75");
+        assert_eq!(
+            bus_name(":1.75/org/chromium/StatusNotifierItem/15"),
+            ":1.75"
+        );
         assert_eq!(
             bus_name("org.kde.StatusNotifierItem-1234-1"),
             "org.kde.StatusNotifierItem"
@@ -665,9 +668,11 @@ mod tests {
                 None,
             ));
         }
-        state
-            .items
-            .push(mk_item(":1.50/org/ayatana/NotificationItem/udiskie", Some("udiskie"), None));
+        state.items.push(mk_item(
+            ":1.50/org/ayatana/NotificationItem/udiskie",
+            Some("udiskie"),
+            None,
+        ));
         state
             .items
             .push(mk_item(":1.60", Some("Wireless"), Some("network-wireless")));
@@ -675,7 +680,17 @@ mod tests {
         let prepared = prepare_tray_items(&state, 8);
         assert_eq!(prepared.visible.len(), 2);
         assert_eq!(prepared.overflow, 0);
-        assert!(prepared.visible.iter().any(|i| i.title.as_deref() == Some("udiskie")));
-        assert!(prepared.visible.iter().any(|i| i.title.as_deref() == Some("Wireless")));
+        assert!(
+            prepared
+                .visible
+                .iter()
+                .any(|i| i.title.as_deref() == Some("udiskie"))
+        );
+        assert!(
+            prepared
+                .visible
+                .iter()
+                .any(|i| i.title.as_deref() == Some("Wireless"))
+        );
     }
 }

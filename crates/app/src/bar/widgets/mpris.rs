@@ -35,7 +35,11 @@ fn describe(state: &MprisState) -> MprisView {
     if !state.playing && state.title.is_empty() && state.artist.is_empty() {
         return MprisView::Hidden;
     }
-    let icon_path = if state.playing { "icons/pause.svg" } else { "icons/play.svg" };
+    let icon_path = if state.playing {
+        "icons/pause.svg"
+    } else {
+        "icons/play.svg"
+    };
     let label = if state.title.is_empty() && state.artist.is_empty() {
         truncate_chars(&state.player_id, MAX_LABEL_CHARS)
     } else {
@@ -143,12 +147,7 @@ impl BarWidget for MprisWidget {
                     .child(svg().path(icon_path).size(px(13.)).text_color(color))
                     .child(div().child(label).text_color(color));
                 if let Some(hint) = multi {
-                    row = row.child(
-                        div()
-                            .child(hint)
-                            .text_color(theme.text.muted)
-                            .text_xs(),
-                    );
+                    row = row.child(div().child(hint).text_color(theme.text.muted).text_xs());
                 }
                 row.on_click(|_event, _window, cx: &mut App| {
                     AppState::mpris(cx).dispatch(MprisCommand::PlayPause);
@@ -222,7 +221,12 @@ mod tests {
     fn paused_shows_play_icon() {
         let state = track_state("T", "", false, 1, 1);
         match describe(&state) {
-            MprisView::Track { icon_path, playing, multi, .. } => {
+            MprisView::Track {
+                icon_path,
+                playing,
+                multi,
+                ..
+            } => {
                 assert_eq!(icon_path, "icons/play.svg");
                 assert!(!playing);
                 assert!(multi.is_none());

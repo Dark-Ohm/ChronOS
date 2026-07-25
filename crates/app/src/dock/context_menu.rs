@@ -92,9 +92,7 @@ impl Render for DockMenuView {
                         {
                             let state = cx.global_mut::<DockMenuState>();
                             state.entry_id = None;
-                            state.close_generation = state
-                                .close_generation
-                                .wrapping_add(1);
+                            state.close_generation = state.close_generation.wrapping_add(1);
                         }
 
                         // Unpin: remove from config, save, rebuild dock.

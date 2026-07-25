@@ -66,9 +66,7 @@ fn usage_card(disk: &DiskInfo) -> impl IntoElement {
                     .flex()
                     .gap(px(4.))
                     .child(disk_action(
-                        ElementId::Name(
-                            format!("disk-mount-{}", disk.block_path).into(),
-                        ),
+                        ElementId::Name(format!("disk-mount-{}", disk.block_path).into()),
                         "монтировать",
                         !mounted,
                         {
@@ -82,9 +80,7 @@ fn usage_card(disk: &DiskInfo) -> impl IntoElement {
                         },
                     ))
                     .child(disk_action(
-                        ElementId::Name(
-                            format!("disk-umount-{}", disk.block_path).into(),
-                        ),
+                        ElementId::Name(format!("disk-umount-{}", disk.block_path).into()),
                         "размонт.",
                         mounted,
                         {
@@ -98,9 +94,7 @@ fn usage_card(disk: &DiskInfo) -> impl IntoElement {
                         },
                     ))
                     .child(disk_action(
-                        ElementId::Name(
-                            format!("disk-eject-{}", disk.block_path).into(),
-                        ),
+                        ElementId::Name(format!("disk-eject-{}", disk.block_path).into()),
                         "извлечь",
                         drive.is_some(),
                         {

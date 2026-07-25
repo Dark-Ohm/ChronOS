@@ -17,8 +17,13 @@ pub mod view;
 use gpui::{
     AnyWindowHandle, App, Bounds, Context, DisplayId, Entity, Global, Pixels, Size, Window,
     WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions,
-    layer_shell::*, point, prelude::*, px,
-    popup::{PopupAnchor, PopupConstraintAdjustment, PopupGravity, PopupNotSupportedError, PopupOptions},
+    layer_shell::*,
+    point,
+    popup::{
+        PopupAnchor, PopupConstraintAdjustment, PopupGravity, PopupNotSupportedError, PopupOptions,
+    },
+    prelude::*,
+    px,
 };
 
 use chronos_services::{NotificationCommand, Service};
@@ -106,7 +111,11 @@ fn fallback_window_options(display_id: Option<DisplayId>, height: f32) -> Window
 /// icon's bounds, extending down-and-left from the icon's bottom-right
 /// corner. Same anchor/gravity/constraint/offset as `updates_popup` (T117
 /// proven pair — do not invent new geometry).
-fn window_options(anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle, height: f32) -> WindowOptions {
+fn window_options(
+    anchor_rect: Bounds<Pixels>,
+    parent: AnyWindowHandle,
+    height: f32,
+) -> WindowOptions {
     WindowOptions {
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
@@ -136,7 +145,8 @@ pub fn open(cx: &mut App, anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle) 
     let svc = AppState::notification(cx).clone();
     cx.background_spawn(async move {
         let _ = svc.dispatch(NotificationCommand::MarkAllRead).await;
-    }).detach();
+    })
+    .detach();
 
     if cx.global::<HistoryPopupState>().handle.is_some() {
         return;
@@ -154,7 +164,9 @@ pub fn open(cx: &mut App, anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle) 
     let result = match result {
         Err(err) => {
             if err.downcast_ref::<PopupNotSupportedError>().is_some() {
-                tracing::warn!("history_popup: AnchoredPopup not supported on this platform, falling back to fixed-corner LayerShell");
+                tracing::warn!(
+                    "history_popup: AnchoredPopup not supported on this platform, falling back to fixed-corner LayerShell"
+                );
                 let display_id = pick_display(cx);
                 cx.open_window(fallback_window_options(display_id, height), |_, app_cx| {
                     app_cx.new(|view_cx| view::HistoryPopupView::new(view_cx))
@@ -210,7 +222,12 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
 /// Called from the bell widget's `on_mouse_down(Left)`, which holds `&mut
 /// Window` for the BAR's window, not the popup's — so closing here correctly
 /// goes through `close(cx)` (`handle.update`), not `close_this`.
-pub fn toggle(anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle, _window: &mut Window, cx: &mut App) {
+pub fn toggle(
+    anchor_rect: Bounds<Pixels>,
+    parent: AnyWindowHandle,
+    _window: &mut Window,
+    cx: &mut App,
+) {
     let is_open = cx.global::<HistoryPopupState>().handle.is_some();
     if is_open {
         close(cx);

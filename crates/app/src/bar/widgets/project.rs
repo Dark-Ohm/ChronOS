@@ -29,10 +29,7 @@ impl BarWidget for ProjectWidget {
         let config = cached();
 
         let (label, branch) = match config.active_entry() {
-            Some(entry) => (
-                entry.name.clone(),
-                current_branch(Path::new(&entry.path)),
-            ),
+            Some(entry) => (entry.name.clone(), current_branch(Path::new(&entry.path))),
             None => ("проект".to_string(), None),
         };
         let color = if config.active_entry().is_some() {
@@ -51,7 +48,12 @@ impl BarWidget for ProjectWidget {
             .py(px(2.))
             .rounded(theme.radius)
             .hover(|s| s.bg(theme.interactive.hover))
-            .child(svg().path("icons/folder.svg").size(px(12.)).text_color(color))
+            .child(
+                svg()
+                    .path("icons/folder.svg")
+                    .size(px(12.))
+                    .text_color(color),
+            )
             .child(
                 div()
                     .child(label)
