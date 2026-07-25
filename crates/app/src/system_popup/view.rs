@@ -1,38 +1,66 @@
-//! System popup view — brightness fill-bar + steppers, 3-segment power
+//! System popup view — brightness slider + steppers, 3-segment power
 //! profile switch, gaming-mode toggle + effect string.
 //!
-//! Visual spec: `design/System Popup.dc.html` + `design.md` §6. Structure
-//! mirrors `volume_popup/view.rs` (header + ✕, three blocks separated by
-//! `bg.secondary` dividers, `border.subtle` 1px frame).
+//! Visual spec: `design/System Popup.dc.html`. Structure mirrors
+//! `volume_popup/view.rs` (backdrop blur, Light C watermark + shadow,
+//! header + ✕, three blocks separated by dividers, border_1 + radius_lg).
+
+use std::cell::Cell;
+use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use gpui::{
-    AnyElement, App, Context, InteractiveElement, IntoElement, Render, SharedString, Styled,
-    Window, div, prelude::*, px,
+    AnyElement, App, Bounds, BoxShadow, Context, Corners, DragMoveEvent, EmptyView,
+    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, Pixels, Render, SharedString,
+    Styled, Window, canvas, div, img, prelude::*, px, rgba, svg,
 };
 
 use chronos_services::{BrightnessCommand, PowerProfile, Service, UPowerData};
 use chronos_ui::Theme;
 
 use crate::state::AppState;
-use crate::system_popup::{close_this, gaming_mode};
+use crate::system_popup::{close_this, gaming_mode, POPUP_WIDTH};
 
-const PAD: f32 = 12.;
-const TRACK_W: f32 = 200.;
-const TRACK_H: f32 = 6.;
+const PAD: f32 = 14.;
+const TRACK_H: f32 = 4.;
+const THUMB: f32 = 13.;
 const STEP: i8 = 5;
+/// Min interval between brightness Set dispatches during drag (DDC is slow).
+const BRIGHTNESS_THROTTLE: Duration = Duration::from_millis(50);
 
-pub struct SystemPopupView;
+/// Drag marker for the brightness slider only (do not reuse volume markers).
+pub struct BrightnessSliderDrag;
+
+pub struct SystemPopupView {
+    /// Optimistic brightness 0..=100 while dragging / throttling.
+    dispatched_brightness: Option<u8>,
+    last_dispatch_at: Option<Instant>,
+    /// Live layout bounds of the brightness track (window coords) for hit→frac.
+    track_bounds: Rc<Cell<Bounds<Pixels>>>,
+}
 
 impl SystemPopupView {
     pub fn new(_cx: &mut App) -> Self {
-        Self
+        Self {
+            dispatched_brightness: None,
+            last_dispatch_at: None,
+            track_bounds: Rc::new(Cell::new(Bounds::default())),
+        }
     }
 }
 
 impl Render for SystemPopupView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = Theme::global(cx);
+        let theme = *Theme::global(cx);
         let brightness = AppState::brightness(cx).get();
+        // Drop optimistic once the service caught up (or overshot from ± buttons).
+        if self
+            .dispatched_brightness
+            .is_some_and(|d| d == brightness.value)
+        {
+            self.dispatched_brightness = None;
+            self.last_dispatch_at = None;
+        }
         let upower = AppState::upower(cx).get();
         let gaming_active = gaming_mode::GamingModeState::is_active(cx);
 
@@ -40,57 +68,90 @@ impl Render for SystemPopupView {
         let text_primary = theme.text.primary;
         let text_muted = theme.text.muted;
         let text_secondary = theme.text.secondary;
-        let divider = theme.bg.secondary;
+        let divider = theme.border.default;
         let radius = theme.radius;
         let radius_lg = theme.radius_lg;
         let hover = theme.interactive.hover;
         let accent = theme.accent.primary;
         let border_subtle = theme.border.subtle;
+        let is_light = theme.is_light;
+        let font_mono = theme.font_mono;
+        let font_ui = theme.font_ui;
 
-        let header = div()
-            .w_full()
-            .flex()
-            .items_center()
-            .justify_between()
-            .px(px(PAD))
-            .py(px(8.))
-            .child(div().text_color(text_primary).child("System"))
-            .child(
-                div()
-                    .id("system-popup-close")
-                    .cursor_pointer()
-                    .px(px(6.))
-                    .rounded(radius)
-                    .text_color(text_muted)
-                    .hover(|s| s.bg(hover))
-                    .child("✕")
-                    .on_click(|_event, window, cx: &mut App| {
-                        tracing::info!("system_popup: ✕ close clicked");
-                        close_this(window, cx);
-                    }),
-            );
+        let blur_layer = div().absolute().inset_0().child(canvas(
+            |_bounds, _window, _cx| {},
+            move |bounds, _state, window: &mut Window, _cx: &mut App| {
+                window.paint_blur(
+                    bounds,
+                    px(18.0),
+                    Corners::all(radius_lg),
+                    gpui::Hsla {
+                        h: 0.0,
+                        s: 0.0,
+                        l: 1.0,
+                        a: 0.06,
+                    },
+                    1.15,
+                );
+            },
+        ));
 
-        let divider_line = div().w_full().h(px(1.)).bg(divider);
-
-        div()
+        let mut card = div()
+            .relative()
             .flex_col()
-            .w(px(300.))
+            .w(px(POPUP_WIDTH))
             .rounded(radius_lg)
-            .bg(bg)
+            .bg(bg.alpha(0.82))
             .border_1()
             .border_color(border_subtle)
-            .overflow_hidden()
-            .child(header)
-            .child(divider_line)
+            .child(blur_layer)
+            .overflow_hidden();
+
+        if is_light {
+            card = card
+                .shadow(vec![
+                    BoxShadow::new(px(0.), px(6.), rgba(0x3c_40_6e29).into())
+                        .blur_radius(px(24.)),
+                    BoxShadow::new(px(0.), px(0.), rgba(0x007a_cc26).into())
+                        .spread_radius(px(1.))
+                        .inset(),
+                ])
+                .child(
+                    div()
+                        .absolute()
+                        .top(px(0.))
+                        .left(px(0.))
+                        .right(px(0.))
+                        .h(px(1.))
+                        .bg(accent)
+                        .opacity(0.4),
+                )
+                .child(
+                    svg()
+                        .path("icons/hexagon-sigil.svg")
+                        .absolute()
+                        .top(px(-30.))
+                        .right(px(-30.))
+                        .size(px(140.))
+                        .text_color(accent)
+                        .opacity(0.18),
+                );
+        }
+
+        card.child(header(text_primary, text_muted, hover, radius, font_ui))
+            .child(div().w_full().h(px(1.)).bg(divider))
             .child(brightness_block(
                 &brightness,
+                self.dispatched_brightness,
+                self.track_bounds.clone(),
                 text_primary,
                 text_muted,
                 text_secondary,
                 accent,
-                divider,
-                radius,
                 hover,
+                radius,
+                font_mono,
+                font_ui,
                 cx,
             ))
             .child(div().w_full().h(px(1.)).bg(divider))
@@ -101,6 +162,7 @@ impl Render for SystemPopupView {
                 accent,
                 hover,
                 radius,
+                font_ui,
                 cx,
             ))
             .child(div().w_full().h(px(1.)).bg(divider))
@@ -109,45 +171,108 @@ impl Render for SystemPopupView {
                 text_primary,
                 text_muted,
                 accent,
-                divider,
-                radius,
                 hover,
+                radius,
+                font_ui,
                 cx,
             ))
     }
 }
 
+fn header(
+    text_primary: gpui::Hsla,
+    text_muted: gpui::Hsla,
+    hover: gpui::Hsla,
+    radius: gpui::Pixels,
+    font_ui: &'static str,
+) -> AnyElement {
+    div()
+        .w_full()
+        .flex()
+        .items_center()
+        .justify_between()
+        .px(px(PAD))
+        .py(px(12.))
+        .child(
+            div()
+                .font_family(font_ui)
+                .text_size(px(13.))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(text_primary)
+                .child("System"),
+        )
+        .child(
+            div()
+                .id("system-popup-close")
+                .w(px(22.))
+                .h(px(22.))
+                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .text_color(text_muted)
+                .hover(|s| s.bg(hover))
+                .child(img("icons/x.svg").w(px(13.)).h(px(13.)))
+                .on_click(|_event, window, cx: &mut App| {
+                    close_this(window, cx);
+                }),
+        )
+        .into_any_element()
+}
+
 fn brightness_block(
     brightness: &chronos_services::BrightnessState,
+    dispatched_brightness: Option<u8>,
+    track_bounds: Rc<Cell<Bounds<Pixels>>>,
     text_primary: gpui::Hsla,
     text_muted: gpui::Hsla,
     text_secondary: gpui::Hsla,
     accent: gpui::Hsla,
-    bar_track: gpui::Hsla,
-    radius: gpui::Pixels,
     hover: gpui::Hsla,
+    radius: gpui::Pixels,
+    font_mono: &'static str,
+    font_ui: &'static str,
     cx: &mut Context<SystemPopupView>,
 ) -> AnyElement {
     let available = brightness.available;
-    let value = brightness.value;
+    let actual_value = brightness.value;
+
+    // Optimistic value: thumb + label follow the finger; fill can lag on DDC.
+    let display_value = dispatched_brightness.unwrap_or(actual_value);
+
     let fraction = if available {
-        f32::from(value).clamp(0.0, 100.0) / 100.0
+        f32::from(display_value).clamp(0.0, 100.0) / 100.0
     } else {
         0.0
     };
-    let fill_w = TRACK_W * fraction;
+
+    // Track width from live layout (between −/+), not full popup width.
+    let measured_w = f32::from(track_bounds.get().size.width);
+    let track_w = if measured_w > 1.0 {
+        measured_w
+    } else {
+        // First frame before canvas paint — approximate content width.
+        POPUP_WIDTH - 2.0 * PAD - 22.0 - 22.0 - 16.0
+    };
+    let fill_w = track_w * fraction;
+
     let percent_label = if available {
-        format!("{value}%")
+        format!("{display_value}%")
     } else {
         "n/a".to_string()
     };
     let label_color = if available { text_primary } else { text_muted };
-    let value_color = if available {
-        text_secondary
+    let value_color = text_muted;
+    let bar_fill = if available { text_primary } else { text_muted };
+    let track_bg = if available {
+        text_muted.alpha(0.3)
     } else {
         text_muted
     };
-    let bar_fill = if available { accent } else { text_muted };
+
+    let minus_disabled = !available;
+    let plus_disabled = !available;
 
     let title_row = div()
         .w_full()
@@ -159,83 +284,205 @@ fn brightness_block(
                 .flex()
                 .items_center()
                 .gap(px(7.))
-                .child(div().text_color(label_color).child("☀ Brightness")),
+                .child(
+                    svg()
+                        .path("icons/brightness.svg")
+                        .size(px(15.))
+                        .text_color(text_muted),
+                )
+                .child(
+                    div()
+                        .font_family(font_ui)
+                        .text_size(px(12.5))
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .text_color(label_color)
+                        .child("Brightness"),
+                ),
         )
-        .child(div().text_color(value_color).child(percent_label));
+        .child(
+            div()
+                .font_family(font_mono)
+                .text_size(px(11.))
+                .text_color(value_color)
+                .child(percent_label),
+        );
 
-    let track = div()
-        .w(px(TRACK_W))
-        .h(px(TRACK_H))
-        .rounded(radius)
-        .bg(bar_track)
-        .overflow_hidden()
-        .child(div().h_full().w(px(fill_w)).rounded(radius).bg(bar_fill));
-
-    let minus_disabled = !available;
-    let plus_disabled = !available;
-
-    let steppers = div().flex().items_center().gap(px(6.)).child(
-        div()
-            .flex()
-            .items_center()
-            .gap(px(6.))
-            .child(
-                div()
-                    .id("brightness-minus")
-                    .cursor_pointer()
-                    .px(px(8.))
-                    .py(px(2.))
-                    .rounded(radius)
-                    .text_color(if minus_disabled {
-                        text_muted
-                    } else {
-                        text_secondary
-                    })
-                    .hover(move |s| if !minus_disabled { s.bg(hover) } else { s })
-                    .child("−5%")
-                    .on_click(move |_event, _window, cx: &mut App| {
-                        tracing::info!("system_popup: brightness −5% clicked (available={})", !minus_disabled);
-                        if !minus_disabled {
-                            AppState::brightness(cx).dispatch(BrightnessCommand::Step(-STEP));
-                        }
-                    }),
-            )
-            .child(track)
-            .child(
-                div()
-                    .id("brightness-plus")
-                    .cursor_pointer()
-                    .px(px(8.))
-                    .py(px(2.))
-                    .rounded(radius)
-                    .text_color(if plus_disabled {
-                        text_muted
-                    } else {
-                        text_secondary
-                    })
-                    .hover(move |s| if !plus_disabled { s.bg(hover) } else { s })
-                    .child("+5%")
-                    .on_click(move |_event, _window, cx: &mut App| {
-                        tracing::info!("system_popup: brightness +5% clicked (available={})", !plus_disabled);
-                        if !plus_disabled {
-                            AppState::brightness(cx).dispatch(BrightnessCommand::Step(STEP));
-                        }
-                    }),
-            ),
+    // ── Slider: click + drag (bounds-local frac, not full-window PAD math) ──
+    let slider_id: SharedString = "brightness-slider".into();
+    let bounds_for_mouse = track_bounds.clone();
+    let mouse_listener = cx.listener(
+        move |this: &mut SystemPopupView,
+              ev: &MouseDownEvent,
+              _window,
+              cx: &mut Context<SystemPopupView>| {
+            let frac = brightness_frac_from_bounds(f32::from(ev.position.x), &bounds_for_mouse.get());
+            set_brightness_from_frac(this, frac, cx);
+        },
+    );
+    let bounds_for_drag = track_bounds.clone();
+    let drag_listener = cx.listener(
+        move |this: &mut SystemPopupView,
+              ev: &DragMoveEvent<BrightnessSliderDrag>,
+              _window,
+              cx: &mut Context<SystemPopupView>| {
+            let frac =
+                brightness_frac_from_bounds(f32::from(ev.event.position.x), &bounds_for_drag.get());
+            set_brightness_from_frac(this, frac, cx);
+        },
     );
 
-    // Suppress unused-variable warning for `cx` when no listener is needed.
-    let _ = cx;
+    let bounds_cell = track_bounds;
+    let slider = div()
+        .id(slider_id)
+        .flex_1()
+        .h(px(THUMB + 8.))
+        .flex()
+        .items_center()
+        .cursor_pointer()
+        .relative()
+        .child(
+            canvas(
+                move |bounds, _window, _cx| bounds,
+                move |_bounds, captured, _window, _cx| {
+                    bounds_cell.set(captured);
+                },
+            )
+            .absolute()
+            .size_full(),
+        )
+        .on_mouse_down(MouseButton::Left, mouse_listener)
+        .on_drag(BrightnessSliderDrag, |_, _, _, cx| cx.new(|_| EmptyView))
+        .on_drag_move(drag_listener)
+        .child(
+            div()
+                .w_full()
+                .h(px(TRACK_H))
+                .rounded(px(3.))
+                .bg(track_bg)
+                .relative()
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(0.))
+                        .top(px(0.))
+                        .bottom(px(0.))
+                        .w(px(fill_w.max(0.)))
+                        .rounded(px(3.))
+                        .bg(bar_fill),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .top(px((TRACK_H - THUMB) / 2.))
+                        .left(px(fill_w.max(0.) - THUMB / 2.))
+                        .size(px(THUMB))
+                        .rounded(px(THUMB / 2.))
+                        .bg(text_primary),
+                ),
+        );
+
+    let control_row = div()
+        .w_full()
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .child(
+            div()
+                .id("brightness-minus")
+                .w(px(22.))
+                .h(px(22.))
+                .rounded(radius)
+                .flex()
+                .items_center()
+                .justify_center()
+                .flex_none()
+                .cursor_pointer()
+                .text_color(if minus_disabled { text_muted } else { text_secondary })
+                .hover(move |s| if !minus_disabled { s.bg(hover) } else { s })
+                .child(
+                    svg()
+                        .path("icons/minus.svg")
+                        .size(px(11.))
+                        .text_color(if minus_disabled { text_muted } else { text_secondary }),
+                )
+                .on_click(move |_event, _window, cx: &mut App| {
+                    if !minus_disabled {
+                        AppState::brightness(cx).dispatch(BrightnessCommand::Step(-STEP));
+                    }
+                }),
+        )
+        .child(slider)
+        .child(
+            div()
+                .id("brightness-plus")
+                .w(px(22.))
+                .h(px(22.))
+                .rounded(radius)
+                .flex()
+                .items_center()
+                .justify_center()
+                .flex_none()
+                .cursor_pointer()
+                .text_color(if plus_disabled { text_muted } else { text_secondary })
+                .hover(move |s| if !plus_disabled { s.bg(hover) } else { s })
+                .child(
+                    svg()
+                        .path("icons/plus.svg")
+                        .size(px(11.))
+                        .text_color(if plus_disabled { text_muted } else { text_secondary }),
+                )
+                .on_click(move |_event, _window, cx: &mut App| {
+                    if !plus_disabled {
+                        AppState::brightness(cx).dispatch(BrightnessCommand::Step(STEP));
+                    }
+                }),
+        );
 
     div()
         .w_full()
         .flex_col()
         .gap(px(8.))
         .px(px(PAD))
-        .py(px(10.))
+        .py(px(14.))
         .child(title_row)
-        .child(steppers)
+        .child(control_row)
         .into_any_element()
+}
+
+/// Pointer window-x → 0..=1 using the **measured track** bounds (between −/+),
+/// not the full popup content width (that bug made drag jump and fight the thumb).
+fn brightness_frac_from_bounds(x: f32, bounds: &Bounds<Pixels>) -> f64 {
+    let left = f32::from(bounds.origin.x);
+    let w = f32::from(bounds.size.width);
+    if w <= 1.0 {
+        return 0.0;
+    }
+    ((x - left) / w).clamp(0.0, 1.0) as f64
+}
+
+/// Set brightness from a slider fraction (0..=1). Optimistic UI first so the
+/// thumb tracks the finger; DDC `Set` throttled (~50ms) — each write hits
+/// **all** monitors via `write_all` (MVP: one slider → both displays).
+fn set_brightness_from_frac(
+    this: &mut SystemPopupView,
+    frac: f64,
+    cx: &mut Context<SystemPopupView>,
+) {
+    let value = (frac * 100.0).round().clamp(0.0, 100.0) as u8;
+    let now = Instant::now();
+
+    this.dispatched_brightness = Some(value);
+
+    let should_dispatch = this
+        .last_dispatch_at
+        .map(|t| now.duration_since(t) >= BRIGHTNESS_THROTTLE)
+        .unwrap_or(true);
+
+    if should_dispatch {
+        this.last_dispatch_at = Some(now);
+        AppState::brightness(cx).dispatch(BrightnessCommand::Set(value));
+    }
+    cx.notify();
 }
 
 fn power_profile_block(
@@ -245,12 +492,11 @@ fn power_profile_block(
     accent: gpui::Hsla,
     hover: gpui::Hsla,
     radius: gpui::Pixels,
+    font_ui: &'static str,
     cx: &mut Context<SystemPopupView>,
 ) -> AnyElement {
     let current = upower.power_profile;
 
-    // Mockup labels: Quiet / Balanced / Performance.
-    // Mapping: Quiet = PowerSaver, Balanced = Balanced, Performance = Performance.
     let segments: [(PowerProfile, &'static str); 3] = [
         (PowerProfile::PowerSaver, "Quiet"),
         (PowerProfile::Balanced, "Balanced"),
@@ -259,9 +505,11 @@ fn power_profile_block(
 
     let title = div()
         .w_full()
-        .flex()
-        .items_center()
-        .child(div().text_color(text_primary).child("Power profile"));
+        .font_family(font_ui)
+        .text_size(px(12.5))
+        .font_weight(gpui::FontWeight::MEDIUM)
+        .text_color(text_primary)
+        .child("Power profile");
 
     let mut row = div()
         .w_full()
@@ -269,18 +517,10 @@ fn power_profile_block(
         .rounded(radius)
         .overflow_hidden()
         .border_1()
-        .border_color(hover);
+        .border_color(text_muted.alpha(0.3));
     for (profile, label) in segments {
         let is_active = current == profile;
-        let bg = if is_active {
-            accent
-        } else {
-            gpui::transparent_black()
-        };
-        // Текст ПОВЕРХ accent-заливки — через on_fill (не theme.text.*):
-        // в Light C text.primary тёмный и на #007acc ещё читается, но
-        // STYLE.md запрещает text-токены на насыщенной заливке; dark
-        // text.primary == paper-полюс on_fill → пиксель тот же.
+        let seg_bg = if is_active { accent } else { gpui::transparent_black() };
         let color = if is_active {
             chronos_ui::on_fill(accent)
         } else {
@@ -294,22 +534,20 @@ fn power_profile_block(
                 .text_center()
                 .py(px(6.))
                 .text_color(color)
-                .bg(bg)
+                .bg(seg_bg)
                 .cursor_pointer()
+                .font_family(font_ui)
+                .text_size(px(11.5))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
                 .hover(move |s| if is_active { s } else { s.bg(hover) })
                 .child(label)
                 .on_click(move |_event, _window, cx: &mut App| {
-                    tracing::info!("system_popup: power profile segment clicked: {profile:?}");
                     let upower = AppState::upower(cx).clone();
                     let target = profile;
                     cx.background_spawn(async move {
                         match upower.set_power_profile(target).await {
-                            Ok(()) => {
-                                tracing::info!("system_popup: set power profile to {target:?}")
-                            }
-                            Err(e) => {
-                                tracing::error!("system_popup: set power profile failed: {e:?}")
-                            }
+                            Ok(()) => tracing::info!("system_popup: set power profile to {target:?}"),
+                            Err(e) => tracing::error!("system_popup: set power profile failed: {e:?}"),
                         }
                     })
                     .detach();
@@ -324,7 +562,7 @@ fn power_profile_block(
         .flex_col()
         .gap(px(9.))
         .px(px(PAD))
-        .py(px(10.))
+        .py(px(14.))
         .child(title)
         .child(row)
         .into_any_element()
@@ -335,9 +573,9 @@ fn gaming_mode_block(
     text_primary: gpui::Hsla,
     text_muted: gpui::Hsla,
     accent: gpui::Hsla,
-    _divider: gpui::Hsla,
-    radius: gpui::Pixels,
     hover: gpui::Hsla,
+    radius: gpui::Pixels,
+    font_ui: &'static str,
     cx: &mut Context<SystemPopupView>,
 ) -> AnyElement {
     let title_row = div()
@@ -345,17 +583,17 @@ fn gaming_mode_block(
         .flex()
         .items_center()
         .justify_between()
-        .child(div().text_color(text_primary).child("Gaming mode"))
+        .child(
+            div()
+                .font_family(font_ui)
+                .text_size(px(12.5))
+                .font_weight(gpui::FontWeight::MEDIUM)
+                .text_color(text_primary)
+                .child("Gaming mode"),
+        )
         .child(toggle_switch(active, accent, hover, radius, cx));
 
-    // Effect string — matches the design mockup. "Hide bar/dock" is omitted
-    // per the brief (chicken-egg: without the bar you can't reopen the popup
-    // to toggle gaming mode off). Tracked as a follow-up TODO.
-    let effect = if active {
-        "Performance · No animations · No blur · Allow tearing · DND"
-    } else {
-        "Performance profile · No animations · No blur · Allow tearing · DND"
-    };
+    let effect = "Performance profile · No animations · Do Not Disturb · Hide bar/dock · VSync forced";
 
     let _ = cx;
 
@@ -364,24 +602,28 @@ fn gaming_mode_block(
         .flex_col()
         .gap(px(8.))
         .px(px(PAD))
-        .py(px(10.))
+        .py(px(14.))
         .child(title_row)
-        .child(div().text_color(text_muted).text_xs().child(effect))
+        .child(
+            div()
+                .text_color(text_muted)
+                .font_family(font_ui)
+                .text_size(px(10.5))
+                .line_height(px(16.))
+                .child(effect),
+        )
         .into_any_element()
 }
 
-/// iOS-style toggle: 34×19 pill, 15px knob, accent track when on.
 fn toggle_switch(
     active: bool,
     accent: gpui::Hsla,
     hover: gpui::Hsla,
-    radius: gpui::Pixels,
+    _radius: gpui::Pixels,
     cx: &mut Context<SystemPopupView>,
 ) -> AnyElement {
     let track_bg = if active { accent } else { hover };
     let knob_left = if active { px(17.) } else { px(2.) };
-    // Кружок лежит ПОВЕРХ трека — контраст считаем от трека, не от схемы:
-    // светло-серый кружок пропадал на светлом треке в схеме Light C.
     let knob_color = chronos_ui::on_fill(track_bg);
 
     let _ = cx;
@@ -405,7 +647,6 @@ fn toggle_switch(
                 .bg(knob_color),
         )
         .on_click(move |_event, _window, cx: &mut App| {
-            tracing::info!("system_popup: gaming toggle clicked");
             crate::system_popup::gaming_mode::toggle(cx);
         })
         .into_any_element()

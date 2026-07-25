@@ -1,20 +1,25 @@
 //! System popup — brightness + power profile + gaming mode toggle.
+//! Anchored to the bar system widget (LayerShell fallback on platforms
+//! without `AnchoredPopup`).
 //!
-//! Opened by clicking the bar's system widget (⚙). Window lifecycle mirrors
-//! `volume_popup/` / `updates_popup/` / `tray_menu/`: layer-shell Overlay,
-//! TOP|RIGHT, no exclusive keyboard, **no close-on-focus-loss** (only
-//! explicit toggle / ✕ / Esc). In-popup close uses `close_this` (direct
-//! `remove_window`) — never re-entrant `handle.update` (ghost-window saga,
-//! HANDOFF.md "СИСТЕМНЫЙ БАГ: window.remove_window()").
-//!
-//! Visual spec: `design/System Popup.dc.html` + `design.md` §6.
+//! Opened by clicking the bar system widget. Window lifecycle mirrors
+//! `volume_popup/`: anchored popup, no close-on-focus-loss (only explicit
+//! toggle / ✕). In-popup close uses `close_this` (direct
+//! `remove_window`) — never re-entrant `handle.update`.
 
 pub mod gaming_mode;
 pub mod view;
 
 use gpui::{
-    App, Bounds, Context, DisplayId, Entity, Global, Size, Window, WindowBackgroundAppearance,
-    WindowBounds, WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
+    AnyWindowHandle, App, Bounds, Context, DisplayId, Entity, Global, Pixels, Size, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions,
+    layer_shell::*,
+    point,
+    popup::{
+        PopupAnchor, PopupConstraintAdjustment, PopupGravity, PopupNotSupportedError, PopupOptions,
+    },
+    prelude::*,
+    px,
 };
 
 use chronos_services::{BrightnessState, Service, UPowerData};
@@ -23,29 +28,30 @@ use crate::state::{self, AppState};
 use crate::system_popup::gaming_mode::GamingModeState;
 use crate::system_popup::view::SystemPopupView;
 
-/// Popup width (px). Matches volume_popup / design mockup.
-pub(crate) const POPUP_WIDTH: f32 = 300.;
-/// Fixed height — the popup always shows all three blocks (brightness,
-/// power profile, gaming mode), so the height does not depend on data.
-/// Budget: header 48 + divider 1 + brightness 80 + divider 1 + power 70 +
-/// divider 1 + gaming 80 = 281. Rounded up for padding slack.
-const POPUP_HEIGHT: f32 = 284.;
+/// Popup width (px). Mockup 360.
+pub(crate) const POPUP_WIDTH: f32 = 360.;
+/// Fixed height — all three blocks (brightness, power, gaming) are always
+/// shown, so height does not depend on data.
+const BASE_HEIGHT: f32 = 274.;
 /// Below the bar top edge — same budget as volume_popup / updates_popup.
 const POPUP_MARGIN_TOP: f32 = 36.;
 const POPUP_MARGIN_RIGHT: f32 = 8.;
+
+pub(crate) fn estimate_popup_height() -> f32 {
+    BASE_HEIGHT
+}
 
 /// Global state for the system popup.
 #[derive(Default)]
 pub struct SystemPopupState {
     handle: Option<WindowHandle<SystemPopupView>>,
-    /// Watches brightness + upower signals; repaints the popup on change.
     brightness_watcher: Option<Entity<SystemPopupBrightnessWatcher>>,
     upower_watcher: Option<Entity<SystemPopupUPowerWatcher>>,
 }
 
 impl Global for SystemPopupState {}
 
-/// Hosts the `state::watch()` subscription for brightness; no state of its own.
+/// Hosts the `state::watch()` subscription for brightness.
 pub struct SystemPopupBrightnessWatcher {}
 
 /// Hosts the `state::watch()` subscription for UPower (power profile changes
@@ -56,13 +62,16 @@ fn pick_display(cx: &App) -> Option<DisplayId> {
     crate::monitor::pult_display(cx)
 }
 
-fn window_options(display_id: Option<DisplayId>) -> WindowOptions {
+/// Layer-shell window options — TOP | RIGHT, overlay, never exclusive, no
+/// keyboard interactivity. Used as fallback when `AnchoredPopup` isn't
+/// supported on this platform.
+fn fallback_window_options(display_id: Option<DisplayId>) -> WindowOptions {
     WindowOptions {
         display_id,
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: point(px(0.), px(0.)),
-            size: Size::new(px(POPUP_WIDTH), px(POPUP_HEIGHT)),
+            size: Size::new(px(POPUP_WIDTH), px(estimate_popup_height())),
         })),
         app_id: Some("chronos-system-popup".to_string()),
         window_background: WindowBackgroundAppearance::Transparent,
@@ -79,26 +88,65 @@ fn window_options(display_id: Option<DisplayId>) -> WindowOptions {
     }
 }
 
-/// Open the popup (idempotent — no-op if already open). Triggers a brightness
-/// refresh so the slider reflects the live monitor state, not a stale init
-/// value.
-///
-/// `display_id` — the pult (chrome) display from `crate::monitor::pult_display`,
-/// so the popup opens on the same monitor as the bar. Falls back to
-/// `pick_display` only if the caller passes `None`.
-pub fn open(display_id: Option<DisplayId>, cx: &mut App) {
+/// Anchored popup — positioned relative to the system widget's bounds,
+/// extending down-and-left from the icon's bottom-right corner.
+fn window_options(
+    anchor_rect: Bounds<Pixels>,
+    parent: AnyWindowHandle,
+) -> WindowOptions {
+    WindowOptions {
+        titlebar: None,
+        window_bounds: Some(WindowBounds::Windowed(Bounds {
+            origin: point(px(0.), px(0.)),
+            size: Size::new(px(POPUP_WIDTH), px(estimate_popup_height())),
+        })),
+        app_id: Some("chronos-system-popup".to_string()),
+        window_background: WindowBackgroundAppearance::Transparent,
+        kind: WindowKind::AnchoredPopup(PopupOptions {
+            parent,
+            anchor_rect,
+            anchor: PopupAnchor::BottomRight,
+            gravity: PopupGravity::BottomLeft,
+            constraint_adjustment: PopupConstraintAdjustment::SLIDE_X
+                | PopupConstraintAdjustment::FLIP_X,
+            offset: point(px(0.), px(4.)),
+            grab: true,
+        }),
+        ..Default::default()
+    }
+}
+
+/// Open the popup (idempotent — no-op if already open). Falls back to a
+/// fixed-corner LayerShell popup when `AnchoredPopup` isn't supported.
+pub fn open(cx: &mut App, anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle) {
     if cx.global::<SystemPopupState>().handle.is_some() {
         return;
     }
 
-    // Refresh brightness on open — DDC latency is 100-300ms, so we don't poll
-    // on a frame cadence; this is the moment to re-read.
     AppState::brightness(cx).dispatch(chronos_services::BrightnessCommand::Refresh);
 
-    let display_id = display_id.or_else(|| pick_display(cx));
-    match cx.open_window(window_options(display_id), |_, app_cx| {
+    let result = cx.open_window(window_options(anchor_rect, parent), |_, app_cx| {
         app_cx.new(|view_cx| SystemPopupView::new(view_cx))
-    }) {
+    });
+
+    let result = match result {
+        Err(err) => {
+            if err.downcast_ref::<PopupNotSupportedError>().is_some() {
+                tracing::warn!(
+                    "system_popup: AnchoredPopup not supported on this platform, falling back to fixed-corner LayerShell"
+                );
+                let display_id = pick_display(cx);
+                cx.open_window(fallback_window_options(display_id), |_, app_cx| {
+                    app_cx.new(|view_cx| SystemPopupView::new(view_cx))
+                })
+            } else {
+                Err(err)
+            }
+        }
+        ok => ok,
+    };
+
+    match result {
         Ok(new_handle) => {
             cx.global_mut::<SystemPopupState>().handle = Some(new_handle);
         }
@@ -109,7 +157,9 @@ pub fn open(display_id: Option<DisplayId>, cx: &mut App) {
 /// Close from outside the popup (bar toggle). Uses `handle.update`.
 pub fn close(cx: &mut App) {
     if let Some(handle) = cx.global_mut::<SystemPopupState>().handle.take() {
-        let _ = handle.update(cx, |_, window: &mut Window, _| window.remove_window());
+        if let Err(e) = handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
+            tracing::warn!("system_popup: close remove_window failed (already dead?): {e}");
+        }
     }
 }
 
@@ -130,17 +180,16 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
 }
 
 /// Bar-icon toggle. Caller's window is the bar, not the popup → use `close`.
-/// The popup opens on the same display as the clicked bar window, so on a
-/// multi-monitor setup it follows the cursor instead of always landing on the
-/// first display in `cx.displays()` (which is what `pick_display` alone does
-/// when `cx.primary_display()` returns None — the current state on Hyprland
-/// 0.55.4+ with the Lua config layer).
-pub fn toggle(_window: &mut Window, cx: &mut App) {
+pub fn toggle(
+    anchor_rect: Bounds<Pixels>,
+    parent: AnyWindowHandle,
+    _window: &mut Window,
+    cx: &mut App,
+) {
     if cx.global::<SystemPopupState>().handle.is_some() {
         close(cx);
     } else {
-        let display = crate::monitor::pult_display(cx);
-        open(display, cx);
+        open(cx, anchor_rect, parent);
     }
 }
 
@@ -150,8 +199,6 @@ pub fn init(cx: &mut App) {
     cx.set_global(SystemPopupState::default());
     GamingModeState::init(cx);
 
-    // Brightness watcher — repaint on brightness change (after a step, the
-    // service re-reads and emits; the popup slider follows).
     let brightness_signal = AppState::brightness(cx).subscribe();
     let brightness_watcher = cx.new(|cx| {
         state::watch(
@@ -172,9 +219,6 @@ pub fn init(cx: &mut App) {
     });
     cx.global_mut::<SystemPopupState>().brightness_watcher = Some(brightness_watcher);
 
-    // UPower watcher — repaint when the power profile changes from outside
-    // (e.g. `powerprofilesctl set performance` in another terminal, or the
-    // battery widget's cycle-on-click).
     let upower_signal = AppState::upower(cx).subscribe();
     let upower_watcher = cx.new(|cx| {
         state::watch(
