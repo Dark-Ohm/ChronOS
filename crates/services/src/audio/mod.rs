@@ -16,7 +16,8 @@ use std::time::Duration;
 
 use futures_signals::signal::{Mutable, Signal};
 use tokio::runtime::Handle;
-use tracing::{info, warn};
+use tokio::sync::watch;
+use tracing::{debug, info, warn};
 
 use crate::Service;
 use crate::ServiceStatus;
@@ -26,13 +27,21 @@ pub use wpctl::{
     parse_get_volume, parse_node_description,
 };
 
-pub mod types;
 mod pw_dump;
+pub mod types;
 mod wpctl;
 
 const DEFAULT_SINK: &str = "@DEFAULT_AUDIO_SINK@";
 const DEFAULT_SOURCE: &str = "@DEFAULT_AUDIO_SOURCE@";
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Volume to apply: target endpoint id and the volume value.
+/// `PartialEq` so `watch` only notifies when the pending value actually changes.
+#[derive(Clone, Debug, PartialEq)]
+struct PendingVolume {
+    target: String,
+    volume: f64,
+}
 
 #[derive(Clone)]
 pub struct AudioSubscriber {
@@ -40,6 +49,8 @@ pub struct AudioSubscriber {
     status: Mutable<ServiceStatus>,
     /// Captured in `new()` — runtime guard + fire-and-forget for `dispatch`.
     runtime: Handle,
+    /// Channel for volume coalescing: latest value wins, background task applies.
+    volume_tx: watch::Sender<Option<PendingVolume>>,
 }
 
 impl AudioSubscriber {
@@ -57,34 +68,105 @@ impl AudioSubscriber {
         let handle = Handle::current();
         tokio::spawn(run(data.clone(), status.clone()));
 
+        // Spawn volume coalesce task — drains latest pending value, applies to
+        // PipeWire, reads back actual volume (light confirm). Non-volume commands
+        // still use full read_state on their own path.
+        let (volume_tx, volume_rx) = watch::channel::<Option<PendingVolume>>(None);
+        let coalesce_data = data.clone();
+        let coalesce_status = status.clone();
+        tokio::spawn(run_volume_coalesce(
+            volume_rx,
+            coalesce_data,
+            coalesce_status,
+        ));
+
         Self {
             data,
             status,
             runtime: handle,
+            volume_tx,
         }
     }
 
     /// Fire-and-forget command dispatch (mirrors `TraySubscriber::dispatch` /
     /// `CompositorSubscriber::dispatch`). Safe to call from a GPUI click handler.
+    ///
+    /// **Volume commands** (`SetSinkVolume` / `SetSourceVolume`) take a coalesced
+    /// fast path: optimistic state update + background wpctl apply with light
+    /// confirm. No full `read_state()` (no `pw-dump`).
+    ///
+    /// **All other commands** use the original path: apply + full `read_state()`.
     pub fn dispatch(&self, cmd: AudioCommand) {
         let data = self.data.clone();
         let status = self.status.clone();
-        self.runtime.spawn(async move {
-            if let Err(e) = apply_command(&cmd).await {
-                warn!("AudioSubscriber command failed ({cmd:?}): {e:?}");
-                return;
+
+        match &cmd {
+            AudioCommand::SetSinkVolume(v) => {
+                let target = DEFAULT_SINK.to_string();
+                let v_clamped = wpctl::clamp_volume(*v);
+
+                // Optimistic: update state immediately so UI re-renders.
+                let current = data.get_cloned();
+                let optimistic = AudioState {
+                    sink: EndpointState {
+                        volume: v_clamped,
+                        ..current.sink
+                    },
+                    source: current.source,
+                };
+                data.set(optimistic);
+                status.set(ServiceStatus::Available);
+
+                // Coalesce: wake background task (latest-wins).
+                let _ = self.volume_tx.send(Some(PendingVolume {
+                    target,
+                    volume: v_clamped,
+                }));
+                debug!("volume: dispatch sink {v_clamped:.2}");
             }
-            // Immediate re-read so UI does not wait for the next poll tick.
-            match read_state().await {
-                Ok(state) => {
-                    data.set(state);
-                    status.set(ServiceStatus::Available);
-                }
-                Err(e) => {
-                    warn!("AudioSubscriber re-read after command failed: {e:?}");
-                }
+            AudioCommand::SetSourceVolume(v) => {
+                let target = DEFAULT_SOURCE.to_string();
+                let v_clamped = wpctl::clamp_volume(*v);
+
+                let current = data.get_cloned();
+                let optimistic = AudioState {
+                    sink: current.sink,
+                    source: EndpointState {
+                        volume: v_clamped,
+                        ..current.source
+                    },
+                };
+                data.set(optimistic);
+                status.set(ServiceStatus::Available);
+
+                let _ = self.volume_tx.send(Some(PendingVolume {
+                    target,
+                    volume: v_clamped,
+                }));
+                debug!("volume: dispatch source {v_clamped:.2}");
             }
-        });
+            _ => {
+                // Non-volume commands: original path (apply + full re-read).
+                let data = self.data.clone();
+                let status = self.status.clone();
+                self.runtime.spawn(async move {
+                    if let Err(e) = apply_command(&cmd).await {
+                        warn!("AudioSubscriber command failed ({cmd:?}): {e:?}");
+                        return;
+                    }
+                    // Full re-read for mute/toggle/default (needs device list).
+                    match read_state().await {
+                        Ok(state) => {
+                            data.set(state);
+                            status.set(ServiceStatus::Available);
+                        }
+                        Err(e) => {
+                            warn!("AudioSubscriber re-read after command failed: {e:?}");
+                        }
+                    }
+                });
+            }
+        }
     }
 
     /// Resolve `player_hint` to a live PipeWire stream and toggle its mute.
@@ -142,8 +224,82 @@ impl Service for AudioSubscriber {
     }
 }
 
+/// Volume coalesce task: waits for watch notifications, applies latest
+/// pending volume to PipeWire, light-confirms (no `pw-dump`, no inspect).
+///
+/// **Latest-wins:** while `wpctl` runs, further `dispatch` calls overwrite the
+/// channel; after apply we drain any newer value before sleeping on
+/// `changed()` again. We must **not** spin-apply the same `Some(pv)` every
+/// few ms — the channel keeps the last `Some` until a newer send replaces it.
+async fn run_volume_coalesce(
+    mut rx: watch::Receiver<Option<PendingVolume>>,
+    data: Mutable<AudioState>,
+    status: Mutable<ServiceStatus>,
+) {
+    loop {
+        // Block until the sender posts a new value (first Some or a change).
+        if rx.changed().await.is_err() {
+            return; // sender dropped
+        }
+
+        let Some(mut pv) = rx.borrow_and_update().clone() else {
+            continue; // ignore empty clears if ever used
+        };
+
+        // Apply current, then any value that arrived mid-apply (true coalesce).
+        loop {
+            if let Err(e) = apply_to_pipewire(&pv.target, pv.volume).await {
+                warn!("volume coalesce: wpctl failed for {}: {e:?}", pv.target);
+            } else if let Ok((vol, muted)) = read_volume_only(&pv.target).await {
+                let current = data.get_cloned();
+                let updated = merge_volume_into_state(&current, &pv.target, vol, muted);
+                if data.get_cloned() != updated {
+                    data.set(updated);
+                }
+                status.set(ServiceStatus::Available);
+            }
+
+            if !rx.has_changed().unwrap_or(false) {
+                break;
+            }
+            match rx.borrow_and_update().clone() {
+                Some(next) => pv = next,
+                None => break,
+            }
+        }
+    }
+}
+
+/// Apply a single `wpctl set-volume` for the given target.
+async fn apply_to_pipewire(target: &str, volume: f64) -> anyhow::Result<()> {
+    let args = wpctl::format_set_volume_args(target, volume);
+    tokio::task::spawn_blocking(move || {
+        let str_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        wpctl::run_wpctl(&str_args).map(|_| ())
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("volume apply join error: {e}"))?
+}
+
+/// Read only `wpctl get-volume <target>` — returns (volume, muted).
+/// No `pw-dump`, no `inspect` — very cheap.
+async fn read_volume_only(target: &str) -> anyhow::Result<(f64, bool)> {
+    let target = target.to_string();
+    tokio::task::spawn_blocking(move || {
+        let vol_out = wpctl::run_wpctl(&["get-volume", &target])?;
+        let (volume, muted) = parse_get_volume(&vol_out)
+            .ok_or_else(|| anyhow::anyhow!("unparseable get-volume for {target}: {vol_out:?}"))?;
+        Ok((volume, muted))
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("volume read join error: {e}"))?
+}
+
 /// Poll loop: read sink+source, publish diffs, exponential backoff on hard
 /// failure (missing `wpctl` / no PipeWire session).
+///
+/// Device lists (from `pw-dump`) are only refreshed here — never on the
+/// command dispatch path.
 async fn run(data: Mutable<AudioState>, status: Mutable<ServiceStatus>) {
     const MAX_BACKOFF: Duration = Duration::from_secs(60);
     let mut backoff = Duration::from_secs(1);
@@ -220,6 +376,7 @@ fn read_endpoint(id: &str) -> anyhow::Result<EndpointState> {
 /// Pure mapping of [`AudioCommand`] → `wpctl` argv (no binary name).
 ///
 /// Unit-tested; `apply_command` only shells out.
+#[allow(dead_code)]
 pub fn command_to_wpctl_args(cmd: &AudioCommand) -> Vec<String> {
     match cmd {
         AudioCommand::SetSinkVolume(v) => format_set_volume_args(DEFAULT_SINK, *v),
@@ -242,6 +399,34 @@ async fn apply_command(cmd: &AudioCommand) -> anyhow::Result<()> {
     })
     .await
     .map_err(|e| anyhow::anyhow!("audio command join error: {e}"))?
+}
+
+/// Merge a confirmed volume into the state, preserving device lists.
+fn merge_volume_into_state(
+    state: &AudioState,
+    target: &str,
+    volume: f64,
+    muted: bool,
+) -> AudioState {
+    if target == DEFAULT_SINK {
+        AudioState {
+            sink: EndpointState {
+                volume,
+                muted,
+                ..state.sink.clone()
+            },
+            source: state.source.clone(),
+        }
+    } else {
+        AudioState {
+            sink: state.sink.clone(),
+            source: EndpointState {
+                volume,
+                muted,
+                ..state.source.clone()
+            },
+        }
+    }
 }
 
 #[cfg(test)]
@@ -305,23 +490,14 @@ mod tests {
         let args = command_to_wpctl_args(&AudioCommand::SetSinkVolume(0.40));
         assert_eq!(
             args,
-            vec![
-                "set-volume",
-                "-l",
-                "1.5",
-                "@DEFAULT_AUDIO_SINK@",
-                "40%",
-            ]
+            vec!["set-volume", "-l", "1.5", "@DEFAULT_AUDIO_SINK@", "40%",]
         );
     }
 
     #[test]
     fn command_to_wpctl_args_toggle_source_mute() {
         let args = command_to_wpctl_args(&AudioCommand::ToggleSourceMute);
-        assert_eq!(
-            args,
-            vec!["set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"]
-        );
+        assert_eq!(args, vec!["set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"]);
     }
 
     #[test]
@@ -340,5 +516,52 @@ mod tests {
     fn command_to_wpctl_args_stream_mute_targets_the_given_id() {
         let args = command_to_wpctl_args(&AudioCommand::ToggleStreamMute(142));
         assert_eq!(args, vec!["set-mute", "142", "toggle"]);
+    }
+
+    #[test]
+    fn merge_volume_into_state_sink_preserves_source_and_devices() {
+        let state = AudioState {
+            sink: EndpointState {
+                volume: 0.3,
+                muted: false,
+                name: "Built-in".into(),
+                available: vec![AudioDevice {
+                    id: 1,
+                    name: "Headphones".into(),
+                    node_name: "headphones".into(),
+                    is_default: false,
+                }],
+            },
+            source: EndpointState {
+                volume: 0.7,
+                muted: true,
+                name: "Mic".into(),
+                available: vec![],
+            },
+        };
+        let merged = merge_volume_into_state(&state, DEFAULT_SINK, 0.9, true);
+        // Sink volume updated
+        assert!((merged.sink.volume - 0.9).abs() < 1e-9);
+        assert!(merged.sink.muted);
+        // Sink device list preserved
+        assert_eq!(merged.sink.available.len(), 1);
+        assert_eq!(merged.sink.available[0].name, "Headphones");
+        // Source untouched
+        assert!((merged.source.volume - 0.7).abs() < 1e-9);
+        assert!(merged.source.muted);
+    }
+
+    #[test]
+    fn merge_volume_into_state_source_preserves_sink() {
+        let state = AudioState {
+            sink: EndpointState {
+                volume: 0.5,
+                ..EndpointState::default()
+            },
+            source: EndpointState::default(),
+        };
+        let merged = merge_volume_into_state(&state, DEFAULT_SOURCE, 0.25, false);
+        assert!((merged.sink.volume - 0.5).abs() < 1e-9);
+        assert!((merged.source.volume - 0.25).abs() < 1e-9);
     }
 }

@@ -22,14 +22,14 @@
 //!
 //! See T121 report for the rsx↔div map and the fork deltas.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use gpui::EmptyView;
 use gpui::{
     AnyElement, App, BoxShadow, Context, Corners, DragMoveEvent, InteractiveElement, IntoElement,
-    MouseButton, MouseDownEvent, Render, SharedString, Styled, Window, canvas, div, img, prelude::*,
-    px, svg,
+    MouseButton, MouseDownEvent, Render, SharedString, Styled, Window, canvas, div, img,
+    prelude::*, px, svg,
 };
-use gpui::EmptyView;
 use gpui_animation::animation::TransitionExt;
 use gpui_animation::transition::Transition;
 use gpui_rsx::rsx;
@@ -87,11 +87,17 @@ impl EndpointKind {
 pub struct VolumePopupView {
     /// Open device picker under Volume / Microphone (or neither).
     expanded: Option<EndpointKind>,
+    /// Optimistic thumb position during drag: `(kind, volume, last_dispatch_time)`.
+    /// Cleared when service catches up or popup closes.
+    dispatched_vol: Option<(EndpointKind, f64, std::time::Instant)>,
 }
 
 impl VolumePopupView {
     pub fn new(_cx: &mut App) -> Self {
-        Self { expanded: None }
+        Self {
+            expanded: None,
+            dispatched_vol: None,
+        }
     }
 
     pub(crate) fn expanded(&self) -> Option<EndpointKind> {
@@ -124,26 +130,23 @@ impl Render for VolumePopupView {
         // PLUS a real backdrop-blur (fork `window.paint_blur`) behind the
         // card so the panel reads as frosted glass — the one premium touch
         // the other popups don't have yet.
-        let blur_layer = div()
-            .absolute()
-            .inset_0()
-            .child(canvas(
-                |_bounds, _window, _cx| {},
-                move |bounds, _state, window: &mut Window, _cx: &mut App| {
-                    window.paint_blur(
-                        bounds,
-                        px(18.0),
-                        Corners::all(radius_lg),
-                        gpui::Hsla {
-                            h: 0.0,
-                            s: 0.0,
-                            l: 1.0,
-                            a: 0.06,
-                        },
-                        1.15,
-                    );
-                },
-            ));
+        let blur_layer = div().absolute().inset_0().child(canvas(
+            |_bounds, _window, _cx| {},
+            move |bounds, _state, window: &mut Window, _cx: &mut App| {
+                window.paint_blur(
+                    bounds,
+                    px(18.0),
+                    Corners::all(radius_lg),
+                    gpui::Hsla {
+                        h: 0.0,
+                        s: 0.0,
+                        l: 1.0,
+                        a: 0.06,
+                    },
+                    1.15,
+                );
+            },
+        ));
 
         let mut card = div()
             .relative()
@@ -282,8 +285,16 @@ fn footer(
     let sink_muted = audio.sink.muted;
     let source_muted = audio.source.muted;
 
-    let out_label = if sink_muted { "Unmute output" } else { "Mute output" };
-    let mic_label = if source_muted { "Unmute mic" } else { "Mute mic" };
+    let out_label = if sink_muted {
+        "Unmute output"
+    } else {
+        "Mute output"
+    };
+    let mic_label = if source_muted {
+        "Unmute mic"
+    } else {
+        "Mute mic"
+    };
     let out_color = if sink_muted { accent } else { text_muted };
     let mic_color = if source_muted { accent } else { text_muted };
 
@@ -311,9 +322,11 @@ fn footer(
                 .cursor_pointer()
                 .child(out_label)
                 .with_transition("volume-popup-mute-output")
-                .transition_on_hover(Duration::from_millis(220), SpringBack(1.6), move |_hovered, s| {
-                    s.border_color(accent).text_color(accent)
-                })
+                .transition_on_hover(
+                    Duration::from_millis(220),
+                    SpringBack(1.6),
+                    move |_hovered, s| s.border_color(accent).text_color(accent),
+                )
                 .on_click(move |_event, _window, cx: &mut App| {
                     toggle_mute(EndpointKind::Sink, cx);
                 }),
@@ -334,9 +347,11 @@ fn footer(
                 .cursor_pointer()
                 .child(mic_label)
                 .with_transition("volume-popup-mute-mic")
-                .transition_on_hover(Duration::from_millis(220), SpringBack(1.6), move |_hovered, s| {
-                    s.border_color(accent).text_color(accent)
-                })
+                .transition_on_hover(
+                    Duration::from_millis(220),
+                    SpringBack(1.6),
+                    move |_hovered, s| s.border_color(accent).text_color(accent),
+                )
                 .on_click(move |_event, _window, cx: &mut App| {
                     toggle_mute(EndpointKind::Source, cx);
                 }),
@@ -364,8 +379,19 @@ fn endpoint_block(
 ) -> AnyElement {
     let muted = ep.muted;
     let volume = ep.volume;
+
+    // Optimistic thumb: during drag, use the dispatched volume for the
+    // thumb position so it tracks the finger without waiting for the
+    // service round-trip. The fill bar stays at the service value.
+    let (thumb_volume, thumb_muted) = cx
+        .read(|this, _cx| this.dispatched_vol)
+        .filter(|(dk, _, _)| *dk == kind)
+        .map(|(_, vol, _)| (vol as f32, muted))
+        .unwrap_or((volume.clamp(0.0, 1.0) as f32, muted));
     let fraction = volume.clamp(0.0, 1.0) as f32;
+    let thumb_fraction = thumb_volume;
     let fill_w = (POPUP_WIDTH - 2.0 * PAD) * fraction;
+    let thumb_fill_w = (POPUP_WIDTH - 2.0 * PAD) * thumb_fraction;
     let percent = format_percent(volume);
     let title_color = if muted { text_muted } else { text_primary };
     let prefix = kind.id_prefix();
@@ -383,14 +409,19 @@ fn endpoint_block(
     // plain `Div`; the inner track gets a hover glow via a nested
     // AnimatedWrapper (its hover only needs `&mut App` via the crate's
     // internal hook).
-    let mouse_listener = cx.listener(move |_this, ev: &MouseDownEvent, _window, cx: &mut Context<VolumePopupView>| {
-        let frac = frac_from_window_x(f32::from(ev.position.x));
-        set_volume_unmute_if_needed(kind, frac, cx);
-    });
+    let mouse_listener = cx.listener(
+        move |_this, ev: &MouseDownEvent, window, cx: &mut Context<VolumePopupView>| {
+            let frac = frac_from_window_x(f32::from(ev.position.x));
+            set_volume_unmute_if_needed(kind, frac, window, cx);
+        },
+    );
     let drag_listener = cx.listener(
-        move |_this, ev: &DragMoveEvent<VolumeSliderDrag>, _window, cx: &mut Context<VolumePopupView>| {
+        move |_this,
+              ev: &DragMoveEvent<VolumeSliderDrag>,
+              window,
+              cx: &mut Context<VolumePopupView>| {
             let frac = frac_from_window_x(f32::from(ev.event.position.x));
-            set_volume_unmute_if_needed(kind, frac, cx);
+            set_volume_unmute_if_needed(kind, frac, window, cx);
         },
     );
     let slider_id: SharedString = format!("{prefix}-slider").into();
@@ -426,10 +457,14 @@ fn endpoint_block(
                     div()
                         .absolute()
                         .top(px((TRACK_H - THUMB) / 2.))
-                        .left(px(fill_w.max(0.) - THUMB / 2.))
+                        .left(px(thumb_fill_w.max(0.) - THUMB / 2.))
                         .size(px(THUMB))
                         .rounded(px(THUMB / 2.))
-                        .bg(if muted { text_muted } else { text_primary })
+                        .bg(if thumb_muted {
+                            text_muted
+                        } else {
+                            text_primary
+                        })
                         .shadow(vec![
                             BoxShadow::new(px(0.), px(1.), gpui::rgba(0x0000_0000).into())
                                 .blur_radius(px(2.)),
@@ -463,9 +498,11 @@ fn endpoint_block(
                         .text_color(text_muted)
                         .child(mute_icon(kind.is_source(), muted))
                         .with_transition(format!("{prefix}-mute-icon"))
-                        .transition_on_hover(Duration::from_millis(160), SpringBack(1.4), move |_hovered, s| {
-                            s.bg(accent).text_color(hover)
-                        })
+                        .transition_on_hover(
+                            Duration::from_millis(160),
+                            SpringBack(1.4),
+                            move |_hovered, s| s.bg(accent).text_color(hover),
+                        )
                         .on_click(move |_event, _window, cx: &mut App| {
                             toggle_mute(kind, cx);
                         }),
@@ -589,7 +626,11 @@ fn device_row(
     let id = device.id;
     let mark = if device.is_default { "✓" } else { "" };
     let label = truncate_label(&device.name, 34);
-    let color = if device.is_default { accent } else { text_primary };
+    let color = if device.is_default {
+        accent
+    } else {
+        text_primary
+    };
     let row_id: SharedString = format!("{}-dev-{id}", kind.id_prefix()).into();
 
     div()
@@ -615,9 +656,11 @@ fn device_row(
                 .child(mark),
         )
         .with_transition(row_id.clone())
-        .transition_on_hover(Duration::from_millis(150), SpringBack(1.5), move |_hovered, s| {
-            s.bg(hover).text_color(accent)
-        })
+        .transition_on_hover(
+            Duration::from_millis(150),
+            SpringBack(1.5),
+            move |_hovered, s| s.bg(hover).text_color(accent),
+        )
         .on_click(move |_event, _window, cx: &mut App| {
             set_default_device(kind, id, cx);
         })
@@ -635,30 +678,73 @@ fn frac_from_window_x(x: f32) -> f64 {
     rel.clamp(0.0, 1.0) as f64
 }
 
-/// Set volume to `frac` and unmute the endpoint if it is currently muted
-/// (mockup `onVolumeChange` clears mute). Reads live state to avoid a
-/// stale double-toggle during a drag.
-fn set_volume_unmute_if_needed(kind: EndpointKind, frac: f64, cx: &mut App) {
+/// Set volume to `frac` and unmute the endpoint if it is currently mocked
+/// (mockup `onVolumeChange` clears mute).
+///
+/// **Throttle:** during drag, dispatches at most one per 32ms with ≥1%
+/// delta. Mouse-down (click) always dispatches immediately.
+///
+/// **Optimistic:** records the dispatched volume so the thumb renders
+/// at the finger position without waiting for the service round-trip.
+fn set_volume_unmute_if_needed(
+    kind: EndpointKind,
+    frac: f64,
+    window: &mut Window,
+    cx: &mut Context<VolumePopupView>,
+) {
     let v = clamp_volume(frac);
-    let audio = AppState::audio(cx);
-    let currently_muted = match kind {
-        EndpointKind::Sink => audio.get().sink.muted,
-        EndpointKind::Source => audio.get().source.muted,
-    };
-    match kind {
-        EndpointKind::Sink => {
-            audio.dispatch(AudioCommand::SetSinkVolume(v));
-            if currently_muted {
-                audio.dispatch(AudioCommand::ToggleSinkMute);
-            }
+    let now = Instant::now();
+
+    // Throttle: skip *service* dispatch if last send was <32ms ago and delta
+    // <1%. Still update local thumb so the knob tracks the finger.
+    if let Some((prev_kind, prev_vol, prev_time)) = cx.read(|this, _cx| this.dispatched_vol) {
+        if prev_kind == kind
+            && now.duration_since(prev_time) < Duration::from_millis(32)
+            && (prev_vol - v).abs() < 0.01
+        {
+            cx.update(|this, _cx| {
+                this.dispatched_vol = Some((kind, v, prev_time));
+            });
+            cx.notify();
+            return;
         }
-        EndpointKind::Source => {
-            audio.dispatch(AudioCommand::SetSourceVolume(v));
-            if currently_muted {
-                audio.dispatch(AudioCommand::ToggleSourceMute);
+    }
+
+    // Read muted state before dispatching (audio borrows cx briefly).
+    let currently_muted = {
+        let audio = AppState::audio(cx);
+        match kind {
+            EndpointKind::Sink => audio.get().sink.muted,
+            EndpointKind::Source => audio.get().source.muted,
+        }
+    };
+
+    // Dispatch volume + optional unmute. Audio holds a ref to the global
+    // Mutable but does not hold &mut cx, so cx.update below is fine.
+    {
+        let audio = AppState::audio(cx);
+        match kind {
+            EndpointKind::Sink => {
+                audio.dispatch(AudioCommand::SetSinkVolume(v));
+                if currently_muted {
+                    audio.dispatch(AudioCommand::ToggleSinkMute);
+                }
+            }
+            EndpointKind::Source => {
+                audio.dispatch(AudioCommand::SetSourceVolume(v));
+                if currently_muted {
+                    audio.dispatch(AudioCommand::ToggleSourceMute);
+                }
             }
         }
     }
+
+    // Record optimistic thumb position (render shows this until service catches up).
+    cx.update(|this, _cx| {
+        this.dispatched_vol = Some((kind, v, now));
+    });
+    cx.notify();
+    resize_to_fit(window, cx.read(|this, _cx| this.expanded), cx);
 }
 
 fn toggle_mute(kind: EndpointKind, cx: &mut App) {
