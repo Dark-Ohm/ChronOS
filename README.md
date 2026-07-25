@@ -116,13 +116,10 @@ launcher, notifications, OSD, wallpaper control and an SNI/DBusMenu tray. See
 
 ## Development
 
-Maintained by **[Dark-Ohm](https://github.com/Dark-Ohm)**. Coding agents are
-used as labour under human acceptance — they do not set the design. How to
-build, smoke, and contribute: [`CONTRIBUTING.md`](CONTRIBUTING.md). Task
-briefs and reports (for agent runs): [`orchestration/`](orchestration/).
+**[Dark-Ohm](https://github.com/Dark-Ohm)** · rules in [`CONTRIBUTING.md`](CONTRIBUTING.md) ·
+agent tasks under [`orchestration/`](orchestration/).
 
-Authority order: `HANDOFF.md` (current state) → `ARCHITECTURE.md` (accepted)
-→ `DECISIONS.log` (rejected). Chat memory loses to those files.
+`HANDOFF.md` → `ARCHITECTURE.md` → `DECISIONS.log`.
 ## License
 
 Licensed under the **Apache License, Version 2.0** — see [`LICENSE`](LICENSE).
