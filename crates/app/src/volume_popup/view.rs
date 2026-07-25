@@ -60,9 +60,11 @@ impl Transition for SpringBack {
     }
 }
 
-/// Marker type for the slider drag gesture (no payload needed — the
-/// drag-move listener already closes over the endpoint `kind`).
-pub struct VolumeSliderDrag;
+/// Separate marker types per endpoint. GPUI routes `DragMoveEvent<T>` to
+/// every listener of type `T` — a shared marker made one slider drive both
+/// sink and source with the same window-x fraction (T123 live bug).
+pub struct SinkVolumeSliderDrag;
+pub struct SourceVolumeSliderDrag;
 
 /// Which endpoint's device list is expanded (if any).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -418,28 +420,53 @@ fn endpoint_block(
             set_volume_unmute_if_needed(this, kind, frac, window, cx);
         },
     );
-    let drag_listener = cx.listener(
-        move |this,
-              ev: &DragMoveEvent<VolumeSliderDrag>,
-              window,
-              cx: &mut Context<VolumePopupView>| {
-            let frac = frac_from_window_x(f32::from(ev.event.position.x));
-            set_volume_unmute_if_needed(this, kind, frac, window, cx);
-        },
-    );
+    // Per-kind drag marker so DragMove events do not cross-fire between sliders.
     let slider_id: SharedString = format!("{prefix}-slider").into();
-
-    let slider = div()
-        .id(slider_id)
-        .w_full()
-        .h(px(TRACK_H + 10.)) // hit area taller than visual track
-        .flex()
-        .items_center()
-        .cursor_pointer()
-        .on_mouse_down(MouseButton::Left, mouse_listener)
-        .on_drag(VolumeSliderDrag, |_, _, _, cx| cx.new(|_| EmptyView))
-        .on_drag_move(drag_listener)
-        .child(
+    let slider = match kind {
+        EndpointKind::Sink => {
+            let drag_listener = cx.listener(
+                move |this,
+                      ev: &DragMoveEvent<SinkVolumeSliderDrag>,
+                      window,
+                      cx: &mut Context<VolumePopupView>| {
+                    let frac = frac_from_window_x(f32::from(ev.event.position.x));
+                    set_volume_unmute_if_needed(this, EndpointKind::Sink, frac, window, cx);
+                },
+            );
+            div()
+                .id(slider_id)
+                .w_full()
+                .h(px(TRACK_H + 10.))
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .on_mouse_down(MouseButton::Left, mouse_listener)
+                .on_drag(SinkVolumeSliderDrag, |_, _, _, cx| cx.new(|_| EmptyView))
+                .on_drag_move(drag_listener)
+        }
+        EndpointKind::Source => {
+            let drag_listener = cx.listener(
+                move |this,
+                      ev: &DragMoveEvent<SourceVolumeSliderDrag>,
+                      window,
+                      cx: &mut Context<VolumePopupView>| {
+                    let frac = frac_from_window_x(f32::from(ev.event.position.x));
+                    set_volume_unmute_if_needed(this, EndpointKind::Source, frac, window, cx);
+                },
+            );
+            div()
+                .id(slider_id)
+                .w_full()
+                .h(px(TRACK_H + 10.))
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .on_mouse_down(MouseButton::Left, mouse_listener)
+                .on_drag(SourceVolumeSliderDrag, |_, _, _, cx| cx.new(|_| EmptyView))
+                .on_drag_move(drag_listener)
+        }
+    };
+    let slider = slider.child(
             div()
                 .w_full()
                 .h(px(TRACK_H))
