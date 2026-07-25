@@ -1,6 +1,6 @@
 # GPUI popup lifecycle (canonical template)
 
-**2026-07-25:** bar-triggered popups are **AnchoredPopup** first
+**2026-07-25:** bar-triggered popups are **`WindowKind::AnchoredPopup`** first
 (`updates` / `volume` / `system` / history), with LayerShell TOP|RIGHT as
 `PopupNotSupportedError` fallback. Full skeleton + slider/slow-backend rules:
 skill **`chronos-gpui-popup`**. This file keeps reentrancy / sizing notes.
@@ -15,6 +15,12 @@ A popup needs exactly these parts. The reentrancy guard (`close_this`) is the
 one thing people get wrong and it leaves a GHOST popup (see HANDOFF.md
 "СИСТЕМНЫЙ БАГ: window.remove_window()").
 
+> **`window_options` below is the LayerShell fallback / fixed-corner shape.**
+> For bar-anchored popups, copy `window_options(anchor_rect, parent, height)`
+> from `volume_popup` / `updates_popup` (`AnchoredPopup` + gravity +
+> `constraint_adjustment`). Pieces 1 and 3–6 (global, open/close/close_this/
+> toggle/init) are identical either way.
+
 ```rust
 // 1. Global holding the open window handle + the watcher entity.
 #[derive(Default)]
@@ -26,7 +32,8 @@ impl Global for XxxPopupState {}
 
 pub struct XxxPopupWatcher {}  // no state of its own
 
-// 2. Window options — TOP|RIGHT overlay, never exclusive, no keyboard.
+// 2. Window options — LayerShell FALLBACK (or fixed-corner). Prefer AnchoredPopup
+//    for bar widgets; see chronos-gpui-popup / volume_popup.
 fn window_options(display_id: Option<DisplayId>, height: f32) -> WindowOptions {
     WindowOptions {
         display_id,

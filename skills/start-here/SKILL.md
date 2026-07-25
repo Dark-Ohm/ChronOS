@@ -140,6 +140,9 @@ Routing only — open the skill and follow it.
     notification Close/Clear never run (T120).
 13. **Shared slider `DragMove` marker type** — one knob drives all listeners
     of that type (`chronos-gpui-popup`).
+14. **Per-sample DDC/wpctl spawn + full re-read** — multi-minute brightness
+    jumps / `available: false`; use latest-wins + debounce
+    (`slow-service-dispatch.md`).
 
 ## Related entry points
 

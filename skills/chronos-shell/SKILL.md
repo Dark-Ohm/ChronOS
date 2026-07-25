@@ -222,21 +222,35 @@ spurious deactivation) before the handler runs.
 Prefer empty render + kept surface over remove/recreate when Hyprland races
 appear. See `osd/mod.rs` after f4edb88.
 
-### New anchored popup (system_popup pattern)
+### New anchored popup (copy volume/system, not invent)
 
-0. Decide whether the popup needs to outlive its parent window. **If the parent is a bar that re-renders its content on every frame, the popup should be in its own window** (system_popup uses `WindowKind::Normal` with `AnchoredPopup` from the gpui fork, not a child div). A child div inside the bar's render tree gets blown away on every repaint.
-1. **Bar widget triggers via bounds capture:** store `Rc<Cell<Bounds>>` updated in `render` via `.relative()` + `.on_mouse_down(Left)` → call `SystemPopup::toggle(bounds, window, cx)`.
-2. **Mark-and-dispatch pattern for slider drag (BrightnessSliderDrag):**
-   - Zero-initialized marker struct (derives `Clone, Copy, Default, ZeroableCopyable`).
-   - `cx.listener` for `MouseDownEvent(Left)` + `cx.on_drag(DragMoveEvent::new(Left))`.
-   - In drag handler: `frac_from_window_x(cx, window)` = `((pos.x - origin.x) / width).clamp(0.0, 1.0)`.
-   - Dispatch action (`AudioAction::SetSinkVolume(f)`) immediately.
-   - `dispatched_brightness: Option<u8>` for optimistic thumb from DDC latency + watcher clears via `view_cx.notify()`.
-   - Thumb ~13 px, track ~4 px, hit area ~21 px.
-3. **Close reentrancy:** `close_this` must guard (`if let Some(window) = ...`) and `remove_window` only once.
-4. **LayerShell fallback:** detect via `Compositor::get()` or explicit flag; use `WindowKind::LayerShell(...)` when Normal + `AnchoredPopup` fails (e.g. GNOME/kwin).
-5. **Wire watchers** inside view init, not render: `state::watch(cx, signal, ...)` with `cx.notify()`.
-6. **Tests:** unit for `frac_from_window_x`, smoke for toggle+close (no render regressions).
+**Canonical skill:** **`chronos-gpui-popup`** (skeleton, blur, anim boot,
+slider blood facts). Lifecycle reentrancy: `references/popup-lifecycle-patterns.md`.
+Slow audio/DDC: `references/slow-service-dispatch.md`.
+
+0. **Own window** if the parent is the bar (bar re-renders constantly; a
+   child div dies every frame). Kind is **`WindowKind::AnchoredPopup`**, not
+   `Normal` and not a nested popover.
+1. **Bar trigger:** `Rc<Cell<Bounds>>` + zero-opacity `canvas` in widget
+   `render`; open via **`on_mouse_down(Left)`** (not `on_click` — grab
+   handshake). Pass bounds + parent `window_handle` into `toggle`.
+2. **Sliders (T123/T125):**
+   - **One empty marker type per slider** in the window
+     (`SinkVolumeSliderDrag` ≠ `SourceVolumeSliderDrag` ≠ `BrightnessSliderDrag`).
+     Shared `DragMoveEvent<T>` → every listener of `T` moves together.
+   - Frac from **measured track** bounds when the track is not full-width
+     (brightness between ±); full-width volume may use PAD math.
+   - Optimistic: `dispatched = Some(v)` **before** dispatch; clear in
+     `render` only when `service.value == dispatched`.
+   - ±: absolute `Set(next)` from `dispatched.unwrap_or(value)`, not `Step`
+     after optimism (double-step).
+   - Service side: latest-wins + debounce for DDC — UI throttle is not enough.
+3. **`close_this`:** clear global handle **before** `remove_window` (ghost
+   window otherwise). External close uses `close(cx)` via handle.update.
+4. **Fallback:** catch `PopupNotSupportedError` → LayerShell TOP|RIGHT Overlay.
+5. **Watchers** in `init` / view `new`, not `render`; on change: resize if
+   needed + `view_cx.notify()`.
+6. **Verify live** (release + grim): unit tests do not catch grab/anchor/clip.
 
 ## Plugin system (`crates/luau`)
 
@@ -464,6 +478,7 @@ bus truth): filter unidentifiable items → dedupe by bus owner → cap at
 | Need | Skill |
 |---|---|
 | Session bootstrap / routing | `start-here` |
+| Bar-anchored popups, sliders, blur, anim boot | **`chronos-gpui-popup`** |
 | Popup height / layer-shell resize | `gpui-layer-shell` |
 | Generic GPUI API | `gpui` |
 | Isolation for parallel work | `using-git-worktrees` (+ ChronOS sibling path rule above) |
@@ -479,6 +494,7 @@ bus truth): filter unidentifiable items → dedupe by bus owner → cap at
 | `bar-widget-contract.md` | Live `mod X; X::register(cx)` widget registration contract + isolation verify |
 | `compositor-lua-dispatch.md` | Compositor→Lua event dispatch path |
 | `popup-lifecycle-patterns.md`, `tray-menu-popup-patterns.md`, `tray-widget-patterns.md`, `notifications-module-patterns.md` | Surface lifecycle patterns per module |
+| **`slow-service-dispatch.md`** | Audio/brightness drag: optimistic + latest-wins + DDC debounce (T123/T125) |
 | `gpui-fork-api-surface.md`, `gpui-shell-donor-audit.md`, `donor-crate-port-cost-audit.md`, `kael-patches.md` | Fork/donor audits (Kael content historical) |
 | `live-smoke-wayland.md` | Live smoke procedure (hyprctl/grim evidence) |
 | `wallpaper-awww-service.md`, `zbus-server-5.17.md`, `hindsight-llama-infra.md`, `doc-audit-discrepancies.md` | Service-level notes |
