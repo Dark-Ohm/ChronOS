@@ -77,8 +77,15 @@ Routing only — open the skill and follow it.
 
 | Your task | Skill |
 |---|---|
-| `crates/app`, `crates/services`, `crates/luau`, `crates/ui`, bar/dock/launcher/osd/notifications/tray_menu, `Service` trait, subscribers, Lua hot-reload, wallpaper_ctl, IPC payloads | **`chronos-shell`** |
-| Layer-shell popup height / clipped content / `window.resize` | **`gpui-layer-shell`** |
+| Studying / porting patterns from **Zed AI** (agent panel, ACP, threads, tools) — never copy GPL sources | **`zed-ai`** (router) → `zed-ai-for-chronos` for ChronOS left panel |
+| `side_panel_left` agent thread canvas (thread header, chat flow, composer, YOLO, dark send) — visual implementation result | **`zed-ai-for-chronos`** §v0 — Thread canvas |
+| `crates/app`, `crates/services`, `crates/luau`, `crates/ui`, bar/dock/launcher/osd/notifications/tray_menu, `Service` trait, subscribers, Lua hot-reload, wallpaper_ctl, IPC payloads | **`chronos-shell`** (+ `references/slow-service-dispatch.md` for audio/brightness drag) |
+| Bar-anchored popups (volume/updates/system/history), blur, animation boot, **slider drag markers**, footer clip | **`chronos-gpui-popup`** |
+| Layer-shell geometry: popup height / clip / `window.resize`, **or** full-height side panel under bar with equal top/bottom gaps, **or** `on_hover` + `gpui-animation` single-slot | **`gpui-layer-shell`** |
+| `gpui-rsx` / `rsx!`, mockup HTML→panel chrome, `overflow_y_scroll`+`ScrollHandle`, hover E0631, rsx vs builder `div()` | **`gpui-rsx`** |
+| What can OUR fork do / API "doesn't resolve" / before claiming "fork can't X" | **`chronos-gpui`** |
+| **Modifying `../Source/` (the fork itself)** — crate map, layer-shell/popup/blur/spring APIs, renderer, vendoring, Wayland lifecycle | **`gpui-fork-start-here`** (routes the whole fork-internals layer) |
+| Porting external gpui code into the fork / crates.io API drift (E0599 `.ok()`, E0063 `inset`, E0308 refineable) | `fork-api-drift` |
 | Generic GPUI API (Element, entities, focus, layout) | `gpui` |
 | Rust ownership / error / perf idioms | `rust-skills-master` |
 | Creative feature before design | `brainstorming` |
@@ -127,9 +134,19 @@ Routing only — open the skill and follow it.
 8. **`pkill -f chronos`** — kills the controlling shell; use **`pkill -x chronos`**.
 9. Second `chronos` without kill — single-instance exits; fake "restarts."
 10. Worktree under `/tmp` — breaks `path = "../Source"`.
+11. **Day-to-day shell:** `docs/dev-cli.md` — `chronos-rebuild` / `start` /
+    `stop` (T122). Prefer CLI over ad-hoc pkill paths.
+12. **`background_spawn` without `.detach()`** — Task cancelled; async
+    notification Close/Clear never run (T120).
+13. **Shared slider `DragMove` marker type** — one knob drives all listeners
+    of that type (`chronos-gpui-popup`).
 
 ## Related entry points
 
 - Deep code layout: **`chronos-shell`**
-- Popup sizing: **`gpui-layer-shell`**
+- Anchored popups / sliders / blur / animation boot: **`chronos-gpui-popup`**
+- Fork internals (working on `../Source/` itself): **`gpui-fork-start-here`**
+- Layer-shell placement / popup sizing / on_hover+animation: **`gpui-layer-shell`**
+- `rsx!` / mockup→chrome / scroll+hover blood facts: **`gpui-rsx`**
 - Operational queue: **`HANDOFF.md`**
+- Dev CLI: **`docs/dev-cli.md`**

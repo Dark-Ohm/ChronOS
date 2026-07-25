@@ -1,11 +1,13 @@
 ---
 name: chronos-shell
 description: >
-  Working on THIS repo — a Rust/Kael desktop shell for Hyprland/Niri with a
-  sandboxed mlua/LuauJIT plugin system. Use when touching crates/app,
-  crates/services, crates/luau, crates/ui, crates/plugins, bar/dock/launcher/
-  notifications/osd/tray_menu, the Service trait, any *Subscriber, or the Lua
-  plugin hot-reload path.
+  Working on THIS repo — a Rust desktop shell for Hyprland/Niri built on a
+  local gpui-ce fork (Source/gpui) with a sandboxed mlua/LuauJIT plugin
+  system. Use when touching crates/app, crates/services, crates/luau,
+  crates/ui, crates/plugins, bar/dock/launcher/ notifications/osd/tray_menu,
+  the Service trait, any *Subscriber, or the Lua plugin hot-reload path.
+  NOTE (2026-07-16): the repo migrated OFF Kael back to gpui-ce; any skill
+  text mentioning Kael is historical and superseded by Cargo.toml.
 ---
 
 # Chronos Shell
@@ -43,12 +45,19 @@ Worktrees must be a **sibling of ChronOS** (so `../Source` resolves) — never
 | `upower` | UPower (system) | battery + `has_battery` |
 | `notification` | fdo Notifications (session) | server |
 | `tray` | StatusNotifierWatcher (session) | + `tray/menu.rs` DBusMenu client |
-| `audio` | `wpctl` MVP poll 250ms + `pw-dump` | sink/source `dispatch`; **per-app mute: WIP** (`AudioStream` / `ToggleStreamMute` in working tree — not on HEAD until accepted) |
+| `audio` | `wpctl` poll 250ms + `pw-dump` on poll | **Set volume:** optimistic + `watch` latest-wins, **no** pw-dump on command path (T123). Per-app mute: `ToggleStreamMute` / streams if present |
+| `brightness` | `ddcutil` on demand | **Set:** optimistic + **debounce ~150ms** then one `write_all(latest)`; no getvcp after set; Refresh generation-gated (T125 errata). MVP one slider → all displays |
 | `applications` | `.desktop` scan + inotify | launcher data, **mpsc** debounce (not crossbeam), `strip_field_codes` in parser |
 | `wallpaper` | awww MVP + multi-backend enum | 5 engines on host |
 | `mpris` | session `org.mpris.MediaPlayer2.*` | ListNames + NameOwnerChanged |
 
 `Services` / `init_all()` in `lib.rs` — **shared file**, add only your lines.
+
+**Slow backends (drag/volume/brightness):** see
+`references/slow-service-dispatch.md` and skill **`chronos-gpui-popup`**
+(slider markers + track bounds + optimism). Dev loop: `docs/dev-cli.md`.
+
+
 Commands are concrete methods (`dispatch`), **not** on the trait. Pure modules
 like `net_stats` get **only** `pub mod` — never a field on `Services`.
 
@@ -59,10 +68,11 @@ like `net_stats` get **only** `pub mod` — never a field on `Services`.
 | `bar/` | layer-shell TOP strip; widgets via registry |
 | `bar/widgets/` | clock, workspaces, battery, network, tray, **volume**, **mpris** |
 | `osd/` | volume OSD overlay (soft-hide, no Exclusive keyboard) |
-| `notifications/` | fdo popup stack (rubber-band height — see `gpui-layer-shell`) |
+| `notifications/` | fdo popup stack — toast cards (`render_toast_card`: icon 28×28, app name, ✕ with on_click close, summary, body, actions, 2px progress bar colored by urgency; `first_seen` age tracking; 100ms tick loop capping at `MAX_TOAST_AGE`; `overlay_x` scroll offset for swipe-dismiss). T124 redesign: separated content from window manager — `mod.rs` owns `notif_list: Vec<LiveNotification>` + `remove_by_id` + hide-after-close; dedicated `view.rs` diverged from proxy view in `notification.rs`; `NotificationRenderer` trait aligns state-method signatures between fdo and libnotify types. |
 | `launcher/` | app launcher — **uses `AppState::applications(cx)` via `state::watch`** (no more local cache); `launch.rs` re-uses `strip_field_codes` from services |
 | `dock/` | pinned launch panel (not a live taskbar) — icon resolver + PINNED_IDS hardcoded. **As of 2026-07-17 NOT accepted** — `on_click` calls `window.remove_window()`, destroying the (persistent, bar-like) surface after the first click; see gotchas |
 | `tray_menu/` | DBusMenu popup UI (paired with tray right-click) |
+| `system_popup/` | anchored popup (brightness slider drag/buttons, power 3-segment, gaming toggle) — `AnchoredPopup` from gpui fork, `POPUP_WIDTH=360`, `BASE_HEIGHT=274`, offset(0,4), grab, LayerShell fallback; toggled via `Rc<Cell<Bounds>>` + canvas from bar/system widget |
 | `ipc/` | single-instance Unix socket + wallpaper-next/set payloads |
 | `wallpaper_ctl.rs` | IPC wallpaper-next / wallpaper-set — scan `~/Pictures/Wallpapers`, round-robin |
 | `state.rs` | `AppState` global + `watch()` signal bridge |
@@ -82,7 +92,7 @@ outside your zone, **ask**; do not freestyle. Clock still has a 1s ticker.
 | workspaces | Left | click → focus |
 | clock | Center | — |
 | mpris | Center | click → PlayPause |
-| battery / network / tray / volume | Right | volume: click mute, scroll ±5% |
+| battery / network / tray / volume / system | Right | volume: click mute, scroll ±5%; system: click → system_popup (brightness, power, gaming) |
 
 ## Three real architectural patterns
 
@@ -212,6 +222,22 @@ spurious deactivation) before the handler runs.
 Prefer empty render + kept surface over remove/recreate when Hyprland races
 appear. See `osd/mod.rs` after f4edb88.
 
+### New anchored popup (system_popup pattern)
+
+0. Decide whether the popup needs to outlive its parent window. **If the parent is a bar that re-renders its content on every frame, the popup should be in its own window** (system_popup uses `WindowKind::Normal` with `AnchoredPopup` from the gpui fork, not a child div). A child div inside the bar's render tree gets blown away on every repaint.
+1. **Bar widget triggers via bounds capture:** store `Rc<Cell<Bounds>>` updated in `render` via `.relative()` + `.on_mouse_down(Left)` → call `SystemPopup::toggle(bounds, window, cx)`.
+2. **Mark-and-dispatch pattern for slider drag (BrightnessSliderDrag):**
+   - Zero-initialized marker struct (derives `Clone, Copy, Default, ZeroableCopyable`).
+   - `cx.listener` for `MouseDownEvent(Left)` + `cx.on_drag(DragMoveEvent::new(Left))`.
+   - In drag handler: `frac_from_window_x(cx, window)` = `((pos.x - origin.x) / width).clamp(0.0, 1.0)`.
+   - Dispatch action (`AudioAction::SetSinkVolume(f)`) immediately.
+   - `dispatched_brightness: Option<u8>` for optimistic thumb from DDC latency + watcher clears via `view_cx.notify()`.
+   - Thumb ~13 px, track ~4 px, hit area ~21 px.
+3. **Close reentrancy:** `close_this` must guard (`if let Some(window) = ...`) and `remove_window` only once.
+4. **LayerShell fallback:** detect via `Compositor::get()` or explicit flag; use `WindowKind::LayerShell(...)` when Normal + `AnchoredPopup` fails (e.g. GNOME/kwin).
+5. **Wire watchers** inside view init, not render: `state::watch(cx, signal, ...)` with `cx.notify()`.
+6. **Tests:** unit for `frac_from_window_x`, smoke for toggle+close (no render regressions).
+
 ## Plugin system (`crates/luau`)
 
 - Discovery: subdir needs both `manifest.toml` and `init.luau`.
@@ -276,6 +302,88 @@ Package name is **`chronos`** (`-p chronos`), not `chronos-app`.
   2026-07-17). Reserve `remove_window` for actual transient popups
   (tray_menu, notifications) that are MEANT to close; a bar/dock window
   should never call it from inside its own content's event handlers.
+- **RPIT capture (Rust 2024, `impl IntoElement` + `cx.listener`):** functions
+  returning `impl IntoElement` that call `cx.listener` inside create borrow
+  conflicts with subsequent RPIT calls in the same render. **Fix: create all
+  `cx.listener()` closures BEFORE calling any RPIT function**, or use the
+  `+ use<>` syntax on the return type signature. See `panel.rs:38-43` and the
+  `build_sessions_sidebar` signature for the canonical pattern. Any new
+  render function with listeners — same pattern.
+- **gpui-component BLOCKER:** `gpui-component` depends on Zed's gpui
+  (`gpui = { git = "https://github.com/zed-industries/zed" }`); ChronOS uses
+  `gpui-ce` via `../Source/gpui` path dep. API incompatibility manifests as
+  missing types (`AssetSource`, `Result`, `SharedString`). Resolution: either
+  port TextInput into the gpui-ce fork, or update gpui-ce to Zed API parity
+  (large undertaking). Homemade textarea fallback works for v1.
+- **`relative()` NOT available for `line_height`** — our fork has
+  `relative(f32)` for `DefiniteLength::Fraction` in layout geometry, but
+  `line_height` does not accept it. **Use `px(f32)`** for line-height values.
+- **`rgba(hex_string, alpha)` signature does NOT exist** in this fork.
+  Use `rgba(0xRRGGBBAA)` with baked-in alpha bytes, or call `.opacity(f32)`
+  on an `Rgba` value. See `crates/ui/src/theme/mod.rs::parse_hex` for
+  string-hex → color conversion.
+- **A sidebar-beside-content split needs `flex_row`, not `flex_col`.**
+  `side_panel_left/panel.rs` had `sidebar`/`header`/`chat`/`composer` as
+  direct siblings of one `.flex_col()` container — sidebar's `.h_full()`
+  then competes for *vertical* space against the other three instead of
+  sitting in its own column, so it comes up short of the panel bottom and
+  everything else gets squeezed into a sliver (only surfaced once someone
+  ran the EXPANDED sidebar state live — the collapsed 48px state hid it).
+  Fix: `.flex_row()` with sidebar as one child and a `.flex_col()` wrapper
+  (header+chat+composer) as the other, `min_w(0)` on that wrapper same as
+  `main-content`'s fbcadd6 fix. Any panel with a fixed-width side rail next
+  to a variable-height stack — check the parent's flex direction first.
+- **`exclusive_zone` on a corner anchor (`LEFT|TOP`, not a stretched edge
+  like the bar's `LEFT|RIGHT|TOP`) is silently a no-op without
+  `exclusive_edge`.** wlr-layer-shell treats a two-edge anchor as
+  ambiguous for which direction to reserve; `hyprctl monitors` shows
+  `reserved` unchanged, no protocol error, easy to miss. Fix: also call
+  (or set in `LayerShellOptions`) `exclusive_edge: Some(Anchor::LEFT)` —
+  a single bit that `anchor.contains()`. `Window::set_exclusive_zone` /
+  `set_exclusive_edge` (`gpui/src/window.rs:2005/2014`) are live-callable,
+  not create-time-only, if you want it to track a resizing surface.
+  (side_panel_left tried this for tiled-window reflow 2026-07-23, verified
+  working via `hyprctl monitors`/`clients`, then reverted — see below.)
+- **Hover-peek auto-open/close is a *choice*, not the only pattern for a
+  layer-shell panel.** `side_panel_right`/`side_panel_left` both shipped
+  with hover-strip peek (open on edge-hover, close on debounced leave,
+  `hold_peek`/`schedule_release_peek`/`close_peek_if_not_pinned` — see
+  `gpui-layer-shell` Part A's canonical files). For a panel someone keeps
+  open *while working* (an agent chat, not a quick-glance popup), that
+  auto-hide fights the user constantly. `side_panel_left` switched to
+  keybind-only (`side_panel_left::toggle(cx)` via IPC, hover_strip's
+  `init_hover_strip` call commented out, not deleted — the debounce
+  machinery is correct code, just unused while hover is off). Same
+  reasoning applies to `exclusive_zone`: fine for a bar that opens rarely,
+  bad UX for a panel resized/toggled constantly — tried, reverted the
+  same session (`DECISIONS.log` 2026-07-23).
+- **IPC toggle command pattern** (`crates/app/src/ipc/`): a new externally
+  triggerable action mirrors `toggle-launcher` exactly — payload const +
+  `encode_*`/`is_*` pair in `messages.rs`, a new `mpsc::unbounded_channel`
+  threaded through `IpcSubscriber::start_listener`'s return tuple AND
+  `accept_loop`'s params in `service.rs`, matched in the payload
+  if/else-chain, and a `tokio::select!` arm with its own debounce timer in
+  `ipc/mod.rs::start` calling into the target module. The external trigger
+  itself is NOT a Rust caller — `encode_toggle_launcher()` exists only to
+  keep the string constant tested; the real caller is a raw socket write
+  from a Hyprland `hl.bind` (`~/.config/hypr/hyprland.lua`, `SUPER+L`
+  pattern: `python3 -c "...s.sendall(b'toggle-launcher')..."`). The
+  target function called from the IPC handler must take `&mut App` only
+  (no `Window` — there isn't one in that context), same shape as
+  `launcher::toggle(cx)`.
+- **ACP `session/new` carries capabilities; `initialize` does not.**
+  Hermes' ACP agent only returns `models`/`modes` (available list + current
+  id) in the `session/new` response, not in the connection `initialize`
+  handshake. If you fetch modes/models only after the first prompt
+  (`send_prompt`'s response), a fresh unmessaged thread shows no model/mode
+  UI at all. Fetch a session eagerly at connect time
+  (`HermesClient::create_session()`) instead of waiting. Also: don't
+  fully hide a picker/indicator just because its data is empty at a given
+  moment — a disabled placeholder pill communicates "this exists, not
+  loaded yet" where a hidden element reads as "this feature doesn't
+  exist." Verified via `RUST_LOG=debug` reading the raw
+  `agent_client_protocol::jsonrpc` response, not assumed from a design
+  convention borrowed from another product.
 
 ## Theming (2026-07-20 — two schemes now exist)
 
@@ -360,3 +468,17 @@ bus truth): filter unidentifiable items → dedupe by bus owner → cap at
 | Generic GPUI API | `gpui` |
 | Isolation for parallel work | `using-git-worktrees` (+ ChronOS sibling path rule above) |
 | "Done" claims | `verification-before-completion` |
+
+## References (recovered 2026-07-21 from hermes profile — deep-dive files)
+
+`references/` — symbol-level and pattern-level audits; open instead of re-reading source:
+
+| File | What |
+|---|---|
+| `crates-app-api-surface.md` | Exhaustive pub-symbol audit of `crates/app` (line ranges, tests, startup sequence) |
+| `bar-widget-contract.md` | Live `mod X; X::register(cx)` widget registration contract + isolation verify |
+| `compositor-lua-dispatch.md` | Compositor→Lua event dispatch path |
+| `popup-lifecycle-patterns.md`, `tray-menu-popup-patterns.md`, `tray-widget-patterns.md`, `notifications-module-patterns.md` | Surface lifecycle patterns per module |
+| `gpui-fork-api-surface.md`, `gpui-shell-donor-audit.md`, `donor-crate-port-cost-audit.md`, `kael-patches.md` | Fork/donor audits (Kael content historical) |
+| `live-smoke-wayland.md` | Live smoke procedure (hyprctl/grim evidence) |
+| `wallpaper-awww-service.md`, `zbus-server-5.17.md`, `hindsight-llama-infra.md`, `doc-audit-discrepancies.md` | Service-level notes |
