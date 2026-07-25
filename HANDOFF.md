@@ -18,10 +18,8 @@
 - **T128** elevated + blur tokens — **ACCEPTED WITH CAVEATS** (code committed;
   report prose stale; live grim still open). Review on disk
   `report/T128-*-review.md`.
-- **T133** wallpaper ↔ waytrogen **integration** (not rewrite) —
-  `active/T133-wallpaper-waytrogen-integration.md`  
-  Engine already: service+IPC; need: `wallpaper-gallery`, open waytrogen,
-  UI entry, companion docs.
+- **T133** wallpaper × waytrogen — **ACCEPTED WITH CAVEATS** (code in tree;
+  live smoke if waytrogen installed). Card: System tab Next + Open waytrogen.
 - **T126/T127** panels — code+errata; live ACCEPT still open.
 - Pause: T115 Files. orchestration/ gitignored.
 
