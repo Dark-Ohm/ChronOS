@@ -81,10 +81,19 @@ cargo build --release -p chronos
 ./target/release/chronos
 ```
 
+**Dev CLI** (recommended day-to-day): install once, then rebuild/start/stop
+without remembering paths — see **[`docs/dev-cli.md`](docs/dev-cli.md)**.
+
+```sh
+./scripts/install-dev-cli.sh
+chronos-rebuild && chronos-stop && chronos-start
+```
+
 Run with logging for live debugging on Wayland:
 
 ```sh
 RUST_LOG=info ./target/release/chronos
+# or: chronos-start   → log at ~/.local/state/chronos/chronos.log
 ```
 
 Tests:
@@ -105,16 +114,15 @@ with a working bar (clock, workspaces, network, volume, MPRIS, tray), dock,
 launcher, notifications, OSD, wallpaper control and an SNI/DBusMenu tray. See
 [`HANDOFF.md`](HANDOFF.md) for the current state and open work.
 
-## Development & orchestration
+## Development
 
-ChronOS is developed as an **AI-orchestrated project**: a Lead Architect
-coordinates a set of task-specific coding agents. The working method, agent
-briefs and archived reports live under [`orchestration/`](orchestration/). Human
-contribution notes are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Maintained by **[Dark-Ohm](https://github.com/Dark-Ohm)**. Coding agents are
+used as labour under human acceptance — they do not set the design. How to
+build, smoke, and contribute: [`CONTRIBUTING.md`](CONTRIBUTING.md). Task
+briefs and reports (for agent runs): [`orchestration/`](orchestration/).
 
-Project documents, in order of authority: `HANDOFF.md` (current state) →
-`ARCHITECTURE.md` (accepted decisions) → `DECISIONS.log` (rejected alternatives).
-
+Authority order: `HANDOFF.md` (current state) → `ARCHITECTURE.md` (accepted)
+→ `DECISIONS.log` (rejected). Chat memory loses to those files.
 ## License
 
 Licensed under the **Apache License, Version 2.0** — see [`LICENSE`](LICENSE).
