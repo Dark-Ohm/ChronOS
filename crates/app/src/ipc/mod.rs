@@ -15,6 +15,7 @@ impl IpcSubscriber {
             mut toggle_receiver,
             mut wallpaper_receiver,
             mut side_panel_toggle_receiver,
+            mut side_panel_right_toggle_receiver,
         ) = self.start_listener();
 
         cx.spawn(async move |cx| {
@@ -23,6 +24,8 @@ impl IpcSubscriber {
 
             let mut last_toggle_at = std::time::Instant::now() - std::time::Duration::from_secs(1);
             let mut last_side_panel_toggle_at =
+                std::time::Instant::now() - std::time::Duration::from_secs(1);
+            let mut last_side_panel_right_toggle_at =
                 std::time::Instant::now() - std::time::Duration::from_secs(1);
 
             loop {
@@ -64,6 +67,24 @@ impl IpcSubscriber {
                                 );
                                 let _ = cx.update(|cx| {
                                     crate::side_panel_left::toggle(cx);
+                                });
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    side_panel_right_toggle = side_panel_right_toggle_receiver.recv() => {
+                        if side_panel_right_toggle.is_some() {
+                            let now = std::time::Instant::now();
+                            if now.duration_since(last_side_panel_right_toggle_at)
+                                >= std::time::Duration::from_millis(200)
+                            {
+                                last_side_panel_right_toggle_at = now;
+                                tracing::info!(
+                                    "IPC toggle received, calling side_panel_right::toggle"
+                                );
+                                let _ = cx.update(|cx| {
+                                    crate::side_panel_right::toggle(cx);
                                 });
                             }
                         } else {

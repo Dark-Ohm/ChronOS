@@ -35,6 +35,19 @@ pub fn is_toggle_side_panel_left(payload: &str) -> bool {
     payload.trim() == TOGGLE_SIDE_PANEL_LEFT_PAYLOAD
 }
 
+pub const TOGGLE_SIDE_PANEL_RIGHT_PAYLOAD: &str = "toggle-side-panel-right";
+
+// Same contract as `encode_toggle_launcher` above — external keybind
+// daemons trigger the right agent panel (pinned-only, no hover-peek).
+#[allow(dead_code)]
+pub fn encode_toggle_side_panel_right() -> String {
+    TOGGLE_SIDE_PANEL_RIGHT_PAYLOAD.to_string()
+}
+
+pub fn is_toggle_side_panel_right(payload: &str) -> bool {
+    payload.trim() == TOGGLE_SIDE_PANEL_RIGHT_PAYLOAD
+}
+
 pub fn is_wallpaper_next(payload: &str) -> bool {
     payload.trim() == WALLPAPER_NEXT_PAYLOAD
 }
@@ -115,6 +128,17 @@ mod tests {
     #[test]
     fn rejects_non_toggle_side_panel_left_payload() {
         assert!(!is_toggle_side_panel_left("toggle-launcher"));
+    }
+
+    #[test]
+    fn encodes_and_recognizes_toggle_side_panel_right() {
+        let payload = encode_toggle_side_panel_right();
+        assert!(is_toggle_side_panel_right(&payload));
+    }
+
+    #[test]
+    fn rejects_non_toggle_side_panel_right_payload() {
+        assert!(!is_toggle_side_panel_right("toggle-launcher"));
     }
 
     #[test]

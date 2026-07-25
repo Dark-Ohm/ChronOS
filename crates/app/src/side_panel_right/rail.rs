@@ -4,7 +4,7 @@
 //! `accent.primary` bar on its left edge + `interactive.hover` fill.
 //! Design brief: `design.md` §"Shell-IDE правая панель (таб-контейнер)".
 
-use gpui::{div, prelude::*, px, svg, App, Context, Hsla, IntoElement, Window};
+use gpui::{App, Context, Hsla, IntoElement, Window, div, prelude::*, px, rgb, svg};
 
 use chronos_ui::Theme;
 
@@ -12,7 +12,7 @@ use crate::side_panel_right::tabs::PanelTab;
 
 use std::rc::Rc;
 
-const RAIL_WIDTH: f32 = 44.;
+pub(crate) const RAIL_WIDTH: f32 = 44.;
 const BUTTON_SIZE: f32 = 36.;
 
 pub fn rail_button_bg(is_active: bool, theme: &Theme) -> Hsla {
@@ -27,6 +27,8 @@ pub fn render_rail(
     cx: &App,
     active: PanelTab,
     on_select: Rc<dyn Fn(PanelTab, &mut Window, &mut App) + 'static>,
+    dock_content: bool,
+    on_dock_toggle: Rc<dyn Fn(&mut Window, &mut App) + 'static>,
 ) -> impl IntoElement {
     let theme = Theme::global(cx);
     div()
@@ -77,6 +79,29 @@ pub fn render_rail(
                     )
                 })
         }))
+        .child(div().flex_1()) // spacer
+        .child({
+            let docked = dock_content;
+            let on_dock_toggle = on_dock_toggle.clone();
+            div()
+                .id("dock-toggle-right")
+                .w(px(BUTTON_SIZE))
+                .h(px(BUTTON_SIZE))
+                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_size(px(11.))
+                .text_color(if docked {
+                    rgb(0x00_7a_cc)
+                } else {
+                    rgb(0x6c_70_86)
+                })
+                .cursor_pointer()
+                .hover(|s| s.bg(rgb(0x23_23_36)))
+                .on_click(move |_, window, cx| on_dock_toggle(window, cx))
+                .child(if docked { "⊞" } else { "⊟" })
+        })
 }
 
 #[cfg(test)]

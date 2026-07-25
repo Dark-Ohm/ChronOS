@@ -21,8 +21,8 @@ mod spectrum_row;
 mod tabs;
 pub mod view;
 
-pub use tabs::PanelTab;
 pub use rail::render_rail;
+pub use tabs::PanelTab;
 
 use chronos_luau::bar::BAR_HEIGHT;
 use gpui::{
@@ -32,15 +32,22 @@ use gpui::{
 
 use crate::side_panel_right::view::SidePanelRightView;
 
-/// Mockup width (`design/shell-ide-panel.zip` — tab container, 10 tabs).
-const PANEL_WIDTH: f32 = 560.;
+// Width constants — mirror left panel's SIDEBAR_COLLAPSED_WIDTH / HANDLE_WIDTH pattern.
+pub(crate) const RAIL_WIDTH: f32 = 44.;
+pub(crate) const HANDLE_WIDTH: f32 = 10.;
+pub(crate) const RAIL_ONLY_WIDTH: f32 = RAIL_WIDTH + HANDLE_WIDTH; // 54
+/// Default full-content width when docked or user-resized.
+pub(crate) const DEFAULT_CONTENT_WIDTH: f32 = 560.;
+pub(crate) const MAX_WIDTH: f32 = 960.;
+
+/// Drag marker — own type so left panel's `LeftPanelResize` never cross-fires.
+pub struct RightPanelResize;
 
 /// Top air under the bar. Height = display − this gap reaches the bottom
 /// bezel (see `b120a3d`). Do **not** use TOP|BOTTOM stretch + dual margins
 /// on Hyprland Overlay — exclusive zone + stretch skews the gaps.
-const PANEL_EDGE_GAP: f32 = BAR_HEIGHT;
+pub(crate) const PANEL_EDGE_GAP: f32 = BAR_HEIGHT;
 
-#[derive(Default)]
 pub struct SidePanelRightState {
     handle: Option<WindowHandle<SidePanelRightView>>,
     /// `true` when opened by hotkey/bar-click (`toggle` / `open_pinned`) —
@@ -50,6 +57,53 @@ pub struct SidePanelRightState {
     /// Bumped on hover-enter (strip or panel). Leave schedules a close
     /// only if this value is still unchanged after the debounce window.
     peek_generation: u64,
+    /// Current window width (px). Starts at `RAIL_ONLY_WIDTH`, grows to
+    /// `DEFAULT_CONTENT_WIDTH` when docked or user-resized.
+    pub width: f32,
+    /// Dock mode: when true, content is always visible (full width).
+    /// When false (default), only the rail shows until content is opened.
+    pub dock_content: bool,
+    /// Last exclusive_zone value sent to compositor (avoids redundant
+    /// Wayland round-trips, mirrors left panel pattern).
+    pub last_exclusive_zone: Option<f32>,
+}
+
+impl Default for SidePanelRightState {
+    fn default() -> Self {
+        Self {
+            handle: None,
+            pinned: false,
+            peek_generation: 0,
+            width: RAIL_ONLY_WIDTH,
+            dock_content: false,
+            last_exclusive_zone: None,
+        }
+    }
+}
+
+impl SidePanelRightState {
+    /// Exclusive zone px: full panel when docked, rail-only when overlay.
+    /// Mirrors `SidePanelLeftState::exclusive_px()`.
+    pub fn exclusive_px(&self) -> f32 {
+        if self.dock_content {
+            self.width
+        } else {
+            RAIL_ONLY_WIDTH
+        }
+    }
+
+    /// Clamp and store a new width.
+    pub fn resize(&mut self, new_width: f32) {
+        self.width = new_width.clamp(RAIL_ONLY_WIDTH, MAX_WIDTH);
+    }
+
+    /// Expand to default content width if still rail-only (dock on / tab open).
+    pub fn ensure_content_width(&mut self) {
+        if self.width <= RAIL_ONLY_WIDTH + 1.0 {
+            self.width = DEFAULT_CONTENT_WIDTH;
+        }
+        self.last_exclusive_zone = None; // force zone recompute next paint
+    }
 }
 
 impl Global for SidePanelRightState {}
@@ -82,7 +136,6 @@ fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
 
 fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     let display_h = display_height(display_id, cx);
-    // Equal top/bottom air: height = display − 2×gap.
     // Only the top gap: bar exclusive zone pushes the TOP-anchored overlay to
     // y=BAR_HEIGHT; height = display − that one gap makes the panel reach the
     // display bottom (no bottom void).
@@ -92,21 +145,16 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: point(px(0.), px(0.)),
-            size: Size::new(px(PANEL_WIDTH), px(panel_h)),
+            size: Size::new(px(RAIL_ONLY_WIDTH), px(panel_h)),
         })),
         app_id: Some("chronos-side-panel-right".to_string()),
         window_background: WindowBackgroundAppearance::Transparent,
         kind: WindowKind::LayerShell(LayerShellOptions {
             namespace: "side_panel_right".to_string(),
             layer: Layer::Overlay,
-            // TOP|RIGHT only (not BOTTOM): fixed height + top margin gives
-            // symmetric vertical inset without Hyprland stretch skew.
             anchor: Anchor::TOP | Anchor::RIGHT,
-            exclusive_zone: None,
-            // (top, right, bottom, left)
-            // Top margin 0: bar exclusive zone already places TOP-anchored
-            // Overlay under the bar (y=BAR_HEIGHT). Height = display−2×gap
-            // so bottom air equals top air.
+            exclusive_zone: Some(px(RAIL_ONLY_WIDTH)),
+            exclusive_edge: Some(Anchor::RIGHT),
             margin: None,
             keyboard_interactivity: KeyboardInteractivity::None,
             ..Default::default()
@@ -132,6 +180,7 @@ fn open_window(cx: &mut App, pinned: bool) {
             let state = cx.global_mut::<SidePanelRightState>();
             state.handle = Some(handle);
             state.pinned = pinned;
+            state.width = RAIL_ONLY_WIDTH;
             tracing::info!(
                 "side_panel_right: opened ({})",
                 if pinned { "pinned" } else { "peek" }
@@ -173,7 +222,12 @@ pub fn close_peek_if_not_pinned(cx: &mut App) {
 pub fn close(cx: &mut App) {
     if let Some(handle) = cx.global_mut::<SidePanelRightState>().handle.take() {
         cx.global_mut::<SidePanelRightState>().pinned = false;
-        match handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
+        // Clear exclusive zone before destroying the surface so the
+        // compositor reclaims reserved space (mirrors left panel).
+        match handle.update(cx, |_, window: &mut Window, _| {
+            window.set_exclusive_zone(px(0.));
+            window.remove_window()
+        }) {
             Ok(()) => {
                 tracing::info!("side_panel_right: closed");
             }
@@ -203,12 +257,13 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
         state.handle.take();
         state.pinned = false;
     }
+    window.set_exclusive_zone(px(0.));
     window.remove_window();
     tracing::info!("side_panel_right: close_this");
 }
 
 /// Bar-widget click / hotkey target.
-pub fn toggle(_window: &mut Window, cx: &mut App) {
+pub fn toggle(cx: &mut App) {
     if cx.global::<SidePanelRightState>().handle.is_some() {
         close(cx);
     } else {
@@ -254,5 +309,50 @@ mod tests {
         let mut state = SidePanelRightState::default();
         state.pinned = false;
         assert!(should_close_on_peek_leave(&state));
+    }
+
+    #[test]
+    fn rail_only_default_width() {
+        assert_eq!(RAIL_ONLY_WIDTH, 54.0);
+    }
+
+    #[test]
+    fn exclusive_px_dock_vs_rail() {
+        let mut state = SidePanelRightState::default();
+        assert!(!state.dock_content);
+        assert_eq!(state.exclusive_px(), RAIL_ONLY_WIDTH);
+        state.width = 640.0;
+        state.dock_content = true;
+        assert_eq!(state.exclusive_px(), 640.0);
+    }
+
+    #[test]
+    fn resize_clamps() {
+        let mut state = SidePanelRightState::default();
+        assert_eq!(state.width, RAIL_ONLY_WIDTH);
+        state.resize(10.0);
+        assert_eq!(state.width, RAIL_ONLY_WIDTH);
+        state.resize(2000.0);
+        assert_eq!(state.width, MAX_WIDTH);
+        state.resize(400.0);
+        assert_eq!(state.width, 400.0);
+    }
+
+    #[test]
+    fn ensure_content_width_from_rail_only() {
+        let mut state = SidePanelRightState::default();
+        assert_eq!(state.width, RAIL_ONLY_WIDTH);
+        state.ensure_content_width();
+        assert_eq!(state.width, DEFAULT_CONTENT_WIDTH);
+    }
+
+    #[test]
+    fn drag_left_grows_right_anchored_width() {
+        // new_width = start_w - (current_x - start_x); x decreases → width grows
+        let start_w = 200.0_f32;
+        let start_x = 100.0_f32;
+        let current_x = 80.0_f32; // moved left 20px
+        let new_w = (start_w - (current_x - start_x)).clamp(RAIL_ONLY_WIDTH, MAX_WIDTH);
+        assert_eq!(new_w, 220.0);
     }
 }
