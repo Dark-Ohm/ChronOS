@@ -143,6 +143,19 @@ impl SidePanelRightView {
         let w = cx.global::<SidePanelRightState>().width;
         self.resize_start_x = Some(start_x);
         self.resize_start_width = Some(w);
+        // Rail-only: first grab on the handle pops content to default width
+        // (user "pulls the panel out of the bar"). Further drag adjusts freely.
+        if w <= RAIL_ONLY_WIDTH + 1.0 {
+            let state = cx.global_mut::<SidePanelRightState>();
+            state.ensure_content_width();
+            self.resize_start_width = Some(state.width);
+            self.last_resized_width = f32::NAN;
+            tracing::info!(
+                width = state.width,
+                "side_panel_right: handle grab expanded rail → content"
+            );
+            cx.notify();
+        }
     }
 
     fn update_resize(&mut self, current_x: f32, cx: &mut Context<Self>) {
@@ -229,8 +242,18 @@ impl SidePanelRightView {
         // Opening a tab from rail-only pulls content out (overlay).
         {
             let state = cx.global_mut::<SidePanelRightState>();
+            let before = state.width;
             state.ensure_content_width();
+            tracing::info!(
+                before,
+                after = state.width,
+                tab = tab.label(),
+                "side_panel_right: tab select → ensure content width"
+            );
         }
+        // Force next paint to re-apply resize even if a previous failed attempt
+        // had advanced last_resized_width without a real set_size.
+        self.last_resized_width = f32::NAN;
         cx.notify();
     }
 }
@@ -266,16 +289,27 @@ impl Render for SidePanelRightView {
             self.last_exclusive_zone = Some(new_zone);
         }
 
-        // Resize window if panel width changed (e.g., dock toggle)
+        // Resize window if panel width changed (tab open / dock / drag).
+        // Always call `window.resize` — do NOT gate on `window.display(cx)`
+        // (can be None briefly; marking last_resized without resize stuck the
+        // surface at rail-only 54px forever — live 2026-07-25).
         if self.last_resized_width != panel_width {
-            if let Some(display) = window.display(cx) {
-                let bounds = display.bounds();
-                let new_h = (f32::from(bounds.size.height)
-                    - crate::side_panel_right::PANEL_EDGE_GAP)
-                    .max(100.);
-                window.resize(gpui::Size::new(px(panel_width), px(new_h)));
-            }
+            let display_id = crate::monitor::pult_display(cx);
+            let display_h = display_id
+                .and_then(|id| cx.find_display(id))
+                .or_else(|| cx.primary_display())
+                .map(|d| f32::from(d.bounds().size.height))
+                .or_else(|| window.display(cx).map(|d| f32::from(d.bounds().size.height)))
+                .unwrap_or(1080.);
+            let panel_h =
+                (display_h - crate::side_panel_right::PANEL_EDGE_GAP).max(100.);
+            window.resize(gpui::Size::new(px(panel_width), px(panel_h)));
             self.last_resized_width = panel_width;
+            tracing::debug!(
+                panel_width,
+                panel_h,
+                "side_panel_right: window.resize after width change"
+            );
         }
 
         // Content open when dock is ON OR user dragged past rail+handle threshold
@@ -464,7 +498,7 @@ impl Render for SidePanelRightView {
                         let this_for_dock = this.clone();
                         let on_dock_toggle =
                             std::rc::Rc::new(move |_window: &mut Window, cx: &mut gpui::App| {
-                                this_for_dock.update(cx, |_, cx| {
+                                this_for_dock.update(cx, |this, cx| {
                                     let state = cx.global_mut::<SidePanelRightState>();
                                     state.dock_content = !state.dock_content;
                                     if state.dock_content {
@@ -472,6 +506,12 @@ impl Render for SidePanelRightView {
                                     } else {
                                         state.last_exclusive_zone = None;
                                     }
+                                    this.last_resized_width = f32::NAN;
+                                    tracing::info!(
+                                        dock = state.dock_content,
+                                        width = state.width,
+                                        "side_panel_right: dock toggle"
+                                    );
                                     cx.notify();
                                 });
                             });
