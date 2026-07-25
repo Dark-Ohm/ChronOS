@@ -58,6 +58,11 @@ impl Bar {
 
 impl Render for Bar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Boot the vendored fork animation engine once (idempotent). This is
+        // the first view rendered each session, so the `animation_tick` loop
+        // that drives every `AnimatedWrapper` starts here.
+        gpui_animation::init(window, cx);
+
         let registry = cx.global::<BarWidgetRegistry>();
         let left: Vec<AnyElement> = registry
             .widgets_for(BarSection::Left)
@@ -172,16 +177,14 @@ pub fn init(cx: &mut App) {
             .timer(Duration::from_millis(100))
             .await;
 
-        let _ = cx.update(|cx: &mut App| {
-            match crate::monitor::pult_display(cx) {
-                Some(display_id) => {
-                    tracing::info!("Opening bar on pult display {:?}", display_id);
-                    open_on_display(Some(display_id), cx);
-                }
-                None => {
-                    tracing::info!("No displays found, opening bar on default display");
-                    open_on_display(None, cx);
-                }
+        let _ = cx.update(|cx: &mut App| match crate::monitor::pult_display(cx) {
+            Some(display_id) => {
+                tracing::info!("Opening bar on pult display {:?}", display_id);
+                open_on_display(Some(display_id), cx);
+            }
+            None => {
+                tracing::info!("No displays found, opening bar on default display");
+                open_on_display(None, cx);
             }
         });
     })

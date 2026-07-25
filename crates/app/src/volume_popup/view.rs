@@ -25,8 +25,9 @@
 use std::time::Duration;
 
 use gpui::{
-    AnyElement, App, BoxShadow, Context, DragMoveEvent, InteractiveElement, IntoElement, MouseButton,
-    MouseDownEvent, Render, SharedString, Styled, Window, div, img, prelude::*, px, svg,
+    AnyElement, App, BoxShadow, Context, Corners, DragMoveEvent, InteractiveElement, IntoElement,
+    MouseButton, MouseDownEvent, Render, SharedString, Styled, Window, canvas, div, img, prelude::*,
+    px, svg,
 };
 use gpui::EmptyView;
 use gpui_animation::animation::TransitionExt;
@@ -120,14 +121,39 @@ impl Render for VolumePopupView {
         // ── Card (builder) ──────────────────────────────────────────
         // Light C recipe identical to updates_popup/view.rs: elevated
         // shadow + inset accent ring + top glow + sigil watermark.
+        // PLUS a real backdrop-blur (fork `window.paint_blur`) behind the
+        // card so the panel reads as frosted glass — the one premium touch
+        // the other popups don't have yet.
+        let blur_layer = div()
+            .absolute()
+            .inset_0()
+            .child(canvas(
+                |_bounds, _window, _cx| {},
+                move |bounds, _state, window: &mut Window, _cx: &mut App| {
+                    window.paint_blur(
+                        bounds,
+                        px(18.0),
+                        Corners::all(radius_lg),
+                        gpui::Hsla {
+                            h: 0.0,
+                            s: 0.0,
+                            l: 1.0,
+                            a: 0.06,
+                        },
+                        1.15,
+                    );
+                },
+            ));
+
         let mut card = div()
             .relative()
             .flex_col()
             .w(px(POPUP_WIDTH))
             .rounded(radius_lg)
-            .bg(bg)
+            .bg(bg.alpha(0.82))
             .border_1()
             .border_color(border_subtle)
+            .child(blur_layer)
             .overflow_hidden();
 
         if is_light {

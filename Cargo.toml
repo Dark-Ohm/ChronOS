@@ -7,6 +7,7 @@ gpui = { git = "https://github.com/Dark-Ohm/Chronos-GPUI", rev = "99cab5e" }
 gpui_platform = { git = "https://github.com/Dark-Ohm/Chronos-GPUI", rev = "99cab5e" }
 gpui-rsx = { git = "https://github.com/Dark-Ohm/Chronos-GPUI", rev = "99cab5e" }
 gpui-animation = { git = "https://github.com/Dark-Ohm/Chronos-GPUI", rev = "99cab5e" }
+
 anyhow = "1.0.100"
 tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util", "process"] }
 tracing = { version = "0.1.41", features = ["log"] }
@@ -28,6 +29,29 @@ unsafe_code = "deny"
 [workspace.lints.clippy]
 unwrap_used = "warn"
 expect_used = "warn"
+
+# Entire gpui fork developed in-tree (Source/), not the pinned git rev.
+# Git deps are the wrong tool while we iterate on the fork — every crate
+# points at ../Source so the whole type graph (Window/App/Element/...) is
+# one unified local build. gpui-animation additionally exposes a public
+# `init` (Delta 4 in its PATCHES.md) that boots the animation_tick loop.
+[patch."https://github.com/Dark-Ohm/Chronos-GPUI"]
+gpui = { path = "../Source/gpui" }
+gpui_collections = { path = "../Source/gpui_collections" }
+gpui_derive_refineable = { path = "../Source/gpui_derive_refineable" }
+gpui_linux = { path = "../Source/gpui_linux" }
+gpui_macros = { path = "../Source/gpui_macros" }
+gpui_media = { path = "../Source/gpui_media" }
+gpui_platform = { path = "../Source/gpui_platform" }
+gpui_refineable = { path = "../Source/gpui_refineable" }
+gpui-rsx = { path = "../Source/gpui-rsx" }
+gpui_scheduler = { path = "../Source/gpui_scheduler" }
+gpui_shared_string = { path = "../Source/gpui_shared_string" }
+gpui_sum_tree = { path = "../Source/gpui_sum_tree" }
+gpui_util = { path = "../Source/gpui_util" }
+gpui_web = { path = "../Source/gpui_web" }
+gpui_wgpu = { path = "../Source/gpui_wgpu" }
+gpui-animation = { path = "../Source/gpui-animation" }
 
 [profile.release]
 codegen-units = 1

@@ -29,7 +29,10 @@ use crate::volume_popup::view::VolumePopupView;
 /// Popup width (px). Mockup 360.
 pub(crate) const POPUP_WIDTH: f32 = 360.;
 /// Base height without any device list expanded.
-const BASE_HEIGHT: f32 = 240.;
+/// Tall enough for: header (~37) + Volume endpoint (~66) + divider (1) +
+/// Microphone endpoint (~66) + footer dual-mute (~52) ≈ 222, rounded up
+/// with slack so the footer is never clipped by the window bounds.
+const BASE_HEIGHT: f32 = 290.;
 /// Budget per device row when a picker is open.
 const DEVICE_ROW_H: f32 = 28.;
 /// Cap expanded list so the popup does not eat the whole screen.
