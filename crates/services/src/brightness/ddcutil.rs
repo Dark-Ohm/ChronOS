@@ -182,7 +182,8 @@ pub fn write_all(displays: &[u32], value: u8) -> bool {
         }
     }
     if any_ok {
-        info!("ddcutil: set brightness to {value} on all displays");
+        // debug-level: drag used to spam INFO for every intermediate write
+        tracing::debug!("ddcutil: set brightness to {value} on all displays");
     }
     any_ok
 }
