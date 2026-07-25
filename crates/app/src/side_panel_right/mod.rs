@@ -20,6 +20,7 @@ mod rail;
 mod spectrum_row;
 mod tabs;
 pub mod view;
+mod wallpaper_card;
 
 pub use rail::render_rail;
 pub use tabs::PanelTab;

@@ -5,11 +5,106 @@
 //! are scanned on demand (users change them rarely).
 
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use chronos_services::{Service, WallpaperCommand, is_image};
 use tracing::{info, warn};
 
 use crate::state;
+
+// ---------------------------------------------------------------------------
+// Waytrogen companion detection + gallery launch
+// ---------------------------------------------------------------------------
+
+/// Binary name for the waytrogen gallery app. Can be overridden via
+/// `CHRONOS_WAYTROGEN` env var (useful for dev / non-PATH installs).
+const WAYTROGEN_BIN: &str = "waytrogen";
+
+/// Check if the waytrogen binary is available on `PATH` (or via env override).
+pub fn waytrogen_available() -> bool {
+    let bin = std::env::var("CHRONOS_WAYTROGEN").unwrap_or_else(|_| WAYTROGEN_BIN.to_string());
+    Command::new("which")
+        .arg(&bin)
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+/// Errors from gallery open attempts.
+#[derive(Debug)]
+pub enum GalleryError {
+    /// waytrogen binary not found on PATH.
+    Missing,
+    /// Failed to spawn the process.
+    SpawnFailed(std::io::Error),
+}
+
+impl std::fmt::Display for GalleryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GalleryError::Missing => write!(f, "waytrogen not found — install the companion"),
+            GalleryError::SpawnFailed(e) => write!(f, "failed to launch waytrogen: {e}"),
+        }
+    }
+}
+
+/// Open the waytrogen gallery GUI (their full app, no args = full UI).
+///
+/// Returns `Ok(())` on successful spawn, `Err(GalleryError)` otherwise.
+/// The caller should call `refresh_after_gallery()` after the gallery closes
+/// to resync shell state.
+pub fn open_waytrogen_gallery() -> Result<(), GalleryError> {
+    let bin = waytrogen_bin()?;
+
+    // Spawn waytrogen with no args — full GUI per their CLI contract.
+    // Detach stdio so the shell doesn't block on their stdout/stderr.
+    Command::new(&bin)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(GalleryError::SpawnFailed)?;
+
+    info!("wallpaper_ctl: opened waytrogen gallery");
+    Ok(())
+}
+
+/// Async variant: spawns waytrogen and returns the child handle so the
+/// caller can await exit and then resync wallpaper state.
+pub fn open_waytrogen_gallery_async() -> Result<tokio::process::Child, GalleryError> {
+    let bin = waytrogen_bin()?;
+
+    let child = tokio::process::Command::new(&bin)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(GalleryError::SpawnFailed)?;
+
+    info!("wallpaper_ctl: opened waytrogen gallery (async)");
+    Ok(child)
+}
+
+/// Resolve the waytrogen binary path, checking env override then `which`.
+fn waytrogen_bin() -> Result<String, GalleryError> {
+    let bin = std::env::var("CHRONOS_WAYTROGEN").unwrap_or_else(|_| WAYTROGEN_BIN.to_string());
+    let which = Command::new("which")
+        .arg(&bin)
+        .output()
+        .map_err(GalleryError::SpawnFailed)?;
+    if !which.status.success() {
+        return Err(GalleryError::Missing);
+    }
+    Ok(bin)
+}
+
+/// Re-query awww to sync shell state after gallery use.
+///
+/// Must be called from a gpui context so we can reach `AppState`.
+pub fn refresh_after_gallery(cx: &mut gpui::App) {
+    info!("wallpaper_ctl: refreshing wallpaper state after gallery use");
+    state::AppState::wallpaper(cx).refresh();
+}
 
 /// Default wallpaper directory. If missing, operations are no-ops with a warn.
 fn wallpaper_dir() -> Option<PathBuf> {

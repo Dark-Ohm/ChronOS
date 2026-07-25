@@ -24,6 +24,7 @@ use gpui_animation::transition::general::Linear;
 use crate::side_panel_right::disks::render_disks_section;
 use crate::side_panel_right::header::render_header;
 use crate::side_panel_right::mpris_card::render_mpris_card;
+use crate::side_panel_right::wallpaper_card::render_wallpaper_card;
 use crate::side_panel_right::permission::render_permission_card;
 use crate::side_panel_right::power_row::{
     ARM_TIMEOUT, ArmState, PowerAction, is_confirming_click, on_click as arm_on_click, on_timeout,
@@ -51,6 +52,8 @@ pub struct SidePanelRightView {
     mpris: MprisState,
     system: SystemResourcesState,
     disks: Vec<DiskInfo>,
+    wallpaper: chronos_services::WallpaperState,
+    waytrogen_available: bool,
     cpu_history: SpectrumHistory,
     ram_history: SpectrumHistory,
     gpu_history: SpectrumHistory,
@@ -106,6 +109,16 @@ impl SidePanelRightView {
             },
         );
 
+        let wallpaper_signal = AppState::wallpaper(cx).subscribe();
+        state::watch(
+            cx,
+            wallpaper_signal,
+            |this: &mut Self, data: chronos_services::WallpaperState, cx| {
+                this.wallpaper = data;
+                cx.notify();
+            },
+        );
+
         cx.spawn(async move |this, cx| {
             cx.background_executor()
                 .timer(Duration::from_millis(16))
@@ -124,6 +137,8 @@ impl SidePanelRightView {
             mpris: AppState::mpris(cx).get(),
             system: AppState::system_resources(cx).get(),
             disks: AppState::disks(cx).get(),
+            wallpaper: AppState::wallpaper(cx).get(),
+            waytrogen_available: crate::wallpaper_ctl::waytrogen_available(),
             cpu_history: SpectrumHistory::default(),
             ram_history: SpectrumHistory::default(),
             gpu_history: SpectrumHistory::default(),
@@ -414,6 +429,10 @@ impl Render for SidePanelRightView {
                                                 .gap(px(14.))
                                                 .p(px(14.))
                                                 .child(render_mpris_card(&self.mpris, cx))
+                                                .child(render_wallpaper_card(
+                                                    &self.wallpaper,
+                                                    self.waytrogen_available,
+                                                ))
                                                 .child(
                                                     div()
                                                         .flex()

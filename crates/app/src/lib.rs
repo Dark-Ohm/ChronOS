@@ -4,3 +4,4 @@ pub mod monitor;
 pub mod notifications;
 pub mod side_panel_right;
 pub mod state;
+pub mod wallpaper_ctl;

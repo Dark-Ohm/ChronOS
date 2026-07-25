@@ -145,6 +145,29 @@ impl WallpaperSubscriber {
         }
     }
 
+    /// Re-query `awww query` and update reactive state.
+    ///
+    /// Use after an external process (e.g. waytrogen gallery) changes the
+    /// wallpaper behind our back. Fire-and-forget: spawns on the captured
+    /// runtime, updates `Mutable` on completion.
+    pub fn refresh(&self) {
+        let data = self.data.clone();
+        let status = self.status.clone();
+        self.runtime.spawn(async move {
+            match query_current().await {
+                Ok(state) => {
+                    if state.current.is_some() || !state.per_monitor.is_empty() {
+                        data.set(state);
+                    }
+                    status.set(ServiceStatus::Available);
+                }
+                Err(e) => {
+                    warn!("WallpaperSubscriber::refresh failed: {e}");
+                }
+            }
+        });
+    }
+
     /// Extensions awww can display (for file pickers / validation).
     pub fn accepted_formats(&self) -> &'static [&'static str] {
         IMAGE_EXTENSIONS
