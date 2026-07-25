@@ -225,12 +225,14 @@ impl Render for VolumePopupView {
             </div>
         };
 
+        let drag_preview = self.dispatched_vol;
         card.child(header)
             .child(endpoint_block(
                 "Volume",
                 EndpointKind::Sink,
                 &audio.sink,
                 expanded,
+                drag_preview,
                 text_primary,
                 text_secondary,
                 text_muted,
@@ -247,6 +249,7 @@ impl Render for VolumePopupView {
                 EndpointKind::Source,
                 &audio.source,
                 expanded,
+                drag_preview,
                 text_primary,
                 text_secondary,
                 text_muted,
@@ -367,6 +370,7 @@ fn endpoint_block(
     kind: EndpointKind,
     ep: &EndpointState,
     expanded: Option<EndpointKind>,
+    drag_preview: Option<(EndpointKind, f64, Instant)>,
     text_primary: gpui::Hsla,
     text_secondary: gpui::Hsla,
     text_muted: gpui::Hsla,
@@ -383,8 +387,7 @@ fn endpoint_block(
     // Optimistic thumb: during drag, use the dispatched volume for the
     // thumb position so it tracks the finger without waiting for the
     // service round-trip. The fill bar stays at the service value.
-    let (thumb_volume, thumb_muted) = cx
-        .read(|this, _cx| this.dispatched_vol)
+    let (thumb_volume, thumb_muted) = drag_preview
         .filter(|(dk, _, _)| *dk == kind)
         .map(|(_, vol, _)| (vol as f32, muted))
         .unwrap_or((volume.clamp(0.0, 1.0) as f32, muted));
@@ -410,18 +413,18 @@ fn endpoint_block(
     // AnimatedWrapper (its hover only needs `&mut App` via the crate's
     // internal hook).
     let mouse_listener = cx.listener(
-        move |_this, ev: &MouseDownEvent, window, cx: &mut Context<VolumePopupView>| {
+        move |this, ev: &MouseDownEvent, window, cx: &mut Context<VolumePopupView>| {
             let frac = frac_from_window_x(f32::from(ev.position.x));
-            set_volume_unmute_if_needed(kind, frac, window, cx);
+            set_volume_unmute_if_needed(this, kind, frac, window, cx);
         },
     );
     let drag_listener = cx.listener(
-        move |_this,
+        move |this,
               ev: &DragMoveEvent<VolumeSliderDrag>,
               window,
               cx: &mut Context<VolumePopupView>| {
             let frac = frac_from_window_x(f32::from(ev.event.position.x));
-            set_volume_unmute_if_needed(kind, frac, window, cx);
+            set_volume_unmute_if_needed(this, kind, frac, window, cx);
         },
     );
     let slider_id: SharedString = format!("{prefix}-slider").into();
@@ -687,6 +690,7 @@ fn frac_from_window_x(x: f32) -> f64 {
 /// **Optimistic:** records the dispatched volume so the thumb renders
 /// at the finger position without waiting for the service round-trip.
 fn set_volume_unmute_if_needed(
+    this: &mut VolumePopupView,
     kind: EndpointKind,
     frac: f64,
     window: &mut Window,
@@ -697,14 +701,12 @@ fn set_volume_unmute_if_needed(
 
     // Throttle: skip *service* dispatch if last send was <32ms ago and delta
     // <1%. Still update local thumb so the knob tracks the finger.
-    if let Some((prev_kind, prev_vol, prev_time)) = cx.read(|this, _cx| this.dispatched_vol) {
+    if let Some((prev_kind, prev_vol, prev_time)) = this.dispatched_vol {
         if prev_kind == kind
             && now.duration_since(prev_time) < Duration::from_millis(32)
             && (prev_vol - v).abs() < 0.01
         {
-            cx.update(|this, _cx| {
-                this.dispatched_vol = Some((kind, v, prev_time));
-            });
+            this.dispatched_vol = Some((kind, v, prev_time));
             cx.notify();
             return;
         }
@@ -719,8 +721,6 @@ fn set_volume_unmute_if_needed(
         }
     };
 
-    // Dispatch volume + optional unmute. Audio holds a ref to the global
-    // Mutable but does not hold &mut cx, so cx.update below is fine.
     {
         let audio = AppState::audio(cx);
         match kind {
@@ -739,12 +739,9 @@ fn set_volume_unmute_if_needed(
         }
     }
 
-    // Record optimistic thumb position (render shows this until service catches up).
-    cx.update(|this, _cx| {
-        this.dispatched_vol = Some((kind, v, now));
-    });
+    this.dispatched_vol = Some((kind, v, now));
     cx.notify();
-    resize_to_fit(window, cx.read(|this, _cx| this.expanded), cx);
+    resize_to_fit(window, this.expanded, cx);
 }
 
 fn toggle_mute(kind: EndpointKind, cx: &mut App) {
