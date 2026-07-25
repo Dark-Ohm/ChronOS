@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# chronos-reload — rebuild the hotview dylib for a running debug instance.
+#
+# Design B (MVP): one-shot cargo build of chronos-hotview only.
+# No background file watcher — hot-lib-reloader picks up the new .so
+# automatically on the next filesystem poll (~1-2s). Watch is left to
+# the human if desired (e.g. `cargo watch -w crates/hotview ...`).
+#
+# Contracts:
+#   - NEVER pkill the running shell. This script only rebuilds dylib.
+#   - Requires chronos running with --features hot-reload (chronos-debug).
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+
+pid="$(get_chronos_pid 2>/dev/null)" || true
+
+if [[ -z "$pid" ]]; then
+    echo "error: chronos is not running." >&2
+    echo "  Start a hot-reload build first:  chronos-debug" >&2
+    exit 1
+fi
+
+# Check if the running binary is a debug build with hot-reload.
+# The exe symlink at /proc/<pid>/exe points into target/debug/.
+exe="$(readlink -f "/proc/$pid/exe" 2>/dev/null)" || true
+
+if [[ "$exe" != */target/debug/* ]]; then
+    echo "error: chronos (PID $pid) is not a debug build — hot-reload not available." >&2
+    echo "  Running binary: $exe" >&2
+    echo "  Use:  chronos-stop && chronos-debug" >&2
+    exit 1
+fi
+
+echo "Rebuilding chronos-hotview (PID $pid is running with hot-reload)..."
+
+cargo build -p chronos-hotview 2>&1
+
+echo ""
+echo "Done — hot-lib-reloader will pick up the new dylib automatically (~1-2s)."

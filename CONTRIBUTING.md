@@ -46,6 +46,23 @@ cargo test  --workspace --lib --bins      # tests
 RUST_LOG=info ./target/release/chronos     # live run
 ```
 
+## Dev CLI
+
+Helper scripts in `scripts/dev/` wrap the most common workflows. Install once:
+
+```sh
+./scripts/install-dev-cli.sh   # symlinks into ~/.local/bin
+```
+
+```sh
+chronos-rebuild                # cargo build --release -p chronos
+chronos-start                  # start release shell (single-instance)
+chronos-stop                   # pkill -x chronos (safe, idempotent)
+chronos-debug                  # start debug shell with hot-reload
+chronos-reload                 # rebuild hotview dylib (for running debug instance)
+chronos-stop
+```
+
 ## Plugins
 
 Luau plugins live in `crates/plugins/` (data, not a Rust crate). Each plugin has

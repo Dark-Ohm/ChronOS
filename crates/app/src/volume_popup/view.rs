@@ -1,17 +1,36 @@
 //! Volume popup view — Sound UI: Volume + Microphone sliders, device
 //! menus (grow-window inline list), footer dual mute.
 //!
-//! Static chrome (header «Sound» + ✕) is built with `rsx!`; the live
-//! meters — sliders (drag/click) and device menus — are built with the
-//! `div()` builder because they need `on_mouse_down` / `on_drag` +
-//! `cx.listener` stateful interaction. See T121 report for the rsx↔div
-//! map.
+//! ## Visual language (matches `updates_popup` / `notifications`)
+//! - Light C: elevated shadow + 1px inner accent ring + top accent glow +
+//!   hexagon-sigil watermark (same recipe as `updates_popup/view.rs`).
+//! - Animated via the vendored fork crate `gpui_animation` (`TransitionExt`,
+//!   `transition_on_hover`) — the project's animation crate at
+//!   `Source/gpui-animation`. Interactive controls that don't need view
+//!   state (footer mute buttons, device rows) are wrapped in
+//!   `AnimatedWrapper` so border/color morph to accent on hover with a
+//!   spring ease; the device picker springs open/closed via
+//!   `transition_when` (EaseOutBack).
+//!
+//! ## Build split
+//! - Static chrome (header «Sound» + ✕) is `rsx!`.
+//! - Live meters/menus are the `div()` builder because they need
+//!   `on_mouse_down` / `on_drag` + `cx.listener` stateful interaction.
+//!   Those keep the plain `Div` hover (matching the other popups); the
+//!   `gpui_animation` wrapper is used where the click handler only needs
+//!   `&mut App` (no `cx.listener`).
+//!
+//! See T121 report for the rsx↔div map and the fork deltas.
+
+use std::time::Duration;
 
 use gpui::{
     AnyElement, App, BoxShadow, Context, DragMoveEvent, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, Render, SharedString, Styled, Window, div, img, prelude::*, px, svg,
 };
 use gpui::EmptyView;
+use gpui_animation::animation::TransitionExt;
+use gpui_animation::transition::Transition;
 use gpui_rsx::rsx;
 
 use chronos_services::{
@@ -28,6 +47,17 @@ const TRACK_H: f32 = 4.;
 /// Slider thumb diameter (mockup: 13px).
 const THUMB: f32 = 13.;
 const MAX_DEVICE_ROWS: usize = 8;
+
+/// Spring-overshoot easing adapter so the fork's `EasingCurve::EaseOutBack`
+/// can drive `gpui_animation` declarative transitions (the animation crate
+/// only ships quad/cubic/sine/exponential curves natively).
+struct SpringBack(f32);
+
+impl Transition for SpringBack {
+    fn calculate(&self, t: f32) -> f32 {
+        gpui::easing::EasingCurve::EaseOutBack(self.0).sample(t)
+    }
+}
 
 /// Marker type for the slider drag gesture (no payload needed — the
 /// drag-move listener already closes over the endpoint `kind`).
@@ -88,6 +118,8 @@ impl Render for VolumePopupView {
         let font_mono = theme.font_mono;
 
         // ── Card (builder) ──────────────────────────────────────────
+        // Light C recipe identical to updates_popup/view.rs: elevated
+        // shadow + inset accent ring + top glow + sigil watermark.
         let mut card = div()
             .relative()
             .flex_col()
@@ -203,11 +235,15 @@ impl Render for VolumePopupView {
                 border_subtle,
                 radius,
                 font_mono,
+                hover,
             ))
     }
 }
 
-/// Footer: two outlined mute buttons (builder — simple onClick).
+/// Footer: two outlined mute buttons. Wrapped in `AnimatedWrapper` so the
+/// border/color morph to accent on hover with a spring ease (fork crate).
+/// These clicks only need `&mut App`, so they are compatible with the
+/// `AnimatedWrapper::on_click` signature.
 fn footer(
     audio: &AudioState,
     text_muted: gpui::Hsla,
@@ -215,20 +251,13 @@ fn footer(
     border_subtle: gpui::Hsla,
     radius: gpui::Pixels,
     font_mono: &'static str,
+    hover: gpui::Hsla,
 ) -> AnyElement {
     let sink_muted = audio.sink.muted;
     let source_muted = audio.source.muted;
 
-    let out_label = if sink_muted {
-        "Unmute output"
-    } else {
-        "Mute output"
-    };
-    let mic_label = if source_muted {
-        "Unmute mic"
-    } else {
-        "Mute mic"
-    };
+    let out_label = if sink_muted { "Unmute output" } else { "Mute output" };
+    let mic_label = if source_muted { "Unmute mic" } else { "Mute mic" };
     let out_color = if sink_muted { accent } else { text_muted };
     let mic_color = if source_muted { accent } else { text_muted };
 
@@ -254,8 +283,11 @@ fn footer(
                 .text_size(px(12.))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .cursor_pointer()
-                .hover(move |s| s.border_color(accent).text_color(accent))
                 .child(out_label)
+                .with_transition("volume-popup-mute-output")
+                .transition_on_hover(Duration::from_millis(220), SpringBack(1.6), move |_hovered, s| {
+                    s.border_color(accent).text_color(accent)
+                })
                 .on_click(move |_event, _window, cx: &mut App| {
                     toggle_mute(EndpointKind::Sink, cx);
                 }),
@@ -274,8 +306,11 @@ fn footer(
                 .text_size(px(12.))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .cursor_pointer()
-                .hover(move |s| s.border_color(accent).text_color(accent))
                 .child(mic_label)
+                .with_transition("volume-popup-mute-mic")
+                .transition_on_hover(Duration::from_millis(220), SpringBack(1.6), move |_hovered, s| {
+                    s.border_color(accent).text_color(accent)
+                })
                 .on_click(move |_event, _window, cx: &mut App| {
                     toggle_mute(EndpointKind::Source, cx);
                 }),
@@ -284,7 +319,8 @@ fn footer(
 }
 
 /// One endpoint section: title row (mute icon + name + device subtitle +
-/// chevron + %), drag/click slider, and an inline device picker.
+/// chevron + %), drag/click slider, and an inline device picker that
+/// springs open/closed via `gpui_animation`.
 fn endpoint_block(
     title: &'static str,
     kind: EndpointKind,
@@ -317,6 +353,10 @@ fn endpoint_block(
     let title_id: SharedString = format!("{prefix}-title").into();
 
     // ── Slider drag + click (builder, stateful) ────────────────────
+    // Uses `cx.listener` (needs `&mut Context<Self>`), so it stays a
+    // plain `Div`; the inner track gets a hover glow via a nested
+    // AnimatedWrapper (its hover only needs `&mut App` via the crate's
+    // internal hook).
     let mouse_listener = cx.listener(move |_this, ev: &MouseDownEvent, _window, cx: &mut Context<VolumePopupView>| {
         let frac = frac_from_window_x(f32::from(ev.position.x));
         set_volume_unmute_if_needed(kind, frac, cx);
@@ -396,6 +436,10 @@ fn endpoint_block(
                         .justify_center()
                         .text_color(text_muted)
                         .child(mute_icon(kind.is_source(), muted))
+                        .with_transition(format!("{prefix}-mute-icon"))
+                        .transition_on_hover(Duration::from_millis(160), SpringBack(1.4), move |_hovered, s| {
+                            s.bg(accent).text_color(hover)
+                        })
                         .on_click(move |_event, _window, cx: &mut App| {
                             toggle_mute(kind, cx);
                         }),
@@ -492,7 +536,18 @@ fn endpoint_block(
         .py(px(12.))
         .child(title_row)
         .child(slider)
-        .child(device_list)
+        .child(
+            div()
+                .id(format!("{prefix}-devices"))
+                .overflow_hidden()
+                .with_transition(format!("{prefix}-devices"))
+                .transition_when(is_open, Duration::from_millis(260), SpringBack(1.8), |s| {
+                    // The list is present in both states; height morphs via
+                    // max-height + opacity spring when the picker opens.
+                    s.opacity(1.0).max_h(px(400.))
+                })
+                .child(device_list),
+        )
         .into_any_element()
 }
 
@@ -508,15 +563,11 @@ fn device_row(
     let id = device.id;
     let mark = if device.is_default { "✓" } else { "" };
     let label = truncate_label(&device.name, 34);
-    let color = if device.is_default {
-        accent
-    } else {
-        text_primary
-    };
+    let color = if device.is_default { accent } else { text_primary };
     let row_id: SharedString = format!("{}-dev-{id}", kind.id_prefix()).into();
 
     div()
-        .id(row_id)
+        .id(row_id.clone())
         .w_full()
         .flex()
         .items_center()
@@ -526,7 +577,6 @@ fn device_row(
         .py(px(6.))
         .rounded(radius)
         .cursor_pointer()
-        .hover(move |s| s.bg(hover))
         .child(div().text_color(color).text_xs().child(label))
         .child(
             div()
@@ -538,6 +588,10 @@ fn device_row(
                 .text_size(px(12.))
                 .child(mark),
         )
+        .with_transition(row_id.clone())
+        .transition_on_hover(Duration::from_millis(150), SpringBack(1.5), move |_hovered, s| {
+            s.bg(hover).text_color(accent)
+        })
         .on_click(move |_event, _window, cx: &mut App| {
             set_default_device(kind, id, cx);
         })

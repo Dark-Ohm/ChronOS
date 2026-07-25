@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# chronos-start — start the ChronOS release shell in the background.
+#
+# Contracts:
+#   - Release build only (no hot-reload features).
+#   - Single-instance: fail if any chronos process is already running.
+#   - Logs to $XDG_STATE_HOME/chronos/chronos.log (default ~/.local/state/chronos/).
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+
+require_not_running
+
+if [[ ! -x "$RELEASE_BIN" ]]; then
+    echo "error: release binary not found: $RELEASE_BIN" >&2
+    echo "  Run:  chronos-rebuild" >&2
+    exit 1
+fi
+
+ensure_state_dir
+
+RUST_LOG="${RUST_LOG:-info}"
+export RUST_LOG
+
+echo "Starting chronos (release, RUST_LOG=$RUST_LOG)..."
+echo "  binary: $RELEASE_BIN"
+echo "  log:    $LOG_RELEASE"
+
+nohup "$RELEASE_BIN" >>"$LOG_RELEASE" 2>&1 &
+disown
+PID=$!
+
+sleep 0.5
+
+if kill -0 "$PID" 2>/dev/null; then
+    echo "chronos started (PID $PID)."
+else
+    echo "error: chronos exited immediately — check $LOG_RELEASE" >&2
+    exit 1
+fi

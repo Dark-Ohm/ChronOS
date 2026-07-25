@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# chronos-rebuild — build ChronOS release binary.
+# Does NOT start or stop the shell. That's chronos-start / chronos-stop.
+#
+# Usage:
+#   chronos-rebuild           # build release
+#   chronos-rebuild --debug   # build debug (with hot-reload features)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+
+MODE="release"
+if [[ "${1:-}" == "--debug" ]]; then
+    MODE="debug"
+fi
+
+echo "Building chronos ($MODE)..."
+echo "  repo:     $REPO"
+
+if [[ "$MODE" == "release" ]]; then
+    cargo build --release -p chronos 2>&1
+    echo ""
+    echo "Finished: $RELEASE_BIN"
+else
+    cargo build -p chronos --features hot-reload 2>&1
+    echo ""
+    echo "Finished: $DEBUG_BIN"
+fi

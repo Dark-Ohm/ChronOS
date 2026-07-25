@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# chronos-stop — stop the running ChronOS shell.
+#
+# HANDOFF blood fact: pkill -x chronos ONLY (never -f).
+# -f would match chronos-fm or any other binary with "chronos" in argv.
+#
+# Idempotent: exit 0 with message if nothing is running.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+
+pid="$(get_chronos_pid 2>/dev/null)" || true
+
+if [[ -z "$pid" ]]; then
+    echo "chronos not running (nothing to stop)."
+    exit 0
+fi
+
+echo "Stopping chronos (PID $pid)..."
+pkill -x chronos
+sleep 0.5
+
+# Verify it's gone
+if get_chronos_pid >/dev/null 2>&1; then
+    echo "warning: chronos still alive after SIGTERM — sending SIGKILL" >&2
+    pkill -9 -x chronos 2>/dev/null || true
+    sleep 0.3
+fi
+
+echo "chronos stopped."
