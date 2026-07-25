@@ -93,12 +93,12 @@ pub fn render_rail(
                 .justify_center()
                 .text_size(px(11.))
                 .text_color(if docked {
-                    rgb(0x00_7a_cc)
+                    theme.accent.primary
                 } else {
-                    rgb(0x6c_70_86)
+                    theme.text.muted
                 })
                 .cursor_pointer()
-                .hover(|s| s.bg(rgb(0x23_23_36)))
+                .hover(|s| s.bg(theme.border.subtle))
                 .on_click(move |_, window, cx| on_dock_toggle(window, cx))
                 .child(if docked { "⊞" } else { "⊟" })
         })

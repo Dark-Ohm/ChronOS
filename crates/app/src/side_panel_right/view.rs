@@ -334,7 +334,8 @@ impl Render for SidePanelRightView {
 
         // Elevated chrome на content-колонке (не rail-only) — общий язык
         // глубины из `theme.elevation_popup()` (T128).
-        let elev = Theme::global(cx).elevation_popup();
+        let theme = *Theme::global(cx);
+        let elev = theme.elevation_popup();
 
         // Resize handlers before any RPIT that captures cx (Rust 2024).
         let resize_drag_handler = cx.listener(
@@ -370,13 +371,13 @@ impl Render for SidePanelRightView {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .bg(rgb(0x18_18_25))
+                    .bg(theme.bg.tertiary)
                     .border_r_1()
-                    .border_color(rgb(0x23_23_36))
+                    .border_color(theme.border.subtle)
                     .on_mouse_down(gpui::MouseButton::Left, resize_mouse_handler)
                     .on_drag(RightPanelResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
                     .on_drag_move(resize_drag_handler)
-                    .child(div().w(px(1.)).h_full().bg(rgb(0x45_47_5a))),
+                    .child(div().w(px(1.)).h_full().bg(theme.text.disabled)),
             )
             .child(
                 div()
@@ -385,9 +386,9 @@ impl Render for SidePanelRightView {
                     .flex_1()
                     .min_w(px(0.))
                     .h_full()
-                    .bg(rgb(0x18_18_25))
+                    .bg(theme.bg.tertiary)
                     .border_l_1()
-                    .border_color(rgb(0x31_32_44))
+                    .border_color(theme.border.default)
                     .flex()
                     .flex_row() // content first, rail last — rail flush against the screen's right edge
                     .overflow_hidden()
@@ -413,9 +414,9 @@ impl Render for SidePanelRightView {
                             col.when(self.active_tab == PanelTab::System, |col| {
                                     col
                                         // 1. Header (flex:none) — rsx
-                                        .child(render_header())
+                                        .child(render_header(cx))
                                         // 2. Permission card (flex:none) — rsx
-                                        .child(render_permission_card())
+                                        .child(render_permission_card(cx))
                                         // 3. Scrollable middle — UNCHANGED body
                                         .child(
                                             div()
@@ -432,6 +433,7 @@ impl Render for SidePanelRightView {
                                                 .child(render_wallpaper_card(
                                                     &self.wallpaper,
                                                     self.waytrogen_available,
+                                                    cx,
                                                 ))
                                                 .child(
                                                     div()
@@ -445,9 +447,10 @@ impl Render for SidePanelRightView {
                                                                 "{:.0}%",
                                                                 self.system.cpu_percent
                                                             ),
-                                                            color_cpu(),
-                                                            color_cpu(),
+                                                            color_cpu(&theme),
+                                                            color_cpu(&theme),
                                                             H_CPU,
+                                                            &theme,
                                                         ))
                                                         .child(render_spectrum_row(
                                                             "RAM",
@@ -456,18 +459,20 @@ impl Render for SidePanelRightView {
                                                                 "{:.0}%",
                                                                 self.system.ram_percent
                                                             ),
-                                                            color_ram(),
-                                                            color_ram(),
+                                                            color_ram(&theme),
+                                                            color_ram(&theme),
                                                             H_RAM,
+                                                            &theme,
                                                         ))
                                                         .when_some(gpu, |d, gpu_pct| {
                                                             d.child(render_spectrum_row(
                                                                 "GPU",
                                                                 &self.gpu_history,
                                                                 &format!("{gpu_pct:.0}%"),
-                                                                color_gpu(),
-                                                                color_gpu(),
+                                                                color_gpu(&theme),
+                                                                color_gpu(&theme),
                                                                 H_GPU,
+                                                                &theme,
                                                             ))
                                                         }),
                                                 )
@@ -480,17 +485,19 @@ impl Render for SidePanelRightView {
                                                             "↓ down",
                                                             &self.net_dl_history,
                                                             &dl,
-                                                            color_net(),
-                                                            color_value_default(),
+                                                            color_net(&theme),
+                                                            color_value_default(&theme),
                                                             H_NET,
+                                                            &theme,
                                                         ))
                                                         .child(render_spectrum_row(
                                                             "↑ up",
                                                             &self.net_ul_history,
                                                             &ul,
-                                                            color_net(),
-                                                            color_value_default(),
+                                                            color_net(&theme),
+                                                            color_value_default(&theme),
                                                             H_NET,
+                                                            &theme,
                                                         )),
                                                 )
                                                 .child(render_disks_section(&self.disks, cx)),
@@ -505,7 +512,7 @@ impl Render for SidePanelRightView {
                                             .flex()
                                             .items_center()
                                             .justify_center()
-                                            .child(div().text_color(rgb(0x6c_70_86)).child(
+                                            .child(div().text_color(theme.text.muted).child(
                                                 format!(
                                                     "{} — coming soon",
                                                     self.active_tab.label()

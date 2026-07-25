@@ -3,17 +3,11 @@
 //! Shows: current wallpaper path (if set), "Next" hotpath button,
 //! "Open gallery (waytrogen)" primary action, or install CTA when missing.
 
-use gpui::{ElementId, IntoElement, SharedString, div, prelude::*, px, rgb};
+use gpui::{App, ElementId, IntoElement, SharedString, div, prelude::*, px};
+use chronos_ui::Theme;
 
-use chronos_services::{Service, WallpaperState};
+use chronos_services::WallpaperState;
 
-const CARD_BG: u32 = 0x1e_1e_2e;
-const BORDER: u32 = 0x23_23_36;
-const TEXT: u32 = 0xcd_d6_f4;
-const MUTED: u32 = 0x6c_70_86;
-const ACCENT: u32 = 0x89_b4_fa;
-const ACTION_BORDER: u32 = 0x45_47_5a;
-const ACTION_HOVER: u32 = 0x31_32_44;
 
 /// Wallpaper path display — truncate to basename for the card.
 fn wallpaper_label(state: &WallpaperState) -> String {
@@ -45,7 +39,9 @@ fn wallpaper_label(state: &WallpaperState) -> String {
 pub fn render_wallpaper_card(
     state: &WallpaperState,
     waytrogen_available: bool,
+    cx: &App,
 ) -> impl IntoElement {
+    let theme = *Theme::global(cx);
     let label = wallpaper_label(state);
 
     div()
@@ -54,9 +50,9 @@ pub fn render_wallpaper_card(
         .gap(px(8.))
         .p(px(12.))
         .rounded(px(9.))
-        .bg(rgb(CARD_BG))
+        .bg(theme.bg.primary)
         .border_1()
-        .border_color(rgb(BORDER))
+        .border_color(theme.border.subtle)
         // Title row
         .child(
             div()
@@ -67,14 +63,14 @@ pub fn render_wallpaper_card(
                     div()
                         .text_size(px(11.5))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(rgb(ACCENT))
+                        .text_color(theme.status.info)
                         .child("Wallpapers"),
                 )
                 .child(
                     div()
                         .font_family("JetBrains Mono")
                         .text_size(px(10.))
-                        .text_color(rgb(MUTED))
+                        .text_color(theme.text.muted)
                         .child(label),
                 ),
         )
@@ -83,10 +79,7 @@ pub fn render_wallpaper_card(
             div()
                 .flex()
                 .gap(px(6.))
-                .child(action_button(
-                    ElementId::Name(SharedString::from("wallpaper-next")),
-                    "Next",
-                    {
+                .child(action_button(ElementId::Name(SharedString::from("wallpaper-next")), "Next", &theme, {
                         move |_, _, cx: &mut gpui::App| {
                             tracing::info!("wallpaper_card: Next clicked");
                             crate::wallpaper_ctl::next(cx);
@@ -94,10 +87,7 @@ pub fn render_wallpaper_card(
                     },
                 ))
                 .when(waytrogen_available, |row| {
-                    row.child(action_button(
-                        ElementId::Name(SharedString::from("wallpaper-gallery")),
-                        "Open waytrogen",
-                        {
+                    row.child(action_button(ElementId::Name(SharedString::from("wallpaper-gallery")), "Open waytrogen", &theme, {
                             move |_, _, cx: &mut gpui::App| {
                                 tracing::info!("wallpaper_card: Open waytrogen clicked");
                                 if let Err(e) = crate::wallpaper_ctl::open_waytrogen_gallery() {
@@ -119,7 +109,7 @@ pub fn render_wallpaper_card(
                     ))
                 })
                 .when(!waytrogen_available, |row| {
-                    row.child(install_cta())
+                    row.child(install_cta(&theme))
                 }),
         )
 }
@@ -127,6 +117,7 @@ pub fn render_wallpaper_card(
 fn action_button(
     id: ElementId,
     label: &'static str,
+    theme: &Theme,
     on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> impl IntoElement {
     div()
@@ -135,27 +126,27 @@ fn action_button(
         .py(px(6.))
         .rounded(px(5.))
         .border_1()
-        .border_color(rgb(ACTION_BORDER))
+        .border_color(theme.text.disabled)
         .text_size(px(10.))
-        .text_color(rgb(TEXT))
+        .text_color(theme.text.primary)
         .flex()
         .items_center()
         .justify_center()
         .cursor_pointer()
-        .hover(|s| s.bg(rgb(ACTION_HOVER)))
+        .hover(|s| s.bg(theme.border.default))
         .on_click(on_click)
         .child(label)
 }
 
-fn install_cta() -> impl IntoElement {
+fn install_cta(theme: &Theme) -> impl IntoElement {
     div()
         .flex_1()
         .py(px(6.))
         .rounded(px(5.))
         .border_1()
-        .border_color(rgb(ACTION_BORDER))
+        .border_color(theme.text.disabled)
         .text_size(px(9.5))
-        .text_color(rgb(MUTED))
+        .text_color(theme.text.muted)
         .flex()
         .items_center()
         .justify_center()

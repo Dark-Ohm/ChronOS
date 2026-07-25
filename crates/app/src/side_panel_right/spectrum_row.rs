@@ -4,7 +4,8 @@
 
 use std::collections::VecDeque;
 
-use gpui::{Hsla, IntoElement, div, prelude::*, px, rgb};
+use gpui::{Hsla, IntoElement, div, prelude::*, px};
+use chronos_ui::Theme;
 
 /// Ring depth — mockup renders 24 bars.
 pub const HISTORY_LEN: usize = 24;
@@ -15,24 +16,24 @@ pub const H_RAM: f32 = 34.;
 pub const H_GPU: f32 = 26.;
 pub const H_NET: f32 = 26.;
 
-/// Mockup palette (hex literals — pixel parity, not Theme tokens).
-pub fn color_cpu() -> Hsla {
-    rgb(0x89_dc_eb).into()
+/// Spectrum bar colors from active Theme.
+pub fn color_cpu(theme: &Theme) -> Hsla {
+    theme.status.info
 }
-pub fn color_ram() -> Hsla {
-    rgb(0x89_b4_fa).into()
+pub fn color_ram(theme: &Theme) -> Hsla {
+    theme.status.info
 }
-pub fn color_gpu() -> Hsla {
-    rgb(0xf9_e2_af).into()
+pub fn color_gpu(theme: &Theme) -> Hsla {
+    theme.status.warning
 }
-pub fn color_net() -> Hsla {
-    rgb(0x6c_70_86).into()
+pub fn color_net(theme: &Theme) -> Hsla {
+    theme.text.muted
 }
-pub fn color_label() -> Hsla {
-    rgb(0xa6_ad_c8).into()
+pub fn color_label(theme: &Theme) -> Hsla {
+    theme.text.secondary
 }
-pub fn color_value_default() -> Hsla {
-    rgb(0xcd_d6_f4).into()
+pub fn color_value_default(theme: &Theme) -> Hsla {
+    theme.text.primary
 }
 
 #[derive(Default)]
@@ -58,6 +59,7 @@ pub fn render_spectrum_row(
     bar_color: Hsla,
     value_color: Hsla,
     bar_height: f32,
+    theme: &Theme,
 ) -> impl IntoElement {
     let max = history.samples.iter().cloned().fold(1.0_f32, f32::max);
     // Always paint HISTORY_LEN columns (pad leading zeros) — mockup is 24-wide.
@@ -93,7 +95,7 @@ pub fn render_spectrum_row(
                 .child(
                     div()
                         .text_size(px(11.))
-                        .text_color(color_label())
+                        .text_color(color_label(theme))
                         .child(label.to_string()),
                 )
                 .child(

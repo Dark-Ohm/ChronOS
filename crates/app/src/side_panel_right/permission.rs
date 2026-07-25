@@ -1,30 +1,32 @@
 //! Static permission card (Claude Code mock) — no backend wiring.
 //! Styles from `design/System Sidebar.dc.html`.
 
-use gpui::{IntoElement, div, prelude::*, px, rgb};
+use gpui::{App, IntoElement, div, prelude::*, px};
+use chronos_ui::Theme;
 use gpui_rsx::rsx;
 
-pub fn render_permission_card() -> impl IntoElement {
+pub fn render_permission_card(cx: &App) -> impl IntoElement {
+    let theme = *Theme::global(cx);
     rsx! {
         <div
             flex_none
             px={px(14.)}
             py={px(12.)}
             border_b_1
-            border_color={rgb(0x23_23_36)}
-            bg={rgb(0x1e_1e_30)}
+            border_color={theme.border.subtle}
+            bg={theme.bg.primary}
         >
             <div
                 text_size={px(13.)}
                 font_weight={gpui::FontWeight::SEMIBOLD}
-                text_color={rgb(0xcd_d6_f4)}
+                text_color={theme.text.primary}
                 mb={px(2.)}
             >
                 {"Claude Code"}
             </div>
             <div
                 text_size={px(11.)}
-                text_color={rgb(0xa6_ad_c8)}
+                text_color={theme.text.secondary}
                 mb={px(9.)}
             >
                 {"Claude needs your permission to run a command"}
@@ -36,12 +38,12 @@ pub fn render_permission_card() -> impl IntoElement {
                     py={px(6.)}
                     rounded={px(6.)}
                     border_1
-                    border_color={rgb(0x00_7a_cc)}
-                    text_color={rgb(0x00_7a_cc)}
+                    border_color={theme.accent.primary}
+                    text_color={theme.accent.primary}
                     text_size={px(11.5)}
                     font_weight={gpui::FontWeight::SEMIBOLD}
                     cursor_pointer
-                    hover={|s| s.border_color(rgb(0xcb_a6_f7)).text_color(rgb(0xcb_a6_f7))}
+                    hover={|s| s.border_color(theme.accent.hover).text_color(theme.accent.hover)}
                 >
                     {"Allow"}
                 </div>
@@ -51,12 +53,12 @@ pub fn render_permission_card() -> impl IntoElement {
                     py={px(6.)}
                     rounded={px(6.)}
                     border_1
-                    border_color={rgb(0x45_47_5a)}
-                    text_color={rgb(0xa6_ad_c8)}
+                    border_color={theme.text.disabled}
+                    text_color={theme.text.secondary}
                     text_size={px(11.5)}
                     font_weight={gpui::FontWeight::SEMIBOLD}
                     cursor_pointer
-                    hover={|s| s.bg(rgb(0x23_23_36))}
+                    hover={|s| s.bg(theme.border.subtle)}
                 >
                     {"Deny"}
                 </div>

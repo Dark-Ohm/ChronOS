@@ -7,22 +7,15 @@
 use std::path::{Path, PathBuf};
 
 use gpui::{
-    Context, ImageSource, IntoElement, ObjectFit, div, img, prelude::*, px, relative, rgb, rgba,
+    Context, ImageSource, IntoElement, ObjectFit, div, hsla, img, prelude::*, px, relative,
 };
+use chronos_ui::Theme;
 
 use chronos_services::MprisState;
 
 use crate::side_panel_right::view::SidePanelRightView;
 use crate::state::AppState;
 
-const ACCENT: u32 = 0x00_7a_cc;
-const CARD_BG: u32 = 0x1e_1e_2e;
-const BORDER: u32 = 0x23_23_36;
-const TEXT: u32 = 0xcd_d6_f4;
-const MUTED: u32 = 0x6c_70_86;
-const TRAY_BG: u32 = 0x15_15_1f;
-const TRAY_BORDER: u32 = 0x26_26_3a;
-const TRACK: u32 = 0x31_32_44;
 
 fn display_title(state: &MprisState) -> &str {
     if state.has_player {
@@ -97,6 +90,7 @@ fn format_remaining_us(us: i64) -> String {
 fn render_art_frame(
     art_path: Option<&Path>,
     position_us: Option<i64>,
+    theme: &Theme,
     length_us: Option<i64>,
 ) -> impl IntoElement {
     let timecode = remaining_timecode(position_us, length_us);
@@ -104,7 +98,7 @@ fn render_art_frame(
     let frame = div()
         .w_full()
         .h(px(198.))
-        .bg(rgb(0x00_00_00))
+        .bg(theme.bg.tertiary)
         .flex()
         .items_center()
         .justify_center()
@@ -119,7 +113,7 @@ fn render_art_frame(
             img("icons/play.svg")
                 .w(px(34.))
                 .h(px(34.))
-                .text_color(rgb(0xe0_e0_e6))
+                .text_color(theme.text.primary)
                 .opacity(0.9),
         )
     };
@@ -132,8 +126,9 @@ fn render_art_frame(
                 .right(px(10.))
                 .font_family("JetBrains Mono")
                 .text_size(px(10.))
-                .text_color(rgb(0xe0_e0_e6))
-                .bg(rgba(0x0000_0080))
+                .text_color(theme.text.primary)
+                // Scrim over album art — always dark for contrast on any cover.
+                .bg(hsla(0., 0., 0., 0.5))
                 .px(px(5.))
                 .py(px(1.))
                 .rounded(px(4.))
@@ -142,27 +137,28 @@ fn render_art_frame(
     })
 }
 
-fn render_progress_bar(ratio: Option<f32>) -> impl IntoElement {
+fn render_progress_bar(ratio: Option<f32>, theme: &Theme) -> impl IntoElement {
     let fill = ratio.unwrap_or(0.0);
     div()
         .h(px(3.))
         .w_full()
         .rounded(px(2.))
-        .bg(rgb(TRACK))
+        .bg(theme.border.default)
         .mb(px(8.))
         .child(
             div()
                 .h_full()
                 .w(relative(fill))
                 .rounded(px(2.))
-                .bg(rgb(ACCENT)),
+                .bg(theme.accent.primary),
         )
 }
 
 pub fn render_mpris_card(
     state: &MprisState,
-    _cx: &mut Context<SidePanelRightView>,
+    cx: &mut Context<SidePanelRightView>,
 ) -> impl IntoElement {
+    let theme = *Theme::global(cx);
     let player_id_for_mute = state.player_id.clone();
     let playing = state.playing;
     let has_player = state.has_player;
@@ -180,13 +176,14 @@ pub fn render_mpris_card(
         .flex_col()
         .rounded(px(9.))
         .overflow_hidden()
-        .bg(rgb(CARD_BG))
+        .bg(theme.bg.primary)
         .border_1()
-        .border_color(rgb(BORDER))
+        .border_color(theme.border.subtle)
         // ~16:9 of 352 content width
         .child(render_art_frame(
             art_path.as_deref(),
             state.position_us,
+            &theme,
             state.length_us,
         ))
         .child(
@@ -199,13 +196,13 @@ pub fn render_mpris_card(
                     div()
                         .text_size(px(11.5))
                         .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(rgb(TEXT))
+                        .text_color(theme.text.primary)
                         .whitespace_nowrap()
                         .overflow_hidden()
                         .mb(px(6.))
                         .child(title),
                 )
-                .child(render_progress_bar(ratio))
+                .child(render_progress_bar(ratio, &theme))
                 .child(
                     div()
                         .flex()
@@ -213,10 +210,11 @@ pub fn render_mpris_card(
                         .gap(px(2.))
                         .p(px(3.))
                         .rounded(px(8.))
-                        .bg(rgb(TRAY_BG))
+                        .bg(theme.bg.tertiary)
                         .border_1()
-                        .border_color(rgb(TRAY_BORDER))
+                        .border_color(theme.border.default)
                         .child(tray_icon_btn(
+                            &theme,
                             "mpris-mute",
                             "icons/speaker-mute.svg",
                             1.0,
@@ -236,8 +234,9 @@ pub fn render_mpris_card(
                                     .toggle_stream_mute_for_player(player_id_for_mute.clone());
                             },
                         ))
-                        .child(tray_divider())
+                        .child(tray_divider(&theme))
                         .child(tray_icon_btn(
+                            &theme,
                             "mpris-prev",
                             "icons/skip-back.svg",
                             1.0,
@@ -248,9 +247,10 @@ pub fn render_mpris_card(
                                     .dispatch(chronos_services::MprisCommand::Previous);
                             },
                         ))
-                        .child(tray_play(play_icon, has_player))
-                        .child(tray_divider())
+                        .child(tray_play(&theme, play_icon, has_player))
+                        .child(tray_divider(&theme))
                         .child(tray_icon_btn(
+                            &theme,
                             "mpris-next",
                             "icons/skip-forward.svg",
                             1.0,
@@ -265,11 +265,12 @@ pub fn render_mpris_card(
         )
 }
 
-fn tray_divider() -> impl IntoElement {
-    div().w(px(1.)).h(px(16.)).bg(rgb(TRAY_BORDER))
+fn tray_divider(theme: &Theme) -> impl IntoElement {
+    div().w(px(1.)).h(px(16.)).bg(theme.border.default)
 }
 
 fn tray_icon_btn(
+    theme: &Theme,
     id: &'static str,
     icon: &'static str,
     flex: f32,
@@ -287,13 +288,13 @@ fn tray_icon_btn(
         .items_center()
         .justify_center()
         .cursor_pointer()
-        .text_color(if is_play { rgb(0x18_18_25) } else { rgb(MUTED) })
-        .when(is_play, |d| d.bg(rgb(ACCENT)))
+        .text_color(if is_play { theme.bg.tertiary } else { theme.text.muted })
+        .when(is_play, |d| d.bg(theme.accent.primary))
         .hover(|s| {
             if is_play {
-                s.bg(rgb(0xcb_a6_f7))
+                s.bg(theme.accent.hover)
             } else {
-                s.bg(rgb(0x25_25_3a)).text_color(rgb(0xf2_f2_f5))
+                s.bg(theme.bg.elevated).text_color(theme.text.primary)
             }
         })
         .child(img(icon).w(px(icon_size)).h(px(icon_size)));
@@ -305,7 +306,7 @@ fn tray_icon_btn(
     }
 }
 
-fn tray_play(icon_path: &'static str, enabled: bool) -> impl IntoElement {
+fn tray_play(theme: &Theme, icon_path: &'static str, enabled: bool) -> impl IntoElement {
     let mut el = div()
         .id("mpris-playpause")
         .flex_grow(1.4)
@@ -315,14 +316,14 @@ fn tray_play(icon_path: &'static str, enabled: bool) -> impl IntoElement {
         .items_center()
         .justify_center()
         .cursor_pointer()
-        .bg(rgb(ACCENT))
-        .text_color(rgb(0x18_18_25))
-        .hover(|s| s.bg(rgb(0xcb_a6_f7)))
+        .bg(theme.accent.primary)
+        .text_color(theme.bg.tertiary)
+        .hover(|s| s.bg(theme.accent.hover))
         .child(
             img(icon_path)
                 .w(px(17.))
                 .h(px(17.))
-                .text_color(rgb(0x18_18_25)),
+                .text_color(theme.bg.tertiary),
         );
 
     if enabled {

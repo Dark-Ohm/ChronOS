@@ -4,11 +4,12 @@
 //! Removable: usage bar + mount / unmount / eject.
 
 use chronos_services::{DiskInfo, DisksCommand};
-use gpui::{App, ElementId, IntoElement, SharedString, div, prelude::*, px, relative, rgb};
+use gpui::{App, ElementId, IntoElement, SharedString, div, prelude::*, px, relative};
+use chronos_ui::Theme;
 
 use crate::state::AppState;
 
-fn usage_card(disk: &DiskInfo) -> impl IntoElement {
+fn usage_card(disk: &DiskInfo, theme: &Theme) -> impl IntoElement {
     let fill_frac = disk.fraction.clamp(0.0, 1.0);
     let action_row = disk.removable;
     let label = SharedString::from(disk.label.clone());
@@ -20,9 +21,9 @@ fn usage_card(disk: &DiskInfo) -> impl IntoElement {
         .gap(px(if action_row { 8. } else { 9. }))
         .p(px(12.))
         .rounded(px(9.))
-        .bg(rgb(0x1e_1e_2e))
+        .bg(theme.bg.primary)
         .border_1()
-        .border_color(rgb(0x23_23_36))
+        .border_color(theme.border.subtle)
         .child(
             div()
                 .flex()
@@ -32,14 +33,14 @@ fn usage_card(disk: &DiskInfo) -> impl IntoElement {
                     div()
                         .text_size(px(11.5))
                         .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(rgb(0xcd_d6_f4))
+                        .text_color(theme.text.primary)
                         .child(label),
                 )
                 .child(
                     div()
                         .font_family("JetBrains Mono")
                         .text_size(px(10.5))
-                        .text_color(rgb(0x6c_70_86))
+                        .text_color(theme.text.muted)
                         .child(size_label),
                 ),
         )
@@ -48,13 +49,13 @@ fn usage_card(disk: &DiskInfo) -> impl IntoElement {
                 .h(px(5.))
                 .w_full()
                 .rounded(px(3.))
-                .bg(rgb(0x31_32_44))
+                .bg(theme.border.default)
                 .child(
                     div()
                         .h_full()
                         .w(relative(fill_frac))
                         .rounded(px(3.))
-                        .bg(rgb(0xa6_e3_a1)),
+                        .bg(theme.status.success),
                 ),
         )
         .when(action_row, |d| {
@@ -66,6 +67,7 @@ fn usage_card(disk: &DiskInfo) -> impl IntoElement {
                     .flex()
                     .gap(px(4.))
                     .child(disk_action(
+                        theme,
                         ElementId::Name(format!("disk-mount-{}", disk.block_path).into()),
                         "монтировать",
                         !mounted,
@@ -80,6 +82,7 @@ fn usage_card(disk: &DiskInfo) -> impl IntoElement {
                         },
                     ))
                     .child(disk_action(
+                        theme,
                         ElementId::Name(format!("disk-umount-{}", disk.block_path).into()),
                         "размонт.",
                         mounted,
@@ -94,6 +97,7 @@ fn usage_card(disk: &DiskInfo) -> impl IntoElement {
                         },
                     ))
                     .child(disk_action(
+                        theme,
                         ElementId::Name(format!("disk-eject-{}", disk.block_path).into()),
                         "извлечь",
                         drive.is_some(),
@@ -116,6 +120,7 @@ fn usage_card(disk: &DiskInfo) -> impl IntoElement {
 }
 
 fn disk_action(
+    theme: &Theme,
     id: ElementId,
     label: &'static str,
     enabled: bool,
@@ -127,19 +132,19 @@ fn disk_action(
         .py(px(4.))
         .rounded(px(5.))
         .border_1()
-        .border_color(rgb(0x45_47_5a))
+        .border_color(theme.text.disabled)
         .text_size(px(10.))
         .text_color(if enabled {
-            rgb(0xa6_ad_c8)
+            theme.text.secondary
         } else {
-            rgb(0x6c_70_86)
+            theme.text.muted
         })
         .flex()
         .items_center()
         .justify_center()
         .when(enabled, |d| {
             d.cursor_pointer()
-                .hover(|s| s.bg(rgb(0x23_23_36)))
+                .hover(|s| s.bg(theme.border.subtle))
                 .on_click(on_click)
         })
         .child(label)
@@ -148,9 +153,10 @@ fn disk_action(
 /// Live list from `DisksSubscriber`. Empty → "нет дисков".
 pub fn render_disks_section(
     disks: &[DiskInfo],
-    _cx: &mut gpui::Context<crate::side_panel_right::view::SidePanelRightView>,
+    cx: &mut gpui::Context<crate::side_panel_right::view::SidePanelRightView>,
 ) -> impl IntoElement {
-    let cards: Vec<_> = disks.iter().map(usage_card).collect();
+    let theme = *Theme::global(cx);
+    let cards: Vec<_> = disks.iter().map(|d| usage_card(d, &theme)).collect();
     div()
         .flex()
         .flex_col()
@@ -159,7 +165,7 @@ pub fn render_disks_section(
             d.child(
                 div()
                     .text_size(px(11.))
-                    .text_color(rgb(0x6c_70_86))
+                    .text_color(theme.text.muted)
                     .child("нет дисков"),
             )
         })

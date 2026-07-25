@@ -4,7 +4,8 @@
 use std::time::Duration;
 
 use chrono::{Datelike, Local};
-use gpui::{Context, IntoElement, div, img, prelude::*, px, rgb, rgba};
+use gpui::{Context, IntoElement, div, img, prelude::*, px};
+use chronos_ui::Theme;
 
 use crate::side_panel_right::view::SidePanelRightView;
 
@@ -65,6 +66,7 @@ fn clock_label() -> String {
 }
 
 fn power_tile(
+    theme: &Theme,
     id: &'static str,
     icon: &'static str,
     label: &str,
@@ -73,17 +75,19 @@ fn power_tile(
     armed: bool,
 ) -> gpui::Stateful<gpui::Div> {
     let border = if danger || armed {
-        rgb(0xf3_8b_a8)
+        theme.status.error
     } else {
-        rgb(0x45_47_5a)
+        theme.text.disabled
     };
     let text = if disabled {
-        rgb(0x6c_70_86)
+        theme.text.muted
     } else if danger || armed {
-        rgb(0xf3_8b_a8)
+        theme.status.error
     } else {
-        rgb(0xcd_d6_f4)
+        theme.text.primary
     };
+    // Danger/armed wash: status.error at ~12% alpha (works on light+dark).
+    let danger_wash = theme.status.error.opacity(0.12);
 
     div()
         .id(id)
@@ -102,13 +106,13 @@ fn power_tile(
         .when(!disabled, |d| {
             d.cursor_pointer().hover(|s| {
                 if danger {
-                    s.bg(rgba(0xf38b_a81f))
+                    s.bg(danger_wash)
                 } else {
-                    s.bg(rgb(0x23_23_36)).border_color(rgb(0x00_7a_cc))
+                    s.bg(theme.border.subtle).border_color(theme.accent.primary)
                 }
             })
         })
-        .when(armed, |d| d.bg(rgba(0xf38b_a81f)))
+        .when(armed, |d| d.bg(danger_wash))
         .child(img(icon).w(px(10.)).h(px(10.)))
         .child(label.to_string())
 }
@@ -119,13 +123,14 @@ pub fn render_footer(
     arm: ArmState,
     cx: &mut Context<SidePanelRightView>,
 ) -> impl IntoElement {
+    let theme = *Theme::global(cx);
     let clock = clock_label();
 
     div()
         .flex_none()
         .border_t_1()
-        .border_color(rgb(0x23_23_36))
-        .bg(rgb(0x1e_1e_2e))
+        .border_color(theme.border.subtle)
+        .bg(theme.bg.primary)
         .px(px(12.))
         .py(px(10.))
         .flex()
@@ -137,7 +142,7 @@ pub fn render_footer(
                 .items_center()
                 .justify_between()
                 .text_size(px(10.5))
-                .text_color(rgb(0x6c_70_86))
+                .text_color(theme.text.muted)
                 .child(net_summary.to_string())
                 .child(div().font_family("JetBrains Mono").child(clock)),
         )
@@ -147,6 +152,7 @@ pub fn render_footer(
                 .gap(px(4.))
                 // Switch — always disabled
                 .child(power_tile(
+                    &theme,
                     "power-switch",
                     "icons/users.svg",
                     "Switch",
@@ -156,6 +162,7 @@ pub fn render_footer(
                 ))
                 .child(
                     power_tile(
+                        &theme,
                         "power-logout",
                         "icons/sign-out.svg",
                         label_for(PowerAction::LogOut, &arm),
@@ -169,6 +176,7 @@ pub fn render_footer(
                 )
                 .child(
                     power_tile(
+                        &theme,
                         "power-restart",
                         "icons/arrows-clockwise.svg",
                         label_for(PowerAction::Restart, &arm),
@@ -182,6 +190,7 @@ pub fn render_footer(
                 )
                 .child(
                     power_tile(
+                        &theme,
                         "power-shutdown",
                         "icons/power.svg",
                         label_for(PowerAction::Shutdown, &arm),
