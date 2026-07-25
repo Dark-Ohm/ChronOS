@@ -2,6 +2,10 @@
 //! stack of active notifications from our `org.freedesktop.Notifications`
 //! daemon.
 //!
+//! T124: each toast card is an independent visual unit — no outer list
+//! border, each card has its own border + rounded corners + bottom progress
+//! bar. Cards stack top-to-bottom, newest last (topmost is most recent).
+//!
 //! Architecture (mirrors `bar`/`launcher`):
 //!   * `NotificationPopupState` — a GPUI global holding the latest
 //!     `NotificationState` snapshot plus the open window handle.
@@ -13,6 +17,7 @@
 //!   * `view.rs` renders the card stack, reading straight from the global and
 //!     re-painting on every global change (we `notify()` the view from
 //!     `sync_window` since `cx.notify()` only targets entities, not globals).
+//!     A 100 ms tick loop drives smooth progress bar decay.
 //!
 //! Sizing: the popup uses a *fixed* window height (`POPUP_HEIGHT`), NOT a
 //! pixel estimate of the content. GPUI text metrics are not measured here,
@@ -22,8 +27,7 @@
 //! the clickable area). Instead the surface is a hard cap and the inner card
 //! stack is clipped to `LIST_MAX_H`, so it can never grow the window taller
 //! no matter how tall rows actually render. This mirrors the `updates_popup`
-//! fix (commit `67f7d10`). Long single-card bodies are clipped by
-//! `BODY_MAX_H` inside the card so they don't bleed into the next card.
+//! fix (commit `67f7d10`). T124 raised the cap to 480 px for taller cards.
 
 pub mod history_popup;
 pub mod view;
@@ -38,9 +42,10 @@ use crate::state::{self, AppState};
 
 use chronos_services::{NotificationState, Service};
 
-/// Width of the notification popup column (px). Narrow so it hugs the
-/// top-right corner without dominating the screen.
-const POPUP_WIDTH: f32 = 360.;
+/// Width of the notification popup column (px). Matches the mockup's
+/// 340 px so the stack sits comfortably in the top-right corner without
+/// dominating the screen (mockup: `width: 340px`).
+const POPUP_WIDTH: f32 = 340.;
 
 /// Hard pixel clip on the card stack container (`view.rs`:
 /// `.max_h(px(LIST_MAX_H)).overflow_hidden()`). The window itself is a fixed
@@ -49,7 +54,12 @@ const POPUP_WIDTH: f32 = 360.;
 /// card renders. A flood of notifications is silently clipped at the bottom
 /// (they already expire on a timer, so losing old ones off-screen is
 /// acceptable — unlike a privileged action button, which MUST stay visible).
-pub(crate) const LIST_MAX_H: f32 = 360.;
+///
+/// Raised from 360 → 480 for T124 to accommodate taller toast cards (icon
+/// row + summary + body + actions + progress bar ~150 px per card, 3 cards
+/// ~450 px with gaps). Still a hard cap — older toasts clip off the bottom
+/// and expire.
+pub(crate) const LIST_MAX_H: f32 = 480.;
 
 /// Window height while open. A single fixed cap — the popup is only ever
 /// opened when there is at least one notification, and its size does not
@@ -89,6 +99,9 @@ fn pick_display(cx: &App) -> Option<DisplayId> {
 /// and `KeyboardInteractivity::None` (the popup is purely mouse/click driven;
 /// the keyboard has no business here). Height is the fixed `POPUP_HEIGHT`
 /// cap — content is clipped to fit, never allowed to resize the surface.
+///
+/// Margins: top 12 px (screen top ~42 px minus 30 px bar exclusive zone),
+/// right 16 px (mockup: `top: 42px; right: 16px`).
 fn window_options(display_id: Option<DisplayId>) -> WindowOptions {
     WindowOptions {
         display_id,
@@ -104,7 +117,7 @@ fn window_options(display_id: Option<DisplayId>) -> WindowOptions {
             layer: Layer::Overlay,
             anchor: Anchor::TOP | Anchor::RIGHT,
             exclusive_zone: None,
-            margin: Some((px(12.), px(12.), px(12.), px(12.))),
+            margin: Some((px(12.), px(16.), px(0.), px(0.))),
             keyboard_interactivity: KeyboardInteractivity::None,
             ..Default::default()
         }),
@@ -132,8 +145,8 @@ fn sync_window(cx: &mut App) {
     let handle = cx.global::<NotificationPopupState>().handle.clone();
     match handle {
         Some(existing) => {
-            // Window already open. The surface is a fixed cap, so its height
-            // never changes with content — just repaint with the new snapshot.
+            // Window already open. Repaint with the new snapshot (the surface
+            // is a fixed cap — the inner view may have updated progress).
             let _ = existing.update(cx, |_, _window, view_cx| {
                 view_cx.notify();
             });
