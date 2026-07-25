@@ -1048,3 +1048,11 @@ hard package dependency; full in-shell gallery rewrite of waytrogen.
 
 **Follow-up:** T133 — open_gallery + IPC `wallpaper-gallery` + minimal UI
 entry + docs/companion wording.
+
+## 2026-07-25 — T133 brief correction: waytrogen GUI is first-class
+
+Earlier draft of T133 read as "spawn binary + two shell buttons" and
+implicitly sidelined waytrogen's product. **Corrected:** we do not rewrite
+waytrogen *and* we do not replace or omit their GUI. Integration means their
+full gallery app is the Browse path; ChronOS keeps engine/next/set; resync
+after their GUI; companion CTA when missing; no GPUI fallback gallery.
