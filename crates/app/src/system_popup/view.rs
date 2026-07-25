@@ -7,7 +7,6 @@
 
 use std::cell::Cell;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
 
 use gpui::{
     AnyElement, App, Bounds, BoxShadow, Context, Corners, DragMoveEvent, EmptyView,
@@ -25,16 +24,13 @@ const PAD: f32 = 14.;
 const TRACK_H: f32 = 4.;
 const THUMB: f32 = 13.;
 const STEP: i8 = 5;
-/// Min interval between brightness Set dispatches during drag (DDC is slow).
-const BRIGHTNESS_THROTTLE: Duration = Duration::from_millis(50);
 
 /// Drag marker for the brightness slider only (do not reuse volume markers).
 pub struct BrightnessSliderDrag;
 
 pub struct SystemPopupView {
-    /// Optimistic brightness 0..=100 while dragging / throttling.
+    /// Optimistic brightness 0..=100 while UI is ahead of the service snapshot.
     dispatched_brightness: Option<u8>,
-    last_dispatch_at: Option<Instant>,
     /// Live layout bounds of the brightness track (window coords) for hit→frac.
     track_bounds: Rc<Cell<Bounds<Pixels>>>,
 }
@@ -43,7 +39,6 @@ impl SystemPopupView {
     pub fn new(_cx: &mut App) -> Self {
         Self {
             dispatched_brightness: None,
-            last_dispatch_at: None,
             track_bounds: Rc::new(Cell::new(Bounds::default())),
         }
     }
@@ -53,13 +48,13 @@ impl Render for SystemPopupView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *Theme::global(cx);
         let brightness = AppState::brightness(cx).get();
-        // Drop optimistic once the service caught up (or overshot from ± buttons).
+        // Service now optimistically sets `value` on Set/Step, so UI preview
+        // can clear when it matches — no multi-minute stale re-read storms.
         if self
             .dispatched_brightness
             .is_some_and(|d| d == brightness.value)
         {
             self.dispatched_brightness = None;
-            self.last_dispatch_at = None;
         }
         let upower = AppState::upower(cx).get();
         let gaming_active = gaming_mode::GamingModeState::is_active(cx);
@@ -405,11 +400,20 @@ fn brightness_block(
                         .size(px(11.))
                         .text_color(if minus_disabled { text_muted } else { text_secondary }),
                 )
-                .on_click(move |_event, _window, cx: &mut App| {
-                    if !minus_disabled {
-                        AppState::brightness(cx).dispatch(BrightnessCommand::Step(-STEP));
+                .on_click(cx.listener(move |this, _event, _window, cx| {
+                    if minus_disabled {
+                        return;
                     }
-                }),
+                    // Absolute Set (not Step): service also optimistically
+                    // steps from its value — double-step if we dispatch Step.
+                    let base = this
+                        .dispatched_brightness
+                        .unwrap_or(AppState::brightness(cx).get().value);
+                    let next = (i32::from(base) - i32::from(STEP)).clamp(0, 100) as u8;
+                    this.dispatched_brightness = Some(next);
+                    AppState::brightness(cx).dispatch(BrightnessCommand::Set(next));
+                    cx.notify();
+                })),
         )
         .child(slider)
         .child(
@@ -431,11 +435,18 @@ fn brightness_block(
                         .size(px(11.))
                         .text_color(if plus_disabled { text_muted } else { text_secondary }),
                 )
-                .on_click(move |_event, _window, cx: &mut App| {
-                    if !plus_disabled {
-                        AppState::brightness(cx).dispatch(BrightnessCommand::Step(STEP));
+                .on_click(cx.listener(move |this, _event, _window, cx| {
+                    if plus_disabled {
+                        return;
                     }
-                }),
+                    let base = this
+                        .dispatched_brightness
+                        .unwrap_or(AppState::brightness(cx).get().value);
+                    let next = (i32::from(base) + i32::from(STEP)).clamp(0, 100) as u8;
+                    this.dispatched_brightness = Some(next);
+                    AppState::brightness(cx).dispatch(BrightnessCommand::Set(next));
+                    cx.notify();
+                })),
         );
 
     div()
@@ -460,28 +471,16 @@ fn brightness_frac_from_bounds(x: f32, bounds: &Bounds<Pixels>) -> f64 {
     ((x - left) / w).clamp(0.0, 1.0) as f64
 }
 
-/// Set brightness from a slider fraction (0..=1). Optimistic UI first so the
-/// thumb tracks the finger; DDC `Set` throttled (~50ms) — each write hits
-/// **all** monitors via `write_all` (MVP: one slider → both displays).
+/// Set brightness from a slider fraction (0..=1). UI paints optimistically;
+/// service coalesces DDC writes (latest-wins) so we can dispatch freely.
 fn set_brightness_from_frac(
     this: &mut SystemPopupView,
     frac: f64,
     cx: &mut Context<SystemPopupView>,
 ) {
     let value = (frac * 100.0).round().clamp(0.0, 100.0) as u8;
-    let now = Instant::now();
-
     this.dispatched_brightness = Some(value);
-
-    let should_dispatch = this
-        .last_dispatch_at
-        .map(|t| now.duration_since(t) >= BRIGHTNESS_THROTTLE)
-        .unwrap_or(true);
-
-    if should_dispatch {
-        this.last_dispatch_at = Some(now);
-        AppState::brightness(cx).dispatch(BrightnessCommand::Set(value));
-    }
+    AppState::brightness(cx).dispatch(BrightnessCommand::Set(value));
     cx.notify();
 }
 
