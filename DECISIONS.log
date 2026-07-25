@@ -896,3 +896,77 @@ README должны быть готовы к чужим глазам раньш�
 достаточно для личного проекта; (3) WASM как второй plugin-рантайм
 ОТКЛОНЁН тем же вечером — не потому что "экзотика", а потому что не
 решает реальное узкое место (см. запись выше).
+
+---
+## 2026-07-25 — Popup polish wave (T120–T125) + service coalesce
+
+### Considered / rejected
+- **Parallel fire-and-forget DDC/wpctl on every drag sample** — rejected:
+  out-of-order re-reads jump UI for minutes; i2c storms set `available=false`.
+- **Shared `DragMoveEvent<T>` marker for multiple sliders** — rejected:
+  GPUI delivers moves to every listener of type T → one knob drives all.
+- **`background_spawn` without `.detach()`** for async notification dispatch —
+  rejected: Task cancelled on drop, Close/Clear are no-ops (T120).
+- **getvcp after every brightness set** — rejected for drag path; keep only
+  on `Refresh` / init, generation-gated against concurrent Set.
+
+### Decided
+- **Popup discipline (post-T117):** AnchoredPopup BottomRight+BottomLeft,
+  grab, SLIDE_X|FLIP_X, LayerShell fallback; bar trigger `on_mouse_down` +
+  canvas bounds + `.relative()` wrapper.
+- **Audio volume Set:** optimistic Mutable + `tokio::sync::watch` latest-wins;
+  no `pw-dump` on command path; poll 250ms still owns device lists.
+- **Brightness Set:** optimistic + **debounce ~150ms** then single
+  `write_all(latest)`; follow-up only if target changed mid-write; MVP still
+  one slider → all DDC displays (`write_all`).
+- **Fork development:** ChronOS `[patch."Chronos-GPUI"]` → path deps
+  `../Source/*` (full crate graph). `gpui_animation::init` public (Delta 4).
+- **Dev CLI (T122):** `chronos-{rebuild,reload,stop,start,debug}` in-repo
+  under `scripts/dev/`, install to `~/.local/bin`; docs `docs/dev-cli.md`.
+- **T-briefs:** agent-agnostic T-IDs only (no personal names in brief titles).
+
+### Still open / not decided
+- Per-monitor brightness UI.
+- Enter/exit toast animation; critical pulse.
+- Whether tray_menu gets same anchored redesign next.
+- Untracked WIP `crates/app/src/toast/` — not wired; T124 used
+  `notifications/view.rs` instead.
+
+## 2026-07-25 — Left panel: sessions sidebar is the bar; chat overlay + dock switch
+
+Supersedes the open item under 2026-07-23 exclusive-zone (optional hover
+mode). Live product decision (Architect session 2026-07-25):
+
+### Rejected
+- **`is_rail` / status-dot strip** (`PANEL_RAIL_WIDTH` ~26px + green dot
+  when `width ≤ PANEL_RAIL_TOTAL_WIDTH`): not the product. Dragging the
+  panel to min must **not** replace the sessions UI with that rail.
+- **Default exclusive = full chat width** (already rejected 2026-07-23):
+  chat must not shove tiled windows on every open/resize.
+- **Two layer-shell windows** (rail surface + chat surface): extra
+  focus/keyboard/ghost complexity; one window is enough because
+  `exclusive_zone` is a px distance from the edge, not “the whole surface”.
+
+### Accepted model
+1. **Sessions sidebar is the sidebar** — always present when Super+A is
+   open. Modes: expanded list (`SIDEBAR_EXPANDED` ~200) ↔ **collapsed icon
+   strip, slightly narrower than today's 48** (target **~36**: icon buttons
+   ~28 + padding; not the 26px status-dot rail).
+2. **Super+A** opens the sessions sidebar (collapsed or last-used width).
+   Default exclusive zone = **sidebar width only** (`exclusive_edge: LEFT`).
+3. **Pull out ACP chat** (resize handle / open thread): window grows;
+   exclusive **stays at sidebar width** — chat overlays tiles.
+4. **Dock switch** (UI toggle): exclusive = **full panel width** immediately
+   (windows reflow). Off → exclusive back to sidebar width. While docked,
+   exclusive tracks resize.
+5. **Min window width** = current sessions-sidebar width + resize handle —
+   never the old `PANEL_RAIL_*` floor. Collapse-to-chat-off = sidebar-only
+   width, sessions UI intact.
+6. **API:** live `Window::set_exclusive_zone` + `set_exclusive_edge(LEFT)`
+   (fork already has both; no GPUI work). Gate updates when zone changes
+   (same pattern as `last_resized_width`).
+
+### Sizing note
+Collapsed sessions: **36px** (was 48). Expanded: keep ~200 unless mockup
+says otherwise. Exact icon metrics free to tweak live; product constraint
+is “narrower collapsed sessions, not a different rail chrome”.

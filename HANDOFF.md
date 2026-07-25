@@ -8,6 +8,17 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
+**Обновлено: 2026-07-25 (вечер+) — left-panel модель ПРИНЯТА (код ещё нет).**
+
+- **Sessions sidebar = бар**, не status-dot rail. Collapsed ~**36px** (сейчас
+  48); expanded ~200. `is_rail` / `PANEL_RAIL_*` / `rail_view` — **выпилить**.
+- Super+A → sidebar; exclusive = ширина sidebar (`exclusive_edge: LEFT`).
+- Выдвинуть ACP-чат → overlay, exclusive **не** растёт.
+- Свитч **Dock** → exclusive = full width (подтайливает); off → снова sidebar.
+- Min width окна = sidebar + handle. Канон: `DECISIONS.log` 2026-07-25 left panel.
+- Popup-wave T120–T125 закрыта WITH CAVEATS (см. ниже / MIGRATION). Dev CLI:
+  `chronos-rebuild && chronos-stop && chronos-start`. Active T: пусто (+ pause T115).
+
 **Обновлено: 2026-07-24 — T119 ПРИНЯТ WITH CAVEATS** (`eac0591`).
 Multi-select rows, footer Upgrade all↔selected, header Check→Refresh,
 backend `UpgradeSelected` = `pkexec yay|pacman -S --noconfirm -- pkgs`
