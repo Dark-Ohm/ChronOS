@@ -8,25 +8,31 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-25 (вечер+) — left-panel модель ПРИНЯТА (код ещё нет).**
+**Обновлено: 2026-07-25 (ночь) — polish-to-daily-driver; visual depth T128–T132.**
 
-- **Sessions sidebar = бар**, не status-dot rail. Collapsed ~**36px** (сейчас
-  48); expanded ~200. `is_rail` / `PANEL_RAIL_*` / `rail_view` — **выпилить**.
-- Super+A → sidebar; exclusive = ширина sidebar (`exclusive_edge: LEFT`).
-- Выдвинуть ACP-чат → overlay, exclusive **не** растёт.
-- Свитч **Dock** → exclusive = full width (подтайливает); off → снова sidebar.
-- Min width окна = sidebar + handle. Канон: `DECISIONS.log` 2026-07-25 left panel.
-- Popup-wave T120–T125 закрыта WITH CAVEATS (см. ниже / MIGRATION). Dev CLI:
-  `chronos-rebuild && chronos-stop && chronos-start`.
-- **Active T:**
-  - **T126** left sessions sidebar + dock exclusive — code+errata
-    `f89e27d`, **live smoke still open** (review REJECT until hyprctl/grim).
-    `orchestration/tasks/active/T126-left-panel-sessions-sidebar-dock.md`
-  - **T127** right panel mirror left — code+errata `f7a241d` (IPC Super+G,
-    rail exclusive, resize handle, dock/tab ensure width). **Live smoke
-    still open** (review REJECT until hyprctl/grim).
-    `orchestration/tasks/active/T127-...` + `report/T127-*-review.md`.
-  - orchestration gitignored — брифы на диске. Pause: T115.
+### Стратегия
+Доводить **шелл до daily driver**, не reddit/Q1 editor. Visual depth:
+**1 glass/glow (T128) → 2 motion (T129–T130) → 3 real 3D spike (T131–T132).**
+
+### Active T
+- **T128** elevated + blur tokens — `active/T128-elevated-surface-blur-tokens.md`
+  (**OPEN**, следующий к раздаче).
+- **T126/T127** panels — code in tree + errata; live ACCEPT still open
+  (hyprctl/grim). Left exclusive = sidebar+handle (46); header only when chat open.
+- Pause: T115 Files. orchestration/ gitignored.
+
+### Queued visual (не раздавать до T128)
+| T | Что |
+|---|---|
+| T129 | Panel/popup enter-exit (scale+opacity, gpui_animation) |
+| T130 | Toast enter/exit |
+| T131 | Fork: 3D scene primitive + example |
+| T132 | One 3D demo surface in shell |
+
+### Панели (кратко)
+- Left: sessions = bar; chat overlay; Dock full exclusive; Super+A.
+- Right: tab rail = bar; content overlay; Dock; Super+G IPC.
+- Dev CLI: `chronos-rebuild && chronos-stop && chronos-start`.
 
 **Обновлено: 2026-07-24 — T119 ПРИНЯТ WITH CAVEATS** (`eac0591`).
 Multi-select rows, footer Upgrade all↔selected, header Check→Refresh,

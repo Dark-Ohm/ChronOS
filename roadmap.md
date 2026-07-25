@@ -34,6 +34,11 @@ GPU-accelerated retained-mode тулките с нуля). Личный инст
    audio/brightness coalesce; dev CLI. Следующий popup-кандидат: tray_menu.
    Live grim по части T-ID ещё честный PENDING.
 
+0b. **Visual depth (T128–T132) — очередь 2026-07-25.** Daily-driver polish
+    before publish. **T128** elevated+blur tokens (OPEN) → **T129** panel/popup
+    enter-exit → **T130** toast motion → **T131/T132** optional real-3D spike
+    (fork primitive + one demo surface). Не параллелить 3D с полировкой панелей.
+
 1. **3 вкладки IDE-панели** (T113 Terminal, T114 ACP settings, T115
    Files) — уже розданы, приёмка по мере готовности отчётов.
 2. **`desktop_terminal` — из спайка в продукт.** Пользователь: "виджет

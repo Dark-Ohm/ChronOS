@@ -1013,3 +1013,23 @@ line for the user — same socket pattern as Super+A left).
 ### API
 `set_exclusive_zone` + `set_exclusive_edge(RIGHT)` on corner
 `TOP|RIGHT` anchor. No fork work. Pattern: T126 left after errata.
+
+## 2026-07-25 — Visual depth: tokens → motion → 3D spike (T128–T132)
+
+User wants shell polished for daily use (not Reddit-first). "3D effects"
+clarified as three layers, sequenced:
+
+1. **Soft depth / glass** (T128): theme elevation + blur tokens; apply popups
+   and panel content chrome. No new scene primitives.
+2. **Motion from depth** (T129–T130): enter/exit scale+opacity via existing
+   `gpui_animation`; toast motion after panel/popup pattern. Never animate
+   layer-shell exclusive_zone.
+3. **Real 3D** (T131–T132): optional fork spike (new scene primitive + WGSL
+   via BlurRect template) + one demo surface in shell. Not daily-driver
+   blocker; not bar-wide mesh.
+
+**Rejected:** gpui-d3rs as the 3D path (depends on Zed git gpui + charts API);
+full Bevy/egui-wgpu dual loop beside layer-shell.
+
+**Product priority:** T128 first; T129–T130 next; T131–T132 only after polish
+wave is stable.
