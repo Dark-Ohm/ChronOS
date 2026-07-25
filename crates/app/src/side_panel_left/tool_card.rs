@@ -1,4 +1,5 @@
-use gpui::{div, prelude::*, px, rgb};
+use gpui::{div, prelude::*, px};
+use chronos_ui::Theme;
 
 pub struct ToolCard<'a> {
     pub name: &'a str,
@@ -6,6 +7,7 @@ pub struct ToolCard<'a> {
     pub args: Option<&'a str>,
     pub result: Option<&'a str>,
     pub expanded: bool,
+    pub theme: &'a Theme,
 }
 
 impl<'a> ToolCard<'a> {
@@ -13,11 +15,12 @@ impl<'a> ToolCard<'a> {
     where
         F: Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
     {
+        let theme = self.theme;
         let status_color = match self.status {
-            "running" => rgb(0xf9_e2_af),
-            "done" => rgb(0xa6_e3_a1),
-            "error" => rgb(0xf3_8b_a8),
-            _ => rgb(0x58_5b_70),
+            "running" => theme.status.warning,
+            "done" => theme.status.success,
+            "error" => theme.status.error,
+            _ => theme.interactive.active,
         };
 
         let toggle_icon = if self.expanded { "▾" } else { "▸" };
@@ -37,7 +40,7 @@ impl<'a> ToolCard<'a> {
             .py(px(4.))
             .rounded(px(6.))
             .cursor_pointer()
-            .hover(|s| s.bg(rgb(0x2a_2a_3d)));
+            .hover(|s| s.bg(theme.bg.elevated));
 
         if let Some(handler) = on_click {
             header = header.on_click(move |ev, window, cx| handler(ev, window, cx));
@@ -54,29 +57,29 @@ impl<'a> ToolCard<'a> {
                         div()
                             .text_size(px(10.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(rgb(0xcd_d6_f4))
+                            .text_color(theme.text.primary)
                             .child(self.name.to_string()),
                     )
                     .child(
                         div()
                             .text_size(px(9.))
-                            .text_color(rgb(0x6c_70_86))
+                            .text_color(theme.text.muted)
                             .child(status_label.to_string()),
                     ),
             )
             .child(
                 div()
                     .text_size(px(10.))
-                    .text_color(rgb(0x58_5b_70))
+                    .text_color(theme.interactive.active)
                     .child(toggle_icon),
             );
 
         let mut card = div()
             .mx(px(4.))
             .rounded(px(6.))
-            .bg(rgb(0x1e_1e_2e))
+            .bg(theme.bg.primary)
             .border_1()
-            .border_color(rgb(0x31_32_44))
+            .border_color(theme.border.default)
             .child(header);
 
         if self.expanded {
@@ -84,7 +87,7 @@ impl<'a> ToolCard<'a> {
                 .px(px(8.))
                 .py(px(4.))
                 .border_t_1()
-                .border_color(rgb(0x31_32_44))
+                .border_color(theme.border.default)
                 .flex()
                 .flex_col()
                 .gap(px(4.));
@@ -100,7 +103,7 @@ impl<'a> ToolCard<'a> {
                                 div()
                                     .text_size(px(9.))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(rgb(0x89_b4_fa))
+                                    .text_color(theme.status.info)
                                     .child("Arguments"),
                             )
                             .child(
@@ -109,9 +112,9 @@ impl<'a> ToolCard<'a> {
                                     .px(px(6.))
                                     .py(px(4.))
                                     .rounded(px(4.))
-                                    .bg(rgb(0x18_18_25))
+                                    .bg(theme.bg.tertiary)
                                     .text_size(px(9.))
-                                    .text_color(rgb(0xa6_ad_c8))
+                                    .text_color(theme.text.secondary)
                                     .child(args.to_string()),
                             ),
                     );
@@ -129,7 +132,7 @@ impl<'a> ToolCard<'a> {
                                 div()
                                     .text_size(px(9.))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(rgb(0xa6_e3_a1))
+                                    .text_color(theme.status.success)
                                     .child("Result"),
                             )
                             .child(
@@ -138,9 +141,9 @@ impl<'a> ToolCard<'a> {
                                     .px(px(6.))
                                     .py(px(4.))
                                     .rounded(px(4.))
-                                    .bg(rgb(0x18_18_25))
+                                    .bg(theme.bg.tertiary)
                                     .text_size(px(9.))
-                                    .text_color(rgb(0xa6_ad_c8))
+                                    .text_color(theme.text.secondary)
                                     .child(result.to_string()),
                             ),
                     );

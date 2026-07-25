@@ -1,4 +1,5 @@
-use gpui::{IntoElement, SharedString, Window, div, prelude::*, px, rgb};
+use gpui::{IntoElement, SharedString, Window, div, prelude::*, px};
+use chronos_ui::Theme;
 
 use super::SidePanelLeft;
 use super::chat_view::{ChatMessage, MessageRole};
@@ -43,6 +44,7 @@ pub fn render_composer(
     _window: &mut Window,
     cx: &mut Context<SidePanelLeft>,
 ) -> impl IntoElement {
+    let theme = *Theme::global(cx);
     let text = &panel.composer_text;
     let has_text = !text.is_empty();
 
@@ -95,9 +97,9 @@ pub fn render_composer(
     };
 
     let input_text_color = if text.is_empty() {
-        rgb(0x6c_70_86)
+        theme.text.muted
     } else {
-        rgb(0xcd_d6_f4)
+        theme.text.primary
     };
 
     // Estimate line count for auto-grow: count \n + estimate wrap
@@ -153,9 +155,9 @@ pub fn render_composer(
         // main-content/chat bg is #1e1e2e (panel.rs "main-content"), not
         // #181825 (that's the panel-root/sidebar shade) — match it exactly
         // so chat and composer read as one surface, not two stacked panes.
-        .bg(rgb(0x1e_1e_2e))
+        .bg(theme.bg.primary)
         .border_t_1()
-        .border_color(rgb(0x23_23_36))
+        .border_color(theme.border.subtle)
         .flex()
         .flex_col()
         .when(!enabled, |el| el.opacity(0.5))
@@ -165,6 +167,7 @@ pub fn render_composer(
 
 // ── Attach button ──────────────────────────────────────────────────────
 fn attach_button(_panel: &SidePanelLeft, _cx: &mut Context<SidePanelLeft>) -> impl IntoElement {
+    let theme = *Theme::global(_cx);
     div()
         .id("composer-attach")
         .w(px(22.))
@@ -174,9 +177,9 @@ fn attach_button(_panel: &SidePanelLeft, _cx: &mut Context<SidePanelLeft>) -> im
         .items_center()
         .justify_center()
         .text_size(px(14.))
-        .text_color(rgb(0x6c_70_86))
+        .text_color(theme.text.muted)
         .cursor_pointer()
-        .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xa6_ad_c8)))
+        .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.secondary))
         .child("+")
 }
 
@@ -187,6 +190,7 @@ fn yolo_button(
     has_modes: bool,
     cx: &mut Context<SidePanelLeft>,
 ) -> Option<impl IntoElement> {
+    let theme = *Theme::global(cx);
     // YOLO only renders if there are modes at all
     if !has_modes {
         return None;
@@ -207,20 +211,20 @@ fn yolo_button(
     Some(
         if is_yolo_active {
             // Active: text #f38ba8, bg rgba(0xf38ba8, 0.12)
-            base.text_color(rgb(0xf3_8b_a8))
-                .bg(rgb(0xf3_8b_a8).opacity(0.12))
+            base.text_color(theme.status.error)
+                .bg(theme.status.error.opacity(0.12))
         } else if has_bypass {
             // Inactive but available
-            base.text_color(rgb(0x6c_70_86))
+            base.text_color(theme.text.muted)
                 .cursor_pointer()
-                .hover(|s| s.bg(rgb(0x23_23_36)))
+                .hover(|s| s.bg(theme.border.subtle))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.detect_yolo_bypass_mode();
                     this.toggle_yolo(cx);
                 }))
         } else {
             // Disabled (no bypass mode found) — muted, no hover/cursor
-            base.text_color(rgb(0x45_47_5a))
+            base.text_color(theme.text.disabled)
         }
         .child("YOLO"),
     )
@@ -231,6 +235,7 @@ fn model_picker(
     panel: &SidePanelLeft,
     cx: &mut Context<SidePanelLeft>,
 ) -> Option<impl IntoElement> {
+    let theme = *Theme::global(cx);
     // Show a muted, inert "Model" placeholder pill instead of hiding when
     // there's no data yet — our Hermes ACP agent only advertises available
     // models on a session response, and (live smoke, 2026-07-23) that can
@@ -266,12 +271,12 @@ fn model_picker(
                 .rounded(px(4.))
                 .text_size(px(11.))
                 .text_color(if is_active {
-                    rgb(0xcd_d6_f4)
+                    theme.text.primary
                 } else {
-                    rgb(0xa6_ad_c8)
+                    theme.text.secondary
                 })
-                .when(is_active, |el| el.bg(rgb(0x31_32_44)))
-                .when(!is_active, |el| el.hover(|s| s.bg(rgb(0x23_23_36))))
+                .when(is_active, |el| el.bg(theme.border.default))
+                .when(!is_active, |el| el.hover(|s| s.bg(theme.border.subtle)))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.composer_selected_model = m_id.clone();
@@ -296,13 +301,13 @@ fn model_picker(
                     .items_center()
                     .text_size(px(10.5))
                     .text_color(if has_data {
-                        rgb(0xa6_ad_c8)
+                        theme.text.secondary
                     } else {
-                        rgb(0x45_47_5a)
+                        theme.text.disabled
                     })
                     .when(has_data, |el| {
                         el.cursor_pointer()
-                            .hover(|s| s.bg(rgb(0x23_23_36)))
+                            .hover(|s| s.bg(theme.border.subtle))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.composer_model_dropdown_open =
                                     !this.composer_model_dropdown_open;
@@ -320,9 +325,9 @@ fn model_picker(
                         .bottom(px(26.))
                         .right(px(0.))
                         .min_w(px(200.))
-                        .bg(rgb(0x1e_1e_30))
+                        .bg(theme.bg.primary)
                         .border_1()
-                        .border_color(rgb(0x31_32_44))
+                        .border_color(theme.border.default)
                         .rounded(px(6.))
                         .p(px(4.))
                         .flex()
@@ -336,6 +341,7 @@ fn model_picker(
 
 // ── Mode picker ────────────────────────────────────────────────────────
 fn mode_picker(panel: &SidePanelLeft, cx: &mut Context<SidePanelLeft>) -> Option<impl IntoElement> {
+    let theme = *Theme::global(cx);
     // Same "muted placeholder, not hidden" reasoning as model_picker above.
     let has_data = !panel.available_modes.is_empty();
     let selected_mode = panel.composer_selected_mode.clone();
@@ -366,12 +372,12 @@ fn mode_picker(panel: &SidePanelLeft, cx: &mut Context<SidePanelLeft>) -> Option
                 .rounded(px(4.))
                 .text_size(px(11.))
                 .text_color(if is_active {
-                    rgb(0xcd_d6_f4)
+                    theme.text.primary
                 } else {
-                    rgb(0xa6_ad_c8)
+                    theme.text.secondary
                 })
-                .when(is_active, |el| el.bg(rgb(0x31_32_44)))
-                .when(!is_active, |el| el.hover(|s| s.bg(rgb(0x23_23_36))))
+                .when(is_active, |el| el.bg(theme.border.default))
+                .when(!is_active, |el| el.hover(|s| s.bg(theme.border.subtle)))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.composer_selected_mode = m_id.clone();
@@ -396,13 +402,13 @@ fn mode_picker(panel: &SidePanelLeft, cx: &mut Context<SidePanelLeft>) -> Option
                     .items_center()
                     .text_size(px(10.5))
                     .text_color(if has_data {
-                        rgb(0xa6_ad_c8)
+                        theme.text.secondary
                     } else {
-                        rgb(0x45_47_5a)
+                        theme.text.disabled
                     })
                     .when(has_data, |el| {
                         el.cursor_pointer()
-                            .hover(|s| s.bg(rgb(0x23_23_36)))
+                            .hover(|s| s.bg(theme.border.subtle))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.composer_mode_dropdown_open =
                                     !this.composer_mode_dropdown_open;
@@ -420,9 +426,9 @@ fn mode_picker(panel: &SidePanelLeft, cx: &mut Context<SidePanelLeft>) -> Option
                         .bottom(px(26.))
                         .right(px(0.))
                         .min_w(px(80.))
-                        .bg(rgb(0x1e_1e_30))
+                        .bg(theme.bg.primary)
                         .border_1()
-                        .border_color(rgb(0x31_32_44))
+                        .border_color(theme.border.default)
                         .rounded(px(6.))
                         .p(px(4.))
                         .flex()
@@ -440,6 +446,7 @@ fn send_button(
     active: bool,
     cx: &mut Context<SidePanelLeft>,
 ) -> impl IntoElement {
+    let theme = *Theme::global(cx);
     // Deviation #1: dark send button (not blue)
     // bg #11111b, border 1px #313244, icon #cdd6f4; hover bg #232336, border #45475a
     // 24×24, rounded 6
@@ -454,17 +461,17 @@ fn send_button(
         .items_center()
         .justify_center()
         .text_size(px(12.))
-        .bg(rgb(0x11_11_1b))
+        .bg(theme.bg.tertiary)
         .border_1()
-        .border_color(rgb(0x31_32_44))
+        .border_color(theme.border.default)
         .text_color(if active {
-            rgb(0xcd_d6_f4)
+            theme.text.primary
         } else {
-            rgb(0x45_47_5a)
+            theme.text.disabled
         })
         .when(active && is_connected, |el| {
             el.cursor_pointer()
-                .hover(|s| s.bg(rgb(0x23_23_36)).border_color(rgb(0x45_47_5a)))
+                .hover(|s| s.bg(theme.border.subtle).border_color(theme.text.disabled))
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.send_composer(window, cx);
                 }))

@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, Window, div, img, prelude::*, px, rgb};
+use gpui::{Context, IntoElement, Window, div, img, prelude::*, px};
 
 use chronos_ui::{Theme, elevation_glow_bar};
 
@@ -6,11 +6,11 @@ use super::SidePanelLeft;
 use super::sessions_list::{SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_HANDLE_WIDTH};
 use super::state::AgentStatus;
 
-fn status_color(status: AgentStatus) -> gpui::Rgba {
+fn status_color(status: AgentStatus, theme: &Theme) -> gpui::Hsla {
     match status {
-        AgentStatus::Connected => rgb(0xa6_e3_a1),
-        AgentStatus::Disconnected => rgb(0xf3_8b_a8),
-        AgentStatus::Thinking => rgb(0xf9_e2_af),
+        AgentStatus::Connected => theme.status.success,
+        AgentStatus::Disconnected => theme.status.error,
+        AgentStatus::Thinking => theme.status.warning,
     }
 }
 
@@ -19,7 +19,8 @@ pub fn render_panel(
     _window: &mut Window,
     cx: &mut Context<SidePanelLeft>,
 ) -> impl IntoElement {
-    let dot_color = status_color(panel.state.agent_status);
+    let theme = *Theme::global(cx);
+    let dot_color = status_color(panel.state.agent_status, &theme);
     let collapsed = panel.state.sessions_collapsed;
     let agent_menu_open = panel.agent_menu_open;
     // Chat visibility is width-driven (or forced by dock). Dock only changes
@@ -69,7 +70,7 @@ pub fn render_panel(
     });
 
     // Build sidebar (now borrows cx — click handlers on collapse/expand)
-    let sidebar = build_sessions_sidebar(panel, collapsed, cx);
+    let sidebar = build_sessions_sidebar(panel, collapsed, &theme, cx);
 
     // Thread header listener (built before any RPIT that captures cx)
     let thread_new_chat_handler = cx.listener(|_, _, _, _cx| {
@@ -86,9 +87,9 @@ pub fn render_panel(
             div()
                 .id("agent-dropdown")
                 .w(px(172.))
-                .bg(rgb(0x1e_1e_2e))
+                .bg(theme.bg.primary)
                 .border_1()
-                .border_color(rgb(0x23_23_36))
+                .border_color(theme.border.subtle)
                 .rounded(px(8.))
                 .p(px(4.))
                 .mx(px(8.))
@@ -109,17 +110,17 @@ pub fn render_panel(
                         .rounded(px(6.))
                         .cursor_pointer()
                         .text_size(px(11.5))
-                        .text_color(rgb(0xa6_ad_c8))
-                        .hover(|s| s.bg(rgb(0x23_23_36)))
+                        .text_color(theme.text.secondary)
+                        .hover(|s| s.bg(theme.border.subtle))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.switch_agent(&agent_id, cx);
                         }))
                         .child(
                             div()
                                 .text_color(if is_selected {
-                                    rgb(0xcd_d6_f4)
+                                    theme.text.primary
                                 } else {
-                                    rgb(0xa6_ad_c8)
+                                    theme.text.secondary
                                 })
                                 .child(agent.display_name),
                         )
@@ -127,7 +128,7 @@ pub fn render_panel(
                             el.child(
                                 div()
                                     .text_size(px(10.))
-                                    .text_color(rgb(0x00_7a_cc))
+                                    .text_color(theme.accent.primary)
                                     .child("✓"),
                             )
                         })
@@ -159,7 +160,7 @@ pub fn render_panel(
         .h(px(38.))
         .px(px(12.))
         .border_b_1()
-        .border_color(rgb(0x23_23_36))
+        .border_color(theme.border.subtle)
         .flex()
         .items_center()
         .justify_between()
@@ -171,14 +172,14 @@ pub fn render_panel(
                 .child(
                     div()
                         .text_size(px(13.))
-                        .text_color(rgb(0x00_7a_cc))
+                        .text_color(theme.accent.primary)
                         .child("✦"),
                 )
                 .child(
                     div()
                         .text_size(px(12.5))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(rgb(0xcd_d6_f4))
+                        .text_color(theme.text.primary)
                         .child(thread_title),
                 ),
         )
@@ -197,9 +198,9 @@ pub fn render_panel(
                         .items_center()
                         .justify_center()
                         .text_size(px(12.))
-                        .text_color(rgb(0x6c_70_86))
+                        .text_color(theme.text.muted)
                         .cursor_pointer()
-                        .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
+                        .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.primary))
                         .on_click(thread_new_chat_handler)
                         .child("＋"),
                 )
@@ -213,9 +214,9 @@ pub fn render_panel(
                         .items_center()
                         .justify_center()
                         .text_size(px(12.))
-                        .text_color(rgb(0x6c_70_86))
+                        .text_color(theme.text.muted)
                         .cursor_pointer()
-                        .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
+                        .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.primary))
                         .child("☰"),
                 )
                 .child(
@@ -228,9 +229,9 @@ pub fn render_panel(
                         .items_center()
                         .justify_center()
                         .text_size(px(12.))
-                        .text_color(rgb(0x6c_70_86))
+                        .text_color(theme.text.muted)
                         .cursor_pointer()
-                        .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
+                        .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.primary))
                         .child("⋯"),
                 ),
         );
@@ -273,7 +274,7 @@ pub fn render_panel(
         .px(px(14.))
         .py(px(10.))
         .border_b_1()
-        .border_color(rgb(0x23_23_36))
+        .border_color(theme.border.subtle)
         .child(
             div()
                 .id("agent-cluster")
@@ -286,7 +287,7 @@ pub fn render_panel(
                 .py(px(3.))
                 .mx(px(-6.))
                 .my(px(-3.))
-                .hover(|s| s.bg(rgb(0x23_23_36)))
+                .hover(|s| s.bg(theme.border.subtle))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.agent_menu_open = !this.agent_menu_open;
                     cx.notify();
@@ -296,13 +297,13 @@ pub fn render_panel(
                     div()
                         .text_size(px(12.5))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(rgb(0xa6_ad_c8))
+                        .text_color(theme.text.secondary)
                         .child(agent_name),
                 )
                 .child(
                     div()
                         .text_size(px(9.))
-                        .text_color(rgb(0x6c_70_86))
+                        .text_color(theme.text.muted)
                         .child("⌄"),
                 ),
         )
@@ -315,9 +316,9 @@ pub fn render_panel(
                 .flex()
                 .items_center()
                 .justify_center()
-                .text_color(rgb(0x6c_70_86))
+                .text_color(theme.text.muted)
                 .cursor_pointer()
-                .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
+                .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.primary))
                 .on_click(|_ev, window, cx| {
                     crate::side_panel_left::close_this(window, cx);
                 })
@@ -350,7 +351,7 @@ pub fn render_panel(
                 .h_full()
                 .flex()
                 .flex_col()
-                .bg(rgb(0x1e_1e_2e))
+                .bg(theme.bg.primary)
                 .shadow(elev.shadows.to_vec())
                 // Agent header ("Hermes" + ✕) only when chat is out — bar-only
                 // is sessions sidebar chrome, like the right tab rail.
@@ -373,21 +374,22 @@ pub fn render_panel(
                 .flex()
                 .items_center()
                 .justify_center()
-                .bg(rgb(0x18_18_25))
+                .bg(theme.bg.tertiary)
                 .border_l_1()
-                .border_color(rgb(0x23_23_36))
+                .border_color(theme.border.subtle)
                 .on_mouse_down(gpui::MouseButton::Left, resize_mouse_handler)
                 .on_drag(super::LeftPanelResize, |_, _, _, cx| {
                     cx.new(|_| gpui::EmptyView)
                 })
                 .on_drag_move(resize_drag_handler)
-                .child(div().w(px(1.)).h_full().bg(rgb(0x45_47_5a))),
+                .child(div().w(px(1.)).h_full().bg(theme.text.disabled)),
         )
 }
 
 fn build_sessions_sidebar(
     panel: &SidePanelLeft,
     collapsed: bool,
+    theme: &Theme,
     cx: &mut Context<SidePanelLeft>,
 ) -> impl IntoElement + use<> {
     let sessions = &panel.sessions;
@@ -400,9 +402,9 @@ fn build_sessions_sidebar(
             .flex()
             .flex_col()
             .items_center()
-            .bg(rgb(0x18_18_25))
+            .bg(theme.bg.tertiary)
             .border_r_1()
-            .border_color(rgb(0x23_23_36))
+            .border_color(theme.border.subtle)
             .gap(px(4.))
             .p(px(4.))
             .child(
@@ -415,9 +417,9 @@ fn build_sessions_sidebar(
                     .items_center()
                     .justify_center()
                     .text_size(px(12.))
-                    .text_color(rgb(0x6c_70_86))
+                    .text_color(theme.text.muted)
                     .cursor_pointer()
-                    .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
+                    .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.primary))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.toggle_collapse(cx);
                     }))
@@ -433,9 +435,9 @@ fn build_sessions_sidebar(
                     .items_center()
                     .justify_center()
                     .text_size(px(12.))
-                    .text_color(rgb(0x6c_70_86))
+                    .text_color(theme.text.muted)
                     .cursor_pointer()
-                    .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
+                    .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.primary))
                     .child("+"),
             )
             .children(sessions.iter().map(|s| {
@@ -450,12 +452,12 @@ fn build_sessions_sidebar(
                     .items_center()
                     .justify_center()
                     .rounded_full()
-                    .when(is_active, |el| el.bg(rgb(0x45_47_5a)))
+                    .when(is_active, |el| el.bg(theme.text.disabled))
                     .when(!is_active, |el| el.cursor_pointer())
                     .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(if is_active {
-                        rgb(0xa6_e3_a1)
+                        theme.status.success
                     } else {
-                        rgb(0x58_5b_70)
+                        theme.interactive.active
                     }))
             }))
             .child(div().flex_1()) // spacer
@@ -471,12 +473,12 @@ fn build_sessions_sidebar(
                     .justify_center()
                     .text_size(px(11.))
                     .text_color(if docked {
-                        rgb(0x00_7a_cc)
+                        theme.accent.primary
                     } else {
-                        rgb(0x6c_70_86)
+                        theme.text.muted
                     })
                     .cursor_pointer()
-                    .hover(|s| s.bg(rgb(0x23_23_36)))
+                    .hover(|s| s.bg(theme.border.subtle))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.state.dock_chat = !this.state.dock_chat;
                         if this.state.dock_chat {
@@ -496,9 +498,9 @@ fn build_sessions_sidebar(
             .h_full()
             .flex()
             .flex_col()
-            .bg(rgb(0x18_18_25))
+            .bg(theme.bg.tertiary)
             .border_r_1()
-            .border_color(rgb(0x23_23_36))
+            .border_color(theme.border.subtle)
             .child(
                 div()
                     .id("sessions-header")
@@ -509,12 +511,12 @@ fn build_sessions_sidebar(
                     .px(px(10.))
                     .py(px(8.))
                     .border_b_1()
-                    .border_color(rgb(0x23_23_36))
+                    .border_color(theme.border.subtle)
                     .child(
                         div()
                             .text_size(px(11.5))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(rgb(0xa6_ad_c8))
+                            .text_color(theme.text.secondary)
                             .child("Sessions"),
                     )
                     .child({
@@ -535,12 +537,12 @@ fn build_sessions_sidebar(
                                     .justify_center()
                                     .text_size(px(10.))
                                     .text_color(if docked {
-                                        rgb(0x00_7a_cc)
+                                        theme.accent.primary
                                     } else {
-                                        rgb(0x6c_70_86)
+                                        theme.text.muted
                                     })
                                     .cursor_pointer()
-                                    .hover(|s| s.bg(rgb(0x23_23_36)))
+                                    .hover(|s| s.bg(theme.border.subtle))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.state.dock_chat = !this.state.dock_chat;
                                         if this.state.dock_chat {
@@ -561,9 +563,9 @@ fn build_sessions_sidebar(
                                     .items_center()
                                     .justify_center()
                                     .text_size(px(11.))
-                                    .text_color(rgb(0x6c_70_86))
+                                    .text_color(theme.text.muted)
                                     .cursor_pointer()
-                                    .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
+                                    .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.primary))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.toggle_collapse(cx);
                                     }))
@@ -582,11 +584,11 @@ fn build_sessions_sidebar(
                     .py(px(6.))
                     .rounded(px(6.))
                     .border_1()
-                    .border_color(rgb(0x31_32_44))
+                    .border_color(theme.border.default)
                     .text_size(px(11.5))
-                    .text_color(rgb(0xa6_ad_c8))
+                    .text_color(theme.text.secondary)
                     .cursor_pointer()
-                    .hover(|s| s.bg(rgb(0x23_23_36)).border_color(rgb(0x45_47_5a)))
+                    .hover(|s| s.bg(theme.border.subtle).border_color(theme.text.disabled))
                     .child("+ New session"),
             )
             .child(
@@ -613,20 +615,20 @@ fn build_sessions_sidebar(
                             .items_center()
                             .gap(px(8.))
                             .cursor_pointer()
-                            .when(is_active, |el| el.bg(rgb(0x31_32_44)))
-                            .when(!is_active, |el| el.hover(|s| s.bg(rgb(0x23_23_36))))
+                            .when(is_active, |el| el.bg(theme.border.default))
+                            .when(!is_active, |el| el.hover(|s| s.bg(theme.border.subtle)))
                             .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(if is_active {
-                                rgb(0xa6_e3_a1)
+                                theme.status.success
                             } else {
-                                rgb(0x58_5b_70)
+                                theme.interactive.active
                             }))
                             .child(
                                 div()
                                     .text_size(px(11.5))
                                     .text_color(if is_active {
-                                        rgb(0xcd_d6_f4)
+                                        theme.text.primary
                                     } else {
-                                        rgb(0xa6_ad_c8)
+                                        theme.text.secondary
                                     })
                                     .child(title),
                             )

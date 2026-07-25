@@ -1,4 +1,5 @@
-use gpui::{Context, IntoElement, ScrollHandle, Window, div, point, prelude::*, px, rgb};
+use gpui::{Context, IntoElement, ScrollHandle, Window, div, point, prelude::*, px};
+use chronos_ui::Theme;
 
 use super::SidePanelLeft;
 use super::tool_card::ToolCard;
@@ -53,6 +54,7 @@ impl ChatView {
         _window: &mut Window,
         cx: &mut Context<SidePanelLeft>,
     ) -> impl IntoElement {
+        let theme = *Theme::global(cx);
         let has_messages = !self.messages.is_empty();
         let expanded = &panel.chat.expanded_tool_calls;
 
@@ -70,7 +72,7 @@ impl ChatView {
             .when(has_messages, |el| {
                 let mut el = el;
                 for (msg_idx, msg) in self.messages.iter().enumerate() {
-                    el = el.child(render_message(msg, msg_idx, expanded, cx));
+                    el = el.child(render_message(msg, msg_idx, expanded, &theme, cx));
                 }
                 el
             })
@@ -82,7 +84,7 @@ impl ChatView {
                         .items_center()
                         .justify_center()
                         .text_size(px(12.))
-                        .text_color(rgb(0x58_5b_70))
+                        .text_color(theme.interactive.active)
                         .child("No messages yet"),
                 )
             });
@@ -95,6 +97,7 @@ fn render_tool_cards(
     tool_calls: &[ToolCallPreview],
     msg_idx: usize,
     expanded: &std::collections::HashSet<(usize, usize)>,
+    theme: &Theme,
     cx: &mut Context<SidePanelLeft>,
 ) -> Option<impl IntoElement> {
     if tool_calls.is_empty() {
@@ -113,6 +116,7 @@ fn render_tool_cards(
                     args: tc.args.as_deref(),
                     result: tc.result.as_deref(),
                     expanded: is_expanded,
+                    theme,
                 }
                 .render(Some(cx.listener(move |this, _, _, cx| {
                     let key = (msg_idx, tc_idx);
@@ -141,6 +145,7 @@ fn render_message(
     msg: &ChatMessage,
     msg_idx: usize,
     expanded: &std::collections::HashSet<(usize, usize)>,
+    theme: &Theme,
     cx: &mut Context<SidePanelLeft>,
 ) -> impl IntoElement {
     let is_user = msg.role == MessageRole::User;
@@ -149,22 +154,22 @@ fn render_message(
         .text_size(px(12.))
         .line_height(px(18.))
         .text_color(if is_user {
-            rgb(0xcd_d6_f4)
+            theme.text.primary
         } else {
-            rgb(0xcd_d6_f4)
+            theme.text.primary
         })
         .child(msg.content.clone());
 
-    let tool_cards_section = render_tool_cards(&msg.tool_calls, msg_idx, expanded, cx);
+    let tool_cards_section = render_tool_cards(&msg.tool_calls, msg_idx, expanded, theme, cx);
 
     if is_user {
         // User message: card on #1e1e2e bg with border
         div().w_full().flex().flex_col().child(
             div()
                 .w_full()
-                .bg(rgb(0x1e_1e_2e))
+                .bg(theme.bg.primary)
                 .border_1()
-                .border_color(rgb(0x23_23_36))
+                .border_color(theme.border.subtle)
                 .rounded(px(7.))
                 .px(px(10.))
                 .py(px(8.))
