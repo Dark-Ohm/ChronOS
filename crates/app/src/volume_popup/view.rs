@@ -1,26 +1,37 @@
-//! Volume popup view — Speakers + Microphone fill-bars, ±5%/mute, device picker.
+//! Volume popup view — Sound UI: Volume + Microphone sliders, device
+//! menus (grow-window inline list), footer dual mute.
 //!
-//! Fill-bars are **visual only** (no drag). Device list expands under the
-//! section title inside the same window (no second layer-shell surface).
+//! Static chrome (header «Sound» + ✕) is built with `rsx!`; the live
+//! meters — sliders (drag/click) and device menus — are built with the
+//! `div()` builder because they need `on_mouse_down` / `on_drag` +
+//! `cx.listener` stateful interaction. See T121 report for the rsx↔div
+//! map.
 
 use gpui::{
-    AnyElement, App, Context, InteractiveElement, IntoElement, Render, SharedString, Styled,
-    Window, div, prelude::*, px,
+    AnyElement, App, BoxShadow, Context, DragMoveEvent, InteractiveElement, IntoElement, MouseButton,
+    MouseDownEvent, Render, SharedString, Styled, Window, div, img, prelude::*, px, svg,
 };
+use gpui::EmptyView;
+use gpui_rsx::rsx;
 
 use chronos_services::{
-    AudioCommand, AudioDevice, EndpointState, Service, audio::clamp_volume,
+    AudioCommand, AudioDevice, AudioState, EndpointState, Service, audio::clamp_volume,
 };
 use chronos_ui::Theme;
 
 use crate::state::AppState;
-use crate::volume_popup::{close_this, resize_to_fit};
+use crate::volume_popup::{POPUP_WIDTH, close_this, resize_to_fit};
 
-const PAD: f32 = 12.;
-const TRACK_W: f32 = 160.;
-const TRACK_H: f32 = 8.;
-const STEP: f64 = 0.05;
+const PAD: f32 = 14.;
+/// Slider track height (mockup: 4px).
+const TRACK_H: f32 = 4.;
+/// Slider thumb diameter (mockup: 13px).
+const THUMB: f32 = 13.;
 const MAX_DEVICE_ROWS: usize = 8;
+
+/// Marker type for the slider drag gesture (no payload needed — the
+/// drag-move listener already closes over the endpoint `kind`).
+pub struct VolumeSliderDrag;
 
 /// Which endpoint's device list is expanded (if any).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,7 +54,7 @@ impl EndpointKind {
 }
 
 pub struct VolumePopupView {
-    /// Open device picker under Speakers / Microphone (or neither).
+    /// Open device picker under Volume / Microphone (or neither).
     expanded: Option<EndpointKind>,
 }
 
@@ -60,57 +71,102 @@ impl VolumePopupView {
 impl Render for VolumePopupView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let audio = AppState::audio(cx).get();
-        let theme = Theme::global(cx);
+        let theme = *Theme::global(cx);
         let expanded = self.expanded;
 
         let bg = theme.bg.primary;
         let text_primary = theme.text.primary;
         let text_muted = theme.text.muted;
         let text_secondary = theme.text.secondary;
-        let divider = theme.bg.secondary;
+        let divider = theme.border.default;
         let radius = theme.radius;
         let radius_lg = theme.radius_lg;
         let hover = theme.interactive.hover;
         let accent = theme.accent.primary;
-        let bar_track = theme.bg.secondary;
         let border_subtle = theme.border.subtle;
+        let is_light = theme.is_light;
+        let font_mono = theme.font_mono;
 
-        let header = div()
-            .w_full()
-            .flex()
-            .items_center()
-            .justify_between()
-            .px(px(PAD))
-            .py(px(8.))
-            .child(div().text_color(text_primary).child("Volume"))
-            .child(
-                div()
-                    .id("volume-popup-close")
-                    .cursor_pointer()
-                    .px(px(6.))
-                    .rounded(radius)
-                    .text_color(text_muted)
-                    .hover(|s| s.bg(hover))
-                    .child("✕")
-                    .on_click(|_event, window, cx: &mut App| {
-                        close_this(window, cx);
-                    }),
-            );
-
-        let divider_line = div().w_full().h(px(1.)).bg(divider);
-
-        div()
+        // ── Card (builder) ──────────────────────────────────────────
+        let mut card = div()
+            .relative()
             .flex_col()
-            .w(px(300.))
+            .w(px(POPUP_WIDTH))
             .rounded(radius_lg)
             .bg(bg)
             .border_1()
             .border_color(border_subtle)
-            .overflow_hidden()
-            .child(header)
-            .child(divider_line)
+            .overflow_hidden();
+
+        if is_light {
+            card = card
+                .shadow(vec![
+                    BoxShadow::new(px(0.), px(6.), gpui::rgba(0x3c_40_6e29).into())
+                        .blur_radius(px(24.)),
+                    BoxShadow::new(px(0.), px(0.), gpui::rgba(0x007a_cc26).into())
+                        .spread_radius(px(1.))
+                        .inset(),
+                ])
+                .child(
+                    div()
+                        .absolute()
+                        .top(px(0.))
+                        .left(px(0.))
+                        .right(px(0.))
+                        .h(px(1.))
+                        .bg(accent)
+                        .opacity(0.4),
+                )
+                .child(
+                    svg()
+                        .path("icons/hexagon-sigil.svg")
+                        .absolute()
+                        .top(px(-30.))
+                        .right(px(-30.))
+                        .size(px(140.))
+                        .text_color(accent)
+                        .opacity(0.18),
+                );
+        }
+
+        // ── Header «Sound» + ✕ (rsx) ────────────────────────────────
+        let header = rsx! {
+            <div
+                class="w-full flex items-center justify-between"
+                px={px(PAD)}
+                py={px(12.)}
+                border_b_1
+                border_color={divider}
+            >
+                <div
+                    text_color={text_primary}
+                    font_family={font_mono}
+                    text_size={px(13.)}
+                    font_weight={gpui::FontWeight::SEMIBOLD}
+                >
+                    { "Sound" }
+                </div>
+                <div
+                    id="volume-popup-close"
+                    w={px(22.)}
+                    h={px(22.)}
+                    rounded={px(6.)}
+                    class="flex items-center justify-center"
+                    cursor_pointer
+                    text_color={text_muted}
+                    hover={|s| s.bg(hover)}
+                    onClick={move |_ev, window, cx| {
+                        close_this(window, cx);
+                    }}
+                >
+                    { img("icons/x.svg").w(px(13.)).h(px(13.)) }
+                </div>
+            </div>
+        };
+
+        card.child(header)
             .child(endpoint_block(
-                "Speakers",
+                "Volume",
                 EndpointKind::Sink,
                 &audio.sink,
                 expanded,
@@ -118,9 +174,10 @@ impl Render for VolumePopupView {
                 text_secondary,
                 text_muted,
                 accent,
-                bar_track,
-                radius,
                 hover,
+                radius,
+                border_subtle,
+                font_mono,
                 cx,
             ))
             .child(div().w_full().h(px(1.)).bg(divider))
@@ -133,14 +190,101 @@ impl Render for VolumePopupView {
                 text_secondary,
                 text_muted,
                 accent,
-                bar_track,
-                radius,
                 hover,
+                radius,
+                border_subtle,
+                font_mono,
                 cx,
+            ))
+            .child(footer(
+                &audio,
+                text_muted,
+                accent,
+                border_subtle,
+                radius,
+                font_mono,
             ))
     }
 }
 
+/// Footer: two outlined mute buttons (builder — simple onClick).
+fn footer(
+    audio: &AudioState,
+    text_muted: gpui::Hsla,
+    accent: gpui::Hsla,
+    border_subtle: gpui::Hsla,
+    radius: gpui::Pixels,
+    font_mono: &'static str,
+) -> AnyElement {
+    let sink_muted = audio.sink.muted;
+    let source_muted = audio.source.muted;
+
+    let out_label = if sink_muted {
+        "Unmute output"
+    } else {
+        "Mute output"
+    };
+    let mic_label = if source_muted {
+        "Unmute mic"
+    } else {
+        "Mute mic"
+    };
+    let out_color = if sink_muted { accent } else { text_muted };
+    let mic_color = if source_muted { accent } else { text_muted };
+
+    div()
+        .w_full()
+        .flex()
+        .gap(px(8.))
+        .px(px(PAD))
+        .py(px(12.))
+        .border_t_1()
+        .border_color(border_subtle)
+        .child(
+            div()
+                .id("volume-popup-mute-output")
+                .flex_1()
+                .text_center()
+                .py(px(8.))
+                .rounded(radius)
+                .border_1()
+                .border_color(border_subtle)
+                .text_color(out_color)
+                .font_family(font_mono)
+                .text_size(px(12.))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .cursor_pointer()
+                .hover(move |s| s.border_color(accent).text_color(accent))
+                .child(out_label)
+                .on_click(move |_event, _window, cx: &mut App| {
+                    toggle_mute(EndpointKind::Sink, cx);
+                }),
+        )
+        .child(
+            div()
+                .id("volume-popup-mute-mic")
+                .flex_1()
+                .text_center()
+                .py(px(8.))
+                .rounded(radius)
+                .border_1()
+                .border_color(border_subtle)
+                .text_color(mic_color)
+                .font_family(font_mono)
+                .text_size(px(12.))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .cursor_pointer()
+                .hover(move |s| s.border_color(accent).text_color(accent))
+                .child(mic_label)
+                .on_click(move |_event, _window, cx: &mut App| {
+                    toggle_mute(EndpointKind::Source, cx);
+                }),
+        )
+        .into_any_element()
+}
+
+/// One endpoint section: title row (mute icon + name + device subtitle +
+/// chevron + %), drag/click slider, and an inline device picker.
 fn endpoint_block(
     title: &'static str,
     kind: EndpointKind,
@@ -150,29 +294,82 @@ fn endpoint_block(
     text_secondary: gpui::Hsla,
     text_muted: gpui::Hsla,
     accent: gpui::Hsla,
-    bar_track: gpui::Hsla,
-    radius: gpui::Pixels,
     hover: gpui::Hsla,
+    radius: gpui::Pixels,
+    border_subtle: gpui::Hsla,
+    font_mono: &'static str,
     cx: &mut Context<VolumePopupView>,
 ) -> AnyElement {
     let muted = ep.muted;
     let volume = ep.volume;
     let fraction = volume.clamp(0.0, 1.0) as f32;
-    let fill_w = TRACK_W * fraction;
+    let fill_w = (POPUP_WIDTH - 2.0 * PAD) * fraction;
     let percent = format_percent(volume);
-    let mute_label = mute_icon(kind.is_source(), muted);
-    let bar_fill = if muted { text_muted } else { accent };
     let title_color = if muted { text_muted } else { text_primary };
     let prefix = kind.id_prefix();
     let is_open = expanded == Some(kind);
     let chevron = if is_open { "▾" } else { "▸" };
-    // Prefer live device description when available.
     let device_label = if ep.name.is_empty() {
         title.to_string()
     } else {
         ep.name.clone()
     };
     let title_id: SharedString = format!("{prefix}-title").into();
+
+    // ── Slider drag + click (builder, stateful) ────────────────────
+    let mouse_listener = cx.listener(move |_this, ev: &MouseDownEvent, _window, cx: &mut Context<VolumePopupView>| {
+        let frac = frac_from_window_x(f32::from(ev.position.x));
+        set_volume_unmute_if_needed(kind, frac, cx);
+    });
+    let drag_listener = cx.listener(
+        move |_this, ev: &DragMoveEvent<VolumeSliderDrag>, _window, cx: &mut Context<VolumePopupView>| {
+            let frac = frac_from_window_x(f32::from(ev.event.position.x));
+            set_volume_unmute_if_needed(kind, frac, cx);
+        },
+    );
+    let slider_id: SharedString = format!("{prefix}-slider").into();
+
+    let slider = div()
+        .id(slider_id)
+        .w_full()
+        .h(px(TRACK_H + 10.)) // hit area taller than visual track
+        .flex()
+        .items_center()
+        .cursor_pointer()
+        .on_mouse_down(MouseButton::Left, mouse_listener)
+        .on_drag(VolumeSliderDrag, |_, _, _, cx| cx.new(|_| EmptyView))
+        .on_drag_move(drag_listener)
+        .child(
+            div()
+                .w_full()
+                .h(px(TRACK_H))
+                .rounded(px(2.))
+                .bg(theme_track_bg(text_muted))
+                .relative()
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(0.))
+                        .top(px(0.))
+                        .bottom(px(0.))
+                        .w(px(fill_w.max(0.)))
+                        .rounded(px(2.))
+                        .bg(if muted { text_muted } else { accent }),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .top(px((TRACK_H - THUMB) / 2.))
+                        .left(px(fill_w.max(0.) - THUMB / 2.))
+                        .size(px(THUMB))
+                        .rounded(px(THUMB / 2.))
+                        .bg(if muted { text_muted } else { text_primary })
+                        .shadow(vec![
+                            BoxShadow::new(px(0.), px(1.), gpui::rgba(0x0000_0000).into())
+                                .blur_radius(px(2.)),
+                        ]),
+                ),
+        );
 
     let title_row = div()
         .id(title_id)
@@ -187,14 +384,51 @@ fn endpoint_block(
             div()
                 .flex()
                 .items_center()
-                .gap(px(6.))
-                .child(div().text_color(title_color).child(format!("{chevron} {title}")))
+                .gap(px(7.))
                 .child(
                     div()
+                        .id(SharedString::from(format!("{prefix}-mute-icon")))
+                        .w(px(24.))
+                        .h(px(24.))
+                        .rounded(radius)
+                        .flex()
+                        .items_center()
+                        .justify_center()
                         .text_color(text_muted)
-                        .text_xs()
-                        .child(truncate_label(&device_label, 28)),
-                ),
+                        .child(mute_icon(kind.is_source(), muted))
+                        .on_click(move |_event, _window, cx: &mut App| {
+                            toggle_mute(kind, cx);
+                        }),
+                )
+                .child(
+                    div()
+                        .flex_col()
+                        .child(
+                            div()
+                                .text_color(title_color)
+                                .text_size(px(12.5))
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .child(title),
+                        )
+                        .child(
+                            div()
+                                .text_color(text_muted)
+                                .text_xs()
+                                .child(truncate_label(&device_label, 28)),
+                        ),
+                )
+                .child(div().text_color(text_muted).child(chevron)),
+        )
+        .child(
+            div()
+                .font_family(font_mono)
+                .text_size(px(11.))
+                .text_color(text_muted)
+                .child(if muted {
+                    "Muted".to_string()
+                } else {
+                    format!("{percent}%")
+                }),
         )
         .on_click(cx.listener(move |this, _event, window, cx| {
             this.expanded = if this.expanded == Some(kind) {
@@ -253,90 +487,12 @@ fn endpoint_block(
     div()
         .w_full()
         .flex_col()
-        .gap(px(6.))
+        .gap(px(8.))
         .px(px(PAD))
-        .py(px(10.))
+        .py(px(12.))
         .child(title_row)
+        .child(slider)
         .child(device_list)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(10.))
-                .child(
-                    div()
-                        .w(px(TRACK_W))
-                        .h(px(TRACK_H))
-                        .rounded(radius)
-                        .bg(bar_track)
-                        .overflow_hidden()
-                        .child(
-                            div()
-                                .h_full()
-                                .w(px(fill_w))
-                                .rounded(radius)
-                                .bg(bar_fill),
-                        ),
-                )
-                .child(
-                    div()
-                        .text_color(if muted { text_muted } else { text_secondary })
-                        .min_w(px(40.))
-                        .child(if muted {
-                            "mute".to_string()
-                        } else {
-                            format!("{percent}%")
-                        }),
-                ),
-        )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .child(
-                    div()
-                        .id(SharedString::from(format!("{prefix}-minus")))
-                        .cursor_pointer()
-                        .px(px(8.))
-                        .py(px(2.))
-                        .rounded(radius)
-                        .text_color(text_secondary)
-                        .hover(move |s| s.bg(hover))
-                        .child("−5%")
-                        .on_click(move |_event, _window, cx: &mut App| {
-                            step_volume(kind, -STEP, cx);
-                        }),
-                )
-                .child(
-                    div()
-                        .id(SharedString::from(format!("{prefix}-mute")))
-                        .cursor_pointer()
-                        .px(px(8.))
-                        .py(px(2.))
-                        .rounded(radius)
-                        .text_color(text_secondary)
-                        .hover(move |s| s.bg(hover))
-                        .child(mute_label.to_string())
-                        .on_click(move |_event, _window, cx: &mut App| {
-                            toggle_mute(kind, cx);
-                        }),
-                )
-                .child(
-                    div()
-                        .id(SharedString::from(format!("{prefix}-plus")))
-                        .cursor_pointer()
-                        .px(px(8.))
-                        .py(px(2.))
-                        .rounded(radius)
-                        .text_color(text_secondary)
-                        .hover(move |s| s.bg(hover))
-                        .child("+5%")
-                        .on_click(move |_event, _window, cx: &mut App| {
-                            step_volume(kind, STEP, cx);
-                        }),
-                ),
-        )
         .into_any_element()
 }
 
@@ -350,7 +506,7 @@ fn device_row(
     hover: gpui::Hsla,
 ) -> AnyElement {
     let id = device.id;
-    let mark = if device.is_default { "●" } else { "○" };
+    let mark = if device.is_default { "✓" } else { "" };
     let label = truncate_label(&device.name, 34);
     let color = if device.is_default {
         accent
@@ -364,30 +520,64 @@ fn device_row(
         .w_full()
         .flex()
         .items_center()
-        .gap(px(6.))
-        .px(px(4.))
-        .py(px(3.))
+        .justify_between()
+        .gap(px(8.))
+        .px(px(8.))
+        .py(px(6.))
         .rounded(radius)
         .cursor_pointer()
         .hover(move |s| s.bg(hover))
-        .child(div().text_color(if device.is_default { accent } else { text_muted }).child(mark))
         .child(div().text_color(color).text_xs().child(label))
+        .child(
+            div()
+                .text_color(if device.is_default {
+                    accent
+                } else {
+                    text_muted
+                })
+                .text_size(px(12.))
+                .child(mark),
+        )
         .on_click(move |_event, _window, cx: &mut App| {
             set_default_device(kind, id, cx);
         })
         .into_any_element()
 }
 
-fn step_volume(kind: EndpointKind, delta: f64, cx: &mut App) {
+/// Convert a pointer x (popup-window coordinates) to a 0..=1 fraction.
+///
+/// The card is the full window width (`POPUP_WIDTH`) with section padding
+/// `PAD`, so the track starts at `PAD` and spans `POPUP_WIDTH - 2*PAD`.
+fn frac_from_window_x(x: f32) -> f64 {
+    let track_left = PAD;
+    let track_w = POPUP_WIDTH - 2.0 * PAD;
+    let rel = (x - track_left) / track_w;
+    rel.clamp(0.0, 1.0) as f64
+}
+
+/// Set volume to `frac` and unmute the endpoint if it is currently muted
+/// (mockup `onVolumeChange` clears mute). Reads live state to avoid a
+/// stale double-toggle during a drag.
+fn set_volume_unmute_if_needed(kind: EndpointKind, frac: f64, cx: &mut App) {
+    let v = clamp_volume(frac);
     let audio = AppState::audio(cx);
-    let current = match kind {
-        EndpointKind::Sink => audio.get().sink.volume,
-        EndpointKind::Source => audio.get().source.volume,
+    let currently_muted = match kind {
+        EndpointKind::Sink => audio.get().sink.muted,
+        EndpointKind::Source => audio.get().source.muted,
     };
-    let next = clamp_volume(current + delta);
     match kind {
-        EndpointKind::Sink => audio.dispatch(AudioCommand::SetSinkVolume(next)),
-        EndpointKind::Source => audio.dispatch(AudioCommand::SetSourceVolume(next)),
+        EndpointKind::Sink => {
+            audio.dispatch(AudioCommand::SetSinkVolume(v));
+            if currently_muted {
+                audio.dispatch(AudioCommand::ToggleSinkMute);
+            }
+        }
+        EndpointKind::Source => {
+            audio.dispatch(AudioCommand::SetSourceVolume(v));
+            if currently_muted {
+                audio.dispatch(AudioCommand::ToggleSourceMute);
+            }
+        }
     }
 }
 
@@ -405,20 +595,27 @@ fn set_default_device(kind: EndpointKind, id: u32, cx: &mut App) {
         EndpointKind::Sink => audio.dispatch(AudioCommand::SetDefaultSink(id)),
         EndpointKind::Source => audio.dispatch(AudioCommand::SetDefaultSource(id)),
     }
-    tracing::info!(
-        "volume_popup: set default {} id={id}",
-        kind.id_prefix()
-    );
+    tracing::info!("volume_popup: set default {} id={id}", kind.id_prefix());
 }
 
-fn mute_icon(is_source: bool, muted: bool) -> &'static str {
-    if is_source {
-        if muted { "🎤̸" } else { "🎤" }
+fn mute_icon(is_source: bool, muted: bool) -> AnyElement {
+    let path = if is_source {
+        if muted {
+            "icons/microphone-mute.svg"
+        } else {
+            "icons/microphone.svg"
+        }
     } else if muted {
-        "🔇"
+        "icons/speaker-mute.svg"
     } else {
-        "🔊"
-    }
+        "icons/speaker-high.svg"
+    };
+    svg().path(path).size(px(15.)).into_any_element()
+}
+
+/// Track background per mockup (dark `#313244`-ish).
+fn theme_track_bg(text_muted: gpui::Hsla) -> gpui::Hsla {
+    text_muted
 }
 
 fn format_percent(volume: f64) -> i32 {
@@ -454,14 +651,6 @@ mod tests {
     }
 
     #[test]
-    fn mute_icons() {
-        assert_eq!(mute_icon(false, true), "🔇");
-        assert_eq!(mute_icon(false, false), "🔊");
-        assert_eq!(mute_icon(true, true), "🎤̸");
-        assert_eq!(mute_icon(true, false), "🎤");
-    }
-
-    #[test]
     fn truncate_short_unchanged() {
         assert_eq!(truncate_label("Built-in", 28), "Built-in");
     }
@@ -472,5 +661,13 @@ mod tests {
         let t = truncate_label(s, 28);
         assert!(t.ends_with('…'));
         assert!(t.chars().count() <= 28);
+    }
+
+    #[test]
+    fn frac_clamps() {
+        assert_eq!(frac_from_window_x(-50.0), 0.0);
+        assert_eq!(frac_from_window_x(1e9), 1.0);
+        let mid = frac_from_window_x(PAD + (POPUP_WIDTH - 2.0 * PAD) / 2.0);
+        assert!((mid - 0.5).abs() < 1e-6);
     }
 }

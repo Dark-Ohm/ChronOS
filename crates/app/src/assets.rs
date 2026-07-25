@@ -33,6 +33,8 @@ icons!(
     "folder.svg",
     "hexagon-core.svg",
     "hexagon-sigil.svg",
+    "microphone.svg",
+    "microphone-mute.svg",
     "pause.svg",
     "play.svg",
     "power.svg",

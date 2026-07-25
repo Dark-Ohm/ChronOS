@@ -1,7 +1,12 @@
 //! Volume widget for the bar — sink icon + percent, click opens volume popup,
 //! scroll ±5%.
 
-use gpui::{AnyElement, App, ScrollDelta, ScrollWheelEvent, Window, div, prelude::*, px, svg};
+use gpui::{
+    AnyElement, App, Bounds, MouseButton, Pixels, ScrollDelta, ScrollWheelEvent, Window, canvas,
+    div, prelude::*, px, svg,
+};
+use std::cell::Cell;
+use std::rc::Rc;
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{AudioCommand, EndpointState, Service, audio::clamp_volume};
@@ -67,7 +72,17 @@ fn scroll_volume_delta(delta: &ScrollDelta) -> f64 {
     }
 }
 
-pub struct VolumeWidget;
+pub struct VolumeWidget {
+    bounds: Rc<Cell<Bounds<Pixels>>>,
+}
+
+impl VolumeWidget {
+    pub fn new() -> Self {
+        Self {
+            bounds: Rc::new(Cell::new(Bounds::default())),
+        }
+    }
+}
 
 impl BarWidget for VolumeWidget {
     fn name(&self) -> &str {
@@ -90,7 +105,8 @@ impl BarWidget for VolumeWidget {
             theme.text.secondary
         };
 
-        div()
+        let bounds_cell = self.bounds.clone();
+        let row = div()
             .id("bar-volume")
             .flex()
             .items_center()
@@ -108,9 +124,6 @@ impl BarWidget for VolumeWidget {
                     .font_family(theme.font_mono)
                     .text_size(theme.font_sizes.sm),
             )
-            .on_click(|_event, window, cx: &mut App| {
-                crate::volume_popup::toggle(window, cx);
-            })
             .on_scroll_wheel(|event: &ScrollWheelEvent, _window, cx: &mut App| {
                 let step = scroll_volume_delta(&event.delta);
                 if step == 0.0 {
@@ -120,7 +133,28 @@ impl BarWidget for VolumeWidget {
                 let current = audio.get().sink.volume;
                 let next = clamp_volume(current + step);
                 audio.dispatch(AudioCommand::SetSinkVolume(next));
-            })
+            });
+
+        div()
+            .relative()
+            .child(
+                canvas(
+                    move |bounds, _window, _cx| bounds,
+                    move |_bounds, captured, _window, _cx| {
+                        bounds_cell.set(captured);
+                    },
+                )
+                .absolute()
+                .size_full(),
+            )
+            .child(row.on_mouse_down(MouseButton::Left, {
+                let bounds_cell = self.bounds.clone();
+                move |_event, window, cx: &mut App| {
+                    let anchor_rect = bounds_cell.get();
+                    let parent = window.window_handle();
+                    crate::volume_popup::toggle(anchor_rect, parent, window, cx);
+                }
+            }))
             .into_any_element()
     }
 }
@@ -128,7 +162,7 @@ impl BarWidget for VolumeWidget {
 /// Register the volume widget with the global bar registry.
 pub fn register(cx: &mut App) {
     cx.global_mut::<chronos_luau::bar::BarWidgetRegistry>()
-        .register(Box::new(VolumeWidget));
+        .register(Box::new(VolumeWidget::new()));
 }
 
 #[cfg(test)]
