@@ -18,9 +18,14 @@
 - Min width окна = sidebar + handle. Канон: `DECISIONS.log` 2026-07-25 left panel.
 - Popup-wave T120–T125 закрыта WITH CAVEATS (см. ниже / MIGRATION). Dev CLI:
   `chronos-rebuild && chronos-stop && chronos-start`.
-- **Active T:** **T126** left-panel sessions sidebar + dock exclusive
-  → `orchestration/tasks/active/T126-left-panel-sessions-sidebar-dock.md`
-  (orchestration gitignored — файл на диске, не в git). Pause: T115.
+- **Active T:**
+  - **T126** left sessions sidebar + dock exclusive — code+errata
+    `f89e27d`, **live smoke still open** (review REJECT until hyprctl/grim).
+    `orchestration/tasks/active/T126-left-panel-sessions-sidebar-dock.md`
+  - **T127** right panel exclusive + width resize (always exclusive when
+    open; drag handle; `exclusive_edge: RIGHT`).
+    `orchestration/tasks/active/T127-right-panel-exclusive-resize.md`
+  - orchestration gitignored — брифы на диске. Pause: T115.
 
 **Обновлено: 2026-07-24 — T119 ПРИНЯТ WITH CAVEATS** (`eac0591`).
 Multi-select rows, footer Upgrade all↔selected, header Check→Refresh,

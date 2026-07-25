@@ -970,3 +970,34 @@ mode). Live product decision (Architect session 2026-07-25):
 Collapsed sessions: **36px** (was 48). Expanded: keep ~200 unless mockup
 says otherwise. Exact icon metrics free to tweak live; product constraint
 is “narrower collapsed sessions, not a different rail chrome”.
+
+## 2026-07-25 — Right panel: exclusive zone + width resize
+
+Product (same session as left-panel T126 model): right system/IDE panel
+must reserve compositor space when open and be stretchable.
+
+### Accepted
+1. **Exclusive always while open** — not an optional Dock switch (unlike
+   left ACP chat). Right panel is a system surface; tiling windows around
+   it is the desired default. Zone = current panel width.
+2. **`exclusive_edge: RIGHT`** required — anchor is `TOP|RIGHT` (corner).
+   Same blood as left `LEFT`: without the edge Hyprland silently ignores
+   the zone (`hyprctl monitors` reserved stays 0 on that side).
+3. **Live resize** — drag handle on the **inner** edge (left side of the
+   right panel). `window.resize` + `set_exclusive_zone` track width,
+   coalesced per paint like left (`last_resized_width` /
+   `last_exclusive_zone`).
+4. **Default width** keep mockup **560**; min ~360 (rail 44 + content
+   usable); max ~960 or ~half display. Constants in module, unit-tested.
+5. **Close** clears exclusive (`set_exclusive_zone(0)` before
+   `remove_window` / in `close_this`).
+
+### Rejected
+- Overlay-only right panel (no exclusive) — user wants tile reflow.
+- Two windows for rail vs content — keep single layer-shell surface.
+- Exclusive without `exclusive_edge` — known dead on corner anchors.
+
+### API
+Fork already has `Window::set_exclusive_zone` / `set_exclusive_edge` —
+no Source changes. Pattern: T126 left `side_panel_left` after accept
+errata (`exclusive_px`, handle drag, zone clear on close).
