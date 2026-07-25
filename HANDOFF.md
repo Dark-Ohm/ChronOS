@@ -15,7 +15,9 @@
 **1 glass/glow (T128) → 2 motion (T129–T130) → 3 real 3D spike (T131–T132).**
 
 ### Active T
-- **T128** elevated + blur tokens — `active/T128-elevated-surface-blur-tokens.md`
+- **T128** elevated + blur tokens — **ACCEPTED WITH CAVEATS** (code committed;
+  report prose stale; live grim still open). Review on disk
+  `report/T128-*-review.md`.
 - **T133** wallpaper ↔ waytrogen **integration** (not rewrite) —
   `active/T133-wallpaper-waytrogen-integration.md`  
   Engine already: service+IPC; need: `wallpaper-gallery`, open waytrogen,
