@@ -40,6 +40,8 @@ use crate::side_panel_right::{
 };
 use crate::state::{self, AppState};
 
+use chronos_ui::Theme;
+
 /// Delay before peek-close after mouse leaves panel (or strip).
 const PEEK_LEAVE_DEBOUNCE: Duration = Duration::from_millis(280);
 
@@ -315,6 +317,10 @@ impl Render for SidePanelRightView {
         // Content open when dock is ON OR user dragged past rail+handle threshold
         let content_open = dock_content || panel_width > rail_only_width + 1.0;
 
+        // Elevated chrome на content-колонке (не rail-only) — общий язык
+        // глубины из `theme.elevation_popup()` (T128).
+        let elev = Theme::global(cx).elevation_popup();
+
         // Resize handlers before any RPIT that captures cx (Rust 2024).
         let resize_drag_handler = cx.listener(
             |this, ev: &gpui::DragMoveEvent<RightPanelResize>, _window, cx| {
@@ -375,15 +381,30 @@ impl Render for SidePanelRightView {
                         s.opacity(1.0)
                     })
                     .when(content_open, |body| {
-                        body.child(
-                            div()
+                        body.child({
+                            let col = div()
                                 .id("side-panel-content-column")
                                 .flex_1()
                                 .min_w(px(0.))
                                 .flex()
                                 .flex_col()
                                 .overflow_hidden()
-                                .when(self.active_tab == PanelTab::System, |col| {
+                                .shadow(elev.shadows.to_vec());
+                            // Light-C glow-ребро на верхней кромке content-колонки.
+                            let col = match elev.glow {
+                                Some(glow) => col.child(
+                                    div()
+                                        .absolute()
+                                        .top(px(0.))
+                                        .left(px(0.))
+                                        .right(px(0.))
+                                        .h(px(1.))
+                                        .bg(glow)
+                                        .opacity(0.4),
+                                ),
+                                None => col,
+                            };
+                            col.when(self.active_tab == PanelTab::System, |col| {
                                     col
                                         // 1. Header (flex:none) — rsx
                                         .child(render_header())
@@ -481,8 +502,8 @@ impl Render for SidePanelRightView {
                                                 ),
                                             )),
                                     )
-                                }),
-                        )
+                                })
+                        })
                     })
                     .child({
                         let active = self.active_tab;

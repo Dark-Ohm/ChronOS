@@ -7,8 +7,8 @@
 use std::collections::HashSet;
 
 use gpui::{
-    AnyElement, App, BoxShadow, Context, InteractiveElement, IntoElement, Render, ScrollHandle,
-    Styled, Window, div, prelude::*, px, svg,
+    AnyElement, App, Context, Corners, InteractiveElement, IntoElement, Render, ScrollHandle,
+    Styled, Window, canvas, div, prelude::*, px, svg,
 };
 
 use chronos_services::{PackageUpdate, Service, UpdateSource, UpgradeState};
@@ -69,7 +69,6 @@ impl Render for UpdatesPopupView {
         let accent_hover = theme.accent.hover;
         let hover = theme.interactive.hover;
         let font_mono = theme.font_mono;
-        let is_light = theme.is_light;
 
         // ── Visible updates (filter completed during upgrade) ─────
         let completed: Vec<String> = match &state.upgrade_state {
@@ -378,6 +377,24 @@ impl Render for UpdatesPopupView {
         };
 
         // ── Card ────────────────────────────────────────────────────
+        // Радиус карточки оставляем `radius` (6px) — НЕ меняем геометрию.
+        // Тени / blur / glow берём из `theme.elevation_popup()` (T128):
+        // light-схема получает тот же Light-C рецепт, что volume/system.
+        let elev = theme.elevation_popup();
+
+        let blur_layer = div().absolute().inset_0().child(canvas(
+            |_bounds, _window, _cx| {},
+            move |bounds, _state, window: &mut Window, _cx: &mut App| {
+                window.paint_blur(
+                    bounds,
+                    elev.blur.radius,
+                    Corners::all(radius),
+                    elev.blur.tint,
+                    elev.blur.saturation,
+                );
+            },
+        ));
+
         let mut card = div()
             .relative()
             .flex_col()
@@ -385,17 +402,12 @@ impl Render for UpdatesPopupView {
             .bg(bg)
             .border_1()
             .border_color(border)
+            .shadow(elev.shadows.to_vec())
+            .child(blur_layer)
             .overflow_hidden();
 
-        if is_light {
+        if let Some(glow) = elev.glow {
             card = card
-                .shadow(vec![
-                    BoxShadow::new(px(0.), px(6.), gpui::rgba(0x3c40_6e29).into())
-                        .blur_radius(px(24.)),
-                    BoxShadow::new(px(0.), px(0.), gpui::rgba(0x007a_cc26).into())
-                        .spread_radius(px(1.))
-                        .inset(),
-                ])
                 .child(
                     div()
                         .absolute()
@@ -403,7 +415,7 @@ impl Render for UpdatesPopupView {
                         .left(px(0.))
                         .right(px(0.))
                         .h(px(1.))
-                        .bg(accent)
+                        .bg(glow)
                         .opacity(0.4),
                 )
                 .child(
@@ -413,7 +425,7 @@ impl Render for UpdatesPopupView {
                         .top(px(-30.))
                         .right(px(-30.))
                         .size(px(140.))
-                        .text_color(accent)
+                        .text_color(glow)
                         .opacity(0.18),
                 );
         }

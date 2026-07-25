@@ -1,5 +1,7 @@
 use gpui::{Context, IntoElement, Window, div, img, prelude::*, px, rgb};
 
+use chronos_ui::Theme;
+
 use super::SidePanelLeft;
 use super::sessions_list::{SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_HANDLE_WIDTH};
 use super::state::AgentStatus;
@@ -322,6 +324,10 @@ pub fn render_panel(
                 .child(img("icons/x.svg").w(px(12.)).h(px(12.))),
         );
 
+    // Elevated chrome на content-колонке (только когда чат открыт, не
+    // rail-only) — общий язык глубины из `theme.elevation_popup()` (T128).
+    let elev = Theme::global(cx).elevation_popup();
+
     div()
         .id("side-panel-left-root")
         .w(px(panel.state.width))
@@ -345,9 +351,26 @@ pub fn render_panel(
                 .flex()
                 .flex_col()
                 .bg(rgb(0x1e_1e_2e))
+                .shadow(elev.shadows.to_vec())
                 // Agent header ("Hermes" + ✕) only when chat is out — bar-only
                 // is sessions sidebar chrome, like the right tab rail.
-                .when(chat_open, |el| el.child(header).children(dropdown))
+                .when(chat_open, |el| {
+                    let el = el.child(header).children(dropdown);
+                    // Light-C glow-ребро на верхней кромке content-колонки.
+                    match elev.glow {
+                        Some(glow) => el.child(
+                            div()
+                                .absolute()
+                                .top(px(0.))
+                                .left(px(0.))
+                                .right(px(0.))
+                                .h(px(1.))
+                                .bg(glow)
+                                .opacity(0.4),
+                        ),
+                        None => el,
+                    }
+                })
                 .child(clipped_content),
         )
         .child(

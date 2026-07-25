@@ -69,24 +69,21 @@ impl Render for SystemPopupView {
         let hover = theme.interactive.hover;
         let accent = theme.accent.primary;
         let border_subtle = theme.border.subtle;
-        let is_light = theme.is_light;
         let font_mono = theme.font_mono;
         let font_ui = theme.font_ui;
 
+        let elev = theme.elevation_popup();
+
+        // Frosted-glass слой — параметры из токенов (radius + tint + sat).
         let blur_layer = div().absolute().inset_0().child(canvas(
             |_bounds, _window, _cx| {},
             move |bounds, _state, window: &mut Window, _cx: &mut App| {
                 window.paint_blur(
                     bounds,
-                    px(18.0),
+                    elev.blur.radius,
                     Corners::all(radius_lg),
-                    gpui::Hsla {
-                        h: 0.0,
-                        s: 0.0,
-                        l: 1.0,
-                        a: 0.06,
-                    },
-                    1.15,
+                    elev.blur.tint,
+                    elev.blur.saturation,
                 );
             },
         ));
@@ -99,18 +96,12 @@ impl Render for SystemPopupView {
             .bg(bg.alpha(0.82))
             .border_1()
             .border_color(border_subtle)
+            .shadow(elev.shadows.to_vec())
             .child(blur_layer)
             .overflow_hidden();
 
-        if is_light {
+        if let Some(glow) = elev.glow {
             card = card
-                .shadow(vec![
-                    BoxShadow::new(px(0.), px(6.), rgba(0x3c_40_6e29).into())
-                        .blur_radius(px(24.)),
-                    BoxShadow::new(px(0.), px(0.), rgba(0x007a_cc26).into())
-                        .spread_radius(px(1.))
-                        .inset(),
-                ])
                 .child(
                     div()
                         .absolute()
@@ -118,7 +109,7 @@ impl Render for SystemPopupView {
                         .left(px(0.))
                         .right(px(0.))
                         .h(px(1.))
-                        .bg(accent)
+                        .bg(glow)
                         .opacity(0.4),
                 )
                 .child(
@@ -128,7 +119,7 @@ impl Render for SystemPopupView {
                         .top(px(-30.))
                         .right(px(-30.))
                         .size(px(140.))
-                        .text_color(accent)
+                        .text_color(glow)
                         .opacity(0.18),
                 );
         }

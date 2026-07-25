@@ -12,8 +12,8 @@
 //! pre-T120 bug — see plan T120 §Task 4 Step 2).
 
 use gpui::{
-    AnyElement, App, Context, InteractiveElement, IntoElement, Render, ScrollHandle, Styled,
-    Window, div, prelude::*, px,
+    AnyElement, App, Context, Corners, InteractiveElement, IntoElement, Render, ScrollHandle,
+    Styled, Window, canvas, div, prelude::*, px,
 };
 
 use chronos_services::{Notification, NotificationCommand, Service, Urgency};
@@ -75,7 +75,6 @@ impl Render for HistoryPopupView {
         let radius = theme.radius;
         let radius_lg = theme.radius_lg; // 10px mockup panel radius
         let font_mono = theme.font_mono;
-        let is_light = theme.is_light;
 
         // ── Body: scroll list OR empty state ─────────────────────────
         let body: AnyElement = if ordered.is_empty() {
@@ -156,6 +155,23 @@ impl Render for HistoryPopupView {
         };
 
         // ── Card chrome: panel, bg, border, radius 10px ──────────────
+        // Тени / blur / glow — из `theme.elevation_popup()` (T128):
+        // light-схема получает Light-C рецепт, тёмная — frosted blur-only.
+        let elev = theme.elevation_popup();
+
+        let blur_layer = div().absolute().inset_0().child(canvas(
+            |_bounds, _window, _cx| {},
+            move |bounds, _state, window: &mut Window, _cx: &mut App| {
+                window.paint_blur(
+                    bounds,
+                    elev.blur.radius,
+                    Corners::all(radius_lg),
+                    elev.blur.tint,
+                    elev.blur.saturation,
+                );
+            },
+        ));
+
         let mut panel = div()
             .relative()
             .flex_col()
@@ -163,9 +179,11 @@ impl Render for HistoryPopupView {
             .bg(bg)
             .border_1()
             .border_color(border)
+            .shadow(elev.shadows.to_vec())
+            .child(blur_layer)
             .overflow_hidden();
 
-        if is_light {
+        if let Some(glow) = elev.glow {
             panel = panel.child(
                 div()
                     .absolute()
@@ -173,7 +191,7 @@ impl Render for HistoryPopupView {
                     .left(px(0.))
                     .right(px(0.))
                     .h(px(1.))
-                    .bg(accent)
+                    .bg(glow)
                     .opacity(0.4),
             );
         }

@@ -5,9 +5,9 @@
 //! hex-цветов и конвертер [`Base16Colors`] <-> [`Theme`], а также
 //! набор встроенных схем ([`builtin_schemes`]).
 
+pub mod elevation;
 pub mod theme;
 
+pub use elevation::{BlurSpec, EMPTY_SHADOWS, ElevationTokens};
+pub use theme::{ActiveTheme, Base16Colors, FontSizes, Theme, ThemeScheme, builtin_schemes};
 pub use theme::{on_fill, parse_hex};
-pub use theme::{
-    ActiveTheme, Base16Colors, FontSizes, Theme, ThemeScheme, builtin_schemes,
-};
