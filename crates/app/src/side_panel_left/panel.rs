@@ -1,15 +1,8 @@
 use gpui::{Context, IntoElement, Window, div, img, prelude::*, px, rgb};
 
 use super::SidePanelLeft;
-use super::sessions_list::{SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_EXPANDED_WIDTH};
+use super::sessions_list::{SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_HANDLE_WIDTH};
 use super::state::AgentStatus;
-
-// Grab zone width, not the visible line — the divider inside stays 1px
-// (see `.child(div().w(px(1.))...)` below). Wider than the old 4px purely
-// for easier pointer targeting; the "resize dies at min width" bug was a
-// flex min-width issue (see main-content `.min_w(0)` / handle `.flex_none`),
-// not the strip being too thin.
-const HANDLE_WIDTH: f32 = 10.;
 
 fn status_color(status: AgentStatus) -> gpui::Rgba {
     match status {
@@ -27,6 +20,16 @@ pub fn render_panel(
     let dot_color = status_color(panel.state.agent_status);
     let collapsed = panel.state.sessions_collapsed;
     let agent_menu_open = panel.agent_menu_open;
+    // Chat visibility is width-driven (or forced by dock). Dock only changes
+    // exclusive zone — it must NOT hide the thread (T126 accept errata).
+    let sidebar_w = if collapsed {
+        SIDEBAR_COLLAPSED_WIDTH
+    } else {
+        SIDEBAR_EXPANDED_WIDTH
+    };
+    let past_sidebar =
+        panel.state.width > sidebar_w + SIDEBAR_HANDLE_WIDTH + 1.0;
+    let chat_open = panel.state.dock_chat || past_sidebar;
 
     let agent_name = panel
         .agents
@@ -256,7 +259,7 @@ pub fn render_panel(
         .flex_row()
         .overflow_hidden()
         .child(sidebar)
-        .child(thread_column);
+        .when(chat_open, |el| el.child(thread_column));
 
     // Header with listeners
     let header = div()
@@ -319,23 +322,6 @@ pub fn render_panel(
                 .child(img("icons/x.svg").w(px(12.)).h(px(12.))),
         );
 
-    // Rail mode: dragged (or opened) at/near `PANEL_RAIL_TOTAL_WIDTH` —
-    // "a sidebar I pull the chat out of when I need it" (2026-07-23). The
-    // full header/sessions-list/thread-column don't fit and shouldn't try;
-    // show just the status dot as a slim dock. Pull back out via the same
-    // resize-handle drag, unchanged — this only swaps what main-content
-    // renders, not the resize mechanics from fbcadd6.
-    let is_rail = panel.state.width <= super::PANEL_RAIL_TOTAL_WIDTH + 4.;
-    let rail_view = div()
-        .id("side-panel-rail")
-        .size_full()
-        .flex()
-        .flex_col()
-        .items_center()
-        .pt(px(10.))
-        .bg(rgb(0x1e_1e_2e))
-        .child(div().w(px(7.)).h(px(7.)).rounded_full().bg(dot_color));
-
     div()
         .id("side-panel-left-root")
         .w(px(panel.state.width))
@@ -353,34 +339,21 @@ pub fn render_panel(
             div()
                 .id("main-content")
                 .flex_1()
-                // A flex item's default `min-width: auto` refuses to shrink
-                // below its content's min-content width. Near the panel's
-                // min width the composer/chat content hit that floor,
-                // main-content overflowed to the right and ate the fixed
-                // resize handle's slot — its hitbox collapsed to zero, so
-                // clicks landed inside the handle geometrically yet its
-                // `on_mouse_down` never fired ("resize dies at rest width").
-                // `min_w(0)` lets it shrink; `overflow_hidden` clips the
-                // content instead of spilling over the handle.
                 .min_w(px(0.))
                 .overflow_hidden()
                 .h_full()
                 .flex()
                 .flex_col()
                 .bg(rgb(0x1e_1e_2e))
-                .when(is_rail, |el| el.child(rail_view))
-                .when(!is_rail, |el| {
-                    el.child(header).children(dropdown).child(clipped_content)
-                }),
+                .child(header)
+                .children(dropdown)
+                .child(clipped_content),
         )
         .child(
             div()
                 .id("resize-handle")
-                // Never let flex shrink the grab strip — it must keep its
-                // full width at every panel size (paired with main-content's
-                // `min_w(0)` above).
                 .flex_none()
-                .w(px(HANDLE_WIDTH))
+                .w(px(SIDEBAR_HANDLE_WIDTH))
                 .h_full()
                 .cursor_col_resize()
                 .flex()
@@ -417,17 +390,17 @@ fn build_sessions_sidebar(
             .border_r_1()
             .border_color(rgb(0x23_23_36))
             .gap(px(4.))
-            .p(px(8.))
+            .p(px(4.))
             .child(
                 div()
                     .id("sessions-expand")
-                    .w(px(32.))
-                    .h(px(32.))
+                    .w(px(28.))
+                    .h(px(28.))
                     .rounded(px(6.))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(px(14.))
+                    .text_size(px(12.))
                     .text_color(rgb(0x6c_70_86))
                     .cursor_pointer()
                     .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
@@ -439,13 +412,13 @@ fn build_sessions_sidebar(
             .child(
                 div()
                     .id("sessions-new-icon")
-                    .w(px(32.))
-                    .h(px(32.))
+                    .w(px(28.))
+                    .h(px(28.))
                     .rounded(px(6.))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(px(14.))
+                    .text_size(px(12.))
                     .text_color(rgb(0x6c_70_86))
                     .cursor_pointer()
                     .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
@@ -456,8 +429,8 @@ fn build_sessions_sidebar(
                 let sid = s.id.clone();
                 div()
                     .id(format!("session-dot-{sid}"))
-                    .w(px(32.))
-                    .h(px(32.))
+                    .w(px(28.))
+                    .h(px(28.))
                     .rounded(px(6.))
                     .flex()
                     .items_center()
@@ -471,6 +444,36 @@ fn build_sessions_sidebar(
                         rgb(0x58_5b_70)
                     }))
             }))
+            .child(div().flex_1()) // spacer
+            .child({
+                let docked = panel.state.dock_chat;
+                div()
+                    .id("dock-toggle")
+                    .w(px(28.))
+                    .h(px(28.))
+                    .rounded(px(6.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_size(px(11.))
+                    .text_color(if docked {
+                        rgb(0x00_7a_cc)
+                    } else {
+                        rgb(0x6c_70_86)
+                    })
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(0x23_23_36)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.state.dock_chat = !this.state.dock_chat;
+                        if this.state.dock_chat {
+                            this.state.ensure_chat_width();
+                        }
+                        // Force exclusive recompute next paint.
+                        this.state.last_exclusive_zone = None;
+                        cx.notify();
+                    }))
+                    .child(if docked { "⊞" } else { "⊟" })
+            })
             .into_any()
     } else {
         div()
@@ -500,24 +503,59 @@ fn build_sessions_sidebar(
                             .text_color(rgb(0xa6_ad_c8))
                             .child("Sessions"),
                     )
-                    .child(
+                    .child({
+                        let docked = panel.state.dock_chat;
                         div()
-                            .id("sessions-collapse")
-                            .w(px(20.))
-                            .h(px(20.))
-                            .rounded(px(4.))
+                            .id("sessions-header-buttons")
                             .flex()
                             .items_center()
-                            .justify_center()
-                            .text_size(px(11.))
-                            .text_color(rgb(0x6c_70_86))
-                            .cursor_pointer()
-                            .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.toggle_collapse(cx);
-                            }))
-                            .child("<"),
-                    ),
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .id("dock-toggle-expanded")
+                                    .w(px(20.))
+                                    .h(px(20.))
+                                    .rounded(px(4.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .text_size(px(10.))
+                                    .text_color(if docked {
+                                        rgb(0x00_7a_cc)
+                                    } else {
+                                        rgb(0x6c_70_86)
+                                    })
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(rgb(0x23_23_36)))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.state.dock_chat = !this.state.dock_chat;
+                                        if this.state.dock_chat {
+                                            this.state.ensure_chat_width();
+                                        }
+                                        this.state.last_exclusive_zone = None;
+                                        cx.notify();
+                                    }))
+                                    .child(if docked { "⊞" } else { "⊟" }),
+                            )
+                            .child(
+                                div()
+                                    .id("sessions-collapse")
+                                    .w(px(20.))
+                                    .h(px(20.))
+                                    .rounded(px(4.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .text_size(px(11.))
+                                    .text_color(rgb(0x6c_70_86))
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(rgb(0x23_23_36)).text_color(rgb(0xcd_d6_f4)))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.toggle_collapse(cx);
+                                    }))
+                                    .child("<"),
+                            )
+                    }),
             )
             .child(
                 div()

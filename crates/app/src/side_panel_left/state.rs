@@ -22,24 +22,71 @@ pub struct SidePanelLeftState {
     pub agent_status: AgentStatus,
     pub sessions_collapsed: bool,
     pub active_session_id: Option<String>,
+    /// When true, chat tiles alongside sidebar (exclusive = full width).
+    /// When false (default), chat overlays — exclusive stays at sidebar width.
+    pub dock_chat: bool,
+    /// Last exclusive_zone value sent to compositor (avoids redundant Wayland round-trips).
+    pub last_exclusive_zone: Option<f32>,
 }
 
 impl SidePanelLeftState {
     pub fn new() -> Self {
         Self {
             state: PanelState::Peek,
-            width: 352.0,
+            // Window min = sidebar + handle (not sidebar alone).
+            width: super::sessions_list::SIDEBAR_MIN_WIDTH,
             height: 1080.0,
-            min_width: super::PANEL_RAIL_TOTAL_WIDTH,
+            min_width: super::sessions_list::SIDEBAR_MIN_WIDTH,
             max_width: 960.0,
             session_id: None,
             agent_status: AgentStatus::Connected,
-            sessions_collapsed: false,
+            sessions_collapsed: true,
             active_session_id: None,
+            dock_chat: false,
+            last_exclusive_zone: None,
+        }
+    }
+
+    pub fn sidebar_width(&self) -> f32 {
+        if self.sessions_collapsed {
+            super::sessions_list::SIDEBAR_COLLAPSED_WIDTH
+        } else {
+            super::sessions_list::SIDEBAR_EXPANDED_WIDTH
+        }
+    }
+
+    /// Exclusive zone px: full panel when docked, sidebar column when overlay.
+    pub fn exclusive_px(&self) -> f32 {
+        if self.dock_chat {
+            self.width
+        } else {
+            self.sidebar_width()
+        }
+    }
+
+    /// Recalculate min_width after collapse state changes.
+    /// Expanded sessions need room for the 200px column + handle.
+    pub fn recalc_min_width(&mut self) {
+        self.min_width =
+            self.sidebar_width() + super::sessions_list::SIDEBAR_HANDLE_WIDTH;
+        if self.width < self.min_width {
+            self.width = self.min_width;
         }
     }
 
     pub fn resize(&mut self, new_width: f32) {
         self.width = new_width.clamp(self.min_width, self.max_width);
+    }
+
+    /// Default width when opening chat / turning dock on from sidebar-only.
+    pub const DEFAULT_CHAT_WIDTH: f32 = 352.;
+
+    pub fn ensure_chat_width(&mut self) {
+        let need = self.sidebar_width()
+            + super::sessions_list::SIDEBAR_HANDLE_WIDTH
+            + 120.0; // min thread column so chat is usable
+        if self.width < need {
+            self.width = Self::DEFAULT_CHAT_WIDTH.max(need).min(self.max_width);
+        }
     }
 }

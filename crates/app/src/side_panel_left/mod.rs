@@ -19,19 +19,7 @@ use std::collections::HashMap;
 
 pub struct LeftPanelResize;
 
-const PANEL_WIDTH: f32 = 352.;
 const PANEL_EDGE_GAP: f32 = BAR_HEIGHT;
-
-/// Sidebar width when the panel is dragged all the way down to a rail —
-/// no thread column, just the sidebar as a slim dock (2026-07-23 request:
-/// "чуть тоньше кнопки лаунчера" — a bit thinner than the bar's 24px
-/// `dock-start` button, `crates/app/src/bar/widgets/dock.rs`).
-pub(crate) const PANEL_RAIL_WIDTH: f32 = 26.;
-/// Total panel width at the rail: sidebar rail + the resize-handle strip
-/// (`panel.rs` `HANDLE_WIDTH`), duplicated as a literal here because
-/// `state.rs` (where `min_width` lives) can't see `panel.rs`'s private
-/// const without a visibility change neither module otherwise needs.
-pub(crate) const PANEL_RAIL_TOTAL_WIDTH: f32 = PANEL_RAIL_WIDTH + 10.;
 
 #[derive(Default)]
 pub struct SidePanelLeftState_ {
@@ -53,12 +41,14 @@ fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
 fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     let display_h = display_height(display_id, cx);
     let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
+    // Super+A opens sidebar-only (collapsed strip + handle), not full chat.
+    let open_w = sessions_list::SIDEBAR_MIN_WIDTH;
     WindowOptions {
         display_id,
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: point(px(0.), px(0.)),
-            size: Size::new(px(PANEL_WIDTH), px(panel_h)),
+            size: Size::new(px(open_w), px(panel_h)),
         })),
         app_id: Some("chronos-side-panel-left".to_string()),
         window_background: WindowBackgroundAppearance::Transparent,
@@ -66,16 +56,11 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
             namespace: "side_panel_left".to_string(),
             layer: Layer::Overlay,
             anchor: Anchor::LEFT | Anchor::TOP,
-            // Tried live 2026-07-23: exclusive zone reserved space like the
-            // bar, tiled windows reflowed correctly around it (verified via
-            // `hyprctl monitors` reserved + `hyprctl clients` geometry) —
-            // but shoving windows around every time the panel opens/
-            // resizes is bad UX for a chat panel someone keeps open while
-            // working. Reverted to `None` (overlay, no reflow) per user
-            // call on the live test. Idea worth revisiting as an opt-in
-            // toggle (tied to hover or a separate keybind), not the
-            // default — deliberately not bolted on today.
-            exclusive_zone: None,
+            // Default exclusive zone = sidebar width only (not full chat width).
+            // exclusive_edge must be LEFT or Hyprland ignores the zone on our
+            // LEFT|TOP corner anchor (DECISIONS 2026-07-23 blood fact).
+            exclusive_zone: Some(px(sessions_list::SIDEBAR_COLLAPSED_WIDTH)),
+            exclusive_edge: Some(Anchor::LEFT),
             margin: None,
             keyboard_interactivity: KeyboardInteractivity::OnDemand,
             ..Default::default()
@@ -124,6 +109,16 @@ pub struct SidePanelLeft {
 
 impl Render for SidePanelLeft {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Exclusive zone: sidebar-only when dock off, full width when dock on.
+        // Must call set_exclusive_edge(LEFT) or Hyprland silently ignores the
+        // zone on our LEFT|TOP corner anchor (DECISIONS 2026-07-23).
+        let new_zone = self.state.exclusive_px();
+        if self.state.last_exclusive_zone != Some(new_zone) {
+            window.set_exclusive_edge(gpui::layer_shell::Anchor::LEFT);
+            window.set_exclusive_zone(px(new_zone));
+            self.state.last_exclusive_zone = Some(new_zone);
+        }
+
         if self.last_resized_width != Some(self.state.width) {
             let display_id = crate::monitor::pult_display(cx);
             let display_h = display_height(display_id, cx);
@@ -214,6 +209,7 @@ impl SidePanelLeft {
 
     fn toggle_collapse(&mut self, cx: &mut Context<Self>) {
         self.state.sessions_collapsed = !self.state.sessions_collapsed;
+        self.state.recalc_min_width();
         cx.notify();
     }
 
@@ -376,10 +372,13 @@ pub fn open_peek(cx: &mut App) {
 pub fn close(cx: &mut App) {
     if let Some(handle) = cx.global_mut::<SidePanelLeftState_>().handle.take() {
         cx.global_mut::<SidePanelLeftState_>().pinned = false;
-        match handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
-            Ok(()) => {
-                tracing::info!("side_panel_left: closed");
-            }
+        // Clear exclusive zone before destroying the surface so the
+        // compositor reclaims reserved space even if it doesn't auto-clean.
+        match handle.update(cx, |_, window: &mut Window, _| {
+            window.set_exclusive_zone(px(0.));
+            window.remove_window()
+        }) {
+            Ok(()) => tracing::info!("side_panel_left: closed"),
             Err(e) => tracing::warn!(
                 "side_panel_left: close() could not reach the window ({e}) — possible ghost"
             ),
@@ -402,6 +401,7 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
         state.handle.take();
         state.pinned = false;
     }
+    window.set_exclusive_zone(px(0.));
     window.remove_window();
     tracing::info!("side_panel_left: close_this");
 }
@@ -502,8 +502,63 @@ mod tests {
     }
 
     #[test]
-    fn state_default_width() {
+    fn state_default_width_is_sidebar_plus_handle() {
         let state = state::SidePanelLeftState::new();
-        assert_eq!(state.width, 352.0);
+        assert_eq!(state.width, sessions_list::SIDEBAR_MIN_WIDTH);
+    }
+
+    #[test]
+    fn state_min_width_is_sidebar_plus_handle() {
+        let state = state::SidePanelLeftState::new();
+        assert_eq!(state.min_width, sessions_list::SIDEBAR_MIN_WIDTH);
+    }
+
+    #[test]
+    fn toggle_collapse_recalculates_min_width() {
+        let mut state = state::SidePanelLeftState::new();
+        assert!(state.sessions_collapsed);
+        assert_eq!(state.width, sessions_list::SIDEBAR_MIN_WIDTH);
+        // Expand sessions: min must fit 200 + handle
+        state.sessions_collapsed = false;
+        state.recalc_min_width();
+        assert_eq!(
+            state.min_width,
+            sessions_list::SIDEBAR_EXPANDED_WIDTH + sessions_list::SIDEBAR_HANDLE_WIDTH
+        );
+        assert!(state.width >= state.min_width);
+    }
+
+    #[test]
+    fn clamp_width_below_min_after_recalc() {
+        let mut state = state::SidePanelLeftState::new();
+        state.resize(10.0);
+        assert_eq!(state.width, sessions_list::SIDEBAR_MIN_WIDTH);
+    }
+
+    #[test]
+    fn exclusive_px_dock_vs_overlay() {
+        let mut state = state::SidePanelLeftState::new();
+        assert!(!state.dock_chat);
+        assert_eq!(
+            state.exclusive_px(),
+            sessions_list::SIDEBAR_COLLAPSED_WIDTH
+        );
+        state.sessions_collapsed = false;
+        assert_eq!(
+            state.exclusive_px(),
+            sessions_list::SIDEBAR_EXPANDED_WIDTH
+        );
+        state.width = 400.0;
+        state.dock_chat = true;
+        assert_eq!(state.exclusive_px(), 400.0);
+    }
+
+    #[test]
+    fn ensure_chat_width_expands_from_sidebar_only() {
+        let mut state = state::SidePanelLeftState::new();
+        assert_eq!(state.width, sessions_list::SIDEBAR_MIN_WIDTH);
+        state.ensure_chat_width();
+        assert!(state.width > sessions_list::SIDEBAR_MIN_WIDTH);
+        assert_eq!(state.width, state::SidePanelLeftState::DEFAULT_CHAT_WIDTH);
     }
 }
