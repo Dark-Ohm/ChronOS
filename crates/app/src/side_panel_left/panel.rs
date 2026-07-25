@@ -345,8 +345,9 @@ pub fn render_panel(
                 .flex()
                 .flex_col()
                 .bg(rgb(0x1e_1e_2e))
-                .child(header)
-                .children(dropdown)
+                // Agent header ("Hermes" + ✕) only when chat is out — bar-only
+                // is sessions sidebar chrome, like the right tab rail.
+                .when(chat_open, |el| el.child(header).children(dropdown))
                 .child(clipped_content),
         )
         .child(

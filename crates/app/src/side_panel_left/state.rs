@@ -55,12 +55,15 @@ impl SidePanelLeftState {
         }
     }
 
-    /// Exclusive zone px: full panel when docked, sidebar column when overlay.
+    /// Exclusive zone px: full panel when docked; bar strip (sidebar + handle)
+    /// when overlay. Handle is on the inner edge — without it in the zone the
+    /// grab strip sits on top of tiled windows (live 2026-07-25: reserved 36
+    /// vs window 46). Mirrors right panel `RAIL_ONLY_WIDTH = rail + handle`.
     pub fn exclusive_px(&self) -> f32 {
         if self.dock_chat {
             self.width
         } else {
-            self.sidebar_width()
+            self.sidebar_width() + super::sessions_list::SIDEBAR_HANDLE_WIDTH
         }
     }
 

@@ -56,10 +56,10 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
             namespace: "side_panel_left".to_string(),
             layer: Layer::Overlay,
             anchor: Anchor::LEFT | Anchor::TOP,
-            // Default exclusive zone = sidebar width only (not full chat width).
-            // exclusive_edge must be LEFT or Hyprland ignores the zone on our
-            // LEFT|TOP corner anchor (DECISIONS 2026-07-23 blood fact).
-            exclusive_zone: Some(px(sessions_list::SIDEBAR_COLLAPSED_WIDTH)),
+            // Bar-only exclusive = sidebar + handle (full open strip). Chat
+            // overlay still uses exclusive_px() which is the same strip until
+            // dock. exclusive_edge LEFT required on LEFT|TOP corner anchor.
+            exclusive_zone: Some(px(sessions_list::SIDEBAR_MIN_WIDTH)),
             exclusive_edge: Some(Anchor::LEFT),
             margin: None,
             keyboard_interactivity: KeyboardInteractivity::OnDemand,
@@ -539,14 +539,12 @@ mod tests {
     fn exclusive_px_dock_vs_overlay() {
         let mut state = state::SidePanelLeftState::new();
         assert!(!state.dock_chat);
-        assert_eq!(
-            state.exclusive_px(),
-            sessions_list::SIDEBAR_COLLAPSED_WIDTH
-        );
+        // Bar strip includes handle so tiles don't sit under the grab edge.
+        assert_eq!(state.exclusive_px(), sessions_list::SIDEBAR_MIN_WIDTH);
         state.sessions_collapsed = false;
         assert_eq!(
             state.exclusive_px(),
-            sessions_list::SIDEBAR_EXPANDED_WIDTH
+            sessions_list::SIDEBAR_EXPANDED_WIDTH + sessions_list::SIDEBAR_HANDLE_WIDTH
         );
         state.width = 400.0;
         state.dock_chat = true;
