@@ -107,6 +107,43 @@ pub fn apply(cx: &mut App) {
     cx.refresh_windows();
 }
 
+/// Toggle Default (dark) ↔ Light, persist `theme.toml`, refresh windows.
+///
+/// If `CHRONOS_THEME` is set it still wins on next cold `apply`/reload —
+/// toggle applies immediately and writes the file for normal resolution.
+pub fn toggle(cx: &mut App) {
+    let next_name = if Theme::global(cx).is_light {
+        "Default"
+    } else {
+        "Light"
+    };
+    if let Err(e) = persist_scheme(next_name) {
+        tracing::warn!("theme: failed to persist scheme={next_name}: {e}");
+    }
+    let theme = Theme::select_scheme(Some(next_name.to_string()));
+    tracing::info!(
+        scheme = next_name,
+        is_light = theme.is_light,
+        "theme: toggled"
+    );
+    cx.set_global(theme);
+    cx.refresh_windows();
+}
+
+fn persist_scheme(name: &str) -> std::io::Result<()> {
+    let path = config_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut cfg = load_config();
+    cfg.scheme = Some(name.to_string());
+    let body = toml::to_string_pretty(&cfg).map_err(|e| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
+    })?;
+    std::fs::write(&path, body)?;
+    Ok(())
+}
+
 /// Initialize theme from env+config and spawn hot-reload watcher.
 /// Supersedes `chronos_ui::Theme::init` for the app entry: same role +
 /// file config + hot-reload (ChronOS architecture §9).

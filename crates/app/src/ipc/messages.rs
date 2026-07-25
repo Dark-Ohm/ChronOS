@@ -2,6 +2,8 @@ pub const PING_PAYLOAD: &str = "ping";
 pub const TOGGLE_LAUNCHER_PAYLOAD: &str = "toggle-launcher";
 pub const TOGGLE_SIDE_PANEL_LEFT_PAYLOAD: &str = "toggle-side-panel-left";
 pub const WALLPAPER_NEXT_PAYLOAD: &str = "wallpaper-next";
+pub const WALLPAPER_GALLERY_PAYLOAD: &str = "wallpaper-gallery";
+pub const WALLPAPER_REFRESH_PAYLOAD: &str = "wallpaper-refresh";
 const WALLPAPER_SET_PREFIX: &str = "wallpaper-set:";
 
 pub fn encode_ping() -> String {
@@ -36,6 +38,7 @@ pub fn is_toggle_side_panel_left(payload: &str) -> bool {
 }
 
 pub const TOGGLE_SIDE_PANEL_RIGHT_PAYLOAD: &str = "toggle-side-panel-right";
+pub const TOGGLE_THEME_PAYLOAD: &str = "toggle-theme";
 
 // Same contract as `encode_toggle_launcher` above — external keybind
 // daemons trigger the right agent panel (pinned-only, no hover-peek).
@@ -46,6 +49,15 @@ pub fn encode_toggle_side_panel_right() -> String {
 
 pub fn is_toggle_side_panel_right(payload: &str) -> bool {
     payload.trim() == TOGGLE_SIDE_PANEL_RIGHT_PAYLOAD
+}
+
+#[allow(dead_code)]
+pub fn encode_toggle_theme() -> String {
+    TOGGLE_THEME_PAYLOAD.to_string()
+}
+
+pub fn is_toggle_theme(payload: &str) -> bool {
+    payload.trim() == TOGGLE_THEME_PAYLOAD
 }
 
 pub fn is_wallpaper_next(payload: &str) -> bool {
@@ -77,15 +89,40 @@ pub fn parse_wallpaper_set(payload: &str) -> Option<std::path::PathBuf> {
 pub enum WallpaperIpcCmd {
     Next,
     Set(std::path::PathBuf),
+    Gallery,
+    Refresh,
 }
 
 /// Classify a raw IPC payload into a wallpaper command, if applicable.
 pub fn classify_wallpaper(payload: &str) -> Option<WallpaperIpcCmd> {
-    if is_wallpaper_next(payload) {
+    let trimmed = payload.trim();
+    if is_wallpaper_next(trimmed) {
         Some(WallpaperIpcCmd::Next)
+    } else if is_wallpaper_gallery(trimmed) {
+        Some(WallpaperIpcCmd::Gallery)
+    } else if is_wallpaper_refresh(trimmed) {
+        Some(WallpaperIpcCmd::Refresh)
     } else {
-        parse_wallpaper_set(payload).map(WallpaperIpcCmd::Set)
+        parse_wallpaper_set(trimmed).map(WallpaperIpcCmd::Set)
     }
+}
+
+pub fn is_wallpaper_gallery(payload: &str) -> bool {
+    payload.trim() == WALLPAPER_GALLERY_PAYLOAD
+}
+
+#[allow(dead_code)]
+pub fn encode_wallpaper_gallery() -> String {
+    WALLPAPER_GALLERY_PAYLOAD.to_string()
+}
+
+pub fn is_wallpaper_refresh(payload: &str) -> bool {
+    payload.trim() == WALLPAPER_REFRESH_PAYLOAD
+}
+
+#[allow(dead_code)]
+pub fn encode_wallpaper_refresh() -> String {
+    WALLPAPER_REFRESH_PAYLOAD.to_string()
 }
 
 #[cfg(test)]
@@ -186,5 +223,52 @@ mod tests {
     fn parse_wallpaper_set_trims_whitespace() {
         let parsed = parse_wallpaper_set("  wallpaper-set:/tmp/wall.png\n");
         assert_eq!(parsed, Some(std::path::PathBuf::from("/tmp/wall.png")));
+    }
+
+    #[test]
+    fn encodes_and_recognizes_wallpaper_gallery() {
+        let payload = encode_wallpaper_gallery();
+        assert!(is_wallpaper_gallery(&payload));
+    }
+
+    #[test]
+    fn rejects_non_wallpaper_gallery_payload() {
+        assert!(!is_wallpaper_gallery("ping"));
+        assert!(!is_wallpaper_gallery("wallpaper-next"));
+    }
+
+    #[test]
+    fn encodes_and_recognizes_wallpaper_refresh() {
+        let payload = encode_wallpaper_refresh();
+        assert!(is_wallpaper_refresh(&payload));
+    }
+
+    #[test]
+    fn rejects_non_wallpaper_refresh_payload() {
+        assert!(!is_wallpaper_refresh("ping"));
+        assert!(!is_wallpaper_refresh("wallpaper-gallery"));
+    }
+
+    #[test]
+    fn classify_wallpaper_gallery() {
+        assert!(matches!(
+            classify_wallpaper("wallpaper-gallery"),
+            Some(WallpaperIpcCmd::Gallery)
+        ));
+    }
+
+    #[test]
+    fn classify_wallpaper_refresh() {
+        assert!(matches!(
+            classify_wallpaper("wallpaper-refresh"),
+            Some(WallpaperIpcCmd::Refresh)
+        ));
+    }
+
+    #[test]
+    fn encodes_and_recognizes_toggle_theme() {
+        let payload = encode_toggle_theme();
+        assert!(is_toggle_theme(&payload));
+        assert!(!is_toggle_theme("toggle-launcher"));
     }
 }

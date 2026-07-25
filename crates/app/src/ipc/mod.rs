@@ -16,6 +16,7 @@ impl IpcSubscriber {
             mut wallpaper_receiver,
             mut side_panel_toggle_receiver,
             mut side_panel_right_toggle_receiver,
+            mut theme_toggle_receiver,
         ) = self.start_listener();
 
         cx.spawn(async move |cx| {
@@ -26,6 +27,8 @@ impl IpcSubscriber {
             let mut last_side_panel_toggle_at =
                 std::time::Instant::now() - std::time::Duration::from_secs(1);
             let mut last_side_panel_right_toggle_at =
+                std::time::Instant::now() - std::time::Duration::from_secs(1);
+            let mut last_theme_toggle_at =
                 std::time::Instant::now() - std::time::Duration::from_secs(1);
 
             loop {
@@ -91,20 +94,71 @@ impl IpcSubscriber {
                             break;
                         }
                     }
+                    theme_toggle = theme_toggle_receiver.recv() => {
+                        if theme_toggle.is_some() {
+                            let now = std::time::Instant::now();
+                            if now.duration_since(last_theme_toggle_at)
+                                >= std::time::Duration::from_millis(200)
+                            {
+                                last_theme_toggle_at = now;
+                                tracing::info!("IPC toggle-theme received");
+                                let _ = cx.update(|cx| {
+                                    crate::theme_config::toggle(cx);
+                                });
+                            }
+                        } else {
+                            break;
+                        }
+                    }
                     wallpaper = wallpaper_receiver.recv() => {
                         if let Some(cmd) = wallpaper {
-                            let _ = cx.update(|cx| {
-                                match cmd {
-                                    crate::ipc::messages::WallpaperIpcCmd::Next => {
+                            match cmd {
+                                crate::ipc::messages::WallpaperIpcCmd::Next => {
+                                    let _ = cx.update(|cx| {
                                         tracing::info!("IPC wallpaper-next received");
                                         crate::wallpaper_ctl::next(cx);
-                                    }
-                                    crate::ipc::messages::WallpaperIpcCmd::Set(path) => {
+                                    });
+                                }
+                                crate::ipc::messages::WallpaperIpcCmd::Set(path) => {
+                                    let _ = cx.update(|cx| {
                                         tracing::info!("IPC wallpaper-set received: {}", path.display());
                                         crate::wallpaper_ctl::set(cx, &path);
-                                    }
+                                    });
                                 }
-                            });
+                                crate::ipc::messages::WallpaperIpcCmd::Gallery => {
+                                    tracing::info!("IPC wallpaper-gallery received");
+                                    let _ = cx.update(|cx| {
+                                        match crate::wallpaper_ctl::open_waytrogen_gallery() {
+                                            Ok(()) => {
+                                                // Delayed resync: waytrogen sets via awww outside
+                                                // our Mutable. Full child-wait needs Send App —
+                                                // poll refresh after a short delay instead.
+                                                let wallpaper =
+                                                    crate::state::AppState::wallpaper(cx).clone();
+                                                cx.spawn(async move |cx| {
+                                                    cx.background_executor()
+                                                        .timer(std::time::Duration::from_secs(3))
+                                                        .await;
+                                                    wallpaper.refresh();
+                                                    tracing::info!(
+                                                        "wallpaper: post-gallery delayed refresh"
+                                                    );
+                                                })
+                                                .detach();
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!("IPC wallpaper-gallery: {e}");
+                                            }
+                                        }
+                                    });
+                                }
+                                crate::ipc::messages::WallpaperIpcCmd::Refresh => {
+                                    tracing::info!("IPC wallpaper-refresh received");
+                                    let _ = cx.update(|cx| {
+                                        crate::wallpaper_ctl::refresh_after_gallery(cx);
+                                    });
+                                }
+                            }
                         } else {
                             break;
                         }

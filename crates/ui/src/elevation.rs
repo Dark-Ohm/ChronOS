@@ -46,7 +46,7 @@ pub struct ElevationTokens {
 impl Theme {
     /// Popup / elevated-card depth language.
     ///
-    /// - **Dark:** blur-only (r18, tint α0.06, sat 1.15), no drop-shadow.
+    /// - **Dark:** frosted blur + soft elevated drop-shadow (readable depth).
     /// - **Light (Light C):** same blur + indigo drop (y6/blur24) + inset
     ///   accent ring + glow + watermark.
     pub fn elevation_popup(&self) -> ElevationTokens {
@@ -71,7 +71,7 @@ impl Theme {
             }
         } else {
             ElevationTokens {
-                shadows: &EMPTY_SHADOWS,
+                shadows: dark_popup_shadows(),
                 blur,
                 radius: self.radius_lg,
                 glow: None,
@@ -81,15 +81,32 @@ impl Theme {
     }
 }
 
-/// Empty shadow pool (dark).
+/// Empty pool kept for tests / callers that want “no shadows”.
 pub static EMPTY_SHADOWS: [BoxShadow; 0] = [];
 
+static DARK_SHADOWS_LOCK: OnceLock<Vec<BoxShadow>> = OnceLock::new();
 static LIGHT_SHADOWS_LOCK: OnceLock<Vec<BoxShadow>> = OnceLock::new();
+
+/// Soft elevated shadow for dark cards (depth without Light-C ring).
+fn dark_popup_shadows() -> &'static [BoxShadow] {
+    DARK_SHADOWS_LOCK
+        .get_or_init(|| {
+            // Deep ink, high blur, moderate alpha — reads as lift on Mocha.
+            let mut ink = parse_hex("11111b").unwrap_or_else(|_| Hsla::default());
+            ink.a = 0.55;
+            let mut soft = parse_hex("000000").unwrap_or_else(|_| Hsla::default());
+            soft.a = 0.35;
+            vec![
+                BoxShadow::new(px(0.0), px(12.0), soft).blur_radius(px(32.0)),
+                BoxShadow::new(px(0.0), px(4.0), ink).blur_radius(px(12.0)),
+            ]
+        })
+        .as_slice()
+}
 
 fn light_popup_shadows() -> &'static [BoxShadow] {
     LIGHT_SHADOWS_LOCK
         .get_or_init(|| {
-            // Fixed hexes — parse cannot fail on these literals.
             let indigo = parse_hex("3c406e").unwrap_or_else(|_| Hsla::default());
             let accent = parse_hex("007acc").unwrap_or_else(|_| Hsla::default());
             vec![
@@ -171,10 +188,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dark_popup_is_blur_only() {
+    fn dark_popup_has_soft_elevation_shadow() {
         let t = Theme::default();
         let e = t.elevation_popup();
-        assert!(e.shadows.is_empty());
+        assert_eq!(e.shadows.len(), 2, "dark: soft double-layer drop");
+        assert!(!e.shadows[0].inset);
+        assert!(!e.shadows[1].inset);
         assert!(e.glow.is_none());
         assert!(!e.watermark);
         assert_eq!(e.blur.radius, px(18.0));
@@ -204,7 +223,9 @@ mod tests {
     fn light_and_dark_differ_where_intended() {
         let dark = Theme::default().elevation_popup();
         let light = Theme::select_scheme(Some("Light".to_string())).elevation_popup();
-        assert_ne!(dark.shadows.is_empty(), light.shadows.is_empty());
+        // Both have shadows now; light has inset ring, dark does not.
+        assert!(dark.shadows.iter().all(|s| !s.inset));
+        assert!(light.shadows.iter().any(|s| s.inset));
         assert_ne!(dark.glow.is_some(), light.glow.is_some());
         assert_ne!(dark.watermark, light.watermark);
         assert_eq!(dark.blur, light.blur);
