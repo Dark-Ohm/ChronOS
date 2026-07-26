@@ -17,8 +17,6 @@ use crate::state::AppState;
 use crate::updates_popup::{MAX_LIST_H, refresh, upgrade_all, upgrade_selected};
 
 use chronos_ui::{Theme, elevation_apply_light_chrome, elevation_blur_layer};
-use gpui::AnimationExt;
-
 use crate::motion;
 
 // ── Geometry from mockup ────────────────────────────────────────────
@@ -43,13 +41,19 @@ pub struct UpdatesPopupView {
     /// per-session), and a `Running` upgrade disables further toggles so
     /// the user can't scramble the in-flight package set.
     selection: HashSet<String>,
+    /// View-driven enter progress 0..=1 (T129).
+    enter_t: f32,
 }
 
 impl UpdatesPopupView {
-    pub fn new(_cx: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        motion::arm_enter_progress(cx, |this, t| {
+            this.enter_t = t;
+        });
         Self {
             scroll: ScrollHandle::new(),
             selection: HashSet::new(),
+            enter_t: 0.0,
         }
     }
 }
@@ -399,12 +403,7 @@ impl Render for UpdatesPopupView {
             .overflow_hidden();
         let mut card = elevation_apply_light_chrome(&elev, card);
         let card = card.child(header).child(list).child(footer);
-
-        card.with_animation(
-            "updates-popup-enter",
-            motion::enter_animation(),
-            motion::apply_enter_rise,
-        )
+        motion::apply_enter_rise(card, self.enter_t)
     }
 }
 

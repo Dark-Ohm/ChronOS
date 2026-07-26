@@ -16,8 +16,6 @@ use gpui::{
 
 use chronos_services::{BrightnessCommand, PowerProfile, Service, UPowerData};
 use chronos_ui::{Theme, elevation_apply_light_chrome, elevation_blur_layer};
-use gpui::AnimationExt;
-
 use crate::motion;
 use crate::state::AppState;
 use crate::system_popup::{close_this, gaming_mode, POPUP_WIDTH};
@@ -35,13 +33,19 @@ pub struct SystemPopupView {
     dispatched_brightness: Option<u8>,
     /// Live layout bounds of the brightness track (window coords) for hit→frac.
     track_bounds: Rc<Cell<Bounds<Pixels>>>,
+    /// View-driven enter progress 0..=1 (T129).
+    enter_t: f32,
 }
 
 impl SystemPopupView {
-    pub fn new(_cx: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        motion::arm_enter_progress(cx, |this, t| {
+            this.enter_t = t;
+        });
         Self {
             dispatched_brightness: None,
             track_bounds: Rc::new(Cell::new(Bounds::default())),
+            enter_t: 0.0,
         }
     }
 }
@@ -130,11 +134,7 @@ impl Render for SystemPopupView {
                 cx,
             ));
 
-        card.with_animation(
-            "system-popup-enter",
-            motion::enter_animation(),
-            motion::apply_enter_rise,
-        )
+        motion::apply_enter_rise(card, self.enter_t)
     }
 }
 

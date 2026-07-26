@@ -30,7 +30,6 @@ use gpui::{
     MouseButton, MouseDownEvent, Render, SharedString, Styled, Window, canvas, div, img,
     prelude::*, px, svg,
 };
-use gpui::AnimationExt;
 use gpui_animation::animation::TransitionExt;
 
 use crate::motion::{self, SpringBack};
@@ -85,13 +84,19 @@ pub struct VolumePopupView {
     /// Optimistic thumb position during drag: `(kind, volume, last_dispatch_time)`.
     /// Cleared when service catches up or popup closes.
     dispatched_vol: Option<(EndpointKind, f64, std::time::Instant)>,
+    /// View-driven enter progress 0..=1 (T129 — anchored popups).
+    enter_t: f32,
 }
 
 impl VolumePopupView {
-    pub fn new(_cx: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        motion::arm_enter_progress(cx, |this, t| {
+            this.enter_t = t;
+        });
         Self {
             expanded: None,
             dispatched_vol: None,
+            enter_t: 0.0,
         }
     }
 
@@ -224,12 +229,8 @@ impl Render for VolumePopupView {
                 hover,
             ));
 
-        // Root enter via native with_animation (T129) — reliable on new windows.
-        card.with_animation(
-            "volume-popup-enter",
-            motion::enter_animation(),
-            motion::apply_enter_rise,
-        )
+        // View-driven enter (T129) — with_animation was invisible on anchored popups.
+        motion::apply_enter_rise(card, self.enter_t)
     }
 }
 

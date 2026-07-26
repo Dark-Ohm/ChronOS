@@ -21,8 +21,6 @@ use chronos_services::{Notification, NotificationCommand, Service, Urgency};
 use crate::state::AppState;
 
 use chronos_ui::{Theme, elevation_blur_layer, elevation_glow_bar};
-use gpui::AnimationExt;
-
 use crate::motion;
 
 // ── Mockup-faithful geometry ────────────────────────────────────────
@@ -50,12 +48,18 @@ const EMPTY_FZ: f32 = 12.;
 
 pub struct HistoryPopupView {
     scroll: ScrollHandle,
+    /// View-driven enter progress 0..=1 (T129).
+    enter_t: f32,
 }
 
 impl HistoryPopupView {
-    pub fn new(_cx: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        motion::arm_enter_progress(cx, |this, t| {
+            this.enter_t = t;
+        });
         Self {
             scroll: ScrollHandle::new(),
+            enter_t: 0.0,
         }
     }
 }
@@ -180,11 +184,7 @@ impl Render for HistoryPopupView {
         }
 
         let panel = panel.child(body).child(footer);
-        panel.with_animation(
-            "history-popup-enter",
-            motion::enter_animation(),
-            motion::apply_enter_rise,
-        )
+        motion::apply_enter_rise(panel, self.enter_t)
     }
 }
 
