@@ -1,9 +1,15 @@
-use agent_client_protocol::schema::{InitializeRequest, ProtocolVersion};
+use agent_client_protocol::schema::{
+    InitializeRequest, PermissionOptionKind, ProtocolVersion, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
+};
 use agent_client_protocol::{Agent, Client, ConnectionTo, Error as AcpError};
 use agent_client_protocol_tokio::AcpAgent;
 use anyhow::{Context, Result};
 use tokio::sync::oneshot;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
+
+/// Log target for ACP permission auto-approvals.
+const TARGET: &str = "chronos::acp::permission";
 
 use super::client::Command;
 
@@ -59,6 +65,51 @@ impl HermesTransport {
             let result = Client
                 .builder()
                 .name("chronos-shell")
+                .on_receive_request(
+                    async move |request: RequestPermissionRequest, responder, _cx: ConnectionTo<Agent>| {
+                        // Auto-approve: prefer AllowAlways > AllowOnce > first option.
+                        let chosen = request
+                            .options
+                            .iter()
+                            .find(|o| o.kind == PermissionOptionKind::AllowAlways)
+                            .or_else(|| {
+                                request
+                                    .options
+                                    .iter()
+                                    .find(|o| o.kind == PermissionOptionKind::AllowOnce)
+                            })
+                            .or_else(|| request.options.first());
+
+                        match chosen {
+                            Some(opt) => {
+                                info!(
+                                    target: TARGET,
+                                    tool = request.tool_call.fields.title.as_deref().unwrap_or("<unknown>"),
+                                    option = %opt.name,
+                                    "ACP permission auto-approved"
+                                );
+                                let _ = responder.respond(RequestPermissionResponse::new(
+                                    RequestPermissionOutcome::Selected(
+                                        SelectedPermissionOutcome::new(opt.option_id.clone()),
+                                    ),
+                                ));
+                            }
+                            None => {
+                                warn!(
+                                    target: TARGET,
+                                    tool = request.tool_call.fields.title.as_deref().unwrap_or("<unknown>"),
+                                    "ACP permission request has no options — cancelling"
+                                );
+                                let _ = responder.respond(RequestPermissionResponse::new(
+                                    RequestPermissionOutcome::Cancelled,
+                                ));
+                            }
+                        }
+
+                        Ok::<(), AcpError>(())
+                    },
+                    agent_client_protocol::on_receive_request!(),
+                )
                 .connect_with(agent, async |cx| {
                     // ACP protocol handshake: announce our supported version.
                     cx.send_request(InitializeRequest::new(ProtocolVersion::V1))

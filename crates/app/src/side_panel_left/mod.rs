@@ -265,6 +265,7 @@ impl SidePanelLeft {
                             this.chat.push_message(chat_view::ChatMessage {
                                 role: chat_view::MessageRole::Agent,
                                 content: format!("Error: failed to create session: {e}"),
+                                thought: None,
                                 tool_calls: Vec::new(),
                             });
                             cx.notify();

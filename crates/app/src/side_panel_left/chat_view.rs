@@ -22,6 +22,7 @@ pub struct ToolCallPreview {
 pub struct ChatMessage {
     pub role: MessageRole,
     pub content: String,
+    pub thought: Option<String>,
     pub tool_calls: Vec<ToolCallPreview>,
 }
 
@@ -162,8 +163,40 @@ fn render_message(
 
     let tool_cards_section = render_tool_cards(&msg.tool_calls, msg_idx, expanded, theme, cx);
 
+    // Reasoning block (thought): collapsed by default, muted style
+    let reasoning_section = msg.thought.as_ref().filter(|t| !t.is_empty()).map(|thought| {
+        div()
+            .id(format!("reasoning-{msg_idx}"))
+            .mt(px(4.))
+            .rounded(px(6.))
+            .bg(theme.bg.tertiary)
+            .border_1()
+            .border_color(theme.border.subtle)
+            .px(px(8.))
+            .py(px(6.))
+            .flex()
+            .flex_col()
+            .gap(px(4.))
+            .child(
+                div()
+                    .text_size(px(10.))
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(theme.text.muted)
+                    .child("Reasoning"),
+            )
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .line_height(px(16.))
+                    .text_color(theme.text.muted)
+                    .overflow_hidden()
+                    .max_h(px(80.))
+                    .child(thought.clone()),
+            )
+    });
+
     if is_user {
-        // User message: card on #1e1e2e bg with border
+        // User message: card on primary bg with border
         div().w_full().flex().flex_col().child(
             div()
                 .w_full()
@@ -185,6 +218,7 @@ fn render_message(
             .flex()
             .flex_col()
             .child(content)
+            .children(reasoning_section)
             .children(tool_cards_section)
     }
 }

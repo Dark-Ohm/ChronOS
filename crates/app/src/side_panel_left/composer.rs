@@ -281,6 +281,19 @@ fn model_picker(
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.composer_selected_model = m_id.clone();
                     this.composer_model_dropdown_open = false;
+                    // Notify the agent to switch model.
+                    if let Some(client) = this.clients.get(&this.active_agent_id).cloned() {
+                        let model = m_id.clone();
+                        cx.spawn(async move |this, cx| {
+                            if let Err(e) = client.set_model(&model).await {
+                                tracing::warn!("set_model failed: {e}");
+                            }
+                            let _ = this.update(cx, |_this, cx| {
+                                cx.notify();
+                            });
+                        })
+                        .detach();
+                    }
                     cx.notify();
                 }))
                 .child(m_name)
@@ -582,6 +595,7 @@ impl SidePanelLeft {
         self.chat.push_message(ChatMessage {
             role: MessageRole::User,
             content: text.clone(),
+            thought: None,
             tool_calls: Vec::new(),
         });
         self.chat.scroll_to_bottom();
@@ -596,14 +610,30 @@ impl SidePanelLeft {
                         tracing::info!(
                             session_id = %prompt_response.session_id,
                             chars = prompt_response.text.len(),
+                            tools = prompt_response.tools.len(),
                             "composer: ACP reply"
                         );
+                        let tool_previews: Vec<super::chat_view::ToolCallPreview> = prompt_response
+                            .tools
+                            .into_iter()
+                            .map(|t| super::chat_view::ToolCallPreview {
+                                name: t.name,
+                                status: t.status,
+                                args: t.args,
+                                result: t.result,
+                            })
+                            .collect();
                         let _ = this.update(cx, |this, cx| {
                             this.state.session_id = Some(prompt_response.session_id);
                             this.chat.push_message(ChatMessage {
                                 role: MessageRole::Agent,
                                 content: prompt_response.text,
-                                tool_calls: Vec::new(),
+                                thought: if prompt_response.thought.is_empty() {
+                                    None
+                                } else {
+                                    Some(prompt_response.thought)
+                                },
+                                tool_calls: tool_previews,
                             });
                             this.chat.scroll_to_bottom();
                             this.state.agent_status = AgentStatus::Connected;
@@ -633,6 +663,7 @@ impl SidePanelLeft {
                             this.chat.push_message(ChatMessage {
                                 role: MessageRole::Agent,
                                 content: format!("Error: {e}"),
+                                thought: None,
                                 tool_calls: Vec::new(),
                             });
                             this.chat.scroll_to_bottom();
@@ -651,6 +682,7 @@ impl SidePanelLeft {
             self.chat.push_message(ChatMessage {
                 role: MessageRole::Agent,
                 content: "ACP client not connected. Please wait for initialization.".to_string(),
+                thought: None,
                 tool_calls: Vec::new(),
             });
             self.chat.scroll_to_bottom();
