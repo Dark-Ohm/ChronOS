@@ -31,7 +31,8 @@ use gpui::{
     prelude::*, px, svg,
 };
 use gpui_animation::animation::TransitionExt;
-use gpui_animation::transition::Transition;
+
+use crate::motion::{self, SpringBack};
 use gpui_rsx::rsx;
 
 use chronos_services::{
@@ -50,17 +51,6 @@ const TRACK_H: f32 = 4.;
 /// Slider thumb diameter (mockup: 13px).
 const THUMB: f32 = 13.;
 const MAX_DEVICE_ROWS: usize = 8;
-
-/// Spring-overshoot easing adapter so the fork's `EasingCurve::EaseOutBack`
-/// can drive `gpui_animation` declarative transitions (the animation crate
-/// only ships quad/cubic/sine/exponential curves natively).
-struct SpringBack(f32);
-
-impl Transition for SpringBack {
-    fn calculate(&self, t: f32) -> f32 {
-        gpui::easing::EasingCurve::EaseOutBack(self.0).sample(t)
-    }
-}
 
 /// Separate marker types per endpoint. GPUI routes `DragMoveEvent<T>` to
 /// every listener of type `T` — a shared marker made one slider drive both
@@ -94,13 +84,26 @@ pub struct VolumePopupView {
     /// Optimistic thumb position during drag: `(kind, volume, last_dispatch_time)`.
     /// Cleared when service catches up or popup closes.
     dispatched_vol: Option<(EndpointKind, f64, std::time::Instant)>,
+    /// Root-card enter motion (T129).
+    revealed: bool,
 }
 
 impl VolumePopupView {
-    pub fn new(_cx: &mut App) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(motion::reveal_delay())
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.revealed = true;
+                cx.notify();
+            });
+        })
+        .detach();
         Self {
             expanded: None,
             dispatched_vol: None,
+            revealed: false,
         }
     }
 
@@ -151,6 +154,7 @@ impl Render for VolumePopupView {
             .child(blur_layer)
             .overflow_hidden();
         let mut card = elevation_apply_light_chrome(&elev, card);
+        let revealed = self.revealed;
 
         // ── Header «Sound» + ✕ (rsx) ────────────────────────────────
         let header = rsx! {
@@ -188,7 +192,8 @@ impl Render for VolumePopupView {
         };
 
         let drag_preview = self.dispatched_vol;
-        card.child(header)
+        let card = card
+            .child(header)
             .child(endpoint_block(
                 "Volume",
                 EndpointKind::Sink,
@@ -230,7 +235,33 @@ impl Render for VolumePopupView {
                 radius,
                 font_mono,
                 hover,
-            ))
+            ));
+
+        // Root enter: opacity + slight rise (T129). Device-list SpringBack
+        // uses overshoot 1.8 — keep that in-endpoint; root uses default 1.5.
+        div()
+            .id("volume-popup-enter")
+            .relative()
+            .with_transition("volume-popup-enter")
+            .opacity(if revealed {
+                1.0
+            } else {
+                motion::closed_opacity()
+            })
+            .top(if revealed {
+                px(0.)
+            } else {
+                motion::enter_slide_y()
+            })
+            .transition_when(
+                revealed,
+                motion::enter_duration(),
+                SpringBack::default(),
+                |s| {
+                        s.opacity(1.0).translate(px(0.), px(0.))
+                    },
+            )
+            .child(card)
     }
 }
 

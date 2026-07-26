@@ -8,25 +8,37 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-25 (ночь) — polish-to-daily-driver; visual depth T128–T132.**
+**Обновлено: 2026-07-26 — next = T129 motion; panels/theme baseline solid.**
 
 ### Стратегия
 Доводить **шелл до daily driver**, не reddit/Q1 editor. Visual depth:
 **1 glass/glow (T128) → 2 motion (T129–T130) → 3 real 3D spike (T131–T132).**
+Некритичные хвосты / хотелки → **`TBD.md`**.
+
+### Baseline (user, 2026-07-26) — DO NOT re-smoke for “ACCEPT”
+- Panels L/R **рабочие** (6 grim dark+light, content open).
+- Themes **рабочие** (wire + surface roles; critical closed).
+- Exclusive **включается/выключается**.
+- Theme polish / art well / rail icons → **TBD only**.
+
+### Theme (2026-07-25…26) — CRITICAL CLOSED
+- Left `8e8043e`; right `091187c` + surfaces `5de7b31`.
+- Super+Shift+T / `theme.toml` / IPC `toggle-theme`.
 
 ### Active T
-- **T128** elevated + blur tokens — **ACCEPTED WITH CAVEATS** (code committed;
-  report prose stale; live grim still open). Review on disk
-  `report/T128-*-review.md`.
-- **T133** wallpaper × waytrogen — **ACCEPTED WITH CAVEATS** (code in tree;
-  live smoke if waytrogen installed). Card: System tab Next + Open waytrogen.
-- **T126/T127** panels — code+errata; live ACCEPT still open.
+- **T129** panel/popup enter–exit (scale+opacity, `gpui_animation`) —
+  **OPEN** → `orchestration/tasks/active/T129-panel-popup-enter-exit.md`.
+  Не трогать exclusive/theme/features. Эталон: volume `SpringBack` + right
+  `revealed` spawn.
+- **T128** elevation — ACCEPTED WITH CAVEATS (code in tree).
+- **T133** waytrogen — ACCEPTED WITH CAVEATS.
+- **T126/T127** — code done; user baseline supersedes “live ACCEPT open”
+  for daily; formal report-log optional.
 - Pause: T115 Files. orchestration/ gitignored.
 
-### Queued visual (не раздавать до T128)
+### Queued visual (после T129)
 | T | Что |
 |---|---|
-| T129 | Panel/popup enter-exit (scale+opacity, gpui_animation) |
 | T130 | Toast enter/exit |
 | T131 | Fork: 3D scene primitive + example |
 | T132 | One 3D demo surface in shell |
@@ -34,7 +46,16 @@
 ### Панели (кратко)
 - Left: sessions = bar; chat overlay; Dock full exclusive; Super+A.
 - Right: tab rail = bar; content overlay; Dock; Super+G IPC.
+- Surfaces: right uses `side_panel_right/surfaces.rs` (is_light-aware).
 - Dev CLI: `chronos-rebuild && chronos-stop && chronos-start`.
+
+### Docs
+- **`TBD.md`** — parking lot хвостов/хотелок (2026-07-26).
+- **`HANDOFF.md`** — только оперативка/критика/очередь T.
+- **`ARCHITECTURE.md` / `DECISIONS.log`** — канон решений.
+
+**Обновлено: 2026-07-25 (ночь) — polish-to-daily-driver; visual depth T128–T132.**
+(см. блок 2026-07-26 выше: theme panels closed, TBD.md.)
 
 **Обновлено: 2026-07-24 — T119 ПРИНЯТ WITH CAVEATS** (`eac0591`).
 Multi-select rows, footer Upgrade all↔selected, header Check→Refresh,

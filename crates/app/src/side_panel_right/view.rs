@@ -19,8 +19,8 @@ use gpui::{
     prelude::*, px,
 };
 use gpui_animation::animation::TransitionExt;
-use gpui_animation::transition::general::Linear;
 
+use crate::motion::{self, SpringBack};
 use crate::side_panel_right::disks::render_disks_section;
 use crate::side_panel_right::header::render_header;
 use crate::side_panel_right::mpris_card::render_mpris_card;
@@ -47,8 +47,6 @@ use super::surfaces;
 
 /// Delay before peek-close after mouse leaves panel (or strip).
 const PEEK_LEAVE_DEBOUNCE: Duration = Duration::from_millis(280);
-
-const REVEAL_MS: u64 = 180;
 
 pub struct SidePanelRightView {
     mpris: MprisState,
@@ -123,7 +121,7 @@ impl SidePanelRightView {
 
         cx.spawn(async move |this, cx| {
             cx.background_executor()
-                .timer(Duration::from_millis(16))
+                .timer(motion::reveal_delay())
                 .await;
             match this.update(cx, |this, cx| {
                 this.revealed = true;
@@ -384,6 +382,7 @@ impl Render for SidePanelRightView {
             .child(
                 div()
                     .id("side-panel-body")
+                    .relative()
                     .with_transition("side-panel-body")
                     .flex_1()
                     .min_w(px(0.))
@@ -394,10 +393,25 @@ impl Render for SidePanelRightView {
                     .flex()
                     .flex_row() // content first, rail last — rail flush against the screen's right edge
                     .overflow_hidden()
-                    .opacity(if revealed { 1.0 } else { 0.0 })
-                    .transition_when(revealed, Duration::from_millis(REVEAL_MS), Linear, |s| {
-                        s.opacity(1.0)
+                    .opacity(if revealed {
+                        1.0
+                    } else {
+                        motion::closed_opacity()
                     })
+                    // Closed pose: slide from right (positive translate_x).
+                    .left(if revealed {
+                        px(0.)
+                    } else {
+                        motion::enter_slide_x(false)
+                    })
+                    .transition_when(
+                        revealed,
+                        motion::enter_duration(),
+                        SpringBack::default(),
+                        |s| {
+                        s.opacity(1.0).translate(px(0.), px(0.))
+                    },
+                    )
                     .when(content_open, |body| {
                         body.child({
                             let col = div()

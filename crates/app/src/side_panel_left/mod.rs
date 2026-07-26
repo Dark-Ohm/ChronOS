@@ -105,6 +105,8 @@ pub struct SidePanelLeft {
     /// to at most one Wayland `set_size` protocol round-trip per frame
     /// instead of one per raw pointer-motion event.
     last_resized_width: Option<f32>,
+    /// Enter motion (T129): false at open, flipped true after short delay.
+    pub(crate) revealed: bool,
 }
 
 impl Render for SidePanelLeft {
@@ -181,6 +183,20 @@ impl SidePanelLeft {
         )
         .detach();
 
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(crate::motion::reveal_delay())
+                .await;
+            match this.update(cx, |this, cx| {
+                this.revealed = true;
+                cx.notify();
+            }) {
+                Ok(()) => {}
+                Err(e) => tracing::debug!("side_panel_left: reveal skipped (view gone): {e}"),
+            }
+        })
+        .detach();
+
         Self {
             state: state::SidePanelLeftState::new(),
             agents,
@@ -204,6 +220,7 @@ impl SidePanelLeft {
             resize_start_x: None,
             resize_start_width: None,
             last_resized_width: None,
+            revealed: false,
         }
     }
 

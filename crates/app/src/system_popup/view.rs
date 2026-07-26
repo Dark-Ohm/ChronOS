@@ -16,7 +16,9 @@ use gpui::{
 
 use chronos_services::{BrightnessCommand, PowerProfile, Service, UPowerData};
 use chronos_ui::{Theme, elevation_apply_light_chrome, elevation_blur_layer};
+use gpui_animation::animation::TransitionExt;
 
+use crate::motion::{self, SpringBack};
 use crate::state::AppState;
 use crate::system_popup::{close_this, gaming_mode, POPUP_WIDTH};
 
@@ -33,13 +35,26 @@ pub struct SystemPopupView {
     dispatched_brightness: Option<u8>,
     /// Live layout bounds of the brightness track (window coords) for hit→frac.
     track_bounds: Rc<Cell<Bounds<Pixels>>>,
+    /// Root-card enter motion (T129).
+    revealed: bool,
 }
 
 impl SystemPopupView {
-    pub fn new(_cx: &mut App) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(motion::reveal_delay())
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.revealed = true;
+                cx.notify();
+            });
+        })
+        .detach();
         Self {
             dispatched_brightness: None,
             track_bounds: Rc::new(Cell::new(Bounds::default())),
+            revealed: false,
         }
     }
 }
@@ -88,7 +103,8 @@ impl Render for SystemPopupView {
             .overflow_hidden();
         let mut card = elevation_apply_light_chrome(&elev, card);
 
-        card.child(header(text_primary, text_muted, hover, radius, font_ui))
+        let card = card
+            .child(header(text_primary, text_muted, hover, radius, font_ui))
             .child(div().w_full().h(px(1.)).bg(divider))
             .child(brightness_block(
                 &brightness,
@@ -125,7 +141,32 @@ impl Render for SystemPopupView {
                 radius,
                 font_ui,
                 cx,
-            ))
+            ));
+
+        let revealed = self.revealed;
+        div()
+            .id("system-popup-enter")
+            .relative()
+            .with_transition("system-popup-enter")
+            .opacity(if revealed {
+                1.0
+            } else {
+                motion::closed_opacity()
+            })
+            .top(if revealed {
+                px(0.)
+            } else {
+                motion::enter_slide_y()
+            })
+            .transition_when(
+                revealed,
+                motion::enter_duration(),
+                SpringBack::default(),
+                |s| {
+                        s.opacity(1.0).translate(px(0.), px(0.))
+                    },
+            )
+            .child(card)
     }
 }
 

@@ -1,6 +1,7 @@
 //! Chronos app library - public API for examples and tests.
 
 pub mod monitor;
+pub mod motion;
 pub mod notifications;
 pub mod side_panel_right;
 pub mod state;

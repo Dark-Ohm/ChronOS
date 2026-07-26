@@ -1,6 +1,9 @@
 use gpui::{Context, IntoElement, Window, div, img, prelude::*, px};
+use gpui_animation::animation::TransitionExt;
 
 use chronos_ui::{Theme, elevation_glow_bar};
+
+use crate::motion::{self, SpringBack};
 
 use super::SidePanelLeft;
 use super::sessions_list::{SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_HANDLE_WIDTH};
@@ -328,7 +331,10 @@ pub fn render_panel(
     // Elevated chrome на content-колонке (только когда чат открыт, не
     // rail-only) — общий язык глубины из `theme.elevation_popup()` (T128).
     let elev = Theme::global(cx).elevation_popup();
+    let revealed = panel.revealed;
 
+    // Outer: sole window-level on_hover (peek debounce). Inner motion wrapper
+    // holds with_transition — fork allows one on_hover per element (T129).
     div()
         .id("side-panel-left-root")
         .w(px(panel.state.width))
@@ -344,45 +350,74 @@ pub fn render_panel(
         })
         .child(
             div()
-                .id("main-content")
+                .id("side-panel-left-motion")
+                .relative()
+                .with_transition("side-panel-left-enter")
                 .flex_1()
                 .min_w(px(0.))
-                .overflow_hidden()
                 .h_full()
                 .flex()
-                .flex_col()
-                .bg(theme.bg.primary)
-                .shadow(elev.shadows.to_vec())
-                // Agent header ("Hermes" + ✕) only when chat is out — bar-only
-                // is sessions sidebar chrome, like the right tab rail.
-                .when(chat_open, |el| {
-                    let el = el.child(header).children(dropdown);
-                    match elev.glow {
-                        Some(glow) => el.child(elevation_glow_bar(glow)),
-                        None => el,
-                    }
+                .flex_row()
+                .opacity(if revealed {
+                    1.0
+                } else {
+                    motion::closed_opacity()
                 })
-                .child(clipped_content),
-        )
-        .child(
-            div()
-                .id("resize-handle")
-                .flex_none()
-                .w(px(SIDEBAR_HANDLE_WIDTH))
-                .h_full()
-                .cursor_col_resize()
-                .flex()
-                .items_center()
-                .justify_center()
-                .bg(theme.bg.tertiary)
-                .border_l_1()
-                .border_color(theme.border.subtle)
-                .on_mouse_down(gpui::MouseButton::Left, resize_mouse_handler)
-                .on_drag(super::LeftPanelResize, |_, _, _, cx| {
-                    cx.new(|_| gpui::EmptyView)
+                .left(if revealed {
+                    px(0.)
+                } else {
+                    motion::enter_slide_x(true)
                 })
-                .on_drag_move(resize_drag_handler)
-                .child(div().w(px(1.)).h_full().bg(theme.text.disabled)),
+                .transition_when(
+                    revealed,
+                    motion::enter_duration(),
+                    SpringBack::default(),
+                    |s| {
+                        s.opacity(1.0).translate(px(0.), px(0.))
+                    },
+                )
+                .child(
+                    div()
+                        .id("main-content")
+                        .flex_1()
+                        .min_w(px(0.))
+                        .overflow_hidden()
+                        .h_full()
+                        .flex()
+                        .flex_col()
+                        .bg(theme.bg.primary)
+                        .shadow(elev.shadows.to_vec())
+                        // Agent header ("Hermes" + ✕) only when chat is out — bar-only
+                        // is sessions sidebar chrome, like the right tab rail.
+                        .when(chat_open, |el| {
+                            let el = el.child(header).children(dropdown);
+                            match elev.glow {
+                                Some(glow) => el.child(elevation_glow_bar(glow)),
+                                None => el,
+                            }
+                        })
+                        .child(clipped_content),
+                )
+                .child(
+                    div()
+                        .id("resize-handle")
+                        .flex_none()
+                        .w(px(SIDEBAR_HANDLE_WIDTH))
+                        .h_full()
+                        .cursor_col_resize()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(theme.bg.tertiary)
+                        .border_l_1()
+                        .border_color(theme.border.subtle)
+                        .on_mouse_down(gpui::MouseButton::Left, resize_mouse_handler)
+                        .on_drag(super::LeftPanelResize, |_, _, _, cx| {
+                            cx.new(|_| gpui::EmptyView)
+                        })
+                        .on_drag_move(resize_drag_handler)
+                        .child(div().w(px(1.)).h_full().bg(theme.text.disabled)),
+                ),
         )
 }
 

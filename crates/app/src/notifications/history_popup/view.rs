@@ -21,6 +21,9 @@ use chronos_services::{Notification, NotificationCommand, Service, Urgency};
 use crate::state::AppState;
 
 use chronos_ui::{Theme, elevation_blur_layer, elevation_glow_bar};
+use gpui_animation::animation::TransitionExt;
+
+use crate::motion::{self, SpringBack};
 
 // ── Mockup-faithful geometry ────────────────────────────────────────
 const PADDING: f32 = 10.;
@@ -47,12 +50,25 @@ const EMPTY_FZ: f32 = 12.;
 
 pub struct HistoryPopupView {
     scroll: ScrollHandle,
+    /// Root-card enter motion (T129).
+    revealed: bool,
 }
 
 impl HistoryPopupView {
-    pub fn new(_cx: &mut App) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(motion::reveal_delay())
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.revealed = true;
+                cx.notify();
+            });
+        })
+        .detach();
         Self {
             scroll: ScrollHandle::new(),
+            revealed: false,
         }
     }
 }
@@ -176,7 +192,31 @@ impl Render for HistoryPopupView {
             panel = panel.child(elevation_glow_bar(glow));
         }
 
-        panel.child(body).child(footer)
+        let revealed = self.revealed;
+        let panel = panel.child(body).child(footer);
+        div()
+            .id("history-popup-enter")
+            .relative()
+            .with_transition("history-popup-enter")
+            .opacity(if revealed {
+                1.0
+            } else {
+                motion::closed_opacity()
+            })
+            .top(if revealed {
+                px(0.)
+            } else {
+                motion::enter_slide_y()
+            })
+            .transition_when(
+                revealed,
+                motion::enter_duration(),
+                SpringBack::default(),
+                |s| {
+                        s.opacity(1.0).translate(px(0.), px(0.))
+                    },
+            )
+            .child(panel)
     }
 }
 
