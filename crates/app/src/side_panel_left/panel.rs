@@ -302,6 +302,17 @@ pub fn render_panel(
                         .text_color(theme.text.secondary)
                         .child(agent_name),
                 )
+                .child({
+                    let status_text = match panel.state.agent_status {
+                        super::state::AgentStatus::Connected => "Connected",
+                        super::state::AgentStatus::Disconnected => "Disconnected",
+                        super::state::AgentStatus::Thinking => "Thinking…",
+                    };
+                    div()
+                        .text_size(px(10.5))
+                        .text_color(theme.text.muted)
+                        .child(status_text)
+                })
                 .child(
                     div()
                         .text_size(px(9.))

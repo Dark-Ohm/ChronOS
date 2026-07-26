@@ -12,7 +12,7 @@ mod tests {
         if std::env::var_os("CHRONOS_SMOKE_HERMES_ACP").is_none() {
             return;
         }
-        let client = HermesClient::new(HermesConfig::default())
+        let client = HermesClient::new(HermesConfig::default(), Default::default())
             .await
             .expect("spawn hermes acp");
         let s1 = client.create_session().await.expect("create session");

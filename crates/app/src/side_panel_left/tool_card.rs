@@ -36,9 +36,9 @@ impl<'a> ToolCard<'a> {
             .flex()
             .items_center()
             .justify_between()
-            .px(px(8.))
-            .py(px(4.))
-            .rounded(px(6.))
+            .px(px(10.))
+            .py(px(7.))
+            .rounded(px(8.))
             .cursor_pointer()
             .hover(|s| s.bg(theme.bg.elevated));
 
@@ -55,8 +55,9 @@ impl<'a> ToolCard<'a> {
                     .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(status_color))
                     .child(
                         div()
-                            .text_size(px(10.))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .font_family(theme.font_mono)
+                            .text_size(px(10.5))
+                            .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(theme.text.primary)
                             .child(self.name.to_string()),
                     )
@@ -75,8 +76,7 @@ impl<'a> ToolCard<'a> {
             );
 
         let mut card = div()
-            .mx(px(4.))
-            .rounded(px(6.))
+            .rounded(px(8.))
             .bg(theme.bg.primary)
             .border_1()
             .border_color(theme.border.default)
@@ -84,8 +84,8 @@ impl<'a> ToolCard<'a> {
 
         if self.expanded {
             let mut details = div()
-                .px(px(8.))
-                .py(px(4.))
+                .px(px(10.))
+                .py(px(7.))
                 .border_t_1()
                 .border_color(theme.border.default)
                 .flex()
@@ -113,7 +113,8 @@ impl<'a> ToolCard<'a> {
                                     .py(px(4.))
                                     .rounded(px(4.))
                                     .bg(theme.bg.tertiary)
-                                    .text_size(px(9.))
+                                    .font_family(theme.font_mono)
+                                    .text_size(px(10.))
                                     .text_color(theme.text.secondary)
                                     .child(args.to_string()),
                             ),
@@ -142,7 +143,8 @@ impl<'a> ToolCard<'a> {
                                     .py(px(4.))
                                     .rounded(px(4.))
                                     .bg(theme.bg.tertiary)
-                                    .text_size(px(9.))
+                                    .font_family(theme.font_mono)
+                                    .text_size(px(10.))
                                     .text_color(theme.text.secondary)
                                     .child(result.to_string()),
                             ),

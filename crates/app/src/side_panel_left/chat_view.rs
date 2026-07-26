@@ -67,7 +67,7 @@ impl ChatView {
             .track_scroll(&self.scroll)
             .flex()
             .flex_col()
-            .gap(px(11.))
+            .gap(px(9.))
             .px(px(14.))
             .py(px(14.))
             .when(has_messages, |el| {
@@ -196,28 +196,37 @@ fn render_message(
     });
 
     if is_user {
-        // User message: card on primary bg with border
-        div().w_full().flex().flex_col().child(
+        // User message: right-aligned bubble
+        div().w_full().flex().justify_end().child(
             div()
-                .w_full()
-                .bg(theme.bg.primary)
-                .border_1()
-                .border_color(theme.border.subtle)
-                .rounded(px(7.))
+                .bg(theme.bg.elevated)
+                .rounded(px(9.))
                 .px(px(10.))
-                .py(px(8.))
+                .py(px(7.))
                 .flex()
                 .flex_col()
                 .child(content)
                 .children(tool_cards_section),
         )
     } else {
-        // Agent message: flat text, no bg
+        // Agent message: left-aligned bubble
         div()
             .w_full()
             .flex()
             .flex_col()
-            .child(content)
+            .child(
+                div()
+                    .bg(theme.bg.secondary)
+                    .border_1()
+                    .border_color(theme.border.subtle)
+                    .rounded(px(9.))
+                    .px(px(10.))
+                    .py(px(7.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.))
+                    .child(content),
+            )
             .children(reasoning_section)
             .children(tool_cards_section)
     }

@@ -1,5 +1,5 @@
 use gpui::{IntoElement, SharedString, Window, div, prelude::*, px};
-use chronos_ui::Theme;
+use chronos_ui::{Theme, on_fill};
 
 use super::SidePanelLeft;
 use super::chat_view::{ChatMessage, MessageRole};
@@ -48,14 +48,13 @@ pub fn render_composer(
     let text = &panel.composer_text;
     let has_text = !text.is_empty();
 
-    // Detect if send is active: text non-empty AND agent not thinking
     let send_active = has_text && panel.state.agent_status != AgentStatus::Thinking;
 
     // ── YOLO state ──────────────────────────────────────────────────
     let yolo_mode_id = panel.composer_yolo_bypass_id.as_deref();
     let has_modes = !panel.available_modes.is_empty();
     let is_yolo_active = yolo_mode_id
-        .map(|yid| panel.composer_selected_mode == yid)
+        .map(|yid| panel.composer_selected_mode == *yid)
         .unwrap_or(false);
 
     // ── Text display (placeholder or content) ───────────────────────
@@ -66,27 +65,18 @@ pub fn render_composer(
         .map(|a| a.display_name.as_str())
         .unwrap_or("Agent");
 
-    // ── Toolbar ────────────────────────
-    // We build pickers and dynamic parts as closures / conditional items
-    // because rsx! doesn't handle closures-with-listeners well.
-    let toolbar = div()
-        .id("composer-toolbar")
+    // ── Pickers row (above textarea) ────────────────────────────────
+    let pickers_row = div()
+        .id("composer-pickers-row")
         .flex_none()
         .flex()
         .items_center()
         .gap(px(6.))
-        .h(px(32.))
-        .child(attach_button(panel, cx))
-        .children(yolo_button(panel, is_yolo_active, has_modes, cx))
-        .child(div().flex_1())
         .children(model_picker(panel, cx))
         .children(mode_picker(panel, cx))
-        .child(send_button(panel, send_active, cx));
+        .children(yolo_button(panel, is_yolo_active, has_modes, cx));
 
-    // ── Textarea (homemade canvas-style, fallback) ──────────────────
-    // C-2: gpui-component TextInput would replace this block.
-    // If integration fails, this stays — styled as transparent canvas
-    // with auto-grow (min ~3 lines, max 45% panel height).
+    // ── Textarea ────────────────────────────────────────────────────
     let enabled = panel.state.agent_status != AgentStatus::Disconnected;
     let focus = panel.composer_focus.clone();
 
@@ -102,9 +92,8 @@ pub fn render_composer(
         theme.text.primary
     };
 
-    // Estimate line count for auto-grow: count \n + estimate wrap
-    let panel_content_width = panel.state.width - 24.0; // ~px padding on each side
-    let glyph_approx_px = 7.0; // at 12.5px font
+    let panel_content_width = panel.state.width - 24.0;
+    let glyph_approx_px = 7.0;
     let max_chars_per_line = (panel_content_width / glyph_approx_px).max(10.0) as usize;
 
     let lines: usize = text
@@ -118,19 +107,18 @@ pub fn render_composer(
             }
         })
         .sum();
-    let visible_lines = lines.max(3).min(100); // cap visible
-    let line_height_px = 18.0; // 12.5px font * ~1.45 line-height
+    let visible_lines = lines.max(3).min(100);
+    let line_height_px = 18.0;
     let input_height = px((visible_lines as f32 * line_height_px).min(panel.state.height * 0.45));
 
     let text_input = div()
         .id("composer-input-canvas")
-        .flex_none()
-        .min_h(px(64.)) // ~3 rows
+        .flex_1()
+        .min_h(px(48.))
         .max_h(px(panel.state.height * 0.45))
         .h(input_height)
-        .w_full()
-        .px(px(14.))
-        .py(px(8.))
+        .px(px(6.))
+        .py(px(2.))
         .overflow_y_scroll()
         .text_size(px(12.5))
         .line_height(px(18.))
@@ -148,21 +136,38 @@ pub fn render_composer(
         }))
         .child(input_display);
 
+    // ── Input container (bordered box: attach + textarea + send) ─────
+    let input_container = div()
+        .id("composer-input-container")
+        .flex_none()
+        .flex()
+        .items_end()
+        .gap(px(6.))
+        .bg(theme.bg.primary)
+        .border_1()
+        .border_color(theme.border.subtle)
+        .rounded(px(8.))
+        .px(px(7.))
+        .py(px(6.))
+        .child(attach_button(panel, cx))
+        .child(text_input)
+        .child(send_button(panel, send_active, cx));
+
     // ── Compose container ───────────────────────────────────────────
     div()
         .id("composer-wrap")
         .flex_none()
-        // main-content/chat bg is #1e1e2e (panel.rs "main-content"), not
-        // #181825 (that's the panel-root/sidebar shade) — match it exactly
-        // so chat and composer read as one surface, not two stacked panes.
         .bg(theme.bg.primary)
         .border_t_1()
         .border_color(theme.border.subtle)
+        .px(px(9.))
+        .py(px(9.))
         .flex()
         .flex_col()
+        .gap(px(7.))
         .when(!enabled, |el| el.opacity(0.5))
-        .child(text_input)
-        .child(toolbar)
+        .child(pickers_row)
+        .child(input_container)
 }
 
 // ── Attach button ──────────────────────────────────────────────────────
@@ -170,13 +175,13 @@ fn attach_button(_panel: &SidePanelLeft, _cx: &mut Context<SidePanelLeft>) -> im
     let theme = *Theme::global(_cx);
     div()
         .id("composer-attach")
-        .w(px(22.))
-        .h(px(22.))
-        .rounded(px(6.))
+        .w(px(18.))
+        .h(px(18.))
+        .rounded(px(5.))
         .flex()
         .items_center()
         .justify_center()
-        .text_size(px(14.))
+        .text_size(px(11.))
         .text_color(theme.text.muted)
         .cursor_pointer()
         .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.secondary))
@@ -308,8 +313,10 @@ fn model_picker(
                 div()
                     .id("composer-model-picker")
                     .h(px(22.))
-                    .px(px(6.))
-                    .rounded(px(4.))
+                    .px(px(8.))
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(theme.border.subtle)
                     .flex()
                     .items_center()
                     .text_size(px(10.5))
@@ -409,8 +416,10 @@ fn mode_picker(panel: &SidePanelLeft, cx: &mut Context<SidePanelLeft>) -> Option
                 div()
                     .id("composer-mode-picker")
                     .h(px(22.))
-                    .px(px(6.))
-                    .rounded(px(4.))
+                    .px(px(8.))
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(theme.border.subtle)
                     .flex()
                     .items_center()
                     .text_size(px(10.5))
@@ -460,34 +469,32 @@ fn send_button(
     cx: &mut Context<SidePanelLeft>,
 ) -> impl IntoElement {
     let theme = *Theme::global(cx);
-    // Deviation #1: dark send button (not blue)
-    // bg #11111b, border 1px #313244, icon #cdd6f4; hover bg #232336, border #45475a
-    // 24×24, rounded 6
     let is_connected = panel.state.agent_status != AgentStatus::Disconnected;
+    let fill = on_fill(theme.accent.primary);
 
     div()
         .id("composer-send")
-        .w(px(24.))
-        .h(px(24.))
+        .w(px(22.))
+        .h(px(22.))
         .rounded(px(6.))
         .flex()
         .items_center()
         .justify_center()
-        .text_size(px(12.))
-        .bg(theme.bg.tertiary)
-        .border_1()
-        .border_color(theme.border.default)
-        .text_color(if active {
-            theme.text.primary
-        } else {
-            theme.text.disabled
-        })
+        .text_size(px(11.))
         .when(active && is_connected, |el| {
-            el.cursor_pointer()
-                .hover(|s| s.bg(theme.border.subtle).border_color(theme.text.disabled))
+            el.bg(theme.accent.primary)
+                .text_color(fill)
+                .cursor_pointer()
+                .hover(|s| s.bg(theme.accent.hover))
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.send_composer(window, cx);
                 }))
+        })
+        .when(!active || !is_connected, |el| {
+            el.bg(theme.bg.tertiary)
+                .border_1()
+                .border_color(theme.border.default)
+                .text_color(theme.text.disabled)
         })
         .child("\u{27A4}")
 }
