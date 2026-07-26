@@ -1087,3 +1087,23 @@ after their GUI; companion CTA when missing; no GPUI fallback gallery.
 | `TBD.md` | non-blocking polish + wishlist (no T-ID required) |
 | `MEMORY.md` | durable cross-session facts (not daily queue) |
 | `roadmap.md` | quarterly order of work |
+
+## 2026-07-26 — Edit Mode + hot-reload front (not Plasma)
+
+**Context:** User asked for "edit mode" + wire hot-reload. Prior DECISIONS
+(2026-07-24) already rejected Plasma-style editor as product identity and
+full `crates/app` dylib hot-swap.
+
+**Accepted direction (design):**
+- **Edit Mode** = runtime flag + chrome affordances for **layout
+  customization**, config-backed (`bar.toml` first).
+- **Config hot-reload** (theme/dock pattern) = product "live without restart".
+- **Dev hotview** (`hot-lib-reloader`) = separate developer path; expand later
+  (T136), do not conflate with Edit Mode.
+- Phase 1 = T134 (bar.toml + EditMode shell + minimal move UI).
+- Phase 2 = drag (T135). Phase 3 = hotview expand (T136).
+
+**Rejected again:** Plasma applet slots; full app hot-swap; subsecond.
+
+**Spec:** `docs/superpowers/specs/2026-07-26-edit-mode-and-hot-reload-design.md`
+builds on `2026-07-24-bar-widget-layout-config-design.md`.

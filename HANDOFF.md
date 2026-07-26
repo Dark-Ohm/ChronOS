@@ -8,39 +8,47 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-26 (вечер) — theme/panels solid; T129 motion PARKED.**
+**Обновлено: 2026-07-26 (ночь) — next = Edit Mode + bar layout hot-reload (T134).**
 
 ### Стратегия
 Доводить **шелл до daily driver**, не reddit/Q1 editor.  
-Некритичные хвосты / хотелки → **`TBD.md`** (не сюда, не T-ID до созревания).
+Некритичные хвосты → **`TBD.md`**.  
+**Не Plasma-edit** (DECISIONS 2026-07-24) — Shell-IDE + **config-backed
+chrome layout** + dev `hotview`.
 
 ### Baseline (user, 2026-07-26) — daily chrome
-- **Panels L/R рабочие** (user grim dark+light ×6, content open).
-- **Themes рабочие** (critical closed; Super+Shift+T).
-- **Exclusive on/off** работает.
-- Theme polish / art well / rail icons → **TBD only**.
+- Panels L/R + themes + exclusive — **OK** (не пере-смокить ради ACCEPT).
+- T129 motion — **PARKED** (panels slide; popups enter not done).
 
 ### Theme (2026-07-25…26) — CRITICAL CLOSED
 | | Commit | Note |
 |---|---|---|
-| Left | `8e8043e` | Theme tokens, не mocha hardcode |
-| Right | `091187c` + `5de7b31` | wire + `surfaces.rs` Light C roles (chrome/card/well) |
-| Toggle | `d52d06d` | Super+Shift+T, `theme.toml`, IPC `toggle-theme` |
+| Left | `8e8043e` | Theme tokens |
+| Right | `091187c` + `5de7b31` | surfaces Light C roles |
+| Toggle | `d52d06d` | Super+Shift+T / theme.toml |
 
-### T129 motion — PARKED (not accepted)
-- **Попытка** enter panel/popup (коммиты `aeff604`…`ce6fff3`).
-- **Live:** панели **выезжают** (`with_animation`); volume/popups enter **не
-  довёли** (hard cut / compositor fade on close). User: «забей».
-- Код в дереве (`crates/app/src/motion.rs`, enter_t / with_animation) —
-  **не удалять пока**, не продолжать без нового брифа. Хвост → `TBD.md`.
-- **T130** toast motion — **не начинать** до явного «продолжить motion».
+### Edit Mode + Hot Reload (NEW front)
+**Спека:** `docs/superpowers/specs/2026-07-26-edit-mode-and-hot-reload-design.md`  
+**Уже есть:** theme/dock config hot-reload; Luau plugin inotify; dev
+`hot-lib-reloader` + `crates/hotview` (network only, bake-off winner).  
+**Дыра:** bar order still hardcoded in `register_builtin` (спека bar.toml
+2026-07-24 была без T).
+
+| Phase | T | Что |
+|---|---|---|
+| **1** | **T134 OPEN** | `bar.toml` + hot-reload + EditMode global/IPC + minimal move UI |
+| 2 | T135 | Drag reorder (поверх T134) |
+| 3 | T136 | Expand hotview pure renders + dev docs |
+
+Бриф: `orchestration/tasks/active/T134-bar-layout-edit-mode-config.md`
+(local; orchestration gitignored).
 
 ### Active T
-- **Нет** обязательного T в полёте (после park T129).
-- **T128** elevation — ACCEPTED WITH CAVEATS (`f4e8f17` + errata).
-- **T133** waytrogen — ACCEPTED WITH CAVEATS (`11222c8`).
-- **T126/T127** panels exclusive — code done; user daily baseline OK.
-- Pause: T115 Files. `orchestration/` gitignored.
+- **T134** bar layout config + edit mode shell — **OPEN**.
+- T128 / T133 — ACCEPTED WITH CAVEATS.
+- T126/T127 — code done.
+- T129 — PARKED.
+- Pause: T115 Files.
 
 ### Queued visual (когда снова motion / 3D)
 | T | Что | Status |

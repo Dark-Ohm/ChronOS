@@ -4,7 +4,7 @@
 > Не замена `HANDOFF.md` (оперативка) и не `orchestration/tasks/` (T-ID).
 > Когда пункт созрел → бриф T-ID или вычёркивание с датой/коммитом.
 >
-> **Обновлено:** 2026-07-26 (вечер) — theme/panels closed; T129 motion PARKED
+> **Обновлено:** 2026-07-26 (ночь) — next T134 Edit Mode / bar.toml
 
 ## Правила
 
@@ -73,6 +73,15 @@
 - [ ] Daily smoke checklist: Super+Shift+T light+dark, both panels content open, grim.
 - [ ] `unwrap`/`expect` cleanup (~163 warn) — по касанию, не разом.
 - [ ] `let _ = fallible` hygiene — по касанию файлов.
+
+## Edit mode / hot-reload (после T134)
+
+- [ ] **T134** bar.toml + EditMode shell — **OPEN** (see HANDOFF / design
+      `2026-07-26-edit-mode-and-hot-reload-design.md`).
+- [ ] T135 — drag reorder bar widgets.
+- [ ] T136 — hotview: more pure renders + dev-cli recipe.
+- [ ] Panel layout config (widths / default dock).
+- [ ] Multiple bars / free edges — later.
 
 ## Wishlist (идеи, без срока)
 
