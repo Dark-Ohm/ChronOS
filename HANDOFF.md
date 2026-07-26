@@ -8,7 +8,7 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-26 — T134 ACCEPTED; next = ACP left panel revive.**
+**Обновлено: 2026-07-26 — front = ACP panel revive (T137 chat P0).**
 
 ### Стратегия
 Доводить **шелл до daily driver**, не reddit/Q1 editor.  
@@ -21,33 +21,30 @@ chrome layout** + dev `hotview`.
 - T129 motion — **PARKED**.
 - **T134 Edit Mode + bar.toml** — **ACCEPTED** (`64c777d` + hypr bind).
 
-### Theme (2026-07-25…26) — CRITICAL CLOSED
-| | Commit | Note |
-|---|---|---|
-| Left | `8e8043e` | Theme tokens |
-| Right | `091187c` + `5de7b31` | surfaces Light C roles |
-| Toggle | `d52d06d` | Super+Shift+T / theme.toml |
+### ACP left panel revive (NEW front)
+**User pain:** chat dead; no other agents (want Grok etc.); UI = Zed
+clone without ChronOS character.
 
-### Edit Mode + Hot Reload — T134 CLOSED
-**Спека:** `docs/superpowers/specs/2026-07-26-edit-mode-and-hot-reload-design.md`  
-**Code:** `64c777d`. **Bind:** Super+Shift+E → `toggle-edit-mode` (hyprland.lua).  
-**Accept evidence:** grim EDIT chrome; log hot-reload + move; restart OK.  
-Popup-gate: code only (no ydotool). Report-log T134.
+**Спека:** `docs/superpowers/specs/2026-07-26-acp-panel-revive-design.md`
 
 | Phase | T | Что |
 |---|---|---|
-| 1 | **T134 ACCEPTED** | bar.toml + EditMode + ◀▶ |
-| 2 | T135 | Drag reorder — later if needed |
-| 3 | T136 | hotview expand — later |
+| **A P0** | **T137 OPEN** | Chat must work: stable session, send, open UX |
+| B | T138 | Multi-agent registry + add (verified ACP only) |
+| C | T139 | ChronOS visual character (not Zed port) |
 
-### Next front
-**ACP left panel revive** (user 2026-07-26) — agent panel / Hermes ACP
-оживление. Не T135/T136 пока не скажут.
+**Evidence already:** `known_agents` = Hermes only; `send_prompt` new
+session every time; UI sessions fake UUIDs; Super+A = rail-only width;
+log `command channel closed`.
+
+Brief: `orchestration/tasks/active/T137-acp-chat-must-work.md`
+
+### Edit Mode — T134 CLOSED
+`64c777d` + Super+Shift+E. T135 drag / T136 hotview — later.
 
 ### Active T
-- **Next:** ACP panel revive (brief TBD).
-- T134 — **ACCEPTED**.
-- T128 / T133 — ACCEPTED WITH CAVEATS.
+- **T137** ACP chat must work — **OPEN**.
+- T134 — ACCEPTED.
 - T129 — PARKED.
 - Pause: T115 Files.
 

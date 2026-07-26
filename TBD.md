@@ -79,7 +79,12 @@
 - [x] **T134** bar.toml + EditMode — **ACCEPTED** 2026-07-26 (`64c777d`).
 - [ ] T135 — drag reorder bar widgets (only if ◀▶ insufficient).
 - [ ] T136 — hotview: more pure renders + dev-cli recipe.
-- [ ] **ACP left panel revive** — next front (user).
+
+## ACP panel revive (2026-07-26 front)
+
+- [ ] **T137** chat must work (session reuse, send, open width) — **OPEN**.
+- [ ] **T138** multi-agent registry + add (Grok only if real ACP).
+- [ ] **T139** ChronOS visual character (not Zed clone).
 - [ ] Panel layout config (widths / default dock).
 - [ ] Multiple bars / free edges — later.
 
