@@ -76,9 +76,10 @@
 
 ## Edit mode / hot-reload (после T134)
 
-- [ ] **T134** bar.toml + EditMode shell — code `64c777d`, **live smoke PENDING**.
-- [ ] T135 — drag reorder bar widgets.
+- [x] **T134** bar.toml + EditMode — **ACCEPTED** 2026-07-26 (`64c777d`).
+- [ ] T135 — drag reorder bar widgets (only if ◀▶ insufficient).
 - [ ] T136 — hotview: more pure renders + dev-cli recipe.
+- [ ] **ACP left panel revive** — next front (user).
 - [ ] Panel layout config (widths / default dock).
 - [ ] Multiple bars / free edges — later.
 
