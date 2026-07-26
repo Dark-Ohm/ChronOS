@@ -41,8 +41,8 @@ fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
 fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     let display_h = display_height(display_id, cx);
     let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
-    // Super+A opens sidebar-only (collapsed strip + handle), not full chat.
-    let open_w = sessions_list::SIDEBAR_MIN_WIDTH;
+    // Super+A opens wide enough for chat column (not rail-only strip).
+    let open_w = state::SidePanelLeftState::DEFAULT_CHAT_WIDTH;
     WindowOptions {
         display_id,
         titlebar: None,
@@ -145,6 +145,10 @@ impl SidePanelLeft {
         // Lazy-spawn the default agent (first in registry).
         let default_config = agents.first().map(|a| a.config.clone()).unwrap_or_default();
         let agent_id = active_agent_id.clone();
+        let mut state = state::SidePanelLeftState::new();
+        // Connecting until HermesClient::new + create_session complete.
+        state.agent_status = state::AgentStatus::Thinking;
+
         cx.spawn(
             async move |this, cx| match HermesClient::new(default_config).await {
                 Ok(client) => {
@@ -159,6 +163,7 @@ impl SidePanelLeft {
                         this.state.agent_status = state::AgentStatus::Connected;
                         tracing::info!("side_panel_left: ACP client connected");
                         if let Ok(session) = session {
+                            this.state.session_id = Some(session.id.to_string());
                             if let Some(modes) = session.modes {
                                 this.composer_selected_mode = modes.current_id;
                                 this.available_modes = modes.available;
@@ -168,6 +173,10 @@ impl SidePanelLeft {
                                 this.composer_selected_model = models.current_id;
                                 this.available_models = models.available;
                             }
+                        } else if let Err(e) = session {
+                            tracing::warn!(
+                                "side_panel_left: create_session after connect failed: {e}"
+                            );
                         }
                     });
                 }
@@ -182,7 +191,7 @@ impl SidePanelLeft {
         .detach();
 
         Self {
-            state: state::SidePanelLeftState::new(),
+            state,
             agents,
             clients: HashMap::new(),
             active_agent_id,
@@ -226,6 +235,45 @@ impl SidePanelLeft {
             s.active = false;
         }
         self.state.active_session_id = Some(id);
+        // Clear local transcript; mint a fresh ACP session on the agent.
+        self.chat = chat_view::ChatView::new();
+        self.state.session_id = None;
+        if let Some(client) = self.clients.get(&self.active_agent_id).cloned() {
+            self.state.agent_status = state::AgentStatus::Thinking;
+            cx.spawn(async move |this, cx| {
+                match client.create_session().await {
+                    Ok(session) => {
+                        let _ = this.update(cx, |this, cx| {
+                            this.state.session_id = Some(session.id.to_string());
+                            this.state.agent_status = state::AgentStatus::Connected;
+                            if let Some(modes) = session.modes {
+                                this.composer_selected_mode = modes.current_id;
+                                this.available_modes = modes.available;
+                                this.detect_yolo_bypass_mode();
+                            }
+                            if let Some(models) = session.models {
+                                this.composer_selected_model = models.current_id;
+                                this.available_models = models.available;
+                            }
+                            cx.notify();
+                        });
+                    }
+                    Err(e) => {
+                        tracing::warn!("side_panel_left: new ACP session failed: {e}");
+                        let _ = this.update(cx, |this, cx| {
+                            this.state.agent_status = state::AgentStatus::Disconnected;
+                            this.chat.push_message(chat_view::ChatMessage {
+                                role: chat_view::MessageRole::Agent,
+                                content: format!("Error: failed to create session: {e}"),
+                                tool_calls: Vec::new(),
+                            });
+                            cx.notify();
+                        });
+                    }
+                }
+            })
+            .detach();
+        }
         cx.notify();
     }
 
@@ -309,6 +357,7 @@ impl SidePanelLeft {
                             this.active_agent_id
                         );
                         if let Ok(session) = session {
+                            this.state.session_id = Some(session.id.to_string());
                             if let Some(modes) = session.modes {
                                 this.composer_selected_mode = modes.current_id;
                                 this.available_modes = modes.available;
@@ -502,9 +551,11 @@ mod tests {
     }
 
     #[test]
-    fn state_default_width_is_sidebar_plus_handle() {
+    fn state_default_width_opens_chat_column() {
+        // T137: Super+A must show composer, not rail-only strip.
         let state = state::SidePanelLeftState::new();
-        assert_eq!(state.width, sessions_list::SIDEBAR_MIN_WIDTH);
+        assert_eq!(state.width, state::SidePanelLeftState::DEFAULT_CHAT_WIDTH);
+        assert!(state.width > sessions_list::SIDEBAR_MIN_WIDTH);
     }
 
     #[test]
@@ -517,7 +568,7 @@ mod tests {
     fn toggle_collapse_recalculates_min_width() {
         let mut state = state::SidePanelLeftState::new();
         assert!(state.sessions_collapsed);
-        assert_eq!(state.width, sessions_list::SIDEBAR_MIN_WIDTH);
+        assert_eq!(state.width, state::SidePanelLeftState::DEFAULT_CHAT_WIDTH);
         // Expand sessions: min must fit 200 + handle
         state.sessions_collapsed = false;
         state.recalc_min_width();
@@ -554,7 +605,7 @@ mod tests {
     #[test]
     fn ensure_chat_width_expands_from_sidebar_only() {
         let mut state = state::SidePanelLeftState::new();
-        assert_eq!(state.width, sessions_list::SIDEBAR_MIN_WIDTH);
+        state.width = sessions_list::SIDEBAR_MIN_WIDTH;
         state.ensure_chat_width();
         assert!(state.width > sessions_list::SIDEBAR_MIN_WIDTH);
         assert_eq!(state.width, state::SidePanelLeftState::DEFAULT_CHAT_WIDTH);

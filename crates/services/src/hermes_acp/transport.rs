@@ -20,7 +20,9 @@ impl Default for HermesConfig {
     fn default() -> Self {
         Self {
             command: "hermes".to_string(),
-            args: vec!["acp".to_string()],
+            // --accept-hooks: shell has no TTY for hook prompts; without it
+            // hermes may stall or exit when hooks fire mid-session.
+            args: vec!["acp".to_string(), "--accept-hooks".to_string()],
         }
     }
 }
@@ -69,12 +71,17 @@ impl HermesTransport {
                     // Send the connection handle back to the caller.
                     let _ = conn_tx.send(cx.clone());
 
-                    // Process commands from the client.
+                    // Held ActiveSession lives here so multi-turn prompts
+                    // reuse one ACP session (see client::execute_command).
+                    let mut active_session = None;
+
+                    // Process commands until all HermesClient senders drop
+                    // (panel closed / client released).
                     while let Some(cmd) = cmd_rx.recv().await {
-                        let _ = super::client::execute_command(cmd, &cx).await;
+                        super::client::execute_command(cmd, &cx, &mut active_session).await;
                     }
 
-                    info!("Hermes ACP command channel closed");
+                    info!("Hermes ACP command channel closed (client dropped)");
                     Ok::<(), AcpError>(())
                 })
                 .await;

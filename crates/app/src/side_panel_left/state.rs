@@ -31,20 +31,22 @@ pub struct SidePanelLeftState {
 
 impl SidePanelLeftState {
     pub fn new() -> Self {
-        Self {
+        // Open with chat column visible (T137) — rail-only Super+A hid composer.
+        let mut s = Self {
             state: PanelState::Peek,
-            // Window min = sidebar + handle (not sidebar alone).
-            width: super::sessions_list::SIDEBAR_MIN_WIDTH,
+            width: Self::DEFAULT_CHAT_WIDTH,
             height: 1080.0,
             min_width: super::sessions_list::SIDEBAR_MIN_WIDTH,
             max_width: 960.0,
             session_id: None,
-            agent_status: AgentStatus::Connected,
+            agent_status: AgentStatus::Disconnected,
             sessions_collapsed: true,
             active_session_id: None,
             dock_chat: false,
             last_exclusive_zone: None,
-        }
+        };
+        s.ensure_chat_width();
+        s
     }
 
     pub fn sidebar_width(&self) -> f32 {

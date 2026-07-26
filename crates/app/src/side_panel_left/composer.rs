@@ -593,7 +593,13 @@ impl SidePanelLeft {
             cx.spawn(async move |this, cx| {
                 match client.send_prompt(&text).await {
                     Ok(prompt_response) => {
+                        tracing::info!(
+                            session_id = %prompt_response.session_id,
+                            chars = prompt_response.text.len(),
+                            "composer: ACP reply"
+                        );
                         let _ = this.update(cx, |this, cx| {
+                            this.state.session_id = Some(prompt_response.session_id);
                             this.chat.push_message(ChatMessage {
                                 role: MessageRole::Agent,
                                 content: prompt_response.text,
@@ -621,6 +627,8 @@ impl SidePanelLeft {
                     }
                     Err(e) => {
                         tracing::warn!("composer: ACP send failed: {e}");
+                        let disconnected = e.to_string().contains("command channel closed")
+                            || e.to_string().contains("reply channel closed");
                         let _ = this.update(cx, |this, cx| {
                             this.chat.push_message(ChatMessage {
                                 role: MessageRole::Agent,
@@ -628,7 +636,11 @@ impl SidePanelLeft {
                                 tool_calls: Vec::new(),
                             });
                             this.chat.scroll_to_bottom();
-                            this.state.agent_status = AgentStatus::Connected;
+                            this.state.agent_status = if disconnected {
+                                AgentStatus::Disconnected
+                            } else {
+                                AgentStatus::Connected
+                            };
                             cx.notify();
                         });
                     }

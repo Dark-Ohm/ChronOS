@@ -1,4 +1,6 @@
 pub mod client;
+#[cfg(test)]
+mod client_smoke;
 pub mod registry;
 pub mod session;
 pub mod transport;

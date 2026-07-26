@@ -19,7 +19,13 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sysinfo.workspace = true
 nvml-wrapper.workspace = true
-agent-client-protocol = { version = "0.11.1", features = ["unstable_session_model"] }
+# unstable_session_model: models list on NewSessionResponse
+# unstable_session_usage: hermes 0.18+ sends sessionUpdate usage_update mid-turn
+# (without it read_to_string dies on deserialize — chat appears dead).
+agent-client-protocol = { version = "0.11.1", features = [
+    "unstable_session_model",
+    "unstable_session_usage",
+] }
 agent-client-protocol-tokio = "0.11.1"
 
 [dev-dependencies]
