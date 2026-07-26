@@ -384,8 +384,11 @@ pub struct HermesClient {
 
 impl HermesClient {
     /// Create a new client, spawning the agent process with the given config.
-    pub async fn new(config: HermesConfig) -> Result<Self, anyhow::Error> {
-        let (transport, cmd_tx) = HermesTransport::spawn(config).await?;
+    pub async fn new(
+        config: HermesConfig,
+        shared_env: std::collections::HashMap<String, String>,
+    ) -> Result<Self, anyhow::Error> {
+        let (transport, cmd_tx) = HermesTransport::spawn(config, shared_env).await?;
         Ok(Self {
             _transport: std::sync::Arc::new(transport),
             cmd_tx,

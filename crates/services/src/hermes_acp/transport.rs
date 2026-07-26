@@ -50,10 +50,19 @@ impl HermesTransport {
     ///
     /// The connection is initialized (ACP protocol handshake) before returning.
     /// Commands are processed sequentially through the returned channel.
-    pub(crate) async fn spawn(config: HermesConfig) -> Result<(Self, tokio::sync::mpsc::UnboundedSender<Command>)> {
-        debug!("Spawning Hermes agent: {} {:?}", config.command, config.args);
+    pub(crate) async fn spawn(
+        config: HermesConfig,
+        shared_env: std::collections::HashMap<String, String>,
+    ) -> Result<(Self, tokio::sync::mpsc::UnboundedSender<Command>)> {
+        debug!("Spawning agent: {} {:?}", config.command, config.args);
 
-        let mut agent_args = vec![config.command.clone()];
+        // Prepend shared env vars from ~/.config/chronos/.env.
+        // AcpAgent::from_args treats leading KEY=value as env vars.
+        let mut agent_args: Vec<String> = shared_env
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect();
+        agent_args.push(config.command.clone());
         agent_args.extend(config.args.iter().cloned());
         let agent =
             AcpAgent::from_args(agent_args).context("failed to create ACP agent from args")?;

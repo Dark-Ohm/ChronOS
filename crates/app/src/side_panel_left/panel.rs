@@ -40,8 +40,8 @@ pub fn render_panel(
         .agents
         .iter()
         .find(|a| a.id == panel.active_agent_id)
-        .map(|a| a.display_name)
-        .unwrap_or("Agent");
+        .map(|a| a.display_name.clone())
+        .unwrap_or_else(|| "Agent".to_string());
 
     // Thread title: active session's title, or a placeholder for a fresh
     // thread. Deliberately NOT `agent_name` — the outer header already
@@ -124,7 +124,7 @@ pub fn render_panel(
                                 } else {
                                     theme.text.secondary
                                 })
-                                .child(agent.display_name),
+                                .child(agent.display_name.clone()),
                         )
                         .when(is_selected, |el| {
                             el.child(

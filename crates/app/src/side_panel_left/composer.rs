@@ -63,7 +63,7 @@ pub fn render_composer(
         .agents
         .iter()
         .find(|a| a.id == panel.active_agent_id)
-        .map(|a| a.display_name)
+        .map(|a| a.display_name.as_str())
         .unwrap_or("Agent");
 
     // ── Toolbar ────────────────────────

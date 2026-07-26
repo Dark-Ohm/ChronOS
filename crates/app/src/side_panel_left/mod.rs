@@ -9,7 +9,7 @@ mod tool_card;
 pub use state::{PanelState, SidePanelLeftState};
 
 use chronos_luau::bar::BAR_HEIGHT;
-use chronos_services::hermes_acp::{AgentDescriptor, HermesClient, known_agents};
+use chronos_services::hermes_acp::{AgentDescriptor, HermesClient, known_agents, load_shared_env};
 use chronos_services::{ModelInfo, SessionMode};
 use gpui::{
     App, Bounds, DisplayId, Focusable, Global, Size, Window, WindowBackgroundAppearance,
@@ -73,6 +73,8 @@ pub struct SidePanelLeft {
     state: state::SidePanelLeftState,
     /// Available agent backends from the registry.
     agents: Vec<AgentDescriptor>,
+    /// Shared env vars from ~/.config/chronos/.env (passed to agent spawns).
+    shared_env: HashMap<String, String>,
     /// Lazy-spawned clients keyed by agent id.
     clients: HashMap<String, HermesClient>,
     /// Which agent backend is currently active.
@@ -140,17 +142,19 @@ impl Focusable for SidePanelLeft {
 impl SidePanelLeft {
     fn new(cx: &mut Context<Self>) -> Self {
         let agents = known_agents();
+        let shared_env = chronos_services::hermes_acp::load_shared_env();
         let active_agent_id = agents.first().map(|a| a.id.to_string()).unwrap_or_default();
 
         // Lazy-spawn the default agent (first in registry).
         let default_config = agents.first().map(|a| a.config.clone()).unwrap_or_default();
         let agent_id = active_agent_id.clone();
+        let env_for_spawn = shared_env.clone();
         let mut state = state::SidePanelLeftState::new();
         // Connecting until HermesClient::new + create_session complete.
         state.agent_status = state::AgentStatus::Thinking;
 
         cx.spawn(
-            async move |this, cx| match HermesClient::new(default_config).await {
+            async move |this, cx| match HermesClient::new(default_config, env_for_spawn).await {
                 Ok(client) => {
                     // Fetch modes/models at connect time, not just after the
                     // first prompt — otherwise the model/mode pickers stay
@@ -193,6 +197,7 @@ impl SidePanelLeft {
         Self {
             state,
             agents,
+            shared_env,
             clients: HashMap::new(),
             active_agent_id,
             agent_menu_open: false,
@@ -346,8 +351,9 @@ impl SidePanelLeft {
         cx.notify();
 
         let agent_id = agent_id.to_string();
+        let env_for_spawn = self.shared_env.clone();
         cx.spawn(
-            async move |this, cx| match HermesClient::new(desc.config).await {
+            async move |this, cx| match HermesClient::new(desc.config, env_for_spawn).await {
                 Ok(client) => {
                     let session = client.create_session().await;
                     let _ = this.update(cx, |this, _cx| {

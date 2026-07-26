@@ -27,6 +27,8 @@ agent-client-protocol = { version = "0.11.1", features = [
     "unstable_session_usage",
 ] }
 agent-client-protocol-tokio = "0.11.1"
+dirs = "6"
+toml = "0.8"
 
 [dev-dependencies]
 # futures-util from workspace provides StreamExt for tests
