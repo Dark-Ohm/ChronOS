@@ -8,7 +8,7 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-26 — front = ACP panel revive (T137 chat P0).**
+**Обновлено: 2026-07-26 — T137 chat path landed (`af54fb0`); user live send PENDING.**
 
 ### Стратегия
 Доводить **шелл до daily driver**, не reddit/Q1 editor.  
@@ -29,21 +29,20 @@ clone without ChronOS character.
 
 | Phase | T | Что |
 |---|---|---|
-| **A P0** | **T137 OPEN** | Chat must work: stable session, send, open UX |
+| **A P0** | **T137 code done** | `af54fb0` — session reuse + usage_update + open width |
 | B | T138 | Multi-agent registry + add (verified ACP only) |
 | C | T139 | ChronOS visual character (not Zed port) |
 
-**Evidence already:** `known_agents` = Hermes only; `send_prompt` new
-session every time; UI sessions fake UUIDs; Super+A = rail-only width;
-log `command channel closed`.
-
-Brief: `orchestration/tasks/active/T137-acp-chat-must-work.md`
+**T137 root cause:** (1) new ACP session every prompt; (2) Hermes
+`usage_update` not in schema without `unstable_session_usage` → deserialize
+kill on read; (3) Super+A rail-only. Live: `smoke_hermes` two prompts
+same `session_id`. UI send — user confirm.
 
 ### Edit Mode — T134 CLOSED
 `64c777d` + Super+Shift+E. T135 drag / T136 hotview — later.
 
 ### Active T
-- **T137** ACP chat must work — **OPEN**.
+- **T137** implementer done — **user live send PENDING**.
 - T134 — ACCEPTED.
 - T129 — PARKED.
 - Pause: T115 Files.
