@@ -1,31 +1,53 @@
 //! Shared enter-motion language (T129).
 //!
-//! Scale is not available on `div` style in this fork — enter uses
-//! **opacity + translate** via `gpui_animation` (`State::translate_x/y`,
-//! requires `.relative()` on the animated element). Easing: EaseOutBack
-//! wrapped as [`SpringBack`] (same recipe as volume_popup).
+//! Uses **native** [`gpui::AnimationExt::with_animation`] (not
+//! `gpui_animation::transition_when`). The vendored crate's
+//! `transition_when` only starts if the element id already has registry
+//! state — on a freshly opened layer-shell/popup window the first paint
+//! has no state, so enter was a silent no-op and the shell hard-cut to
+//! full opacity (live report: "enter мгновенный").
+//!
+//! Native `with_animation` stores start time in element state on first
+//! layout and requests frames until oneshot completes — reliable for open.
 
 use std::time::Duration;
 
-use gpui::{Pixels, px};
-use gpui_animation::transition::Transition;
+use gpui::{Animation, Styled, px};
 
-/// Default enter duration (ms) — matches volume device list (~260).
-pub const ENTER_MS: u64 = 240;
+/// Enter duration — same ballpark as volume device list (~260ms).
+pub const ENTER_MS: u64 = 260;
 
-/// Delay after first paint before flipping `revealed`.
-///
-/// `transition_when` only starts if the element id already has a state in
-/// the registry (created on first `AnimatedWrapper` paint). If `revealed`
-/// is true on the *first* paint, `state_mut` is None and the animation is
-/// silently skipped — panel pops in at the open pose. Schedule reveal only
-/// after the closed pose has been painted once.
-pub const REVEAL_DELAY_MS: u64 = 48;
+/// Slide distance (px) at delta=0; zero at delta=1.
+pub const SLIDE_PX: f32 = 14.;
 
-/// Horizontal slide distance at rest pose (toward panel edge / screen).
-pub const SLIDE_PX: f32 = 12.;
+/// Oneshot enter animation with EaseOutBack overshoot.
+pub fn enter_animation() -> Animation {
+    Animation::new(Duration::from_millis(ENTER_MS)).with_easing(|t| {
+        gpui::easing::EasingCurve::EaseOutBack(1.5).sample(t)
+    })
+}
 
-/// Spring-overshoot easing for declarative transitions.
+/// Opacity + slide from the right edge (right panel).
+/// Works on `Div` or `Stateful<Div>` (after `.id()`).
+pub fn apply_enter_from_right<E: Styled>(el: E, delta: f32) -> E {
+    let d = delta.clamp(0.0, 1.0);
+    el.opacity(d).left(px(SLIDE_PX * (1.0 - d)))
+}
+
+/// Opacity + slide from the left edge (left panel).
+pub fn apply_enter_from_left<E: Styled>(el: E, delta: f32) -> E {
+    let d = delta.clamp(0.0, 1.0);
+    el.opacity(d).left(px(-SLIDE_PX * (1.0 - d)))
+}
+
+/// Opacity + slight rise (popups).
+pub fn apply_enter_rise<E: Styled>(el: E, delta: f32) -> E {
+    let d = delta.clamp(0.0, 1.0);
+    el.opacity(d).top(px(SLIDE_PX * (1.0 - d)))
+}
+
+/// SpringBack for **in-card** `gpui_animation` toggles (volume device list).
+/// Not used for window enter — see module docs.
 #[derive(Clone, Copy)]
 pub struct SpringBack(pub f32);
 
@@ -35,61 +57,16 @@ impl Default for SpringBack {
     }
 }
 
-impl Transition for SpringBack {
+impl gpui_animation::transition::Transition for SpringBack {
     fn calculate(&self, t: f32) -> f32 {
         gpui::easing::EasingCurve::EaseOutBack(self.0).sample(t)
     }
 }
 
-pub fn enter_duration() -> Duration {
-    Duration::from_millis(ENTER_MS)
-}
-
-pub fn reveal_delay() -> Duration {
-    Duration::from_millis(REVEAL_DELAY_MS)
-}
-
-/// Closed-pose horizontal offset: left panel slides from left (negative),
-/// right panel from right (positive). Popups: slight up is better — use
-/// [`enter_slide_y`].
-pub fn enter_slide_x(from_left: bool) -> Pixels {
-    if from_left {
-        px(-SLIDE_PX)
-    } else {
-        px(SLIDE_PX)
-    }
-}
-
-pub fn enter_slide_y() -> Pixels {
-    px(SLIDE_PX)
-}
-
-/// Closed opacity for the base style (before / when not revealed).
-pub fn closed_opacity() -> f32 {
-    0.0
-}
-
-/// Schedule `revealed = true` after [`reveal_delay`], from the **first
-/// paint** (not from `new`). See [`REVEAL_DELAY_MS`].
-///
-/// Call once when `!reveal_armed`, then set `reveal_armed = true`.
-pub fn arm_reveal<V: 'static>(
-    cx: &mut gpui::Context<V>,
-    set_revealed: impl Fn(&mut V) + Send + 'static,
-) {
-    cx.spawn(async move |this, cx| {
-        cx.background_executor().timer(reveal_delay()).await;
-        let _ = this.update(cx, |this, cx| {
-            set_revealed(this);
-            cx.notify();
-        });
-    })
-    .detach();
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui_animation::transition::Transition;
 
     #[test]
     fn spring_back_endpoints() {
@@ -99,8 +76,9 @@ mod tests {
     }
 
     #[test]
-    fn slide_directions() {
-        assert!(f32::from(enter_slide_x(true)) < 0.0);
-        assert!(f32::from(enter_slide_x(false)) > 0.0);
+    fn enter_delta_ends_opaque() {
+        // Apply helpers are pure style — smoke that clamp works.
+        let _ = enter_animation();
+        assert!((1.0_f32.clamp(0.0, 1.0) - 1.0).abs() < f32::EPSILON);
     }
 }

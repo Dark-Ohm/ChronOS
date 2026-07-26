@@ -16,9 +16,9 @@ use gpui::{
 
 use chronos_services::{BrightnessCommand, PowerProfile, Service, UPowerData};
 use chronos_ui::{Theme, elevation_apply_light_chrome, elevation_blur_layer};
-use gpui_animation::animation::TransitionExt;
+use gpui::AnimationExt;
 
-use crate::motion::{self, SpringBack};
+use crate::motion;
 use crate::state::AppState;
 use crate::system_popup::{close_this, gaming_mode, POPUP_WIDTH};
 
@@ -35,9 +35,6 @@ pub struct SystemPopupView {
     dispatched_brightness: Option<u8>,
     /// Live layout bounds of the brightness track (window coords) for hit→frac.
     track_bounds: Rc<Cell<Bounds<Pixels>>>,
-    /// Root-card enter motion (T129).
-    revealed: bool,
-    reveal_armed: bool,
 }
 
 impl SystemPopupView {
@@ -45,21 +42,12 @@ impl SystemPopupView {
         Self {
             dispatched_brightness: None,
             track_bounds: Rc::new(Cell::new(Bounds::default())),
-            revealed: false,
-            reveal_armed: false,
         }
     }
 }
 
 impl Render for SystemPopupView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        gpui_animation::init(window, cx);
-        if !self.reveal_armed {
-            self.reveal_armed = true;
-            motion::arm_reveal(cx, |this| {
-                this.revealed = true;
-            });
-        }
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *Theme::global(cx);
         let brightness = AppState::brightness(cx).get();
         // Service now optimistically sets `value` on Set/Step, so UI preview
@@ -142,20 +130,11 @@ impl Render for SystemPopupView {
                 cx,
             ));
 
-        let revealed = self.revealed;
-        div()
-            .id("system-popup-enter")
-            .relative()
-            .with_transition("system-popup-enter")
-            .opacity(motion::closed_opacity())
-            .top(motion::enter_slide_y())
-            .transition_when(
-                revealed,
-                motion::enter_duration(),
-                SpringBack::default(),
-                |s| s.opacity(1.0).translate_y(px(0.)),
-            )
-            .child(card)
+        card.with_animation(
+            "system-popup-enter",
+            motion::enter_animation(),
+            motion::apply_enter_rise,
+        )
     }
 }
 

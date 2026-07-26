@@ -18,9 +18,9 @@ use gpui::{
     App, AsyncApp, Context, IntoElement, Render, ScrollHandle, Window, div, layer_shell::*,
     prelude::*, px,
 };
-use gpui_animation::animation::TransitionExt;
+use gpui::AnimationExt;
 
-use crate::motion::{self, SpringBack};
+use crate::motion;
 use crate::side_panel_right::disks::render_disks_section;
 use crate::side_panel_right::header::render_header;
 use crate::side_panel_right::mpris_card::render_mpris_card;
@@ -61,10 +61,6 @@ pub struct SidePanelRightView {
     net_dl_history: SpectrumHistory,
     net_ul_history: SpectrumHistory,
     power_arm: ArmState,
-    /// State-driven reveal for `transition_when` (not hover-driven).
-    revealed: bool,
-    /// First-paint gate: schedule reveal only after closed pose painted.
-    reveal_armed: bool,
     scroll: ScrollHandle,
     active_tab: PanelTab,
     /// Width the platform window was last physically resized to. `render`
@@ -134,8 +130,6 @@ impl SidePanelRightView {
             net_dl_history: SpectrumHistory::default(),
             net_ul_history: SpectrumHistory::default(),
             power_arm: ArmState::default(),
-            revealed: false,
-            reveal_armed: false,
             scroll: ScrollHandle::new(),
             active_tab: PanelTab::default(),
             last_resized_width: crate::side_panel_right::RAIL_ONLY_WIDTH,
@@ -266,17 +260,7 @@ impl SidePanelRightView {
 
 impl Render for SidePanelRightView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Boot animation engine (idempotent). Needed before transition_when
-        // can resolve state_mut (registry.initialized gate).
-        gpui_animation::init(window, cx);
-        if !self.reveal_armed {
-            self.reveal_armed = true;
-            motion::arm_reveal(cx, |this| {
-                this.revealed = true;
-            });
-        }
         self.sample_network();
-        let revealed = self.revealed;
         let power_arm = self.power_arm;
         let gpu = self.system.gpu_percent;
 
@@ -381,7 +365,6 @@ impl Render for SidePanelRightView {
                 div()
                     .id("side-panel-body")
                     .relative()
-                    .with_transition("side-panel-body")
                     .flex_1()
                     .min_w(px(0.))
                     .h_full()
@@ -391,17 +374,6 @@ impl Render for SidePanelRightView {
                     .flex()
                     .flex_row() // content first, rail last — rail flush against the screen's right edge
                     .overflow_hidden()
-                    // Base style is ALWAYS the closed pose — animation state
-                    // carries the open pose after transition_when. If base
-                    // is already open when revealed flips, anim is a no-op.
-                    .opacity(motion::closed_opacity())
-                    .left(motion::enter_slide_x(false))
-                    .transition_when(
-                        revealed,
-                        motion::enter_duration(),
-                        SpringBack::default(),
-                        |s| s.opacity(1.0).translate_x(px(0.)),
-                    )
                     .when(content_open, |body| {
                         body.child({
                             let col = div()
@@ -567,7 +539,12 @@ impl Render for SidePanelRightView {
                             dock_content,
                             on_dock_toggle,
                         )
-                    }),
+                    })
+                    .with_animation(
+                        "side-panel-body-enter",
+                        motion::enter_animation(),
+                        motion::apply_enter_from_right,
+                    ),
             )
     }
 }

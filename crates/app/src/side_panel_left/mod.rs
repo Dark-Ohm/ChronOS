@@ -105,20 +105,10 @@ pub struct SidePanelLeft {
     /// to at most one Wayland `set_size` protocol round-trip per frame
     /// instead of one per raw pointer-motion event.
     last_resized_width: Option<f32>,
-    /// Enter motion (T129): false at open, flipped true after first paint.
-    pub(crate) revealed: bool,
-    pub(crate) reveal_armed: bool,
 }
 
 impl Render for SidePanelLeft {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        gpui_animation::init(window, cx);
-        if !self.reveal_armed {
-            self.reveal_armed = true;
-            crate::motion::arm_reveal(cx, |this| {
-                this.revealed = true;
-            });
-        }
         // Exclusive zone: sidebar-only when dock off, full width when dock on.
         // Must call set_exclusive_edge(LEFT) or Hyprland silently ignores the
         // zone on our LEFT|TOP corner anchor (DECISIONS 2026-07-23).
@@ -214,8 +204,6 @@ impl SidePanelLeft {
             resize_start_x: None,
             resize_start_width: None,
             last_resized_width: None,
-            revealed: false,
-            reveal_armed: false,
         }
     }
 

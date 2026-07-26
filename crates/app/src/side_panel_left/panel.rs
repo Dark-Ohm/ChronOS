@@ -1,9 +1,8 @@
-use gpui::{Context, IntoElement, Window, div, img, prelude::*, px};
-use gpui_animation::animation::TransitionExt;
+use gpui::{AnimationExt, Context, IntoElement, Window, div, img, prelude::*, px};
 
 use chronos_ui::{Theme, elevation_glow_bar};
 
-use crate::motion::{self, SpringBack};
+use crate::motion;
 
 use super::SidePanelLeft;
 use super::sessions_list::{SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_HANDLE_WIDTH};
@@ -331,10 +330,10 @@ pub fn render_panel(
     // Elevated chrome на content-колонке (только когда чат открыт, не
     // rail-only) — общий язык глубины из `theme.elevation_popup()` (T128).
     let elev = Theme::global(cx).elevation_popup();
-    let revealed = panel.revealed;
 
-    // Outer: sole window-level on_hover (peek debounce). Inner motion wrapper
-    // holds with_transition — fork allows one on_hover per element (T129).
+    // Outer: sole window-level on_hover. Motion is native with_animation on the
+    // shell row (T129) — not gpui_animation transition_when (silent no-op on
+    // fresh layer-shell windows).
     div()
         .id("side-panel-left-root")
         .w(px(panel.state.width))
@@ -352,21 +351,11 @@ pub fn render_panel(
             div()
                 .id("side-panel-left-motion")
                 .relative()
-                .with_transition("side-panel-left-enter")
                 .flex_1()
                 .min_w(px(0.))
                 .h_full()
                 .flex()
                 .flex_row()
-                // Closed pose always — open pose only via transition_when.
-                .opacity(motion::closed_opacity())
-                .left(motion::enter_slide_x(true))
-                .transition_when(
-                    revealed,
-                    motion::enter_duration(),
-                    SpringBack::default(),
-                    |s| s.opacity(1.0).translate_x(px(0.)),
-                )
                 .child(
                     div()
                         .id("main-content")
@@ -378,8 +367,6 @@ pub fn render_panel(
                         .flex_col()
                         .bg(theme.bg.primary)
                         .shadow(elev.shadows.to_vec())
-                        // Agent header ("Hermes" + ✕) only when chat is out — bar-only
-                        // is sessions sidebar chrome, like the right tab rail.
                         .when(chat_open, |el| {
                             let el = el.child(header).children(dropdown);
                             match elev.glow {
@@ -408,6 +395,11 @@ pub fn render_panel(
                         })
                         .on_drag_move(resize_drag_handler)
                         .child(div().w(px(1.)).h_full().bg(theme.text.disabled)),
+                )
+                .with_animation(
+                    "side-panel-left-enter",
+                    motion::enter_animation(),
+                    motion::apply_enter_from_left,
                 ),
         )
 }

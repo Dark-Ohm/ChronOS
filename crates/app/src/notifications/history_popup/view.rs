@@ -21,9 +21,9 @@ use chronos_services::{Notification, NotificationCommand, Service, Urgency};
 use crate::state::AppState;
 
 use chronos_ui::{Theme, elevation_blur_layer, elevation_glow_bar};
-use gpui_animation::animation::TransitionExt;
+use gpui::AnimationExt;
 
-use crate::motion::{self, SpringBack};
+use crate::motion;
 
 // ── Mockup-faithful geometry ────────────────────────────────────────
 const PADDING: f32 = 10.;
@@ -50,30 +50,18 @@ const EMPTY_FZ: f32 = 12.;
 
 pub struct HistoryPopupView {
     scroll: ScrollHandle,
-    /// Root-card enter motion (T129).
-    revealed: bool,
-    reveal_armed: bool,
 }
 
 impl HistoryPopupView {
     pub fn new(_cx: &mut Context<Self>) -> Self {
         Self {
             scroll: ScrollHandle::new(),
-            revealed: false,
-            reveal_armed: false,
         }
     }
 }
 
 impl Render for HistoryPopupView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        gpui_animation::init(window, cx);
-        if !self.reveal_armed {
-            self.reveal_armed = true;
-            motion::arm_reveal(cx, |this| {
-                this.revealed = true;
-            });
-        }
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = AppState::notification(cx).get();
         // Newest first (history is push-order; reverse == newest on top).
         let ordered: Vec<Notification> = state.history.iter().rev().cloned().collect();
@@ -191,21 +179,12 @@ impl Render for HistoryPopupView {
             panel = panel.child(elevation_glow_bar(glow));
         }
 
-        let revealed = self.revealed;
         let panel = panel.child(body).child(footer);
-        div()
-            .id("history-popup-enter")
-            .relative()
-            .with_transition("history-popup-enter")
-            .opacity(motion::closed_opacity())
-            .top(motion::enter_slide_y())
-            .transition_when(
-                revealed,
-                motion::enter_duration(),
-                SpringBack::default(),
-                |s| s.opacity(1.0).translate_y(px(0.)),
-            )
-            .child(panel)
+        panel.with_animation(
+            "history-popup-enter",
+            motion::enter_animation(),
+            motion::apply_enter_rise,
+        )
     }
 }
 

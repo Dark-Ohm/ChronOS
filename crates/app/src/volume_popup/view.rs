@@ -30,6 +30,7 @@ use gpui::{
     MouseButton, MouseDownEvent, Render, SharedString, Styled, Window, canvas, div, img,
     prelude::*, px, svg,
 };
+use gpui::AnimationExt;
 use gpui_animation::animation::TransitionExt;
 
 use crate::motion::{self, SpringBack};
@@ -84,9 +85,6 @@ pub struct VolumePopupView {
     /// Optimistic thumb position during drag: `(kind, volume, last_dispatch_time)`.
     /// Cleared when service catches up or popup closes.
     dispatched_vol: Option<(EndpointKind, f64, std::time::Instant)>,
-    /// Root-card enter motion (T129).
-    revealed: bool,
-    reveal_armed: bool,
 }
 
 impl VolumePopupView {
@@ -94,8 +92,6 @@ impl VolumePopupView {
         Self {
             expanded: None,
             dispatched_vol: None,
-            revealed: false,
-            reveal_armed: false,
         }
     }
 
@@ -105,14 +101,7 @@ impl VolumePopupView {
 }
 
 impl Render for VolumePopupView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        gpui_animation::init(window, cx);
-        if !self.reveal_armed {
-            self.reveal_armed = true;
-            motion::arm_reveal(cx, |this| {
-                this.revealed = true;
-            });
-        }
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let audio = AppState::audio(cx).get();
         let theme = *Theme::global(cx);
         let expanded = self.expanded;
@@ -153,7 +142,6 @@ impl Render for VolumePopupView {
             .child(blur_layer)
             .overflow_hidden();
         let mut card = elevation_apply_light_chrome(&elev, card);
-        let revealed = self.revealed;
 
         // ── Header «Sound» + ✕ (rsx) ────────────────────────────────
         let header = rsx! {
@@ -236,20 +224,12 @@ impl Render for VolumePopupView {
                 hover,
             ));
 
-        // Root enter: closed base always; open only via transition_when (T129).
-        div()
-            .id("volume-popup-enter")
-            .relative()
-            .with_transition("volume-popup-enter")
-            .opacity(motion::closed_opacity())
-            .top(motion::enter_slide_y())
-            .transition_when(
-                revealed,
-                motion::enter_duration(),
-                SpringBack::default(),
-                |s| s.opacity(1.0).translate_y(px(0.)),
-            )
-            .child(card)
+        // Root enter via native with_animation (T129) — reliable on new windows.
+        card.with_animation(
+            "volume-popup-enter",
+            motion::enter_animation(),
+            motion::apply_enter_rise,
+        )
     }
 }
 

@@ -17,9 +17,9 @@ use crate::state::AppState;
 use crate::updates_popup::{MAX_LIST_H, refresh, upgrade_all, upgrade_selected};
 
 use chronos_ui::{Theme, elevation_apply_light_chrome, elevation_blur_layer};
-use gpui_animation::animation::TransitionExt;
+use gpui::AnimationExt;
 
-use crate::motion::{self, SpringBack};
+use crate::motion;
 
 // ── Geometry from mockup ────────────────────────────────────────────
 const HEADER_PY: f32 = 12.;
@@ -43,9 +43,6 @@ pub struct UpdatesPopupView {
     /// per-session), and a `Running` upgrade disables further toggles so
     /// the user can't scramble the in-flight package set.
     selection: HashSet<String>,
-    /// Root-card enter motion (T129).
-    revealed: bool,
-    reveal_armed: bool,
 }
 
 impl UpdatesPopupView {
@@ -53,21 +50,12 @@ impl UpdatesPopupView {
         Self {
             scroll: ScrollHandle::new(),
             selection: HashSet::new(),
-            revealed: false,
-            reveal_armed: false,
         }
     }
 }
 
 impl Render for UpdatesPopupView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        gpui_animation::init(window, cx);
-        if !self.reveal_armed {
-            self.reveal_armed = true;
-            motion::arm_reveal(cx, |this| {
-                this.revealed = true;
-            });
-        }
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = AppState::aur(cx).get();
         let updates = state.updates.clone();
         let count = updates.len();
@@ -410,22 +398,13 @@ impl Render for UpdatesPopupView {
             .child(blur_layer)
             .overflow_hidden();
         let mut card = elevation_apply_light_chrome(&elev, card);
-        let revealed = self.revealed;
         let card = card.child(header).child(list).child(footer);
 
-        div()
-            .id("updates-popup-enter")
-            .relative()
-            .with_transition("updates-popup-enter")
-            .opacity(motion::closed_opacity())
-            .top(motion::enter_slide_y())
-            .transition_when(
-                revealed,
-                motion::enter_duration(),
-                SpringBack::default(),
-                |s| s.opacity(1.0).translate_y(px(0.)),
-            )
-            .child(card)
+        card.with_animation(
+            "updates-popup-enter",
+            motion::enter_animation(),
+            motion::apply_enter_rise,
+        )
     }
 }
 
