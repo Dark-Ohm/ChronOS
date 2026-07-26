@@ -8,7 +8,7 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-26 — T137 chat path landed (`af54fb0`); user live send PENDING.**
+**Обновлено: 2026-07-26 — T137 chat ACCEPTED (user); next T140 permissions.**
 
 ### Стратегия
 Доводить **шелл до daily driver**, не reddit/Q1 editor.  
@@ -29,20 +29,26 @@ clone without ChronOS character.
 
 | Phase | T | Что |
 |---|---|---|
-| **A P0** | **T137 code done** | `af54fb0` — session reuse + usage_update + open width |
-| B | T138 | Multi-agent registry + add (verified ACP only) |
-| C | T139 | ChronOS visual character (not Zed port) |
+| A | **T137 ACCEPTED** | chat multi-turn (`af54fb0`) |
+| **A2 P0** | **T140 OPEN** | permission auto-approve — tools run |
+| A3 | T141 | tool cards + reasoning from stream |
+| A4 | T142 | model picker + set_model |
+| B | T138 | multi-agent registry |
+| C | T139 | ChronOS character (not Zed) |
 
-**T137 root cause:** (1) new ACP session every prompt; (2) Hermes
-`usage_update` not in schema without `unstable_session_usage` → deserialize
-kill on read; (3) Super+A rail-only. Live: `smoke_hermes` two prompts
-same `session_id`. UI send — user confirm.
+**User live after T137:** chat OK; tools blocked
+`Edit approval denied by ACP client`; no model/reasoning/tool UI.
+
+**Briefs (orchestration gitignored):**  
+`T140-acp-permission-auto-approve.md` → then T141 → T142 → T138 → T139.  
+Spec updated: `docs/superpowers/specs/2026-07-26-acp-panel-revive-design.md`.
 
 ### Edit Mode — T134 CLOSED
-`64c777d` + Super+Shift+E. T135 drag / T136 hotview — later.
+`64c777d` + Super+Shift+E.
 
 ### Active T
-- **T137** implementer done — **user live send PENDING**.
+- **T140** ACP permissions — **OPEN (next)**.
+- T137 — **ACCEPTED** (chat).
 - T134 — ACCEPTED.
 - T129 — PARKED.
 - Pause: T115 Files.

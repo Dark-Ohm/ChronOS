@@ -38,31 +38,53 @@ UI is Zed-shaped without ChronOS character; more TBD._
 - Bar drag (T135) / hotview (T136).
 - Plasma multi-applet editor.
 
-## Phases
+## Phases (updated 2026-07-26 after live chat)
 
-### Phase A — **T137 Chat must work** (P0, ship first)
+| Phase | T | Status | What |
+|-------|---|--------|------|
+| A | **T137** | **DONE** (`af54fb0`) | Session reuse, usage_update, open width — **chat works** |
+| A2 | **T140** | OPEN P0 | `session/request_permission` auto-approve — tools run |
+| A3 | **T141** | OPEN | Parse thought + tool updates → ToolCard / reasoning UI |
+| A4 | **T142** | OPEN | Model list + set_model (if Hermes provides models) |
+| B | **T138** | OPEN | Multi-agent registry (verified ACP only) |
+| C | **T139** | OPEN | ChronOS visual character |
 
-1. **Diagnose** live: open panel, expand chat, send one prompt, capture log (`composer: send`, `ACP send failed`, hermes stderr).
-2. **Session model fix:** one ACP session per UI session (create once; reuse on send). Wire `active_session_id` to real ACP id or map UI session → held `ActiveSession` handle.
-3. **Transport stability:** why command channel closes after connect; keep task alive; surface disconnect in UI (status + toast/message), not silent dead send.
-4. **Open path:** Super+A opens to **usable chat width** (or last width / dock-on default) — not rail-only that hides composer.
-5. **Send path UX:** focus composer on open; Enter-to-send reliable; errors visible in thread.
-6. **Accept:** user prompt → agent text in thread; second prompt continues same session; restart panel reconnects cleanly.
+### Live follow-ups (user 2026-07-26, post-T137)
 
-### Phase B — **T138 Multi-agent registry** (after A green)
+- Chat OK multi-turn.
+- Tools fail: `Edit approval denied by ACP client` — **no permission handler** on Client builder (see SDK `yolo_one_shot_client.rs`).
+- UI YOLO mode ≠ ACP permission (session mode only).
+- `read_to_string` drops `AgentThoughtChunk` / `ToolCall` / `ToolCallUpdate`.
+- Model picker empty when `available_models` empty.
 
-1. Config `~/.config/chronos/agents.toml` (or section in existing): `[[agent]] id, display_name, command, args`.
-2. Built-in list: Hermes + **only** backends that pass a unit/smoke handshake helper.
-3. UI: switcher lists registry; **Add agent** dialog or “edit config + reload” (prefer config + hot-reload over fake wizard v1).
-4. Grok path: research which binary exposes ACP stdio; if none, document “not yet” — **no stub**.
-5. Accept: ≥2 real agents switchable; sessions cleared/isolated on switch (already partially there).
+### Phase A — T137 Chat (shipped)
 
-### Phase C — **T139 ChronOS character** (parallel-ok after A starts, not before chat works)
+Session hold in transport loop; `unstable_session_usage`; Super+A chat width;
+`--accept-hooks`. Smoke: two prompts same `session_id`.
 
-1. Align empty/thread density with mockup + right panel language (elevation, gaps, mono accents).
-2. Header/status: ChronOS badge language (EDIT-mode caliber), not generic IDE.
-3. Composer: caret, density, send affordance — still not full Zed TextInput port unless required.
-4. Accept: grim vs mockup; user “feels ChronOS” not “feels Zed port”.
+### Phase A2 — T140 Permissions (next implementer)
+
+Register `on_receive_request(RequestPermissionRequest)` → prefer
+`AllowAlways` / `AllowOnce`. Brief: `active/T140-acp-permission-auto-approve.md`.
+
+### Phase A3 — T141 Stream UI
+
+Custom `read_turn` → text + thought + tools; wire `ToolCard` + reasoning block.
+Brief: `active/T141-acp-tools-and-reasoning-ui.md`.
+
+### Phase A4 — T142 Models
+
+Evidence what Hermes returns; picker + `session/set_model`.
+Brief: `active/T142-acp-model-picker.md`.
+
+### Phase B — T138 Multi-agent
+
+`agents.toml`, handshake-only second agent. No fake Grok.
+Brief: `active/T138-acp-multi-agent-registry.md`.
+
+### Phase C — T139 Character
+
+Density/mockup, not protocol. Brief: `active/T139-acp-chronos-character.md`.
 
 ## Architecture notes
 

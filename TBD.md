@@ -82,8 +82,11 @@
 
 ## ACP panel revive (2026-07-26 front)
 
-- [ ] **T137** chat must work (session reuse, send, open width) — **OPEN**.
-- [ ] **T138** multi-agent registry + add (Grok only if real ACP).
+- [x] **T137** chat multi-turn — **ACCEPTED** (`af54fb0`).
+- [ ] **T140** permission auto-approve (tools) — **P0 next**.
+- [ ] **T141** tool cards + reasoning blocks from stream.
+- [ ] **T142** model list + set_model.
+- [ ] **T138** multi-agent registry (Grok only if real ACP).
 - [ ] **T139** ChronOS visual character (not Zed clone).
 - [ ] Panel layout config (widths / default dock).
 - [ ] Multiple bars / free edges — later.
