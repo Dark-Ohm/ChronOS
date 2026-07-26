@@ -1056,3 +1056,34 @@ implicitly sidelined waytrogen's product. **Corrected:** we do not rewrite
 waytrogen *and* we do not replace or omit their GUI. Integration means their
 full gallery app is the Browse path; ChronOS keeps engine/next/set; resync
 after their GUI; companion CTA when missing; no GPUI fallback gallery.
+
+## 2026-07-26 — Theme panels critical closed; T129 motion parked
+
+**Accepted (product):**
+- Left/right side panels themed via `Theme` tokens; Light C surface roles on
+  right (`surfaces::chrome/card/well`) — light is not mocha inverted 1:1.
+- Super+Shift+T / `theme.toml` / IPC toggle-theme for daily light/dark.
+- User live grim dark+light (both panels content open): critical OK.
+
+**T129 enter motion — PARKED (not accepted):**
+- Tried: `gpui_animation::transition_when`, closed-base + arm-after-paint,
+  native `with_animation`, popup `enter_t` notify loop (`aeff604`…`ce6fff3`).
+- Live: layer-shell panels **do** slide in (`with_animation`); anchored
+  popups never got a trustworthy enter; exit is compositor fade on
+  `remove_window` (not ChronOS animation).
+- **Rejected for now:** further motion thrash; user closed the thread
+  («забей»). Code left in tree for a future re-brief; do not start T130
+  on this partial foundation.
+
+**Docs:** tails → `TBD.md`; ops → `HANDOFF.md` (this date block).
+
+## 2026-07-26 — Canon doc roles (explicit)
+
+| Doc | Owns |
+|---|---|
+| `ARCHITECTURE.md` | settled architecture (amend when structure changes) |
+| `DECISIONS.log` | append-only considered/rejected/accepted decisions |
+| `HANDOFF.md` | current field / T status / what not to re-smoke |
+| `TBD.md` | non-blocking polish + wishlist (no T-ID required) |
+| `MEMORY.md` | durable cross-session facts (not daily queue) |
+| `roadmap.md` | quarterly order of work |

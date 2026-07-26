@@ -127,37 +127,41 @@ _Cross-task facts that survive across sessions. Promoted from session checkpoint
 - **Audio volume:** service coalesce; UI throttle optional; sink/source markers
   split (`SinkVolumeSliderDrag` / `SourceVolumeSliderDrag`).
 
-## Visual depth wave T128–T132 (2026-07-25)
+## Visual depth wave T128–T132 (status 2026-07-26)
 
-User goal: **shell to daily-driver polish**, not publish-first. Depth in three
-layers — do in order, do not parallelize 3D with panel polish.
+User goal: **shell to daily-driver polish**, not publish-first.
 
-| T | Layer | Scope | Status |
-|---|---|---|---|
-| **T128** | App + `chronos-ui` | Elevated surface + blur **tokens**; apply popups + panel content chrome | **OPEN** brief `active/T128-elevated-surface-blur-tokens.md` |
-| **T129** | App + `gpui_animation` | Panel/popup **enter-exit** (scale+opacity springs). No exclusive-zone animation. `gpui_animation::init` once/session | **QUEUED** after T128 |
-| **T130** | App notifications | Toast **enter/exit** motion (same motion vocabulary as T129) | **QUEUED** after T129 |
-| **T131** | Fork `Source/gpui` + `gpui_wgpu` | Real **3D** scene primitive + in-tree example (BlurRect template, `wgpu-render-pipeline` skill) | **QUEUED** after shell polish stable |
-| **T132** | App | Wire **one** 3D demo surface (empty IDE tab / about) — not bar, not every frame | **QUEUED** after T131 |
+| T | Layer | Status |
+|---|---|---|
+| **T128** | Elevated + blur tokens | **ACCEPTED WITH CAVEATS** (code in tree) |
+| **T129** | Panel/popup enter-exit | **PARKED** — panels slide via `with_animation`; popups enter not trustworthy; user stop. Code: `motion.rs` |
+| **T130** | Toast motion | **blocked** until T129 reopened |
+| **T131** | Fork 3D primitive | **queued** after polish stable |
+| **T132** | One 3D demo surface | **queued** after T131 |
 
-**Rejected for now:** gpui-d3rs as 3D path (Zed gpui dep + charts, not shell depth).
-**Not 3D engine:** BoxShadow + `paint_blur` + springs = 2.5D; enough for T128–T130.
+**Rejected for now:** gpui-d3rs as 3D path. Further T129 thrash without new brief.
+
+## Theme + surfaces (2026-07-26)
+
+- Left/right panels on `Theme` tokens; right Light C roles in
+  `side_panel_right/surfaces.rs` (chrome/card/well — not 1:1 mocha map).
+- Toggle: Super+Shift+T, `~/.config/chronos/theme.toml`, IPC `toggle-theme`.
+- Critical user-accepted dark+light grim (both panels). Polish → `TBD.md`.
 
 ## Panels exclusive (2026-07-25 live)
 
 - Left bar-only exclusive = **sidebar + handle** (46 collapsed), not 36 alone —
   otherwise handle overlays tiles. Right = rail+handle (54).
 - Left agent header ("Hermes") only when chat open — not on rail-only.
+- Exclusive dock on/off confirmed 2026-07-26.
 
-## Wallpaper / waytrogen (2026-07-25)
+## Wallpaper / waytrogen (2026-07-25…26)
 
-- **Engine in shell:** `crates/services/src/wallpaper` (awww), `wallpaper_ctl`
-  (`~/Pictures/Wallpapers`), IPC `wallpaper-next` / `wallpaper-set:`.
-- **Not shipped:** waytrogen binary/UI. Donor = `reference/waytrogen-main`
-  for CLI patterns only (Unlicense → NOTICE).
-- **Policy:** integrate optional gallery (`exec waytrogen`), do **not** rewrite
-  waytrogen. Companion wording OK ("not ours — install together?").
-- **T133** OPEN — gallery IPC + UI entry + docs.
+- **Engine in shell:** `services/wallpaper` (awww), `wallpaper_ctl`, IPC
+  `wallpaper-next` / `wallpaper-set:`.
+- **T133 ACCEPTED WITH CAVEATS** — waytrogen is first-class **gallery GUI**
+  (not rewrite); companion CTA when missing; resync after gallery.
+- Live smoke remnants → `TBD.md`.
 
 ## На горизонте (known gaps / follow-up specs, not yet built)
 

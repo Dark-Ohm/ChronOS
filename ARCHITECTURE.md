@@ -1,9 +1,9 @@
 # Chronos Shell — Architecture
 
-> Status: approved design (brainstorming phase complete)
-> Last updated: 2026-07-09
+> Status: approved design (brainstorming phase complete); living amendments below
+> Last updated: 2026-07-26
 > Scope: desktop shell for Hyprland 0.55.4+ on CachyOS (RTX 3070, i5 12400F, 64GB DDR4)
-> Stack: Rust + GPUI (gpui-ce) + mLua-LuauJIT
+> Stack: Rust + GPUI (gpui-ce chronos edition in `../Source`) + mLua-LuauJIT
 
 Canonical architecture doc. Full design rationale and source citations live in
 the original spec: `docs/superpowers/specs/2026-07-08-chronos-architecture-design.md`
@@ -325,6 +325,36 @@ Durable architecture introduced by the wave:
 - **Bar widget order = registration order** in
   `bar/widgets/mod.rs::register_builtin` — separators are positional
   widgets, the comment there is normative.
+
+## 15. Theme, side panels, motion (amendments 2026-07-25…26)
+
+### Theme global
+- `chronos_ui::Theme` is a GPUI global; cold start via `theme_config::init`
+  (env `CHRONOS_THEME` > `~/.config/chronos/theme.toml` > Default dark).
+- Hot toggle: Super+Shift+T / IPC `toggle-theme` / file watcher on
+  `theme.toml` → `cx.refresh_windows()`.
+- Schemes: Default (mocha-like), Light C (`is_light`), optional Solarized.
+  Light is **identity palette**, not Latte invert (see DECISIONS 2026-07-19).
+
+### Side panels
+- **Left** (`side_panel_left/`): agent/Hermes ACP; sessions strip =
+  exclusive bar; chat overlay; Dock = full exclusive; Super+A.
+- **Right** (`side_panel_right/`): System tab chrome + rail; rail =
+  exclusive; content overlay; Dock; Super+G.
+- **Light C surface roles (right):** do not map `bg.primary/tertiary` 1:1
+  from mocha. Use `side_panel_right/surfaces.rs` —
+  `chrome` / `card` / `well` branch on `theme.is_light` (pageBg vs cardBg).
+
+### Elevation (T128)
+- `Theme::elevation_popup()` + helpers in `crates/ui/src/elevation.rs`
+  (shadows, blur_layer, glow, watermark). Popups and elevated panel chrome
+  share this language.
+
+### Motion (T129) — partial / parked
+- Intent: enter/exit polish. **Not product-accepted** as of 2026-07-26.
+- Experiment code may live under `crates/app/src/motion.rs`; do not treat
+  as stable API. Prefer new brief before more thrash. Exit fade on
+  `remove_window` is compositor territory.
 
 ## Module scope
 

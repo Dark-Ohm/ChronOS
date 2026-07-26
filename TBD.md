@@ -4,7 +4,7 @@
 > Не замена `HANDOFF.md` (оперативка) и не `orchestration/tasks/` (T-ID).
 > Когда пункт созрел → бриф T-ID или вычёркивание с датой/коммитом.
 >
-> **Обновлено:** 2026-07-26 (T129 active — motion; theme/panels baseline closed)
+> **Обновлено:** 2026-07-26 (вечер) — theme/panels closed; T129 motion PARKED
 
 ## Правила
 
@@ -42,14 +42,19 @@
 - [ ] Resync при закрытии gallery без GUI Next.
 - [ ] Next без GUI path (edge cases).
 
-## Visual depth queue
+## Visual depth / motion
 
-- [x] ~~T129 — panel/popup enter-exit~~ → **active**  
-      `orchestration/tasks/active/T129-panel-popup-enter-exit.md` (2026-07-26)
-- [ ] T130 — toast enter/exit (после T129).
+- [ ] **T129 motion — PARKED** (2026-07-26 user «забей»).  
+  Live: panels slide (`with_animation`); popups enter failed (hard cut +
+  compositor fade on close). Code left in tree: `crates/app/src/motion.rs`,
+  panel `with_animation`, popup `enter_t` tick. Re-open only with new brief.  
+  Commits: `aeff604`…`ce6fff3`. Brief local (orchestration/ gitignored).
+- [ ] T130 — toast enter/exit (blocked until T129 reopened or rewritten).
 - [ ] T131 — fork: 3D scene primitive + example.
 - [ ] T132 — один 3D demo surface в шелле.
 - [ ] T128 elevation report prose / optional grim archive.
+- [ ] Exit fade on panel/popup close is **Hyprland window animation**, not
+  ChronOS — windowrule or reverse-enter-before-close if ever wanted.
 
 ## Agent / ACP
 
@@ -84,4 +89,6 @@
 
 - ~~Right panel hardcoded mocha / light не применялась~~ → Theme wire + surface roles (2026-07-25…26: `091187c`, `5de7b31`).
 - ~~Left panel hardcoded mocha~~ → `8e8043e`.
-- ~~Theme toggle Super+Shift+T + theme.toml~~ — в дереве.
+- ~~Theme toggle Super+Shift+T + theme.toml~~ — `d52d06d` + config.
+- ~~Theme panels critical (user grim dark+light)~~ → 2026-07-26 accepted by user.
+- ~~T129 as active push~~ → PARKED 2026-07-26 (partial code remains).
