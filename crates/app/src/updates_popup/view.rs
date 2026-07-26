@@ -45,30 +45,29 @@ pub struct UpdatesPopupView {
     selection: HashSet<String>,
     /// Root-card enter motion (T129).
     revealed: bool,
+    reveal_armed: bool,
 }
 
 impl UpdatesPopupView {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        cx.spawn(async move |this, cx| {
-            cx.background_executor()
-                .timer(motion::reveal_delay())
-                .await;
-            let _ = this.update(cx, |this, cx| {
-                this.revealed = true;
-                cx.notify();
-            });
-        })
-        .detach();
+    pub fn new(_cx: &mut Context<Self>) -> Self {
         Self {
             scroll: ScrollHandle::new(),
             selection: HashSet::new(),
             revealed: false,
+            reveal_armed: false,
         }
     }
 }
 
 impl Render for UpdatesPopupView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        gpui_animation::init(window, cx);
+        if !self.reveal_armed {
+            self.reveal_armed = true;
+            motion::arm_reveal(cx, |this| {
+                this.revealed = true;
+            });
+        }
         let state = AppState::aur(cx).get();
         let updates = state.updates.clone();
         let count = updates.len();
@@ -418,23 +417,13 @@ impl Render for UpdatesPopupView {
             .id("updates-popup-enter")
             .relative()
             .with_transition("updates-popup-enter")
-            .opacity(if revealed {
-                1.0
-            } else {
-                motion::closed_opacity()
-            })
-            .top(if revealed {
-                px(0.)
-            } else {
-                motion::enter_slide_y()
-            })
+            .opacity(motion::closed_opacity())
+            .top(motion::enter_slide_y())
             .transition_when(
                 revealed,
                 motion::enter_duration(),
                 SpringBack::default(),
-                |s| {
-                        s.opacity(1.0).translate(px(0.), px(0.))
-                    },
+                |s| s.opacity(1.0).translate_y(px(0.)),
             )
             .child(card)
     }

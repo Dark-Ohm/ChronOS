@@ -358,23 +358,14 @@ pub fn render_panel(
                 .h_full()
                 .flex()
                 .flex_row()
-                .opacity(if revealed {
-                    1.0
-                } else {
-                    motion::closed_opacity()
-                })
-                .left(if revealed {
-                    px(0.)
-                } else {
-                    motion::enter_slide_x(true)
-                })
+                // Closed pose always — open pose only via transition_when.
+                .opacity(motion::closed_opacity())
+                .left(motion::enter_slide_x(true))
                 .transition_when(
                     revealed,
                     motion::enter_duration(),
                     SpringBack::default(),
-                    |s| {
-                        s.opacity(1.0).translate(px(0.), px(0.))
-                    },
+                    |s| s.opacity(1.0).translate_x(px(0.)),
                 )
                 .child(
                     div()

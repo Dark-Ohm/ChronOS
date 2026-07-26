@@ -13,11 +13,17 @@ use gpui_animation::transition::Transition;
 /// Default enter duration (ms) — matches volume device list (~260).
 pub const ENTER_MS: u64 = 240;
 
-/// Delay before flipping `revealed` so the first paint is the closed pose.
-pub const REVEAL_DELAY_MS: u64 = 16;
+/// Delay after first paint before flipping `revealed`.
+///
+/// `transition_when` only starts if the element id already has a state in
+/// the registry (created on first `AnimatedWrapper` paint). If `revealed`
+/// is true on the *first* paint, `state_mut` is None and the animation is
+/// silently skipped — panel pops in at the open pose. Schedule reveal only
+/// after the closed pose has been painted once.
+pub const REVEAL_DELAY_MS: u64 = 48;
 
 /// Horizontal slide distance at rest pose (toward panel edge / screen).
-pub const SLIDE_PX: f32 = 10.;
+pub const SLIDE_PX: f32 = 12.;
 
 /// Spring-overshoot easing for declarative transitions.
 #[derive(Clone, Copy)]
@@ -63,14 +69,23 @@ pub fn closed_opacity() -> f32 {
     0.0
 }
 
-/// Open-pose modifier for `transition_when` — opacity 1 + zero translate.
-/// Inline at call sites if the crate path for `State` is awkward; this is
-/// the canonical shape:
-/// ```ignore
-/// .transition_when(revealed, enter_duration(), SpringBack::default(), |s| {
-///     s.opacity(1.0).translate(px(0.), px(0.))
-/// })
-/// ```
+/// Schedule `revealed = true` after [`reveal_delay`], from the **first
+/// paint** (not from `new`). See [`REVEAL_DELAY_MS`].
+///
+/// Call once when `!reveal_armed`, then set `reveal_armed = true`.
+pub fn arm_reveal<V: 'static>(
+    cx: &mut gpui::Context<V>,
+    set_revealed: impl Fn(&mut V) + Send + 'static,
+) {
+    cx.spawn(async move |this, cx| {
+        cx.background_executor().timer(reveal_delay()).await;
+        let _ = this.update(cx, |this, cx| {
+            set_revealed(this);
+            cx.notify();
+        });
+    })
+    .detach();
+}
 
 #[cfg(test)]
 mod tests {

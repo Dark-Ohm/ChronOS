@@ -63,6 +63,8 @@ pub struct SidePanelRightView {
     power_arm: ArmState,
     /// State-driven reveal for `transition_when` (not hover-driven).
     revealed: bool,
+    /// First-paint gate: schedule reveal only after closed pose painted.
+    reveal_armed: bool,
     scroll: ScrollHandle,
     active_tab: PanelTab,
     /// Width the platform window was last physically resized to. `render`
@@ -119,20 +121,6 @@ impl SidePanelRightView {
             },
         );
 
-        cx.spawn(async move |this, cx| {
-            cx.background_executor()
-                .timer(motion::reveal_delay())
-                .await;
-            match this.update(cx, |this, cx| {
-                this.revealed = true;
-                cx.notify();
-            }) {
-                Ok(()) => {}
-                Err(e) => tracing::debug!("side_panel_right: reveal skipped (view gone): {e}"),
-            }
-        })
-        .detach();
-
         Self {
             mpris: AppState::mpris(cx).get(),
             system: AppState::system_resources(cx).get(),
@@ -147,6 +135,7 @@ impl SidePanelRightView {
             net_ul_history: SpectrumHistory::default(),
             power_arm: ArmState::default(),
             revealed: false,
+            reveal_armed: false,
             scroll: ScrollHandle::new(),
             active_tab: PanelTab::default(),
             last_resized_width: crate::side_panel_right::RAIL_ONLY_WIDTH,
@@ -277,6 +266,15 @@ impl SidePanelRightView {
 
 impl Render for SidePanelRightView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Boot animation engine (idempotent). Needed before transition_when
+        // can resolve state_mut (registry.initialized gate).
+        gpui_animation::init(window, cx);
+        if !self.reveal_armed {
+            self.reveal_armed = true;
+            motion::arm_reveal(cx, |this| {
+                this.revealed = true;
+            });
+        }
         self.sample_network();
         let revealed = self.revealed;
         let power_arm = self.power_arm;
@@ -393,24 +391,16 @@ impl Render for SidePanelRightView {
                     .flex()
                     .flex_row() // content first, rail last — rail flush against the screen's right edge
                     .overflow_hidden()
-                    .opacity(if revealed {
-                        1.0
-                    } else {
-                        motion::closed_opacity()
-                    })
-                    // Closed pose: slide from right (positive translate_x).
-                    .left(if revealed {
-                        px(0.)
-                    } else {
-                        motion::enter_slide_x(false)
-                    })
+                    // Base style is ALWAYS the closed pose — animation state
+                    // carries the open pose after transition_when. If base
+                    // is already open when revealed flips, anim is a no-op.
+                    .opacity(motion::closed_opacity())
+                    .left(motion::enter_slide_x(false))
                     .transition_when(
                         revealed,
                         motion::enter_duration(),
                         SpringBack::default(),
-                        |s| {
-                        s.opacity(1.0).translate(px(0.), px(0.))
-                    },
+                        |s| s.opacity(1.0).translate_x(px(0.)),
                     )
                     .when(content_open, |body| {
                         body.child({
