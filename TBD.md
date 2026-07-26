@@ -76,8 +76,7 @@
 
 ## Edit mode / hot-reload (после T134)
 
-- [ ] **T134** bar.toml + EditMode shell — **OPEN** (see HANDOFF / design
-      `2026-07-26-edit-mode-and-hot-reload-design.md`).
+- [ ] **T134** bar.toml + EditMode shell — code `64c777d`, **live smoke PENDING**.
 - [ ] T135 — drag reorder bar widgets.
 - [ ] T136 — hotview: more pure renders + dev-cli recipe.
 - [ ] Panel layout config (widths / default dock).
