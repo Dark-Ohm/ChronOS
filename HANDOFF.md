@@ -8,7 +8,7 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-07-26 — T137 chat ACCEPTED (user); next T140 permissions.**
+**Обновлено: 2026-07-26 — T137–T142/T138–T139 code ACCEPT WITH CAVEATS; live smoke PENDING.**
 
 ### Стратегия
 Доводить **шелл до daily driver**, не reddit/Q1 editor.  
@@ -27,28 +27,23 @@ clone without ChronOS character.
 
 **Спека:** `docs/superpowers/specs/2026-07-26-acp-panel-revive-design.md`
 
-| Phase | T | Что |
-|---|---|---|
-| A | **T137 ACCEPTED** | chat multi-turn (`af54fb0`) |
-| **A2 P0** | **T140 OPEN** | permission auto-approve — tools run |
-| A3 | T141 | tool cards + reasoning from stream |
-| A4 | T142 | model picker + set_model |
-| B | T138 | multi-agent registry |
-| C | T139 | ChronOS character (not Zed) |
+| Phase | T | Verdict | Commit |
+|---|---|---|---|
+| A | T137 | ACCEPTED (user chat) | `af54fb0` |
+| A2 | T140 | code OK / **live smoke PENDING** | in `36e8399` |
+| A3 | T141 | code OK / live grim PENDING | `36e8399` |
+| A4 | T142 | code OK / models if Hermes sends | `36e8399` |
+| B | T138 | code OK / 2nd agent live PENDING | `82405c3` |
+| C | T139 | code OK / visual grim PENDING | `66a86f5` |
 
-**User live after T137:** chat OK; tools blocked
-`Edit approval denied by ACP client`; no model/reasoning/tool UI.
-
-**Briefs (orchestration gitignored):**  
-`T140-acp-permission-auto-approve.md` → then T141 → T142 → T138 → T139.  
-Spec updated: `docs/superpowers/specs/2026-07-26-acp-panel-revive-design.md`.
+**Reports →** `orchestration/tasks/report-log/T13*-report.md` (verdicts appended).  
+**Твой smoke:** rebuild → write_file; tool cards; model list; agents.toml; light/dark grim.
 
 ### Edit Mode — T134 CLOSED
 `64c777d` + Super+Shift+E.
 
 ### Active T
-- **T140** ACP permissions — **OPEN (next)**.
-- T137 — **ACCEPTED** (chat).
+- ACP: **live smoke queue** (не код, пока smoke не упадёт).
 - T134 — ACCEPTED.
 - T129 — PARKED.
 - Pause: T115 Files.
