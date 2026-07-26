@@ -1,5 +1,6 @@
-use gpui::{IntoElement, SharedString, Window, div, prelude::*, px};
+use chronos_services::hermes_acp::StreamingEvent;
 use chronos_ui::{Theme, on_fill};
+use gpui::{IntoElement, SharedString, Window, div, prelude::*, px};
 
 use super::SidePanelLeft;
 use super::chat_view::{ChatMessage, MessageRole};
@@ -609,39 +610,54 @@ impl SidePanelLeft {
 
         if let Some(client) = self.clients.get(&self.active_agent_id).cloned() {
             self.state.agent_status = AgentStatus::Thinking;
-            cx.notify();
 
-            cx.spawn(async move |this, cx| {
-                match client.send_prompt(&text).await {
+            // Create a streaming channel for real-time events.
+            let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+
+            // Push a placeholder agent message that will be updated in-place.
+            self.chat.push_message(ChatMessage {
+                role: MessageRole::Agent,
+                content: String::new(),
+                thought: None,
+                tool_calls: Vec::new(),
+            });
+            self.chat.scroll_to_bottom();
+
+            // Spawn the ACP prompt task with streaming.
+            let acp_task = cx.spawn(async move |this, cx| {
+                match client.send_prompt_streaming(&text, event_tx).await {
                     Ok(prompt_response) => {
                         tracing::info!(
                             session_id = %prompt_response.session_id,
                             chars = prompt_response.text.len(),
                             tools = prompt_response.tools.len(),
-                            "composer: ACP reply"
+                            "composer: ACP streaming reply complete"
                         );
-                        let tool_previews: Vec<super::chat_view::ToolCallPreview> = prompt_response
-                            .tools
-                            .into_iter()
-                            .map(|t| super::chat_view::ToolCallPreview {
-                                name: t.name,
-                                status: t.status,
-                                args: t.args,
-                                result: t.result,
-                            })
-                            .collect();
-                        let _ = this.update(cx, |this, cx| {
+                        let upd = this.update(cx, |this, cx| {
+                            tracing::debug!("composer: finalize update entered");
+                            this.streaming.reset();
                             this.state.session_id = Some(prompt_response.session_id);
-                            this.chat.push_message(ChatMessage {
-                                role: MessageRole::Agent,
-                                content: prompt_response.text,
-                                thought: if prompt_response.thought.is_empty() {
-                                    None
-                                } else {
-                                    Some(prompt_response.thought)
-                                },
-                                tool_calls: tool_previews,
-                            });
+                            // Finalize the last agent message with complete data.
+                            if let Some(last_msg) = this.chat.messages.last_mut() {
+                                if last_msg.role == MessageRole::Agent {
+                                    last_msg.content = prompt_response.text;
+                                    last_msg.thought = if prompt_response.thought.is_empty() {
+                                        None
+                                    } else {
+                                        Some(prompt_response.thought)
+                                    };
+                                    last_msg.tool_calls = prompt_response
+                                        .tools
+                                        .into_iter()
+                                        .map(|t| super::chat_view::ToolCallPreview {
+                                            name: t.name,
+                                            status: t.status,
+                                            args: t.args,
+                                            result: t.result,
+                                        })
+                                        .collect();
+                                }
+                            }
                             this.chat.scroll_to_bottom();
                             this.state.agent_status = AgentStatus::Connected;
                             // Update available modes/models from the session.
@@ -650,7 +666,6 @@ impl SidePanelLeft {
                                 if this.composer_selected_mode.is_empty() {
                                     this.composer_selected_mode = modes.current_id;
                                 }
-                                // Re-detect yolo bypass after modes update
                                 this.detect_yolo_bypass_mode();
                             }
                             if let Some(models) = prompt_response.models {
@@ -661,18 +676,22 @@ impl SidePanelLeft {
                             }
                             cx.notify();
                         });
+                        if let Err(e) = upd {
+                            tracing::error!("composer: finalize update FAILED: {e}");
+                        }
                     }
                     Err(e) => {
                         tracing::warn!("composer: ACP send failed: {e}");
                         let disconnected = e.to_string().contains("command channel closed")
                             || e.to_string().contains("reply channel closed");
                         let _ = this.update(cx, |this, cx| {
-                            this.chat.push_message(ChatMessage {
-                                role: MessageRole::Agent,
-                                content: format!("Error: {e}"),
-                                thought: None,
-                                tool_calls: Vec::new(),
-                            });
+                            this.streaming.reset();
+                            // Replace the placeholder with an error message.
+                            if let Some(last_msg) = this.chat.messages.last_mut() {
+                                if last_msg.role == MessageRole::Agent {
+                                    last_msg.content = format!("Error: {e}");
+                                }
+                            }
                             this.chat.scroll_to_bottom();
                             this.state.agent_status = if disconnected {
                                 AgentStatus::Disconnected
@@ -683,8 +702,88 @@ impl SidePanelLeft {
                         });
                     }
                 }
-            })
-            .detach();
+            });
+
+            // Store ACP task for cancellation on panel drop / new session.
+            self.streaming.acp_task = Some(acp_task);
+
+            // Spawn a GPUI task to consume streaming events and update the
+            // placeholder agent message in real-time.
+            let streaming_task = cx.spawn(async move |this, cx| {
+                let mut rx = event_rx;
+                while let Some(event) = rx.recv().await {
+                    tracing::debug!("composer: streaming event received");
+                    let upd = this.update(cx, |this, cx| {
+                        match event {
+                            StreamingEvent::TextChunk(delta) => {
+                                if let Some(last_msg) = this.chat.messages.last_mut() {
+                                    if last_msg.role == MessageRole::Agent {
+                                        last_msg.content.push_str(&delta);
+                                    }
+                                }
+                                this.chat.scroll_to_bottom();
+                            }
+                            StreamingEvent::ThoughtChunk(delta) => {
+                                if let Some(last_msg) = this.chat.messages.last_mut() {
+                                    if last_msg.role == MessageRole::Agent {
+                                        match &mut last_msg.thought {
+                                            Some(thought) => thought.push_str(&delta),
+                                            None => {
+                                                last_msg.thought = Some(delta);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            StreamingEvent::ToolCall {
+                                id,
+                                name,
+                                status,
+                                args,
+                                result,
+                            } => {
+                                if let Some(last_msg) = this.chat.messages.last_mut() {
+                                    if last_msg.role == MessageRole::Agent {
+                                        // Find or insert the tool call.
+                                        if let Some(tc) =
+                                            last_msg.tool_calls.iter_mut().find(|t| t.name == name)
+                                        {
+                                            tc.status = status;
+                                            tc.args = args;
+                                            tc.result = result;
+                                        } else {
+                                            last_msg.tool_calls.push(
+                                                super::chat_view::ToolCallPreview {
+                                                    name,
+                                                    status,
+                                                    args,
+                                                    result,
+                                                },
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            StreamingEvent::Done => {
+                                // Final update happens in the ACP task.
+                            }
+                            StreamingEvent::Error(_) => {
+                                // Error handling happens in the ACP task.
+                            }
+                        }
+                        cx.notify();
+                    });
+                    if let Err(e) = upd {
+                        tracing::error!("composer: streaming update FAILED: {e}");
+                        return;
+                    }
+                }
+            });
+
+            // Store the streaming receiver task so it's aborted if the panel
+            // is dropped or a new session is created.
+            self.streaming.active = true;
+            self.streaming.receiver_task = Some(streaming_task);
         } else {
             self.chat.push_message(ChatMessage {
                 role: MessageRole::Agent,

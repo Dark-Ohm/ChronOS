@@ -32,8 +32,7 @@ pub fn render_panel(
     } else {
         SIDEBAR_EXPANDED_WIDTH
     };
-    let past_sidebar =
-        panel.state.width > sidebar_w + SIDEBAR_HANDLE_WIDTH + 1.0;
+    let past_sidebar = panel.state.width > sidebar_w + SIDEBAR_HANDLE_WIDTH + 1.0;
     let chat_open = panel.state.dock_chat || past_sidebar;
 
     let agent_name = panel
@@ -75,8 +74,8 @@ pub fn render_panel(
     let sidebar = build_sessions_sidebar(panel, collapsed, &theme, cx);
 
     // Thread header listener (built before any RPIT that captures cx)
-    let thread_new_chat_handler = cx.listener(|_, _, _, _cx| {
-        tracing::info!("thread header: new chat (stub)");
+    let thread_new_chat_handler = cx.listener(|this, _, _, cx| {
+        this.create_new_session(cx);
     });
 
     // Build agent dropdown with click handlers — must be built BEFORE
@@ -594,7 +593,9 @@ fn build_sessions_sidebar(
                                     .text_size(px(11.))
                                     .text_color(theme.text.muted)
                                     .cursor_pointer()
-                                    .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.primary))
+                                    .hover(|s| {
+                                        s.bg(theme.border.subtle).text_color(theme.text.primary)
+                                    })
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.toggle_collapse(cx);
                                     }))

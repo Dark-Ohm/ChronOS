@@ -12,6 +12,45 @@ pub enum AgentStatus {
     Thinking,
 }
 
+/// Streaming state for an in-progress ACP prompt turn.
+pub struct StreamingState {
+    /// Whether a streaming turn is in progress.
+    pub active: bool,
+    /// Accumulated text chunks from the agent.
+    pub text_buffer: String,
+    /// Accumulated thought/reasoning chunks.
+    pub thought_buffer: String,
+    /// Tool calls received so far (keyed by tool_call_id).
+    pub tool_calls: std::collections::HashMap<String, super::chat_view::ToolCallPreview>,
+    /// Join handle for the event receiver task (aborted on drop/cancel).
+    pub receiver_task: Option<gpui::Task<()>>,
+    /// Join handle for the ACP prompt task (aborted on drop/cancel).
+    pub acp_task: Option<gpui::Task<()>>,
+}
+
+impl StreamingState {
+    pub fn new() -> Self {
+        Self {
+            active: false,
+            text_buffer: String::new(),
+            thought_buffer: String::new(),
+            tool_calls: std::collections::HashMap::new(),
+            receiver_task: None,
+            acp_task: None,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.active = false;
+        self.text_buffer.clear();
+        self.thought_buffer.clear();
+        self.tool_calls.clear();
+        // `gpui::Task` has no abort(); dropping the handle cancels the task.
+        drop(self.receiver_task.take());
+        drop(self.acp_task.take());
+    }
+}
+
 pub struct SidePanelLeftState {
     pub state: PanelState,
     pub width: f32,
@@ -72,8 +111,7 @@ impl SidePanelLeftState {
     /// Recalculate min_width after collapse state changes.
     /// Expanded sessions need room for the 200px column + handle.
     pub fn recalc_min_width(&mut self) {
-        self.min_width =
-            self.sidebar_width() + super::sessions_list::SIDEBAR_HANDLE_WIDTH;
+        self.min_width = self.sidebar_width() + super::sessions_list::SIDEBAR_HANDLE_WIDTH;
         if self.width < self.min_width {
             self.width = self.min_width;
         }
@@ -87,9 +125,7 @@ impl SidePanelLeftState {
     pub const DEFAULT_CHAT_WIDTH: f32 = 352.;
 
     pub fn ensure_chat_width(&mut self) {
-        let need = self.sidebar_width()
-            + super::sessions_list::SIDEBAR_HANDLE_WIDTH
-            + 120.0; // min thread column so chat is usable
+        let need = self.sidebar_width() + super::sessions_list::SIDEBAR_HANDLE_WIDTH + 120.0; // min thread column so chat is usable
         if self.width < need {
             self.width = Self::DEFAULT_CHAT_WIDTH.max(need).min(self.max_width);
         }

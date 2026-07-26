@@ -27,7 +27,7 @@ pub struct ChatMessage {
 }
 
 pub struct ChatView {
-    messages: Vec<ChatMessage>,
+    pub(crate) messages: Vec<ChatMessage>,
     scroll: ScrollHandle,
     pub expanded_tool_calls: std::collections::HashSet<(usize, usize)>,
 }

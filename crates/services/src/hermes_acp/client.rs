@@ -1,5 +1,5 @@
 use agent_client_protocol::{
-    Agent, ActiveSession, ConnectionTo, SessionMessage,
+    ActiveSession, Agent, ConnectionTo, SessionMessage,
     schema::{ContentBlock, SessionNotification, SessionUpdate, ToolCallContent, ToolCallStatus},
     util::MatchDispatch,
 };
@@ -7,7 +7,28 @@ use anyhow::{Context, Result};
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
-use super::session::{AcpSession, ModelInfo, SessionMode, SessionModes, SessionModels};
+/// Streaming event emitted during a prompt turn.
+#[derive(Clone, Debug)]
+pub enum StreamingEvent {
+    /// Incremental text chunk from the agent.
+    TextChunk(String),
+    /// Incremental reasoning/thought chunk.
+    ThoughtChunk(String),
+    /// A tool call appeared or was updated.
+    ToolCall {
+        id: String,
+        name: String,
+        status: String,
+        args: Option<String>,
+        result: Option<String>,
+    },
+    /// Turn completed successfully.
+    Done,
+    /// Turn failed.
+    Error(String),
+}
+
+use super::session::{AcpSession, ModelInfo, SessionMode, SessionModels, SessionModes};
 use super::transport::{HermesConfig, HermesTransport};
 
 /// Tool call info extracted from an ACP turn.
@@ -41,6 +62,9 @@ pub(crate) enum Command {
     SendPrompt {
         prompt: String,
         reply: tokio::sync::oneshot::Sender<Result<PromptResponse>>,
+        /// Optional streaming callback. When provided, events are emitted
+        /// as the turn progresses (text chunks, tool calls, etc.).
+        on_event: Option<tokio::sync::mpsc::UnboundedSender<StreamingEvent>>,
     },
     /// Switch the active model on the held session.
     SetModel {
@@ -62,8 +86,16 @@ pub(crate) async fn execute_command(
             let result = ensure_fresh_session(cx, active).await;
             let _ = reply.send(result);
         }
-        Command::SendPrompt { prompt, reply } => {
-            let result = send_prompt_on_active(cx, active, &prompt).await;
+        Command::SendPrompt {
+            prompt,
+            reply,
+            on_event,
+        } => {
+            let result = if let Some(event_tx) = on_event {
+                send_prompt_streaming(cx, active, &prompt, &event_tx).await
+            } else {
+                send_prompt_on_active(cx, active, &prompt).await
+            };
             let _ = reply.send(result);
         }
         Command::SetModel { model_id, reply } => {
@@ -188,6 +220,7 @@ async fn read_turn(
                         }
                         SessionUpdate::ToolCallUpdate(update) => {
                             let id = update.tool_call_id.0.to_string();
+                            tracing::info!(tool_id = %id, title = ?update.fields.title, status = ?update.fields.status, raw_input = update.fields.raw_input.is_some(), raw_output = update.fields.raw_output.is_some(), content = update.fields.content.as_ref().map(|c| c.len()), "ACP raw: ToolCallUpdate");
                             let entry = tools.entry(id).or_insert_with(|| ToolCallInfo {
                                 id: update.tool_call_id.0.to_string(),
                                 name: String::new(),
@@ -243,15 +276,203 @@ async fn read_turn(
     Ok((text, thought, tools_vec))
 }
 
+/// Read a full ACP turn, emitting streaming events via `on_event` as they arrive.
+/// Returns the accumulated text, thought, and tools when the turn completes.
+async fn stream_read_turn(
+    session: &mut ActiveSession<'static, Agent>,
+    on_event: &tokio::sync::mpsc::UnboundedSender<StreamingEvent>,
+) -> Result<(String, String, Vec<ToolCallInfo>)> {
+    let mut text = String::new();
+    let mut thought = String::new();
+    let mut tools: HashMap<String, ToolCallInfo> = HashMap::new();
+
+    loop {
+        let update = session.read_update().await?;
+        match update {
+            SessionMessage::SessionMessage(dispatch) => MatchDispatch::new(dispatch)
+                .if_notification(async |notif: SessionNotification| {
+                    match notif.update {
+                        SessionUpdate::AgentMessageChunk(chunk) => {
+                            if let ContentBlock::Text(t) = chunk.content {
+                                let delta = t.text.clone();
+                                text.push_str(&delta);
+                                if on_event.send(StreamingEvent::TextChunk(delta)).is_err() {
+                                    return Ok(());
+                                }
+                            }
+                        }
+                        SessionUpdate::AgentThoughtChunk(chunk) => {
+                            if let ContentBlock::Text(t) = chunk.content {
+                                let delta = t.text.clone();
+                                thought.push_str(&delta);
+                                if on_event.send(StreamingEvent::ThoughtChunk(delta)).is_err() {
+                                    return Ok(());
+                                }
+                            }
+                        }
+                        SessionUpdate::ToolCall(tc) => {
+                            let id = tc.tool_call_id.0.to_string();
+                            tracing::info!(tool_id = %id, title = %tc.title, status = ?tc.status, raw_input = tc.raw_input.is_some(), "ACP raw: ToolCall");
+                            let entry = tools.entry(id.clone()).or_insert_with(|| ToolCallInfo {
+                                id,
+                                name: tc.title.clone(),
+                                status: status_string(&tc.status),
+                                args: tc.raw_input.as_ref().map(|v| {
+                                    serde_json::to_string_pretty(v)
+                                        .unwrap_or_else(|_| v.to_string())
+                                }),
+                                result: None,
+                            });
+                            if on_event
+                                .send(StreamingEvent::ToolCall {
+                                    id: entry.id.clone(),
+                                    name: entry.name.clone(),
+                                    status: entry.status.clone(),
+                                    args: entry.args.clone(),
+                                    result: entry.result.clone(),
+                                })
+                                .is_err()
+                            {
+                                return Ok(());
+                            }
+                        }
+                        SessionUpdate::ToolCallUpdate(update) => {
+                            let id = update.tool_call_id.0.to_string();
+                            tracing::info!(tool_id = %id, title = ?update.fields.title, status = ?update.fields.status, raw_input = update.fields.raw_input.is_some(), raw_output = update.fields.raw_output.is_some(), content = update.fields.content.as_ref().map(|c| c.len()), "ACP raw: ToolCallUpdate");
+                            let entry = tools.entry(id).or_insert_with(|| ToolCallInfo {
+                                id: update.tool_call_id.0.to_string(),
+                                name: String::new(),
+                                status: "pending".to_string(),
+                                args: None,
+                                result: None,
+                            });
+                            if let Some(title) = update.fields.title {
+                                entry.name = title;
+                            }
+                            if let Some(status) = update.fields.status {
+                                entry.status = status_string(&status);
+                            }
+                            if let Some(raw_input) = update.fields.raw_input {
+                                entry.args = Some(
+                                    serde_json::to_string_pretty(&raw_input)
+                                        .unwrap_or_else(|_| raw_input.to_string()),
+                                );
+                            }
+                            if let Some(raw_output) = update.fields.raw_output {
+                                entry.result = Some(
+                                    serde_json::to_string_pretty(&raw_output)
+                                        .unwrap_or_else(|_| raw_output.to_string()),
+                                );
+                            }
+                            // Extract text result from content if no raw_output.
+                            if entry.result.is_none() {
+                                if let Some(content) = update.fields.content {
+                                    for item in content {
+                                        if let ToolCallContent::Content(c) = item {
+                                            if let ContentBlock::Text(t) = c.content {
+                                                entry.result = Some(t.text);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if on_event
+                                .send(StreamingEvent::ToolCall {
+                                    id: entry.id.clone(),
+                                    name: entry.name.clone(),
+                                    status: entry.status.clone(),
+                                    args: entry.args.clone(),
+                                    result: entry.result.clone(),
+                                })
+                                .is_err()
+                            {
+                                return Ok(());
+                            }
+                        }
+                        _ => {}
+                    }
+                    Ok(())
+                })
+                .await
+                .otherwise_ignore()?,
+            SessionMessage::StopReason(_) => break,
+            _ => {}
+        }
+    }
+
+    let _ = on_event.send(StreamingEvent::Done);
+    let tools_vec: Vec<ToolCallInfo> = tools.into_values().collect();
+    Ok((text, thought, tools_vec))
+}
+
+/// Send prompt with streaming events emitted via `on_event`.
+async fn send_prompt_streaming(
+    cx: &ConnectionTo<Agent>,
+    active: &mut Option<ActiveSession<'static, Agent>>,
+    prompt: &str,
+    on_event: &tokio::sync::mpsc::UnboundedSender<StreamingEvent>,
+) -> Result<PromptResponse> {
+    if active.is_none() {
+        debug!("No held session — creating before first prompt");
+        let session = start_new_session(cx).await?;
+        *active = Some(session);
+    }
+
+    let session = active
+        .as_mut()
+        .context("internal: active session missing after ensure")?;
+
+    let session_id = session.session_id().to_string();
+    let modes = modes_from_session(session);
+    let models = models_from_session(session);
+
+    debug!(
+        %session_id,
+        "Sending prompt (streaming): {}",
+        &prompt[..prompt.len().min(80)]
+    );
+
+    if let Err(e) = session.send_prompt(prompt) {
+        warn!(%session_id, "send_prompt failed: {e}; dropping session");
+        *active = None;
+        let _ = on_event.send(StreamingEvent::Error(e.to_string()));
+        return Err(anyhow::anyhow!("failed to send prompt: {e}"));
+    }
+
+    let (text, thought, tools) = match stream_read_turn(session, on_event).await {
+        Ok(result) => result,
+        Err(e) => {
+            warn!(%session_id, "read response failed: {e}; dropping session");
+            *active = None;
+            let _ = on_event.send(StreamingEvent::Error(e.to_string()));
+            return Err(anyhow::anyhow!("failed to read response: {e}"));
+        }
+    };
+
+    debug!(
+        %session_id,
+        "Streaming response complete ({} chars, {} tools)",
+        text.len(),
+        tools.len()
+    );
+
+    Ok(PromptResponse {
+        text,
+        thought,
+        tools,
+        modes,
+        models,
+        session_id,
+    })
+}
+
 fn acp_session_meta(session: &ActiveSession<'static, Agent>) -> AcpSession {
     AcpSession::new(session.session_id().clone())
         .with_modes(modes_from_session(session))
         .with_models(models_from_session(session))
 }
 
-async fn start_new_session(
-    cx: &ConnectionTo<Agent>,
-) -> Result<ActiveSession<'static, Agent>> {
+async fn start_new_session(cx: &ConnectionTo<Agent>) -> Result<ActiveSession<'static, Agent>> {
     debug!("Starting new ACP session");
     let session = cx
         .build_session_cwd()
@@ -414,6 +635,28 @@ impl HermesClient {
             .send(Command::SendPrompt {
                 prompt: prompt.to_string(),
                 reply,
+                on_event: None,
+            })
+            .context("command channel closed")?;
+        rx.await.context("reply channel closed")?
+    }
+
+    /// Send a prompt with streaming events emitted via the channel.
+    ///
+    /// Returns the final `PromptResponse` when the turn completes.
+    /// Events (text chunks, tool calls, etc.) are sent to `event_tx`
+    /// as they arrive from the ACP agent.
+    pub async fn send_prompt_streaming(
+        &self,
+        prompt: &str,
+        event_tx: tokio::sync::mpsc::UnboundedSender<StreamingEvent>,
+    ) -> Result<PromptResponse> {
+        let (reply, rx) = tokio::sync::oneshot::channel();
+        self.cmd_tx
+            .send(Command::SendPrompt {
+                prompt: prompt.to_string(),
+                reply,
+                on_event: Some(event_tx),
             })
             .context("command channel closed")?;
         rx.await.context("reply channel closed")?

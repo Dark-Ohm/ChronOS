@@ -9,7 +9,9 @@ mod tool_card;
 pub use state::{PanelState, SidePanelLeftState};
 
 use chronos_luau::bar::BAR_HEIGHT;
-use chronos_services::hermes_acp::{AgentDescriptor, HermesClient, known_agents, load_shared_env};
+use chronos_services::hermes_acp::{
+    AgentDescriptor, HermesClient, StreamingEvent, known_agents, load_shared_env,
+};
 use chronos_services::{ModelInfo, SessionMode};
 use gpui::{
     App, Bounds, DisplayId, Focusable, Global, Size, Window, WindowBackgroundAppearance,
@@ -99,6 +101,8 @@ pub struct SidePanelLeft {
     pub(crate) composer_model_dropdown_open: bool,
     pub(crate) composer_mode_dropdown_open: bool,
     pub(crate) composer_focused: bool,
+    /// Streaming state for the current ACP prompt turn.
+    pub(crate) streaming: state::StreamingState,
     resize_start_x: Option<f32>,
     resize_start_width: Option<f32>,
     /// Width the platform window was last physically resized to. `render`
@@ -153,8 +157,8 @@ impl SidePanelLeft {
         // Connecting until HermesClient::new + create_session complete.
         state.agent_status = state::AgentStatus::Thinking;
 
-        cx.spawn(
-            async move |this, cx| match HermesClient::new(default_config, env_for_spawn).await {
+        cx.spawn(async move |this, cx| {
+            match HermesClient::new(default_config, env_for_spawn).await {
                 Ok(client) => {
                     // Fetch modes/models at connect time, not just after the
                     // first prompt — otherwise the model/mode pickers stay
@@ -190,8 +194,8 @@ impl SidePanelLeft {
                         this.state.agent_status = state::AgentStatus::Disconnected;
                     });
                 }
-            },
-        )
+            }
+        })
         .detach();
 
         Self {
@@ -215,6 +219,7 @@ impl SidePanelLeft {
             composer_model_dropdown_open: false,
             composer_mode_dropdown_open: false,
             composer_focused: false,
+            streaming: state::StreamingState::new(),
             resize_start_x: None,
             resize_start_width: None,
             last_resized_width: None,
@@ -242,40 +247,39 @@ impl SidePanelLeft {
         self.state.active_session_id = Some(id);
         // Clear local transcript; mint a fresh ACP session on the agent.
         self.chat = chat_view::ChatView::new();
+        self.streaming.reset();
         self.state.session_id = None;
         if let Some(client) = self.clients.get(&self.active_agent_id).cloned() {
             self.state.agent_status = state::AgentStatus::Thinking;
-            cx.spawn(async move |this, cx| {
-                match client.create_session().await {
-                    Ok(session) => {
-                        let _ = this.update(cx, |this, cx| {
-                            this.state.session_id = Some(session.id.to_string());
-                            this.state.agent_status = state::AgentStatus::Connected;
-                            if let Some(modes) = session.modes {
-                                this.composer_selected_mode = modes.current_id;
-                                this.available_modes = modes.available;
-                                this.detect_yolo_bypass_mode();
-                            }
-                            if let Some(models) = session.models {
-                                this.composer_selected_model = models.current_id;
-                                this.available_models = models.available;
-                            }
-                            cx.notify();
+            cx.spawn(async move |this, cx| match client.create_session().await {
+                Ok(session) => {
+                    let _ = this.update(cx, |this, cx| {
+                        this.state.session_id = Some(session.id.to_string());
+                        this.state.agent_status = state::AgentStatus::Connected;
+                        if let Some(modes) = session.modes {
+                            this.composer_selected_mode = modes.current_id;
+                            this.available_modes = modes.available;
+                            this.detect_yolo_bypass_mode();
+                        }
+                        if let Some(models) = session.models {
+                            this.composer_selected_model = models.current_id;
+                            this.available_models = models.available;
+                        }
+                        cx.notify();
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!("side_panel_left: new ACP session failed: {e}");
+                    let _ = this.update(cx, |this, cx| {
+                        this.state.agent_status = state::AgentStatus::Disconnected;
+                        this.chat.push_message(chat_view::ChatMessage {
+                            role: chat_view::MessageRole::Agent,
+                            content: format!("Error: failed to create session: {e}"),
+                            thought: None,
+                            tool_calls: Vec::new(),
                         });
-                    }
-                    Err(e) => {
-                        tracing::warn!("side_panel_left: new ACP session failed: {e}");
-                        let _ = this.update(cx, |this, cx| {
-                            this.state.agent_status = state::AgentStatus::Disconnected;
-                            this.chat.push_message(chat_view::ChatMessage {
-                                role: chat_view::MessageRole::Agent,
-                                content: format!("Error: failed to create session: {e}"),
-                                thought: None,
-                                tool_calls: Vec::new(),
-                            });
-                            cx.notify();
-                        });
-                    }
+                        cx.notify();
+                    });
                 }
             })
             .detach();
@@ -331,6 +335,7 @@ impl SidePanelLeft {
         self.agent_menu_open = false;
         self.sessions.clear();
         self.state.active_session_id = None;
+        self.streaming.reset();
 
         // If client already exists, just mark connected.
         if self.clients.contains_key(agent_id) {
@@ -386,6 +391,15 @@ impl SidePanelLeft {
             },
         )
         .detach();
+    }
+}
+
+impl Drop for SidePanelLeft {
+    fn drop(&mut self) {
+        // Dropping a `gpui::Task` handle cancels it — there is no abort().
+        drop(self.streaming.receiver_task.take());
+        drop(self.streaming.acp_task.take());
+        tracing::info!("SidePanelLeft dropped — streaming tasks aborted");
     }
 }
 

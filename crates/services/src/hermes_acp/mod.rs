@@ -5,7 +5,7 @@ pub mod registry;
 pub mod session;
 pub mod transport;
 
-pub use client::{HermesClient, PromptResponse};
+pub use client::{HermesClient, PromptResponse, StreamingEvent};
 pub use registry::{AgentDescriptor, known_agents, load_shared_env};
-pub use session::{AcpSession, ModelInfo, SessionMode, SessionModes, SessionModels};
+pub use session::{AcpSession, ModelInfo, SessionMode, SessionModels, SessionModes};
 pub use transport::{HermesConfig, HermesTransport};
