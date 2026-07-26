@@ -2,6 +2,7 @@ mod assets;
 mod bar;
 mod desktop_terminal;
 mod dock;
+mod edit_mode;
 mod ipc;
 mod launcher;
 mod monitor;
@@ -63,6 +64,7 @@ fn main() {
 
             subscriber.start(cx);
             theme_config::init(cx);
+            edit_mode::init(cx);
             bar::init(cx);
             notifications::init(cx);
             notifications::history_popup::init(cx);

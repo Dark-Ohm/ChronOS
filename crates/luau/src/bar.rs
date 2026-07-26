@@ -47,6 +47,11 @@ impl BarWidgetRegistry {
         self.widgets.push(widget);
     }
 
+    /// Drop all registered widgets (used before re-apply of bar layout).
+    pub fn clear(&mut self) {
+        self.widgets.clear();
+    }
+
     pub fn replace_by_name(&mut self, name: &str, widget: Box<dyn BarWidget>) -> Option<Box<dyn BarWidget>> {
         if let Some(pos) = self.widgets.iter().position(|w| w.name() == name) {
             let old = std::mem::replace(&mut self.widgets[pos], widget);

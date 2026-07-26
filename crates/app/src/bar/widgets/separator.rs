@@ -7,7 +7,7 @@ use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_ui::Theme;
 
 pub struct Separator {
-    section: BarSection,
+    pub(super) section: BarSection,
 }
 
 impl BarWidget for Separator {

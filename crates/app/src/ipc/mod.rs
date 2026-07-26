@@ -17,6 +17,7 @@ impl IpcSubscriber {
             mut side_panel_toggle_receiver,
             mut side_panel_right_toggle_receiver,
             mut theme_toggle_receiver,
+            mut edit_mode_toggle_receiver,
         ) = self.start_listener();
 
         cx.spawn(async move |cx| {
@@ -29,6 +30,8 @@ impl IpcSubscriber {
             let mut last_side_panel_right_toggle_at =
                 std::time::Instant::now() - std::time::Duration::from_secs(1);
             let mut last_theme_toggle_at =
+                std::time::Instant::now() - std::time::Duration::from_secs(1);
+            let mut last_edit_mode_toggle_at =
                 std::time::Instant::now() - std::time::Duration::from_secs(1);
 
             loop {
@@ -104,6 +107,22 @@ impl IpcSubscriber {
                                 tracing::info!("IPC toggle-theme received");
                                 let _ = cx.update(|cx| {
                                     crate::theme_config::toggle(cx);
+                                });
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    edit_mode_toggle = edit_mode_toggle_receiver.recv() => {
+                        if edit_mode_toggle.is_some() {
+                            let now = std::time::Instant::now();
+                            if now.duration_since(last_edit_mode_toggle_at)
+                                >= std::time::Duration::from_millis(200)
+                            {
+                                last_edit_mode_toggle_at = now;
+                                tracing::info!("IPC toggle-edit-mode received");
+                                let _ = cx.update(|cx| {
+                                    crate::edit_mode::toggle(cx);
                                 });
                             }
                         } else {

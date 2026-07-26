@@ -76,6 +76,9 @@ impl BarWidget for TrayWidget {
                     .hover(|s| s.bg(theme.interactive.hover))
                     .child(render_icon(item))
                     .on_click(move |_event, _window, cx: &mut App| {
+                        if crate::edit_mode::is_active(cx) {
+                            return;
+                        }
                         AppState::tray(cx).dispatch(TrayCommand::ActivateItem {
                             service: id.clone(),
                         });
@@ -83,6 +86,9 @@ impl BarWidget for TrayWidget {
                     // Right-click opens the DBusMenu context popup (toggle).
                     // Left-click ActivateItem above is intentionally untouched.
                     .on_mouse_down(MouseButton::Right, move |_event, _window, cx: &mut App| {
+                        if crate::edit_mode::is_active(cx) {
+                            return;
+                        }
                         crate::tray_menu::toggle(cx, id_right.clone());
                     })
                     .into_any_element()

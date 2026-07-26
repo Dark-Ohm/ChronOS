@@ -39,6 +39,7 @@ pub fn is_toggle_side_panel_left(payload: &str) -> bool {
 
 pub const TOGGLE_SIDE_PANEL_RIGHT_PAYLOAD: &str = "toggle-side-panel-right";
 pub const TOGGLE_THEME_PAYLOAD: &str = "toggle-theme";
+pub const TOGGLE_EDIT_MODE_PAYLOAD: &str = "toggle-edit-mode";
 
 // Same contract as `encode_toggle_launcher` above — external keybind
 // daemons trigger the right agent panel (pinned-only, no hover-peek).
@@ -58,6 +59,15 @@ pub fn encode_toggle_theme() -> String {
 
 pub fn is_toggle_theme(payload: &str) -> bool {
     payload.trim() == TOGGLE_THEME_PAYLOAD
+}
+
+#[allow(dead_code)]
+pub fn encode_toggle_edit_mode() -> String {
+    TOGGLE_EDIT_MODE_PAYLOAD.to_string()
+}
+
+pub fn is_toggle_edit_mode(payload: &str) -> bool {
+    payload.trim() == TOGGLE_EDIT_MODE_PAYLOAD
 }
 
 pub fn is_wallpaper_next(payload: &str) -> bool {
@@ -270,5 +280,12 @@ mod tests {
         let payload = encode_toggle_theme();
         assert!(is_toggle_theme(&payload));
         assert!(!is_toggle_theme("toggle-launcher"));
+    }
+
+    #[test]
+    fn encodes_and_recognizes_toggle_edit_mode() {
+        let payload = encode_toggle_edit_mode();
+        assert!(is_toggle_edit_mode(&payload));
+        assert!(!is_toggle_edit_mode("toggle-theme"));
     }
 }

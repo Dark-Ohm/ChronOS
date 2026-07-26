@@ -108,6 +108,9 @@ impl BarWidget for UpdatesWidget {
             .child(row.on_mouse_down(MouseButton::Left, {
                 let bounds_cell = self.bounds.clone();
                 move |_event, window, cx: &mut App| {
+                    if crate::edit_mode::is_active(cx) {
+                        return;
+                    }
                     let anchor_rect = bounds_cell.get();
                     let parent = window.window_handle();
                     crate::updates_popup::toggle(anchor_rect, parent, window, cx);

@@ -77,6 +77,9 @@ impl BarWidget for ProjectWidget {
                 .text_color(theme.text.muted),
         )
         .on_click(|_event, window, cx: &mut App| {
+            if crate::edit_mode::is_active(cx) {
+                return;
+            }
             crate::project_switcher::toggle(window, cx);
         })
         .into_any_element()
