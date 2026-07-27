@@ -91,7 +91,8 @@ Without the baseline run those 83 read as "you broke everything".
 
 ## Upstream
 
-Worth sending to `NousResearch/hermes-agent` (MIT). Their conventions:
-commit subject `fix: …`, tests under `tests/`, canonical runner
-`scripts/run_tests.sh`. The commit in the patch is already written to that
-standard.
+Submitted: **https://github.com/NousResearch/hermes-agent/pull/72964**
+(2026-07-28, from `Dark-Ohm:acp-tool-completed`, rebased onto their `main`).
+
+If it lands, drop the local patch and this skill's apply step — check the PR
+state before re-applying after a `hermes update`.
