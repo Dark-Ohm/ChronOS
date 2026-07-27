@@ -95,6 +95,10 @@ impl HermesTransport {
                     LineDirection::Stdout => {
                         // stdout of the agent = protocol traffic; debug only.
                         tracing::debug!(target: TARGET_STDERR, "{line}");
+                        // T144: intercept session/new models from raw JSON-RPC.
+                        // Delete when upstream fix lands (config_options from
+                        // ActiveSession.response()).
+                        crate::hermes_acp::client::intercept_session_models(line);
                     }
                     LineDirection::Stdin => {
                         // our requests to the agent; debug only.

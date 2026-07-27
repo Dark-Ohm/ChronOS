@@ -7,7 +7,7 @@ use agent_client_protocol::{
 };
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
@@ -131,23 +131,27 @@ fn modes_from_session(session: &ActiveSession<'static, Agent>) -> Option<Session
 }
 
 fn models_from_session(session: &ActiveSession<'static, Agent>) -> Option<SessionModels> {
-    // NewSessionResponse no longer carries `models` in ACP 2.0.0.
-    // The `unstable_session_model` feature from 0.11.1 has been removed.
-    // Model info may be encoded in session modes or meta — to be extracted
-    // as part of T144. For now we return None.
-    let response = session.response();
-    if let Some(modes) = &response.modes {
-        debug!(
-            current_mode = %modes.current_mode_id,
-            count = modes.available_modes.len(),
-            "Session modes available (models via T144)"
-        );
+    // T144: upstream issue agentclientprotocol/rust-sdk#XX —
+    // ActiveSession.response() discards config_options. Until fixed we
+    // use INTERCEPTED_MODELS from the with_debug workaround.
+    // When upstream fixes it, the workaround is removed and this function
+    // reads config_options from session.response().
+    {
+        let resp = session.response();
+        if let Some(opts) = &resp.config_options {
+            debug!(count = opts.len(), "session config_options present (upstream fix)");
+            // TODO T144: parse config_options into SessionModels
+        }
     }
-    if let Some(opts) = &response.config_options {
-        debug!(
-            config_option_count = opts.len(),
-            "session config_options present"
-        );
+    if let Ok(guard) = INTERCEPTED_MODELS.lock() {
+        if let Some(models) = guard.as_ref() {
+            debug!(
+                current = %models.current_id,
+                count = models.available.len(),
+                "models_from_session: intercepted (workaround)"
+            );
+            return Some(models.clone());
+        }
     }
     None
 }
@@ -172,6 +176,79 @@ fn is_terminal_status(status: &ToolCallStatus) -> bool {
     )
 }
 
+/// T144 workaround: models intercepted from raw `session/new` response JSON.
+///
+/// `ActiveSession.response().config_options` is always `None` because the library
+/// does not preserve the field (upstream issue: agentclientprotocol/rust-sdk#XX).
+/// Until fixed, we capture the model list from the wire via `with_debug`.
+///
+/// DELETE this static + the calling code in transport.rs when config_options
+/// flows through ActiveSession.response() naturally.
+pub(crate) static INTERCEPTED_MODELS: StdMutex<Option<SessionModels>> = StdMutex::new(None);
+
+/// T144 workaround: parse models from raw `session/new` JSON-RPC response.
+///
+/// Called from `transport.rs`'s `with_debug` Stdout handler on every line.
+/// Returns quickly when the line doesn't look like a session/new result.
+/// Stores parsed models in `INTERCEPTED_MODELS` for `models_from_session`.
+///
+/// DELETE this function when upstream issue #XX is fixed.
+pub(crate) fn intercept_session_models(line: &str) {
+    if !line.contains("\"models\"") || !line.contains("\"availableModels\"") {
+        return;
+    }
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(line) else { return };
+    let Some(result) = val.get("result") else { return };
+    let Some(models_val) = result.get("models") else { return };
+    let Some(available) = models_val.get("availableModels").and_then(|v| v.as_array()) else {
+        return;
+    };
+    let current_id = models_val
+        .get("currentModelId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let effective_current = if current_id.is_empty() {
+        available
+            .first()
+            .and_then(|m| m.get("modelId").and_then(|v| v.as_str()))
+            .unwrap_or("")
+    } else {
+        current_id
+    };
+    let available_models: Vec<ModelInfo> = available
+        .iter()
+        .filter_map(|m| {
+            let id = m.get("modelId")?.as_str()?;
+            Some(ModelInfo {
+                id: id.to_string(),
+                name: m
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(id)
+                    .to_string(),
+                description: m
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            })
+        })
+        .collect();
+    if available_models.is_empty() {
+        return;
+    }
+    if let Ok(mut guard) = INTERCEPTED_MODELS.lock() {
+        *guard = Some(SessionModels {
+            current_id: effective_current.to_string(),
+            available: available_models,
+        });
+        debug!(
+            current = %effective_current,
+            count = guard.as_ref().map(|m| m.available.len()).unwrap_or(0),
+            "intercepted_session_models"
+        );
+    }
+}
+
 /// Read a full ACP turn, collecting text, thought chunks, and tool calls.
 async fn read_turn(
     session: &mut ActiveSession<'static, Agent>,
@@ -185,9 +262,20 @@ async fn read_turn(
     // hang forever after the response is physically complete. Apply the same
     // watchdog so the turn closes honestly instead of wedging.
     const TURN_COMPLETE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+    // T147 (errata): same absolute deadline as the streaming path.
+    const TURN_ABSOLUTE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(1800);
+    let turn_start = std::time::Instant::now();
     let mut saw_output = false;
 
     loop {
+        if turn_start.elapsed() >= TURN_ABSOLUTE_DEADLINE {
+            warn!(
+                elapsed_s = turn_start.elapsed().as_secs_f64(),
+                text_len = text.len(),
+                "read_turn: absolute deadline hit — closing turn"
+            );
+            break;
+        }
         let read = tokio::time::timeout(TURN_COMPLETE_TIMEOUT, session.read_update()).await;
         let update = match read {
             Ok(Ok(u)) => u,
