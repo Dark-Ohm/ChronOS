@@ -325,15 +325,14 @@ async fn stream_read_turn(
     // honestly instead of wedging the panel. A terminating `StopReason` still
     // wins via the timeout firing on silence.
     const TURN_COMPLETE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
-    // E2: absolute turn deadline. Silence under a live tool is expected, but
-    // `open_tools` only ever goes down on a `ToolCallUpdate` terminal status
-    // — and Hermes does not always send one (observed on a live capture: a turn
-    // with 10 ToolCalls and only 1 ToolCallUpdate — 9 of 10 tools never got a
-    // terminal status, so `open_tools` never returned to 0; see E4 / T145).
-    // below would extend the D6 window forever, silently disabling the
-    // watchdog. This is the outer safety contour: regardless of in-flight
-    // tools, the turn is closed once it has run this long.
-    const TURN_ABSOLUTE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(600);
+    // T147: absolute turn deadline, checked EVERY iteration (not just on
+    // silence). A turn that streams updates continuously never enters the
+    // 120s silence window, so the old check (inside Err(_elapsed) under
+    // open_tools > 0) was a no-op for live turns. This is the real guard:
+    // regardless of in-flight tools or streaming pace, the turn is closed
+    // once it has run this long. 30 min allows long-running cargo builds
+    // and similar agent actions while still providing an upper bound.
+    const TURN_ABSOLUTE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(1800);
     let turn_start = std::time::Instant::now();
     let mut saw_output = false;
     // Track in-flight tool calls. Silence while a tool is still running is NOT
@@ -343,31 +342,27 @@ async fn stream_read_turn(
     let mut extensions: u32 = 0;
 
     loop {
+        // T147: checked EVERY iteration, not just on silence.
+        if turn_start.elapsed() >= TURN_ABSOLUTE_DEADLINE {
+            warn!(
+                elapsed_s = turn_start.elapsed().as_secs_f64(),
+                open_tools,
+                extensions,
+                text_len = text.len(),
+                "stream_read_turn: absolute deadline hit — closing turn"
+            );
+            break;
+        }
+
         let read = tokio::time::timeout(TURN_COMPLETE_TIMEOUT, session.read_update()).await;
         let update = match read {
             Ok(Ok(u)) => u,
             Ok(Err(e)) => {
-                // Channel closed / protocol error — turn is over.
                 warn!("stream_read_turn: read_update error ({e}) — ending turn");
                 break;
             }
             Err(_elapsed) => {
-                // Watchdog: no new update within the window.
                 if open_tools > 0 {
-                    // A tool is still running — silence is expected, keep waiting…
-                    if turn_start.elapsed() >= TURN_ABSOLUTE_DEADLINE {
-                        // …but not forever. The outer deadline has been hit with
-                        // tools still "open" (almost certainly because the agent
-                        // never sent their terminal ToolCallUpdate). Close the turn
-                        // so the panel never wedges, and report what we saw.
-                        warn!(
-                            "stream_read_turn: D6 absolute deadline ({}s) hit with {open_tools} \
-                             tool(s) still in flight ({extensions} window extension(s)) — \
-                             closing turn (likely missing ToolCallUpdate from agent)",
-                            TURN_ABSOLUTE_DEADLINE.as_secs()
-                        );
-                        break;
-                    }
                     extensions += 1;
                     tracing::debug!(
                         "stream_read_turn: {open_tools} tool(s) still in flight — \
@@ -383,8 +378,6 @@ async fn stream_read_turn(
                     );
                     break;
                 }
-                // Haven't produced anything yet — keep waiting a bit longer
-                // rather than declaring a hang on a slow first token.
                 continue;
             }
         };
