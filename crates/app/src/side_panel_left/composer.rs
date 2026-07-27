@@ -463,7 +463,7 @@ fn mode_picker(panel: &SidePanelLeft, cx: &mut Context<SidePanelLeft>) -> Option
     )
 }
 
-// ── Send button (dark style) ───────────────────────────────────────────
+// ── Send / Stop button (dark style) ────────────────────────────────────
 fn send_button(
     panel: &SidePanelLeft,
     active: bool,
@@ -471,7 +471,29 @@ fn send_button(
 ) -> impl IntoElement {
     let theme = *Theme::global(cx);
     let is_connected = panel.state.agent_status != AgentStatus::Disconnected;
+    let is_streaming = panel.streaming.active;
     let fill = on_fill(theme.accent.primary);
+
+    // D2: while a turn is streaming, the button becomes Stop (■) instead of
+    // Send (▶), giving the user a way to cancel a hung/dead turn.
+    if is_streaming {
+        return div()
+            .id("composer-stop")
+            .w(px(22.))
+            .h(px(22.))
+            .rounded(px(6.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme.status.error)
+            .text_color(theme.text.primary)
+            .cursor_pointer()
+            .hover(|s| s.bg(theme.status.error))
+            .on_click(cx.listener(|this, _, _window, cx| {
+                this.cancel_streaming(cx);
+            }))
+            .child("■");
+    }
 
     div()
         .id("composer-send")
@@ -497,7 +519,7 @@ fn send_button(
                 .border_color(theme.border.default)
                 .text_color(theme.text.disabled)
         })
-        .child("\u{27A4}")
+        .child("▶")
 }
 
 // ── Existing helper methods (unchanged) ─────────────────────────────────
@@ -610,6 +632,8 @@ impl SidePanelLeft {
 
         if let Some(client) = self.clients.get(&self.active_agent_id).cloned() {
             self.state.agent_status = AgentStatus::Thinking;
+            tracing::info!("composer: turn START (model={} mode={} text_len={})",
+                self.composer_selected_model, self.composer_selected_mode, text.len());
 
             // Create a streaming channel for real-time events.
             let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -634,6 +658,8 @@ impl SidePanelLeft {
                             "composer: ACP streaming reply complete"
                         );
                         let upd = this.update(cx, |this, cx| {
+                            tracing::info!("composer: turn END (reason=ok, session={}, chars={})",
+                                prompt_response.session_id, prompt_response.text.len());
                             tracing::debug!("composer: finalize update entered");
                             this.streaming.reset();
                             this.state.session_id = Some(prompt_response.session_id);
@@ -650,12 +676,15 @@ impl SidePanelLeft {
                                         .tools
                                         .into_iter()
                                         .map(|t| super::chat_view::ToolCallPreview {
+                                            id: t.id,
                                             name: t.name,
                                             status: t.status,
                                             args: t.args,
                                             result: t.result,
                                         })
                                         .collect();
+                                    // D1: honestly close any tool still pending.
+                                    this.mark_pending_tools_stale();
                                 }
                             }
                             this.chat.scroll_to_bottom();
@@ -682,6 +711,7 @@ impl SidePanelLeft {
                     }
                     Err(e) => {
                         tracing::warn!("composer: ACP send failed: {e}");
+                        tracing::info!("composer: turn END (reason=error)");
                         let disconnected = e.to_string().contains("command channel closed")
                             || e.to_string().contains("reply channel closed");
                         let _ = this.update(cx, |this, cx| {
@@ -692,6 +722,8 @@ impl SidePanelLeft {
                                     last_msg.content = format!("Error: {e}");
                                 }
                             }
+                            // D1: honestly close any tool still pending on failure.
+                            this.mark_pending_tools_stale();
                             this.chat.scroll_to_bottom();
                             this.state.agent_status = if disconnected {
                                 AgentStatus::Disconnected
@@ -710,72 +742,184 @@ impl SidePanelLeft {
             // Spawn a GPUI task to consume streaming events and update the
             // placeholder agent message in real-time.
             let streaming_task = cx.spawn(async move |this, cx| {
+                use std::time::Duration;
                 let mut rx = event_rx;
-                while let Some(event) = rx.recv().await {
-                    tracing::debug!("composer: streaming event received");
-                    let upd = this.update(cx, |this, cx| {
-                        match event {
-                            StreamingEvent::TextChunk(delta) => {
-                                if let Some(last_msg) = this.chat.messages.last_mut() {
-                                    if last_msg.role == MessageRole::Agent {
-                                        last_msg.content.push_str(&delta);
-                                    }
-                                }
-                                this.chat.scroll_to_bottom();
-                            }
-                            StreamingEvent::ThoughtChunk(delta) => {
-                                if let Some(last_msg) = this.chat.messages.last_mut() {
-                                    if last_msg.role == MessageRole::Agent {
-                                        match &mut last_msg.thought {
-                                            Some(thought) => thought.push_str(&delta),
-                                            None => {
-                                                last_msg.thought = Some(delta);
+                let mut events_received: u64 = 0;
+                const TURN_TIMEOUT: Duration = Duration::from_secs(180);
+
+                // E3: the service-side watchdog (`stream_read_turn`,
+                // `TURN_COMPLETE_TIMEOUT`) is 120s. The panel timeout MUST be
+                // strictly LARGER so it only fires when the service has already
+                // given up — otherwise the panel can announce "⏱ Turn timed out"
+                // on a turn that the service would have closed honestly a moment
+                // later. The panel is the outer safety contour, not the primary
+                // closer. 180s = 120s service window + 60s slack for the ACP
+                // stream to drain into the UI before we declare a stall.
+
+                // D2/D4 live-lock root cause: `cx.background_executor().timer()`
+                // (Source/gpui/src/executor.rs:162) is NOT a cheap future — it is
+                // `self.spawn(self.inner.scheduler().timer(duration))`, i.e. it
+                // SPAWNS a task. Creating it inside the loop (the previous broken
+                // pattern) meant one spawn + one cancel (drop schedules a runnable
+                // via `ping`) PER EVENT — 125 events => 125 spawns + 125 cancels,
+                // each waking the main thread => live-lock (gdb: dispatch_idles
+                // never drains, ping re-arms the loop). Fix: create the timer
+                // ONCE; on each event only stamp `last_event`. The timer fires at
+                // most once per TURN_TIMEOUT of silence, so there is no per-event
+                // spawn/cancel storm.
+                let mut last_event = cx.background_executor().now();
+                let mut timer = cx.background_executor().timer(TURN_TIMEOUT);
+
+                loop {
+                    tokio::select! {
+                        event = rx.recv() => match event {
+                            Some(event) => {
+                                events_received += 1;
+                                last_event = cx.background_executor().now();
+                                tracing::debug!("composer: streaming event received");
+                                let upd = this.update(cx, |this, cx| {
+                                    match event {
+                                        StreamingEvent::TextChunk(delta) => {
+                                            if let Some(last_msg) = this.chat.messages.last_mut() {
+                                                if last_msg.role == MessageRole::Agent {
+                                                    last_msg.content.push_str(&delta);
+                                                }
+                                            }
+                                            this.chat.scroll_to_bottom();
+                                        }
+                                        StreamingEvent::ThoughtChunk(delta) => {
+                                            if let Some(last_msg) = this.chat.messages.last_mut() {
+                                                if last_msg.role == MessageRole::Agent {
+                                                    match &mut last_msg.thought {
+                                                        Some(thought) => thought.push_str(&delta),
+                                                        None => {
+                                                            last_msg.thought = Some(delta);
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
-                                    }
-                                }
-                            }
-                            StreamingEvent::ToolCall {
-                                id,
-                                name,
-                                status,
-                                args,
-                                result,
-                            } => {
-                                if let Some(last_msg) = this.chat.messages.last_mut() {
-                                    if last_msg.role == MessageRole::Agent {
-                                        // Find or insert the tool call.
-                                        if let Some(tc) =
-                                            last_msg.tool_calls.iter_mut().find(|t| t.name == name)
-                                        {
-                                            tc.status = status;
-                                            tc.args = args;
-                                            tc.result = result;
-                                        } else {
-                                            last_msg.tool_calls.push(
-                                                super::chat_view::ToolCallPreview {
-                                                    name,
-                                                    status,
-                                                    args,
-                                                    result,
-                                                },
-                                            );
+                                        StreamingEvent::ToolCall {
+                                            id,
+                                            name,
+                                            status,
+                                            args,
+                                            result,
+                                        } => {
+                                            if let Some(last_msg) = this.chat.messages.last_mut() {
+                                                if last_msg.role == MessageRole::Agent {
+                                                    // D1: merge by stable tool-call id, not by
+                                                    // display name — two tools with the same
+                                                    // title would otherwise collapse into one.
+                                                    if let Some(tc) = last_msg
+                                                        .tool_calls
+                                                        .iter_mut()
+                                                        .find(|t| t.id == id)
+                                                    {
+                                                        tc.status = status;
+                                                        tc.args = args;
+                                                        tc.result = result;
+                                                    } else {
+                                                        last_msg.tool_calls.push(
+                                                            super::chat_view::ToolCallPreview {
+                                                                id,
+                                                                name,
+                                                                status,
+                                                                args,
+                                                                result,
+                                                            },
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        StreamingEvent::Done => {
+                                            // Final update happens in the ACP task.
+                                        }
+                                        StreamingEvent::Error(_) => {
+                                            // Error handling happens in the ACP task.
                                         }
                                     }
+                                    cx.notify();
+                                });
+                                if let Err(e) = upd {
+                                    tracing::error!("composer: streaming update FAILED: {e}");
+                                    return;
                                 }
                             }
-                            StreamingEvent::Done => {
-                                // Final update happens in the ACP task.
+                            None => {
+                                // Channel closed — ACP task finished.
+                                break;
                             }
-                            StreamingEvent::Error(_) => {
-                                // Error handling happens in the ACP task.
+                        },
+                        _ = &mut timer => {
+                            // D2: timer fired. Distinguish a *real* stall
+                            // (silence >= TURN_TIMEOUT since the last event)
+                            // from a long-but-alive turn (tools running /
+                            // agent mid-stream) by comparing against the
+                            // stamped `last_event`, NOT by recreating the
+                            // future each iteration.
+                            let silent = last_event.elapsed();
+                            if silent >= TURN_TIMEOUT {
+                                // Diagnostic: zero events received is the
+                                // signature of a BROKEN channel (sender/receiver
+                                // mismatch), distinct from a merely slow agent.
+                                if events_received == 0 {
+                                    tracing::error!(
+                                        "composer: turn timed out after {}s with ZERO streaming \
+                                         events received — streaming channel is likely broken \
+                                         (check D3 on_event sender / receiver wiring)",
+                                        TURN_TIMEOUT.as_secs()
+                                    );
+                                } else {
+                                    tracing::warn!(
+                                        "composer: turn timed out after {}s of agent silence \
+                                         ({} events delivered before stall)",
+                                        TURN_TIMEOUT.as_secs(),
+                                        events_received
+                                    );
+                                }
+                                let _ = this.update(cx, |this, cx| {
+                                    this.streaming.reset();
+                                    if let Some(last_msg) = this.chat.messages.last_mut() {
+                                        if last_msg.role == MessageRole::Agent
+                                            && last_msg.content.is_empty()
+                                        {
+                                            last_msg.content = if events_received == 0 {
+                                                format!(
+                                                    "⏱ Turn timed out after {}s — no streaming \
+                                                     events reached the UI (channel broken).",
+                                                    TURN_TIMEOUT.as_secs()
+                                                )
+                                            } else {
+                                                format!(
+                                                    "⏱ Turn timed out after {}s of agent silence.",
+                                                    TURN_TIMEOUT.as_secs()
+                                                )
+                                            };
+                                        }
+                                    }
+                                    this.mark_pending_tools_stale();
+                                    this.chat.scroll_to_bottom();
+                                    this.state.agent_status = AgentStatus::Connected;
+                                    cx.notify();
+                                });
+                                break;
+                            } else {
+                                // Agent still active (event arrived < TURN_TIMEOUT
+                                // ago). Re-arm the timer for the remaining window
+                                // and keep waiting. This re-arm is rare (<= once
+                                // per TURN_TIMEOUT of silence), so no live-lock.
+                                tracing::debug!(
+                                    "composer: D2 timer fired but agent active ({}s since last \
+                                     event < {}s) — extending window",
+                                    silent.as_secs(),
+                                    TURN_TIMEOUT.as_secs()
+                                );
+                                timer = cx.background_executor().timer(TURN_TIMEOUT - silent);
+                                continue;
                             }
                         }
-                        cx.notify();
-                    });
-                    if let Err(e) = upd {
-                        tracing::error!("composer: streaming update FAILED: {e}");
-                        return;
                     }
                 }
             });
@@ -794,6 +938,53 @@ impl SidePanelLeft {
             self.chat.scroll_to_bottom();
         }
 
+        cx.notify();
+    }
+
+    /// D1: any tool call still marked non-terminal (pending/running/unknown)
+    /// when a turn ends — via Done, Error, timeout, or cancel — is honestly
+    /// closed as `stale` instead of left spinning forever. The agent (Hermes)
+    /// frequently does not emit a terminal `ToolCallUpdate` for `write`-class
+    /// tools, so without this the spinner never resolves.
+    pub fn mark_pending_tools_stale(&mut self) {
+        const TERMINAL: &[&str] = &["done", "error", "stale", "canceled", "denied", "expired"];
+        for msg in self.chat.messages.iter_mut() {
+            if msg.role != MessageRole::Agent {
+                continue;
+            }
+            for tc in msg.tool_calls.iter_mut() {
+                let s = tc.status.trim().to_ascii_lowercase();
+                if !TERMINAL.contains(&s.as_str()) {
+                    tc.status = "stale".to_string();
+                }
+            }
+        }
+    }
+
+    /// D2: local cancel of an in-progress turn. Aborts the streaming/ACP tasks,
+    /// honestly closes any pending tool cards, and leaves a note in the chat so
+    /// the user sees the turn was cancelled rather than silently dropping.
+    pub fn cancel_streaming(&mut self, cx: &mut Context<Self>) {
+        if !self.streaming.active {
+            return;
+        }
+        tracing::info!("composer: turn END (reason=cancel)");
+        self.streaming.reset();
+        if let Some(last_msg) = self.chat.messages.last_mut() {
+            if last_msg.role == MessageRole::Agent {
+                if last_msg.content.is_empty() {
+                    last_msg.content = "⏹ Turn cancelled by user.".to_string();
+                } else {
+                    // Don't discard a half-received answer — append the marker.
+                    last_msg
+                        .content
+                        .push_str("\n\n⏹ Turn cancelled by user.");
+                }
+            }
+        }
+        self.mark_pending_tools_stale();
+        self.chat.scroll_to_bottom();
+        self.state.agent_status = AgentStatus::Connected;
         cx.notify();
     }
 }

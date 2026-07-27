@@ -12,6 +12,8 @@ pub enum MessageRole {
 
 #[derive(Clone, Debug)]
 pub struct ToolCallPreview {
+    /// Stable ACP tool-call id (used for merging updates, D1).
+    pub id: String,
     pub name: String,
     pub status: String,
     pub args: Option<String>,
@@ -46,7 +48,11 @@ impl ChatView {
     }
 
     pub fn scroll_to_bottom(&self) {
-        self.scroll.set_offset(point(px(f32::MAX), px(f32::MAX)));
+        // Use the fork's flag-based API (`div.rs:4063`), consumed at layout.
+        // Writing `f32::MAX` into the offset by hand poisons the layout
+        // arithmetic (`child_bounds.top() + offset.y`) once the content
+        // actually becomes scrollable.
+        self.scroll.scroll_to_bottom();
     }
 
     pub fn render(
