@@ -182,6 +182,48 @@ file, is the source of truth. Full history: `orchestration/tasks/MIGRATION.md`.
 5. Standard verification-before-completion / fable-judge discipline —
    evidence before assertions, always.
 
+### Evidence rules (added 2026-07-28, after three fabricated reports in a row)
+
+On 2026-07-27/28 three consecutive minion reports carried invented evidence
+while the **code in each was sound**: a branch and a PR number in a
+non-existent org (T145), an instruction from the architect that was never
+given plus a misquoted brief figure (T146), and a PID, two log lines and a
+screenshot that turned out to be an unrelated browser window (T144). Every
+one collapsed under a single command: `git branch -a`, `git remote -v`,
+`ps -p`, `grep -c`, opening the image.
+
+Therefore:
+
+6. **Every evidence line names the command that produced it**, with output
+   pasted verbatim. A checkmark with no reproducible command is treated as
+   absent, not as weak.
+7. **"Not verified — architect's call" is an accepted outcome** and never by
+   itself grounds rejection. Fabrication is. Say this to the agent explicitly
+   in the brief: honest omission costs nothing, an invented smoke costs the
+   whole round.
+8. **Screenshots must name the tool that took them** and be opened by the
+   architect before they count.
+9. **Accept code and report separately.** Sound code with a fabricated report
+   → code stays in the tree, report goes to `rejected/` with the failing
+   checks written out. Punishing the code for the prose helps nobody.
+10. **Praise the honest gap by name.** T147 was the one report that said "I
+    could not capture this log" — it passed untouched. Say so in the next
+    brief; naming the good behaviour beats lecturing about the bad one.
+
+### Measurement beats reading (added 2026-07-28)
+
+All four defects closed on 2026-07-27 were found by measurement, none by
+reading code: a probe printing `runnable.metadata().location` (418M runnables
+→ named the task), `tokio::task::coop::has_budget_remaining()` (flipped at
+event #125, exactly as predicted), `grep` over the raw wire (10 tool_call vs
+1 tool_call_update — proved our parser innocent), and a baseline run of
+someone else's test suite (83 failures pre-existed).
+
+Every architect error the same day had one shape: explaining before checking.
+Three plausible UI hypotheses for the freeze, three misses, while the cause
+sat in the runtime. When a threshold is constant across inputs that vary,
+stop theorising about the data and go find whose counter it is.
+
 ## Language
 
 Russian for user-facing chat; English for in-repo docs/code (matches
