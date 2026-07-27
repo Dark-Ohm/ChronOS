@@ -19,14 +19,17 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sysinfo.workspace = true
 nvml-wrapper.workspace = true
-# unstable_session_model: models list on NewSessionResponse
-# unstable_session_usage: hermes 0.18+ sends sessionUpdate usage_update mid-turn
-# (without it read_to_string dies on deserialize — chat appears dead).
-agent-client-protocol = { version = "0.11.1", features = [
-    "unstable_session_model",
-    "unstable_session_usage",
-] }
-agent-client-protocol-tokio = "0.11.1"
+# NOTE: unstable_session_model (0.11.1) has been removed in 2.0.0;
+# NewSessionResponse no longer carries a `models` field at all.
+# Models will be handled via a separate path (T144).
+#
+# NOTE: unstable_session_usage → unstable_end_turn_token_usage in 2.0.0.
+# Do NOT enable it "just in case": measured live on 2026-07-27 against
+# hermes-agent 0.18.2 — a mid-turn `UsageUpdate { used: 78879,
+# size: 1000000 }` arrives and deserializes fine without the flag. It is
+# simply not handled yet (logged as an unhandled variant since T146/E5).
+# Surfacing token spend is a UI task, not a feature flag.
+agent-client-protocol = "2.0.0"
 dirs = "6"
 toml = "0.8"
 

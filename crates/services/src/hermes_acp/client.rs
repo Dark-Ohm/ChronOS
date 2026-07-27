@@ -1,11 +1,18 @@
 use agent_client_protocol::{
     ActiveSession, Agent, ConnectionTo, SessionMessage,
-    schema::{ContentBlock, SessionNotification, SessionUpdate, ToolCallContent, ToolCallStatus},
+    schema::v1::{
+        ContentBlock, SessionNotification, SessionUpdate, ToolCallContent, ToolCallStatus,
+    },
     util::MatchDispatch,
 };
 use anyhow::{Context, Result};
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
+
+/// Held ACP session, shared across command handlers (see transport D3).
+pub(crate) type SharedSession = Arc<Mutex<Option<ActiveSession<'static, Agent>>>>;
 
 /// Streaming event emitted during a prompt turn.
 #[derive(Clone, Debug)]
@@ -76,14 +83,17 @@ pub(crate) enum Command {
 /// Execute a command against the ACP connection, reusing `active` across turns.
 ///
 /// Called from the transport's background task where `cx` is alive.
+/// `session` is an `Arc<Mutex<...>>` shared across concurrently-spawned
+/// command handlers (D3), so each branch locks it for the duration of the
+/// call.
 pub(crate) async fn execute_command(
     cmd: Command,
     cx: &ConnectionTo<Agent>,
-    active: &mut Option<ActiveSession<'static, Agent>>,
+    session: &SharedSession,
 ) {
     match cmd {
         Command::CreateSession { reply } => {
-            let result = ensure_fresh_session(cx, active).await;
+            let result = ensure_fresh_session(cx, session).await;
             let _ = reply.send(result);
         }
         Command::SendPrompt {
@@ -92,14 +102,14 @@ pub(crate) async fn execute_command(
             on_event,
         } => {
             let result = if let Some(event_tx) = on_event {
-                send_prompt_streaming(cx, active, &prompt, &event_tx).await
+                send_prompt_streaming(cx, session, &prompt, &event_tx).await
             } else {
-                send_prompt_on_active(cx, active, &prompt).await
+                send_prompt_on_active(cx, session, &prompt).await
             };
             let _ = reply.send(result);
         }
         Command::SetModel { model_id, reply } => {
-            let result = set_model_on_active(cx, active, &model_id).await;
+            let result = set_model_on_active(cx, session, &model_id).await;
             let _ = reply.send(result);
         }
     }
@@ -121,54 +131,25 @@ fn modes_from_session(session: &ActiveSession<'static, Agent>) -> Option<Session
 }
 
 fn models_from_session(session: &ActiveSession<'static, Agent>) -> Option<SessionModels> {
-    // `models` on NewSessionResponse requires agent-client-protocol feature
-    // `unstable_session_model` (enabled in crates/services Cargo.toml).
+    // NewSessionResponse no longer carries `models` in ACP 2.0.0.
+    // The `unstable_session_model` feature from 0.11.1 has been removed.
+    // Model info may be encoded in session modes or meta — to be extracted
+    // as part of T144. For now we return None.
     let response = session.response();
-    let models = response.models.as_ref();
-    if let Some(m) = models {
+    if let Some(modes) = &response.modes {
         debug!(
-            current_model = %m.current_model_id,
-            count = m.available_models.len(),
-            "Session models available"
+            current_mode = %modes.current_mode_id,
+            count = modes.available_modes.len(),
+            "Session modes available (models via T144)"
         );
-        Some(SessionModels {
-            current_id: m.current_model_id.to_string(),
-            available: m
-                .available_models
-                .iter()
-                .map(|model| {
-                    debug!(
-                        model_id = %model.model_id,
-                        name = %model.name,
-                        "  model entry"
-                    );
-                    ModelInfo {
-                        id: model.model_id.to_string(),
-                        name: model.name.clone(),
-                        description: model.description.clone(),
-                    }
-                })
-                .collect(),
-        })
-    } else {
-        // Log config_options to see if Hermes puts model info there.
-        if let Some(opts) = &response.config_options {
-            debug!(
-                config_option_count = opts.len(),
-                "No session.models; config_options present"
-            );
-            for opt in opts {
-                debug!(
-                    opt_id = %opt.id,
-                    opt_name = %opt.name,
-                    "  config_option"
-                );
-            }
-        } else {
-            debug!("No session.models and no config_options");
-        }
-        None
     }
+    if let Some(opts) = &response.config_options {
+        debug!(
+            config_option_count = opts.len(),
+            "session config_options present"
+        );
+    }
+    None
 }
 
 fn status_string(status: &ToolCallStatus) -> String {
@@ -181,6 +162,16 @@ fn status_string(status: &ToolCallStatus) -> String {
     }
 }
 
+/// Whether a tool-call status means the tool has finished (so the D6 watchdog
+/// may treat silence as suspicious again). Mirrors `mark_pending_tools_stale`
+/// in the UI: done / error / stale / canceled / denied / expired.
+fn is_terminal_status(status: &ToolCallStatus) -> bool {
+    matches!(
+        status,
+        ToolCallStatus::Completed | ToolCallStatus::Failed
+    )
+}
+
 /// Read a full ACP turn, collecting text, thought chunks, and tool calls.
 async fn read_turn(
     session: &mut ActiveSession<'static, Agent>,
@@ -189,10 +180,30 @@ async fn read_turn(
     let mut thought = String::new();
     let mut tools: HashMap<String, ToolCallInfo> = HashMap::new();
 
+    // D6 (non-streaming path): same root cause as stream_read_turn — the
+    // library never delivers StopReason via update_rx, so this loop would
+    // hang forever after the response is physically complete. Apply the same
+    // watchdog so the turn closes honestly instead of wedging.
+    const TURN_COMPLETE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+    let mut saw_output = false;
+
     loop {
-        let update = session.read_update().await?;
+        let read = tokio::time::timeout(TURN_COMPLETE_TIMEOUT, session.read_update()).await;
+        let update = match read {
+            Ok(Ok(u)) => u,
+            Ok(Err(_e)) => break, // channel closed — turn over
+            Err(_elapsed) => {
+                if saw_output {
+                    warn!("read_turn: no further ACP update for {}s after output — closing turn (D6)", TURN_COMPLETE_TIMEOUT.as_secs());
+                    break;
+                }
+                continue;
+            }
+        };
         match update {
-            SessionMessage::SessionMessage(dispatch) => MatchDispatch::new(dispatch)
+            SessionMessage::SessionMessage(dispatch) => {
+                saw_output = true;
+                MatchDispatch::new(dispatch)
                 .if_notification(async |notif: SessionNotification| {
                     match notif.update {
                         SessionUpdate::AgentMessageChunk(chunk) => {
@@ -259,14 +270,30 @@ async fn read_turn(
                                 }
                             }
                         }
-                        _ => {}
+                        other @ _ => {
+                            // E5: this used to be a silent `_ => {}`, hiding any
+                            // SessionUpdate we didn't explicitly handle. A dropped
+                            // message here is exactly how a parser "looks broken"
+                            // while the agent is just sending something we ignore.
+                            tracing::debug!("read_turn: unhandled SessionUpdate variant: {other:?}");
+                        }
                     }
                     Ok(())
                 })
                 .await
-                .otherwise_ignore()?,
+                .otherwise(|msg| async move {
+                    // E5: `otherwise_ignore` (util/typed.rs:407) silently drops
+                    // any message no handler matched. Make the drop audible.
+                    tracing::debug!("read_turn: dropped ACP message (no handler matched): {msg:?}");
+                    Ok(())
+                })
+                .await?
+            }
             SessionMessage::StopReason(_) => break,
-            _ => {}
+            other @ _ => {
+                // E5: same treatment for the outer SessionMessage match.
+                tracing::debug!("read_turn: unhandled SessionMessage variant: {other:?}");
+            }
         }
     }
 
@@ -286,118 +313,218 @@ async fn stream_read_turn(
     let mut thought = String::new();
     let mut tools: HashMap<String, ToolCallInfo> = HashMap::new();
 
+    // D6: the agent's stop reason (`stopReason: end_turn`) arrives on the
+    // wire, but `agent-client-protocol` 0.11.1 does NOT surface it through
+    // `read_update()`'s `update_rx` — it is returned from `send_prompt` /
+    // `ProxySessionMessages` and consumed there, so `SessionMessage::StopReason`
+    // never reaches this loop. The loop therefore hangs forever at
+    // `read_update().await` even though the turn is physically over (observed
+    // live: response present, panel never completes). We race each read
+    // against a watchdog timeout measured from the LAST received update, so a
+    // turn that has gone quiet (and already produced output) is closed
+    // honestly instead of wedging the panel. A terminating `StopReason` still
+    // wins via the timeout firing on silence.
+    const TURN_COMPLETE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+    // E2: absolute turn deadline. Silence under a live tool is expected, but
+    // `open_tools` only ever goes down on a `ToolCallUpdate` terminal status
+    // — and Hermes does not always send one (observed on a live capture: a turn
+    // with 10 ToolCalls and only 1 ToolCallUpdate — 9 of 10 tools never got a
+    // terminal status, so `open_tools` never returned to 0; see E4 / T145).
+    // below would extend the D6 window forever, silently disabling the
+    // watchdog. This is the outer safety contour: regardless of in-flight
+    // tools, the turn is closed once it has run this long.
+    const TURN_ABSOLUTE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(600);
+    let turn_start = std::time::Instant::now();
+    let mut saw_output = false;
+    // Track in-flight tool calls. Silence while a tool is still running is NOT
+    // suspicious — D6 must not close the turn under a live tool (bri f ЗАХОД 3).
+    let mut open_tools: u32 = 0;
+    // How many times the D6 window was extended because a tool looked live.
+    let mut extensions: u32 = 0;
+
     loop {
-        let update = session.read_update().await?;
+        let read = tokio::time::timeout(TURN_COMPLETE_TIMEOUT, session.read_update()).await;
+        let update = match read {
+            Ok(Ok(u)) => u,
+            Ok(Err(e)) => {
+                // Channel closed / protocol error — turn is over.
+                warn!("stream_read_turn: read_update error ({e}) — ending turn");
+                break;
+            }
+            Err(_elapsed) => {
+                // Watchdog: no new update within the window.
+                if open_tools > 0 {
+                    // A tool is still running — silence is expected, keep waiting…
+                    if turn_start.elapsed() >= TURN_ABSOLUTE_DEADLINE {
+                        // …but not forever. The outer deadline has been hit with
+                        // tools still "open" (almost certainly because the agent
+                        // never sent their terminal ToolCallUpdate). Close the turn
+                        // so the panel never wedges, and report what we saw.
+                        warn!(
+                            "stream_read_turn: D6 absolute deadline ({}s) hit with {open_tools} \
+                             tool(s) still in flight ({extensions} window extension(s)) — \
+                             closing turn (likely missing ToolCallUpdate from agent)",
+                            TURN_ABSOLUTE_DEADLINE.as_secs()
+                        );
+                        break;
+                    }
+                    extensions += 1;
+                    tracing::debug!(
+                        "stream_read_turn: {open_tools} tool(s) still in flight — \
+                         extending D6 window ({extensions}), not closing turn"
+                    );
+                    continue;
+                }
+                if saw_output {
+                    warn!(
+                        "stream_read_turn: no further ACP update for {}s after output \
+                         — closing turn (D6: StopReason not delivered via update_rx)",
+                        TURN_COMPLETE_TIMEOUT.as_secs()
+                    );
+                    break;
+                }
+                // Haven't produced anything yet — keep waiting a bit longer
+                // rather than declaring a hang on a slow first token.
+                continue;
+            }
+        };
+        // D6 diagnostic: log that an update arrived (type logged via the
+        // specific arms below) so a live smoke run can confirm the library
+        // delivers chunks but never a StopReason through update_rx.
+        tracing::debug!("stream_read_turn: update arrived");
         match update {
-            SessionMessage::SessionMessage(dispatch) => MatchDispatch::new(dispatch)
-                .if_notification(async |notif: SessionNotification| {
-                    match notif.update {
-                        SessionUpdate::AgentMessageChunk(chunk) => {
-                            if let ContentBlock::Text(t) = chunk.content {
-                                let delta = t.text.clone();
-                                text.push_str(&delta);
-                                if on_event.send(StreamingEvent::TextChunk(delta)).is_err() {
+            SessionMessage::SessionMessage(dispatch) => {
+                saw_output = true;
+                MatchDispatch::new(dispatch)
+                    .if_notification(async |notif: SessionNotification| {
+                        match notif.update {
+                            SessionUpdate::AgentMessageChunk(chunk) => {
+                                if let ContentBlock::Text(t) = chunk.content {
+                                    let delta = t.text.clone();
+                                    text.push_str(&delta);
+                                    if on_event.send(StreamingEvent::TextChunk(delta)).is_err() {
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                            SessionUpdate::AgentThoughtChunk(chunk) => {
+                                if let ContentBlock::Text(t) = chunk.content {
+                                    let delta = t.text.clone();
+                                    thought.push_str(&delta);
+                                    if on_event.send(StreamingEvent::ThoughtChunk(delta)).is_err() {
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                            SessionUpdate::ToolCall(tc) => {
+                                let id = tc.tool_call_id.0.to_string();
+                                tracing::info!(tool_id = %id, title = %tc.title, status = ?tc.status, raw_input = tc.raw_input.is_some(), "ACP raw: ToolCall");
+                                // A tool just started — count it as in-flight so
+                                // D6 does not close the turn while it runs.
+                                open_tools += 1;
+                                let entry = tools.entry(id.clone()).or_insert_with(|| ToolCallInfo {
+                                    id,
+                                    name: tc.title.clone(),
+                                    status: status_string(&tc.status),
+                                    args: tc.raw_input.as_ref().map(|v| {
+                                        serde_json::to_string_pretty(v)
+                                            .unwrap_or_else(|_| v.to_string())
+                                    }),
+                                    result: None,
+                                });
+                                if on_event
+                                    .send(StreamingEvent::ToolCall {
+                                        id: entry.id.clone(),
+                                        name: entry.name.clone(),
+                                        status: entry.status.clone(),
+                                        args: entry.args.clone(),
+                                        result: entry.result.clone(),
+                                    })
+                                    .is_err()
+                                {
                                     return Ok(());
                                 }
                             }
-                        }
-                        SessionUpdate::AgentThoughtChunk(chunk) => {
-                            if let ContentBlock::Text(t) = chunk.content {
-                                let delta = t.text.clone();
-                                thought.push_str(&delta);
-                                if on_event.send(StreamingEvent::ThoughtChunk(delta)).is_err() {
-                                    return Ok(());
+                            SessionUpdate::ToolCallUpdate(update) => {
+                                let id = update.tool_call_id.0.to_string();
+                                tracing::info!(tool_id = %id, title = ?update.fields.title, status = ?update.fields.status, raw_input = update.fields.raw_input.is_some(), raw_output = update.fields.raw_output.is_some(), content = update.fields.content.as_ref().map(|c| c.len()), "ACP raw: ToolCallUpdate");
+                                let entry = tools.entry(id).or_insert_with(|| ToolCallInfo {
+                                    id: update.tool_call_id.0.to_string(),
+                                    name: String::new(),
+                                    status: "pending".to_string(),
+                                    args: None,
+                                    result: None,
+                                });
+                                if let Some(title) = update.fields.title {
+                                    entry.name = title;
                                 }
-                            }
-                        }
-                        SessionUpdate::ToolCall(tc) => {
-                            let id = tc.tool_call_id.0.to_string();
-                            tracing::info!(tool_id = %id, title = %tc.title, status = ?tc.status, raw_input = tc.raw_input.is_some(), "ACP raw: ToolCall");
-                            let entry = tools.entry(id.clone()).or_insert_with(|| ToolCallInfo {
-                                id,
-                                name: tc.title.clone(),
-                                status: status_string(&tc.status),
-                                args: tc.raw_input.as_ref().map(|v| {
-                                    serde_json::to_string_pretty(v)
-                                        .unwrap_or_else(|_| v.to_string())
-                                }),
-                                result: None,
-                            });
-                            if on_event
-                                .send(StreamingEvent::ToolCall {
-                                    id: entry.id.clone(),
-                                    name: entry.name.clone(),
-                                    status: entry.status.clone(),
-                                    args: entry.args.clone(),
-                                    result: entry.result.clone(),
-                                })
-                                .is_err()
-                            {
-                                return Ok(());
-                            }
-                        }
-                        SessionUpdate::ToolCallUpdate(update) => {
-                            let id = update.tool_call_id.0.to_string();
-                            tracing::info!(tool_id = %id, title = ?update.fields.title, status = ?update.fields.status, raw_input = update.fields.raw_input.is_some(), raw_output = update.fields.raw_output.is_some(), content = update.fields.content.as_ref().map(|c| c.len()), "ACP raw: ToolCallUpdate");
-                            let entry = tools.entry(id).or_insert_with(|| ToolCallInfo {
-                                id: update.tool_call_id.0.to_string(),
-                                name: String::new(),
-                                status: "pending".to_string(),
-                                args: None,
-                                result: None,
-                            });
-                            if let Some(title) = update.fields.title {
-                                entry.name = title;
-                            }
-                            if let Some(status) = update.fields.status {
-                                entry.status = status_string(&status);
-                            }
-                            if let Some(raw_input) = update.fields.raw_input {
-                                entry.args = Some(
-                                    serde_json::to_string_pretty(&raw_input)
-                                        .unwrap_or_else(|_| raw_input.to_string()),
-                                );
-                            }
-                            if let Some(raw_output) = update.fields.raw_output {
-                                entry.result = Some(
-                                    serde_json::to_string_pretty(&raw_output)
-                                        .unwrap_or_else(|_| raw_output.to_string()),
-                                );
-                            }
-                            // Extract text result from content if no raw_output.
-                            if entry.result.is_none() {
-                                if let Some(content) = update.fields.content {
-                                    for item in content {
-                                        if let ToolCallContent::Content(c) = item {
-                                            if let ContentBlock::Text(t) = c.content {
-                                                entry.result = Some(t.text);
+                                if let Some(status) = update.fields.status {
+                                    entry.status = status_string(&status);
+                                    // Tool finished — drop it from the in-flight count.
+                                    if is_terminal_status(&status) {
+                                        open_tools = open_tools.saturating_sub(1);
+                                    }
+                                }
+                                if let Some(raw_input) = update.fields.raw_input {
+                                    entry.args = Some(
+                                        serde_json::to_string_pretty(&raw_input)
+                                            .unwrap_or_else(|_| raw_input.to_string()),
+                                    );
+                                }
+                                if let Some(raw_output) = update.fields.raw_output {
+                                    entry.result = Some(
+                                        serde_json::to_string_pretty(&raw_output)
+                                            .unwrap_or_else(|_| raw_output.to_string()),
+                                    );
+                                }
+                                // Extract text result from content if no raw_output.
+                                if entry.result.is_none() {
+                                    if let Some(content) = update.fields.content {
+                                        for item in content {
+                                            if let ToolCallContent::Content(c) = item {
+                                                if let ContentBlock::Text(t) = c.content {
+                                                    entry.result = Some(t.text);
+                                                }
                                             }
                                         }
                                     }
                                 }
+                                if on_event
+                                    .send(StreamingEvent::ToolCall {
+                                        id: entry.id.clone(),
+                                        name: entry.name.clone(),
+                                        status: entry.status.clone(),
+                                        args: entry.args.clone(),
+                                        result: entry.result.clone(),
+                                    })
+                                    .is_err()
+                                {
+                                    return Ok(());
+                                }
                             }
-                            if on_event
-                                .send(StreamingEvent::ToolCall {
-                                    id: entry.id.clone(),
-                                    name: entry.name.clone(),
-                                    status: entry.status.clone(),
-                                    args: entry.args.clone(),
-                                    result: entry.result.clone(),
-                                })
-                                .is_err()
-                            {
-                                return Ok(());
+                            other @ _ => {
+                                // E5: was a silent `_ => {}`. Make unhandled
+                                // SessionUpdate audible instead of looking broken.
+                                tracing::debug!("stream_read_turn: unhandled SessionUpdate variant: {other:?}");
                             }
                         }
-                        _ => {}
-                    }
-                    Ok(())
-                })
-                .await
-                .otherwise_ignore()?,
-            SessionMessage::StopReason(_) => break,
-            _ => {}
+                        Ok(())
+                    })
+                    .await
+                    .otherwise(|msg| async move {
+                        // E5: `otherwise_ignore` (util/typed.rs:407) silently
+                        // drops any message no handler matched. Make it audible.
+                        tracing::debug!("stream_read_turn: dropped ACP message (no handler matched): {msg:?}");
+                        Ok(())
+                    })
+                    .await?
         }
+        SessionMessage::StopReason(_) => break,
+        other @ _ => {
+            // E5: same treatment for the outer SessionMessage match.
+            tracing::debug!("stream_read_turn: unhandled SessionMessage variant: {other:?}");
+        }
+    }
     }
 
     let _ = on_event.send(StreamingEvent::Done);
@@ -408,46 +535,62 @@ async fn stream_read_turn(
 /// Send prompt with streaming events emitted via `on_event`.
 async fn send_prompt_streaming(
     cx: &ConnectionTo<Agent>,
-    active: &mut Option<ActiveSession<'static, Agent>>,
+    session: &SharedSession,
     prompt: &str,
     on_event: &tokio::sync::mpsc::UnboundedSender<StreamingEvent>,
 ) -> Result<PromptResponse> {
-    if active.is_none() {
-        debug!("No held session — creating before first prompt");
-        let session = start_new_session(cx).await?;
-        *active = Some(session);
-    }
-
-    let session = active
-        .as_mut()
-        .context("internal: active session missing after ensure")?;
-
-    let session_id = session.session_id().to_string();
-    let modes = modes_from_session(session);
-    let models = models_from_session(session);
+    // D3: lock the shared session ONLY to obtain/replace the handle.
+    // The turn itself (stream_read_turn) runs OUTSIDE the lock so a long
+    // turn cannot block CreateSession/SetModel. Previously the guard was
+    // held for the whole turn (client.rs:424), which just moved the
+    // bottleneck from the command channel into the mutex — observed
+    // behavior unchanged. Also a likely contributor to D6: holding
+    // &mut ActiveSession (and thus its update_rx channel) for the entire
+    // turn interferes with the library's own prompt completion routing.
+    let session_id;
+    let modes;
+    let models;
+    let mut active = {
+        let mut guard = session.lock().await;
+        if guard.is_none() {
+            debug!("No held session — creating before first prompt");
+            let new_session = start_new_session(cx).await?;
+            *guard = Some(new_session);
+        }
+        let session_ref = guard
+            .as_mut()
+            .context("internal: active session missing after ensure")?;
+        session_id = session_ref.session_id().to_string();
+        modes = modes_from_session(session_ref);
+        models = models_from_session(session_ref);
+        // Take the session out of the shared slot and release the lock.
+        guard.take().context("internal: active session missing on take")?
+    };
 
     debug!(
         %session_id,
         "Sending prompt (streaming): {}",
-        &prompt[..prompt.len().min(80)]
+        prompt.chars().take(80).collect::<String>()
     );
 
-    if let Err(e) = session.send_prompt(prompt) {
+    if let Err(e) = active.send_prompt(prompt) {
         warn!(%session_id, "send_prompt failed: {e}; dropping session");
-        *active = None;
-        let _ = on_event.send(StreamingEvent::Error(e.to_string()));
         return Err(anyhow::anyhow!("failed to send prompt: {e}"));
     }
 
-    let (text, thought, tools) = match stream_read_turn(session, on_event).await {
+    let (text, thought, tools) = match stream_read_turn(&mut active, on_event).await {
         Ok(result) => result,
         Err(e) => {
-            warn!(%session_id, "read response failed: {e}; dropping session");
-            *active = None;
-            let _ = on_event.send(StreamingEvent::Error(e.to_string()));
+            warn!(%session_id, "read response failed: {e}");
             return Err(anyhow::anyhow!("failed to read response: {e}"));
         }
     };
+
+    // Put the (still-alive) session back so it can be reused / modelled on.
+    {
+        let mut guard = session.lock().await;
+        *guard = Some(active);
+    }
 
     debug!(
         %session_id,
@@ -488,29 +631,31 @@ async fn start_new_session(cx: &ConnectionTo<Agent>) -> Result<ActiveSession<'st
 /// Drop any held session and create a fresh one.
 async fn ensure_fresh_session(
     cx: &ConnectionTo<Agent>,
-    active: &mut Option<ActiveSession<'static, Agent>>,
+    session: &SharedSession,
 ) -> Result<AcpSession> {
-    *active = None;
-    let session = start_new_session(cx).await?;
-    let meta = acp_session_meta(&session);
-    *active = Some(session);
+    let mut guard = session.lock().await;
+    *guard = None;
+    let new_session = start_new_session(cx).await?;
+    let meta = acp_session_meta(&new_session);
+    *guard = Some(new_session);
     Ok(meta)
 }
 
 /// Send session/set_model on the active session.
 async fn set_model_on_active(
     _cx: &ConnectionTo<Agent>,
-    active: &mut Option<ActiveSession<'static, Agent>>,
+    session: &SharedSession,
     model_id: &str,
 ) -> Result<()> {
-    let session = active
+    let mut guard = session.lock().await;
+    let session_ref = guard
         .as_mut()
         .context("no active session — create one first")?;
 
-    let session_id = session.session_id().to_string();
+    let session_id = session_ref.session_id().to_string();
     let model_id_owned = model_id.to_string();
-    let conn = session.connection();
-    let request = agent_client_protocol::schema::SetSessionModelRequest::new(
+    let conn = session_ref.connection();
+    let request = agent_client_protocol::schema::v1::SetSessionModeRequest::new(
         session_id.clone(),
         model_id_owned.clone(),
     );
@@ -541,43 +686,52 @@ async fn set_model_on_active(
 /// Ensure a session exists, send prompt, read full turn text.
 async fn send_prompt_on_active(
     cx: &ConnectionTo<Agent>,
-    active: &mut Option<ActiveSession<'static, Agent>>,
+    session: &SharedSession,
     prompt: &str,
 ) -> Result<PromptResponse> {
-    if active.is_none() {
-        debug!("No held session — creating before first prompt");
-        let session = start_new_session(cx).await?;
-        *active = Some(session);
-    }
-
-    let session = active
-        .as_mut()
-        .context("internal: active session missing after ensure")?;
-
-    let session_id = session.session_id().to_string();
-    let modes = modes_from_session(session);
-    let models = models_from_session(session);
+    // D3: lock only to obtain/replace the handle; read the turn outside.
+    let session_id;
+    let modes;
+    let models;
+    let mut active = {
+        let mut guard = session.lock().await;
+        if guard.is_none() {
+            debug!("No held session — creating before first prompt");
+            let new_session = start_new_session(cx).await?;
+            *guard = Some(new_session);
+        }
+        let session_ref = guard
+            .as_mut()
+            .context("internal: active session missing after ensure")?;
+        session_id = session_ref.session_id().to_string();
+        modes = modes_from_session(session_ref);
+        models = models_from_session(session_ref);
+        guard.take().context("internal: active session missing on take")?
+    };
 
     debug!(
         %session_id,
         "Sending prompt: {}",
-        &prompt[..prompt.len().min(80)]
+        prompt.chars().take(80).collect::<String>()
     );
 
-    if let Err(e) = session.send_prompt(prompt) {
+    if let Err(e) = active.send_prompt(prompt) {
         warn!(%session_id, "send_prompt failed: {e}; dropping session");
-        *active = None;
         return Err(anyhow::anyhow!("failed to send prompt: {e}"));
     }
 
-    let (text, thought, tools) = match read_turn(session).await {
+    let (text, thought, tools) = match read_turn(&mut active).await {
         Ok(result) => result,
         Err(e) => {
-            warn!(%session_id, "read response failed: {e}; dropping session");
-            *active = None;
+            warn!(%session_id, "read response failed: {e}");
             return Err(anyhow::anyhow!("failed to read response: {e}"));
         }
     };
+
+    {
+        let mut guard = session.lock().await;
+        *guard = Some(active);
+    }
 
     debug!(
         %session_id,

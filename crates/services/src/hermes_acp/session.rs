@@ -1,4 +1,4 @@
-use agent_client_protocol::schema::SessionId;
+use agent_client_protocol::schema::v1::SessionId;
 use std::fmt;
 
 /// A single session mode (e.g. "ask", "accept_edits", "dont_ask").
