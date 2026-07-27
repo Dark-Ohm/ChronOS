@@ -88,3 +88,9 @@ Unsupported version | FailedToInstall | Exited { status, stderr } | Other — ma
 - Flattening tool calls into assistant markdown — lose status/permissions.
 - Ignoring WaitingForConfirmation — agent blocks forever.
 - Assuming entries are pure text — Diff/Terminal content types matter for v1.1+.
+- **Assuming every tool call gets a terminal update.** Agents drop them. Real
+  case, ChronOS 2026-07-27: a turn sent 10 `tool_call` and 1 `tool_call_update`
+  — nine cards had no completion on the wire at all. Design the UI for
+  "outcome unknown" as a first-class state; never paint a card `done` just
+  because the turn ended, that is inventing a result you were never told.
+  Cause and patch: `hermes-acp-tool-completed`.
