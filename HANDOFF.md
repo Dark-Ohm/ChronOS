@@ -33,6 +33,37 @@
 | D4 | stderr Hermes виден только посмертно | пайп держит ACP-библиотека; при живом-но-повисшем агенте мы слепы |
 | D5 | дропдаун Model пуст | `composer: send model=` во всех логах |
 
+**Второй смоук 2026-07-27 07:55 (с логами) — найден общий корень, бриф
+T143 переписан.** `transport.rs:124` шлёт голый
+`InitializeRequest::new(ProtocolVersion::V1)`: поле
+`client_capabilities` дефолтное, т.е. мы говорим Hermes «не умею
+ничего». Zed (`agent_servers/src/acp.rs:756`) объявляет `fs
+read/write`, `terminal`, `auth`, `session.config_options`,
+`elicitation` — отсюда разница в потоке. Новый **D0 — честный
+хендшейк**, работы переупорядочены: D0 → повторный смоук → D4 (stderr)
+→ D1/D2/D3 → перепроверка D5.
+
+> **Поправка того же дня (12:00):** связь D5 с `config_options` —
+> ошибка. В `agent-client-protocol-schema` 0.12.0 такого поля у
+> `ClientCapabilities` нет вовсе. Настоящий корень D5 нашёлся живьём:
+> `ActiveSession` (`agent-client-protocol-0.11.1/src/session.rs:488`)
+> не хранит `models`, а `response()` пересобирает ответ без них — то
+> есть `.models` всегда `None`, что бы агент ни прислал. Hermes модели
+> шлёт (`currentModelId: nous:tencent/hy3:free` + полный список).
+> Чинится только бампом крейта (0.11.1 → 2.0.0) отдельной задачей.
+
+D1 отделён по вине: сырой лог показал, что для `write` Hermes шлёт
+только `ToolCall(Pending)` и НИ ОДНОГО `ToolCallUpdate` (для
+`terminal` — шлёт `Completed` за 300 мс). Файл при этом создан. На
+стороне Hermes (`~/.hermes/hermes-agent/acp_adapter/events.py:244`)
+завершение эмитится из `step_callback` на следующем шаге, а у
+`write_file` в этой ветке дополнительно висят snapshot/edit-proposal
+(`events.py:157-177`). Наша часть D1 — мерж по `id`, а не по `name`
+(`composer.rs:749`), и закрытие висящих тулов по концу turn'а (образец
+— Zed `mark_pending_entries_as_canceled`, `acp_thread.rs:3906`; Zed
+делает это только на cancel/error, нам нужен и нормальный конец).
+`raw_input=false` у обоих тулов — аргументы Hermes не шлёт вовсе.
+
 Диагностика оставлена в дереве: логи `ACP raw: ToolCall` /
 `ToolCallUpdate` (info) в `client.rs` — снимать после закрытия D1.
 
@@ -58,11 +89,16 @@ clone without ChronOS character.
 | Phase | T | Verdict | Commit |
 |---|---|---|---|
 | A | T137 | ACCEPTED (user chat) | `af54fb0` |
-| A2 | T140 | code OK / **live smoke PENDING** | in `36e8399` |
-| A3 | T141 | code OK / live grim PENDING | `36e8399` |
-| A4 | T142 | code OK / models if Hermes sends | `36e8399` |
-| B | T138 | code OK / 2nd agent live PENDING | `82405c3` |
-| C | T139 | code OK / visual grim PENDING | `66a86f5` |
+| A2 | T140 | ACCEPTED — автоапрув живой (лог 04:54) | in `36e8399` |
+| A3 | T141 | ACCEPTED w/ caveats — карточки живые, висяк `write` → T143 D1 | `36e8399` |
+| A4 | T142 | ACCEPTED w/ caveats — список моделей пуст → T143 D5 | `36e8399` |
+| B | T138 | ACCEPTED w/ caveats — 2-й агент живьём так и не гонялся | `82405c3` |
+| C | T139 | ACCEPTED w/ caveats — визуал подтверждён скринами 02:39/07:55 | `66a86f5` |
+
+**Все T137–T142 закрыты 2026-07-27:** брифы → `orchestration/tasks/done/`,
+отчёты уже в `report-log/` (дубли из inbox удалены), сводка —
+`orchestration/tasks/MIGRATION.md`. Остаточные дефекты не возвращены в
+эти T, а собраны в T143.
 
 **Reports →** `orchestration/tasks/report-log/T13*-report.md` (verdicts appended).  
 **Твой smoke:** rebuild → write_file; tool cards; model list; agents.toml; light/dark grim.
@@ -71,7 +107,14 @@ clone without ChronOS character.
 `64c777d` + Super+Shift+E.
 
 ### Active T
-- **T143 — ACP turn resilience** (D1–D5 выше), агент не назначен.
+- **T143 — ACP turn resilience** — **заход 2, исполнитель Hermes**
+  (`orchestration/agents/HERMES.md`). Заход 1 принят частично:
+  D0/D1/D4 подтверждены живьём (2026-07-27), D3 REJECT, D2-таймаут
+  провален живьём, D5 вынесен в отдельную T (корень — библиотека
+  `agent-client-protocol` 0.11.1 не хранит `models` в `ActiveSession`;
+  нужен бамп до 2.0.0). Новый **D6** — панель теряет завершение turn'а,
+  приоритет №1. Улики — в отчёте, разделы «ВЕРДИКТ АРХИТЕКТОРА» и
+  «ЖИВОЙ СМОУК АРХИТЕКТОРА».
 - T134 — ACCEPTED.
 - T129 — PARKED.
 - Pause: T115 Files.
@@ -1515,3 +1558,28 @@ Top Bar-волны (те — в верхнем блоке + `orchestration/agent
   формула плавает (была `screen=raw×2`, только одношаговые прыжки).
   `hyprctl layers -j` надёжнее grim-кропа для проверки, открылось ли
   layer-shell окно.
+
+### ACP live smoke 2026-07-27 (день, архитектор) — приёмка захода 1 T143
+
+Три прогона релиза, `RUST_LOG` до `info,chronos_services=debug,hermes.stderr=debug`,
+скриншоты `grim`. Итог: **D0/D1/D4 работают живьём**, D2 таймаут провален,
+D3 не сделан, D5 вынесен, вскрыт новый **D6**.
+
+- **D6 (новый, приоритет №1):** панель теряет завершение turn'а.
+  `{"result":{"stopReason":"end_turn"}}` физически приходит по проводу
+  (11:18:56.937), а `stream_read_turn` (`client.rs:297-410`) висит в
+  `read_update().await` — ни `turn END`, ни ошибки. Первопричина
+  утреннего «Hermes пропал»: агент был жив и договорил.
+- **D2 таймаут:** при `TURN_TIMEOUT=120s` не сработал ни разу — 1.5 ч,
+  158 с, 258 с. Зацепка: таск идёт через `cx.spawn` (GPUI-executor), а
+  `tokio::time::timeout` требует токийского рантайма.
+- **D2 Cancel:** работает, но маркер «⏹ Turn cancelled» ставится только
+  в пустое сообщение — при отмене на полуслове следа не остаётся.
+- **D4:** окупился в первый же час — поймал `Traceback` и `402 Payment
+  Required` из плагина Hindsight в Hermes (облачный, хотя у нас
+  self-hosted на :8888 — отдельная тема). Erratum: стек на `debug`, при
+  `RUST_LOG=info` не виден.
+- **Заход 2 отдан Hermes** (`orchestration/agents/HERMES.md`).
+
+Дисциплина: отчёт захода 1 содержал два ложных «сделано» (D3, D5) и
+описывал несуществующий код — обе лжи вскрыты грепом за минуты.
