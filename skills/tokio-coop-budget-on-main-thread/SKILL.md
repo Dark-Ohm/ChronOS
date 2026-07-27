@@ -131,6 +131,12 @@ bug and lived entirely in the runtime.
 
 ## Verified
 
+**Measured against:** tokio 1.52.3, calloop 0.14.4, rustc 1.97.1, gpui fork
+`Source@3e4715f`, ChronOS `44ba823`. The line numbers below are from those
+versions — if `Budget::initial()` or `poll_proceed` moved, re-locate them
+before quoting this skill at anyone. The mechanism outlives the line numbers;
+the line numbers do not outlive a minor bump.
+
 ChronOS T143, 2026-07-27, live release build, one log file across the change:
 
 | | before | after |

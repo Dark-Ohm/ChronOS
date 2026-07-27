@@ -5,6 +5,10 @@ description: Use when ACP tool cards in the ChronOS agent panel stay pending/sta
 
 # Hermes ACP: tools of the last step never complete
 
+**Measured against:** hermes-agent 0.18.2 (upstream commit `9de9c25f6`,
+2026-07-07), agent-client-protocol 0.11.1, ChronOS ACP client at protocol v1,
+2026-07-27. Upstream `main` still carried the defect when checked that day.
+
 ## Symptom
 
 The turn finishes fine — text streams, `composer: turn END (reason=ok)` —
