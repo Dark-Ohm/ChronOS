@@ -260,3 +260,16 @@ stop theorising about the data and go find whose counter it is.
 
 Russian for user-facing chat; English for in-repo docs/code (matches
 `CLAUDE.md`).
+
+- **2026-07-28 — лицензии не режутся при обрезке вендоренного кода.**
+  T155 (обрезка `gpui-component` под себя) в первом заходе снёс
+  `Source/gpui-component/LICENSE-APACHE` заодно с `README`, `docs/`,
+  `themes/`, `skills/`. Файл несёт `Copyright 2024 - 2025 Longbridge`;
+  крейт под Apache-2.0, три его подкрейта объявляют `license = "Apache-2.0"`,
+  `Source/NOTICE:10-12` на него ссылается. Сохранение copyright notice —
+  прямое требование §4 лицензии, по которой мы этим кодом пользуемся.
+  Восстановлено `git checkout --`. Мандат «правим под себя» даёт право
+  резать код, а не право снимать атрибуцию: при любой обрезке `LICENSE*`,
+  `NOTICE*`, `Copyright`-заголовки и поля `license` в `Cargo.toml`
+  неприкосновенны. Это тот же периметр, что и запрет коммитить
+  `reference/` — терять его на удалении текстового файла глупо вдвойне.
