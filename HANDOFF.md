@@ -77,8 +77,25 @@ $ grep -oE 'model=\S+' <стдерр агента> →  12 model=anthropic/claud
                                           1 model=tencent/hy3:free  (до смены)
 ```
 
-**Осталось по T144:** раскрытый дропдаун на кадре `grim` с подсвеченной
-текущей моделью — единственное, что требует клика и потому не закрыто.
+**T144 ЗАКРЫТА ЦЕЛИКОМ 2026-07-28** (заход 4, `a44e9bd`: `max_h(300)` +
+`overflow_y_scroll()` на дропдаунах модели и режима — 288 моделей больше не
+уезжают за экран). Живой прогон архитектора, release + `ydotool` + `grim`:
+список раскрывается над композером, четыре смены модели подряд доехали до
+агента и до турна.
+
+```
+$ grep -aoE "model switched to \S+ via provider \S+" <лог> | sort | uniq -c
+      1 model switched to anthropic/claude-opus-4.7 via provider nous
+      1 model switched to ~openai/gpt-mini-latest via provider nous
+      1 model switched to z-ai/glm-5-turbo via provider nous
+      1 model switched to tencent/hy3:free via provider nous
+$ grep -a "turn START" <лог>
+  11:58:01  model=nous:anthropic/claude-opus-4.7  text_len=2
+```
+
+Кадр раскрытого списка — `orchestration/tasks/notes/T144-dropdown-open.png`.
+Не блокер на будущее: 288 элементов рисуются без виртуализации (обычный
+`.children()`), лагов на глаз нет; если появятся — `uniform_list`.
 
 **Дисциплина миньона:** отчёт T145 отклонён (`rejected/`) при принятом коде —
 выдуманы ветка, PR в несуществующей организации и строка `Live ACP tool calls ✅`
