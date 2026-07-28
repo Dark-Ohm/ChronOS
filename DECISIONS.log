@@ -1107,3 +1107,51 @@ full `crates/app` dylib hot-swap.
 
 **Spec:** `docs/superpowers/specs/2026-07-26-edit-mode-and-hot-reload-design.md`
 builds on `2026-07-24-bar-widget-layout-config-design.md`.
+
+## 2026-07-28 — Thread persistence: SQLite locally, agent stays source of truth
+
+**Context:** Threads in the left agent panel live only in memory
+(`sessions: Vec<SessionItem>`, titles literally `Session N`). Closing the
+panel or restarting the shell loses everything; "+" already meant losing
+context. Reference point given by the user: Zed keeps threads in
+`~/.local/share/zed/threads/threads.db`.
+
+**What Zed does** (schema read off the live DB, 43 threads / 5.3 MB):
+single table `threads(id TEXT PK, summary, updated_at, data_type, data BLOB,
+parent_id, folder_paths, folder_paths_order, created_at)` — whole thread
+serialized as one zstd blob, `parent_id` for forked threads, `folder_paths`
+for the project it belongs to.
+
+**Why we do not copy it as-is:** ACP already persists conversations on the
+agent side, and Hermes 0.18.2 exposes them — it advertises
+`load_session=True` (`acp_adapter/server.py:888`), implements `session/load`
+with full history replay (`:1133`), `session/resume` without replay, and
+`session/list` with cwd filter + cursor pagination returning
+`{session_id, cwd, title, updated_at}` (`:1249`). Zed's blob-only model
+would fork the truth: our copy and the agent's copy of the same conversation.
+Second difference: we are multi-agent (`agents.toml`, T138) — a thread
+belongs to *an agent*, which Zed's schema has no column for.
+
+**Accepted:**
+- **Agent owns conversation content.** Resuming a thread = `session/load`
+  against the agent that owns it. We never reconstruct a session from our
+  copy and hand it back.
+- **We own everything the agent cannot know**: which agent a thread belongs
+  to, our title / renames, pin, archive, order, last used model, and a
+  cached transcript for instant rendering and offline browsing when the
+  agent process is not running.
+- **Store:** SQLite (`rusqlite`, bundled) at
+  `~/.local/share/chronos/threads/threads.db`. First DB in the project —
+  chosen over per-thread JSON because thread search (FTS5) is wanted and
+  comes free, and over `sled`/`redb` because the on-disk format stays
+  inspectable with `sqlite3` when something goes wrong at 2am.
+- Cached transcript is a **cache**, explicitly: on conflict with what the
+  agent replays, the agent wins.
+
+**Rejected:** storing only metadata and always paying a `session/load`
+round-trip to show a thread (list is instant, opening would not be, and an
+agent that fails to start would show empty history); mirroring Zed's single
+blob table (forks the truth, no agent column).
+
+**Tasks:** T150 (store + service, `crates/services`), T151 (UI: real thread
+list, load/resume, rename/pin/archive, search) — T151 depends on T150.
