@@ -1,5 +1,5 @@
 use agent_client_protocol::{
-    ActiveSession, Agent, ConnectionTo, SessionMessage,
+    ActiveSession, Agent, ConnectionTo, SessionMessage, UntypedMessage,
     schema::v1::{
         ContentBlock, SessionNotification, SessionUpdate, ToolCallContent, ToolCallStatus,
     },
@@ -736,6 +736,12 @@ async fn ensure_fresh_session(
 }
 
 /// Send session/set_model on the active session.
+///
+/// Uses `UntypedMessage` because `SetSessionModelRequest` was removed from
+/// ACP 2.0.0 schema (upstream dropped `session/set_model`). Hermes 0.18.2
+/// still expects the old method name.
+///
+/// DELETE when Hermes ships ACP 2.0.0-compatible model config options.
 async fn set_model_on_active(
     _cx: &ConnectionTo<Agent>,
     session: &SharedSession,
@@ -749,30 +755,34 @@ async fn set_model_on_active(
     let session_id = session_ref.session_id().to_string();
     let model_id_owned = model_id.to_string();
     let conn = session_ref.connection();
-    let request = agent_client_protocol::schema::v1::SetSessionModeRequest::new(
-        session_id.clone(),
-        model_id_owned.clone(),
-    );
 
-    info!(%session_id, %model_id_owned, "Sending set_model");
+    let request = UntypedMessage::new(
+        "session/set_model",
+        serde_json::json!({
+            "sessionId": session_id,
+            "modelId": model_id_owned,
+        }),
+    )?;
+
+    info!(%session_id, model_id = %model_id_owned, "Sending session/set_model");
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     conn.send_request_to(Agent, request)
         .on_receiving_result(async move |result| {
             let outcome = match result {
-                Ok(_response) => {
-                    info!(%session_id, %model_id_owned, "set_model OK");
+                Ok(_value) => {
+                    info!(%session_id, model_id = %model_id_owned, "session/set_model OK");
                     Ok(())
                 }
                 Err(e) => {
-                    warn!(%session_id, %model_id_owned, "set_model failed: {e}");
+                    warn!(%session_id, model_id = %model_id_owned, "session/set_model failed: {e}");
                     Err(anyhow::anyhow!("set_model error: {e}"))
                 }
             };
             let _ = tx.send(outcome);
             Ok(())
         })
-        .context("failed to send set_model request")?;
+        .context("failed to send session/set_model request")?;
 
     rx.await.context("set_model response channel closed")?
 }
