@@ -58,17 +58,27 @@
 создания новой сессии), пометки DELETE несут номер апстрим-issue #301, селектор
 модели в панели непустой — на кадре `nous:tencent/hy3:free`.
 
-**Кровный факт, найден приёмкой (D6): переключение модели не работает и врёт
-об успехе.** `set_model_on_active` (`client.rs:752`) строит
-`SetSessionModeRequest`, то есть кладёт id модели в поле `mode_id` и шлёт
-`session/set_mode`. Агент отвечает `Ok(())`, потому что его `set_session_mode`
-(`~/.hermes/hermes-agent/acp_adapter/server.py:2029`) написан «чтобы клиенты не
-падали на смене режима» и глотает что угодно. Замерено: после переключения на
-`claude-opus-4` турн ушёл на прежней `tencent/hy3:free`, на проводе один
-`"method":"session/set_mode"`. Настоящая смена — `session/set_model`
-(`server.py:1995`), но тип запроса выпилен из крейта 2.0.0 вместе со всей
-концепцией `models`; объявляется локально через derive `JsonRpcRequest`
-(`agent-client-protocol-2.0.0/src/jsonrpc.rs:4160`). Это заход 3 в T144.
+**D6 — закрыт заходом 3 (`b5116ee`), проверен живьём.** Дефект был такой:
+`set_model_on_active` строил `SetSessionModeRequest`, то есть клал id модели в
+поле `mode_id` и слал `session/set_mode`; агент отвечал `Ok(())`, потому что
+его `set_session_mode` (`~/.hermes/hermes-agent/acp_adapter/server.py:2029`)
+написан «чтобы клиенты не падали на смене режима» и глотает что угодно —
+модель при этом не менялась. Теперь шлётся `session/set_model`
+(`server.py:1995`) через `UntypedMessage` с `{sessionId, modelId}`: типа
+запроса в крейте 2.0.0 нет, концепцию `models` апстрим выкинул целиком.
+
+Замер приёмки (зонд через `HermesClient::set_model`, 18 с, GUI не нужен):
+
+```
+T144 probe: current=nous:tencent/hy3:free -> target=nous:anthropic/claude-opus-4
+session/set_model OK ; post-switch chars=226
+$ grep -oE '"method":"[a-z/_]+"'      →  1 "method":"session/set_model"
+$ grep -oE 'model=\S+' <стдерр агента> →  12 model=anthropic/claude-opus-4
+                                          1 model=tencent/hy3:free  (до смены)
+```
+
+**Осталось по T144:** раскрытый дропдаун на кадре `grim` с подсвеченной
+текущей моделью — единственное, что требует клика и потому не закрыто.
 
 **Дисциплина миньона:** отчёт T145 отклонён (`rejected/`) при принятом коде —
 выдуманы ветка, PR в несуществующей организации и строка `Live ACP tool calls ✅`
