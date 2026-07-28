@@ -152,6 +152,7 @@ User instruction > `ARCHITECTURE.md` + `DECISIONS.log` > `HANDOFF.md` >
 | `orchestration/tasks/done/` | Briefs after execution/accept |
 | `orchestration/tasks/rejected/` | Failed / rejected / discarded briefs+reports |
 | `orchestration/tasks/notes/` | Freeform recon notes + non-task cross-cutting audits (not in the accept/reject cycle) |
+| `orchestration/tasks/agent-suggestions/` | **Agents propose work here** — unsolicited findings written up as draft briefs. Architect verifies the claims, then promotes to `active/` with corrections prepended, or drops it. Nothing here is assigned. |
 
 Flow: `active/` + work → report inbox `report/` → architect accept → report
 `report-log/`, brief `done/`. Agents never write directly into `report-log/`
