@@ -1,6 +1,6 @@
 ---
 name: hermes-acp-tool-completed
-description: Use when ACP tool cards in the ChronOS agent panel stay pending/stale after a turn finishes successfully, or after running `hermes update` (which reverts this patch), or before editing anything under ~/.hermes/hermes-agent — the checkout is a detached-HEAD upstream release, not a fork.
+description: Use when ACP tool cards in the ChronOS agent panel stay pending/stale after a turn finishes successfully, when an ACP request to Hermes returns Ok but nothing changes (model switch in particular — `session/set_mode` swallows anything), or after running `hermes update` (which reverts this patch), or before editing anything under ~/.hermes/hermes-agent — the checkout is a detached-HEAD upstream release, not a fork.
 ---
 
 # Hermes ACP: tools of the last step never complete
@@ -96,3 +96,70 @@ Submitted: **https://github.com/NousResearch/hermes-agent/pull/72964**
 
 If it lands, drop the local patch and this skill's apply step — check the PR
 state before re-applying after a `hermes update`.
+
+---
+
+# Hermes ACP: `session/set_mode` answers `Ok` to anything
+
+**Measured 2026-07-28** against hermes-agent 0.18.2, agent-client-protocol
+2.0.0, ChronOS `set_model_on_active`. Found during T144 acceptance; the code
+had shipped weeks earlier and looked healthy in every log.
+
+## Symptom
+
+A request succeeds and nothing happens. Specifically: switching the model
+returned `Ok(())`, the log said `set_model OK` with the requested id — and
+the next turn ran on the *old* model.
+
+## Cause
+
+Two different agent methods, and only one of them switches models:
+
+- `set_session_model` (`acp_adapter/server.py:1995`, method
+  `session/set_model`) — the real thing: rebuilds `state.agent` with the new
+  model and provider, persists the session.
+- `set_session_mode` (`server.py:2029`, method `session/set_mode`) —
+  documented verbatim as *"persist the editor-requested mode so ACP clients
+  do not fail on mode switches"*. It stores whatever string arrives and
+  answers success. **It validates nothing.**
+
+ChronOS was calling the second one with a model id in the `mode_id` field,
+because `SetSessionModelRequest` was deleted from agent-client-protocol
+2.0.0 along with the entire `models` concept, and `SetSessionModeRequest`
+was the type that still compiled. It compiled, it ran, it logged `OK`, and
+it did nothing.
+
+## The lesson that generalizes
+
+**`Ok` from an ACP agent is not evidence that the intent was carried out.**
+This agent has at least one handler whose stated purpose is to absorb
+requests so clients don't error. Verify effects, not return codes:
+
+```bash
+# what actually went on the wire
+grep -aoE '"method":"[a-z/_]+"' <log> | sort | uniq -c
+# what the agent actually did with it
+grep -aoE 'provider=\S+ base_url=\S+ model=\S+' <log> | sort | uniq -c
+```
+
+Before the fix: `1 "method":"session/set_mode"`, and `model=tencent/hy3:free`
+throughout. After: `1 "method":"session/set_model"`, then 12 lines of
+`model=anthropic/claude-opus-4`.
+
+## The fix on our side
+
+`session/set_model` has no type in the 2.0.0 crate, so it is sent as
+`UntypedMessage::new("session/set_model", json!({"sessionId", "modelId"}))`
+through the normal `conn.send_request_to(Agent, …)` path
+(`crates/services/src/hermes_acp/client.rs`, commit `b5116ee`, marked
+DELETE). Two dialects meet here: the crate dropped `models` in favour of
+`configOptions`, the agent has not adopted them yet — see upstream issue
+[#301](https://github.com/agentclientprotocol/rust-sdk/issues/301) for the
+other half of the same split.
+
+## How to prove a switch works, in 18 seconds, without the GUI
+
+An ignored smoke test against the service layer — no Hyprland, no panel:
+`create_session` → pick any model from `models.available` other than the
+current one → `set_model(target)` → send a one-word prompt → grep the two
+lines above. That is how this defect was found and how the fix was accepted.
