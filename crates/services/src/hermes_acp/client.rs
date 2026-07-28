@@ -14,6 +14,16 @@ use tracing::{debug, info, warn};
 /// Held ACP session, shared across command handlers (see transport D3).
 pub(crate) type SharedSession = Arc<Mutex<Option<ActiveSession<'static, Agent>>>>;
 
+/// T144 workaround: models intercepted from raw `session/new` response JSON.
+///
+/// Written by `with_debug` callback (sync Fn), read by `models_from_session`.
+/// Separate from `SharedSession` because `with_debug` is `Fn + Send + Sync + 'static`
+/// and cannot hold a `tokio::sync::Mutex` guard.
+///
+/// DELETE when upstream issue #301 is fixed and `ActiveSession.response()`
+/// carries `config_options`.
+pub(crate) type SharedModels = Arc<StdMutex<Option<SessionModels>>>;
+
 /// Streaming event emitted during a prompt turn.
 #[derive(Clone, Debug)]
 pub enum StreamingEvent {
@@ -90,10 +100,11 @@ pub(crate) async fn execute_command(
     cmd: Command,
     cx: &ConnectionTo<Agent>,
     session: &SharedSession,
+    intercepted_models: &SharedModels,
 ) {
     match cmd {
         Command::CreateSession { reply } => {
-            let result = ensure_fresh_session(cx, session).await;
+            let result = ensure_fresh_session(cx, session, intercepted_models).await;
             let _ = reply.send(result);
         }
         Command::SendPrompt {
@@ -102,9 +113,9 @@ pub(crate) async fn execute_command(
             on_event,
         } => {
             let result = if let Some(event_tx) = on_event {
-                send_prompt_streaming(cx, session, &prompt, &event_tx).await
+                send_prompt_streaming(cx, session, &prompt, &event_tx, intercepted_models).await
             } else {
-                send_prompt_on_active(cx, session, &prompt).await
+                send_prompt_on_active(cx, session, &prompt, intercepted_models).await
             };
             let _ = reply.send(result);
         }
@@ -130,10 +141,12 @@ fn modes_from_session(session: &ActiveSession<'static, Agent>) -> Option<Session
     })
 }
 
-fn models_from_session(session: &ActiveSession<'static, Agent>) -> Option<SessionModels> {
-    // T144: upstream issue agentclientprotocol/rust-sdk#XX —
-    // ActiveSession.response() discards config_options. Until fixed we
-    // use INTERCEPTED_MODELS from the with_debug workaround.
+fn models_from_session(
+    session: &ActiveSession<'static, Agent>,
+    intercepted: &SharedModels,
+) -> Option<SessionModels> {
+    // T144: upstream issue #301 — ActiveSession.response() discards
+    // config_options. Until fixed we use the with_debug workaround.
     // When upstream fixes it, the workaround is removed and this function
     // reads config_options from session.response().
     {
@@ -143,7 +156,7 @@ fn models_from_session(session: &ActiveSession<'static, Agent>) -> Option<Sessio
             // TODO T144: parse config_options into SessionModels
         }
     }
-    if let Ok(guard) = INTERCEPTED_MODELS.lock() {
+    if let Ok(guard) = intercepted.lock() {
         if let Some(models) = guard.as_ref() {
             debug!(
                 current = %models.current_id,
@@ -176,24 +189,14 @@ fn is_terminal_status(status: &ToolCallStatus) -> bool {
     )
 }
 
-/// T144 workaround: models intercepted from raw `session/new` response JSON.
-///
-/// `ActiveSession.response().config_options` is always `None` because the library
-/// does not preserve the field (upstream issue: agentclientprotocol/rust-sdk#XX).
-/// Until fixed, we capture the model list from the wire via `with_debug`.
-///
-/// DELETE this static + the calling code in transport.rs when config_options
-/// flows through ActiveSession.response() naturally.
-pub(crate) static INTERCEPTED_MODELS: StdMutex<Option<SessionModels>> = StdMutex::new(None);
-
 /// T144 workaround: parse models from raw `session/new` JSON-RPC response.
 ///
 /// Called from `transport.rs`'s `with_debug` Stdout handler on every line.
 /// Returns quickly when the line doesn't look like a session/new result.
-/// Stores parsed models in `INTERCEPTED_MODELS` for `models_from_session`.
+/// Stores parsed models in `dest` for `models_from_session`.
 ///
-/// DELETE this function when upstream issue #XX is fixed.
-pub(crate) fn intercept_session_models(line: &str) {
+/// DELETE this function when upstream issue #301 is fixed.
+pub(crate) fn intercept_session_models(line: &str, dest: &SharedModels) {
     if !line.contains("\"models\"") || !line.contains("\"availableModels\"") {
         return;
     }
@@ -236,7 +239,7 @@ pub(crate) fn intercept_session_models(line: &str) {
     if available_models.is_empty() {
         return;
     }
-    if let Ok(mut guard) = INTERCEPTED_MODELS.lock() {
+    if let Ok(mut guard) = dest.lock() {
         *guard = Some(SessionModels {
             current_id: effective_current.to_string(),
             available: available_models,
@@ -619,6 +622,7 @@ async fn send_prompt_streaming(
     session: &SharedSession,
     prompt: &str,
     on_event: &tokio::sync::mpsc::UnboundedSender<StreamingEvent>,
+    intercepted_models: &SharedModels,
 ) -> Result<PromptResponse> {
     // D3: lock the shared session ONLY to obtain/replace the handle.
     // The turn itself (stream_read_turn) runs OUTSIDE the lock so a long
@@ -643,7 +647,7 @@ async fn send_prompt_streaming(
             .context("internal: active session missing after ensure")?;
         session_id = session_ref.session_id().to_string();
         modes = modes_from_session(session_ref);
-        models = models_from_session(session_ref);
+        models = models_from_session(session_ref, intercepted_models);
         // Take the session out of the shared slot and release the lock.
         guard.take().context("internal: active session missing on take")?
     };
@@ -690,10 +694,13 @@ async fn send_prompt_streaming(
     })
 }
 
-fn acp_session_meta(session: &ActiveSession<'static, Agent>) -> AcpSession {
+fn acp_session_meta(
+    session: &ActiveSession<'static, Agent>,
+    intercepted_models: &SharedModels,
+) -> AcpSession {
     AcpSession::new(session.session_id().clone())
         .with_modes(modes_from_session(session))
-        .with_models(models_from_session(session))
+        .with_models(models_from_session(session, intercepted_models))
 }
 
 async fn start_new_session(cx: &ConnectionTo<Agent>) -> Result<ActiveSession<'static, Agent>> {
@@ -713,11 +720,17 @@ async fn start_new_session(cx: &ConnectionTo<Agent>) -> Result<ActiveSession<'st
 async fn ensure_fresh_session(
     cx: &ConnectionTo<Agent>,
     session: &SharedSession,
+    intercepted_models: &SharedModels,
 ) -> Result<AcpSession> {
     let mut guard = session.lock().await;
     *guard = None;
+    // T144: clear stale intercepted models — the new session/new response
+    // will repopulate via with_debug. DELETE with workaround (issue #301).
+    if let Ok(mut g) = intercepted_models.lock() {
+        *g = None;
+    }
     let new_session = start_new_session(cx).await?;
-    let meta = acp_session_meta(&new_session);
+    let meta = acp_session_meta(&new_session, intercepted_models);
     *guard = Some(new_session);
     Ok(meta)
 }
@@ -769,6 +782,7 @@ async fn send_prompt_on_active(
     cx: &ConnectionTo<Agent>,
     session: &SharedSession,
     prompt: &str,
+    intercepted_models: &SharedModels,
 ) -> Result<PromptResponse> {
     // D3: lock only to obtain/replace the handle; read the turn outside.
     let session_id;
@@ -786,7 +800,7 @@ async fn send_prompt_on_active(
             .context("internal: active session missing after ensure")?;
         session_id = session_ref.session_id().to_string();
         modes = modes_from_session(session_ref);
-        models = models_from_session(session_ref);
+        models = models_from_session(session_ref, intercepted_models);
         guard.take().context("internal: active session missing on take")?
     };
 

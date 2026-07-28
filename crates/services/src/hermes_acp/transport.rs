@@ -17,7 +17,8 @@ const TARGET_PERM: &str = "chronos::acp::permission";
 /// Log target for Hermes agent stderr (forwarded line-by-line in real time).
 const TARGET_STDERR: &str = "hermes.stderr";
 
-use super::client::{Command, SharedSession};
+use super::client::{Command, SharedModels, SharedSession};
+use std::sync::Mutex;
 
 /// Configuration for spawning the Hermes agent process.
 #[derive(Debug, Clone)]
@@ -88,6 +89,10 @@ impl HermesTransport {
         // inside the Stderr arm below. Held in Arc so the `Fn` callback can
         // share it across invocations.
         let escalate_traceback = Arc::new(AtomicBool::new(false));
+        // T144: shared models store, written by with_debug, read by commands.
+        // DELETE with workaround when upstream issue #301 is fixed.
+        let intercepted_models: SharedModels = Arc::new(Mutex::new(None));
+        let debug_models = intercepted_models.clone();
         let agent = AcpAgent::from_args(agent_args)
             .map_err(|e| anyhow::anyhow!("failed to create ACP agent from args: {e}"))?
             .with_debug(move |line: &str, direction: LineDirection| {
@@ -96,9 +101,8 @@ impl HermesTransport {
                         // stdout of the agent = protocol traffic; debug only.
                         tracing::debug!(target: TARGET_STDERR, "{line}");
                         // T144: intercept session/new models from raw JSON-RPC.
-                        // Delete when upstream fix lands (config_options from
-                        // ActiveSession.response()).
-                        crate::hermes_acp::client::intercept_session_models(line);
+                        // DELETE when upstream issue #301 is fixed.
+                        super::client::intercept_session_models(line, &debug_models);
                     }
                     LineDirection::Stdin => {
                         // our requests to the agent; debug only.
@@ -245,8 +249,9 @@ impl HermesTransport {
                     while let Some(cmd) = cmd_rx.recv().await {
                         let cx = cx.clone();
                         let session = active_session.clone();
+                        let im = intercepted_models.clone();
                         tokio::spawn(async move {
-                            super::client::execute_command(cmd, &cx, &session).await;
+                            super::client::execute_command(cmd, &cx, &session, &im).await;
                         });
                     }
 
