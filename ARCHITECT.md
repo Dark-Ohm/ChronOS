@@ -146,7 +146,9 @@ User instruction > `ARCHITECTURE.md` + `DECISIONS.log` > `HANDOFF.md` >
 
 | Dir | Role |
 |---|---|
-| `orchestration/tasks/active/` | Briefs currently assigned |
+| `orchestration/tasks/active/` | **Take-it-now** briefs: assigned, unblocked, nobody waiting on anything. A minion picking work reads only this level. |
+| `orchestration/tasks/active/check/` | Code landed, **live acceptance outstanding** — architect owes a frame/smoke, not the minion. Not free to pick up. |
+| `orchestration/tasks/active/pause/` | Blocked on another task or deliberately frozen. Reason belongs in the file's header. |
 | `orchestration/tasks/report/` | **Inbox** — agent drops report here when finished |
 | `orchestration/tasks/report-log/` | **Accepted** reports (architect read + accepted) |
 | `orchestration/tasks/done/` | Briefs after execution/accept |
