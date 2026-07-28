@@ -1,4 +1,5 @@
 use gpui::{Context, IntoElement, ScrollHandle, Window, div, point, prelude::*, px};
+use super::is_rtl_text;
 use chronos_ui::Theme;
 
 use super::SidePanelLeft;
@@ -184,11 +185,11 @@ fn render_message(
     let content = div()
         .text_size(px(12.))
         .line_height(px(18.))
-        .text_color(if is_user {
-            theme.text.primary
-        } else {
-            theme.text.primary
-        })
+        .text_color(theme.text.primary)
+        // T152 Defect A: base-direction-aware alignment. The gpui fork has no
+        // `text_direction` API, so we right-align RTL content (Hebrew/Arabic)
+        // and leave LTR as-is. Intra-paragraph bidi is handled by the shaper.
+        .when(is_rtl_text(&msg.content), |el| el.text_right())
         .child(msg.content.clone());
 
     let reasoning_collapsed = {

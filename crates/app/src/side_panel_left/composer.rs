@@ -4,6 +4,7 @@ use gpui::{IntoElement, SharedString, Window, div, prelude::*, px};
 
 use super::SidePanelLeft;
 use super::chat_view::{ChatMessage, MessageRole};
+use super::is_rtl_text;
 use super::state::AgentStatus;
 
 impl SidePanelLeft {
@@ -124,11 +125,16 @@ pub fn render_composer(
         .text_size(px(12.5))
         .line_height(px(18.))
         .text_color(input_text_color)
+        // T152 Defect A: same base-direction-aware alignment as chat bubbles.
+        // The gpui fork has no text_direction API, so we right-align RTL
+        // composer input (Hebrew/Arabic) and leave LTR as-is.
+        .when(is_rtl_text(text), |el| el.text_right())
         .track_focus(&focus)
         .on_click(cx.listener(|this, _, window, cx| {
             this.composer_focused = true;
             this.composer_model_dropdown_open = false;
             this.composer_mode_dropdown_open = false;
+            this.composer_model_search.clear();
             window.focus(&this.composer_focus, cx);
             cx.notify();
         }))
@@ -257,8 +263,35 @@ fn model_picker(
     };
     let model_open = has_data && panel.composer_model_dropdown_open;
 
-    let model_items: Vec<_> = panel
-        .available_models
+    let search_q = panel.composer_model_search.to_lowercase();
+
+    let filtered: Vec<_> = if search_q.is_empty() {
+        panel.available_models.iter().collect()
+    } else {
+        panel
+            .available_models
+            .iter()
+            .filter(|m| {
+                m.id.to_lowercase().contains(&search_q)
+                    || m.name.to_lowercase().contains(&search_q)
+            })
+            .collect()
+    };
+
+    let search_active = !panel.composer_model_search.is_empty();
+    let search_display: gpui::SharedString = if panel.composer_model_search.is_empty() {
+        "Search models…".into()
+    } else {
+        panel.composer_model_search.clone().into()
+    };
+    let total = panel.available_models.len();
+    let counter_text = if search_active {
+        format!("{} of {}", filtered.len(), total)
+    } else {
+        format!("{}", total)
+    };
+
+    let model_items: Vec<_> = filtered
         .iter()
         .enumerate()
         .map(|(i, m)| {
@@ -287,7 +320,7 @@ fn model_picker(
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.composer_selected_model = m_id.clone();
                     this.composer_model_dropdown_open = false;
-                    // Notify the agent to switch model.
+                    this.composer_model_search.clear();
                     if let Some(client) = this.clients.get(&this.active_agent_id).cloned() {
                         let model = m_id.clone();
                         cx.spawn(async move |this, cx| {
@@ -305,6 +338,97 @@ fn model_picker(
                 .child(m_name)
         })
         .collect();
+
+    let list_content: Option<gpui::AnyElement> = if model_items.is_empty() {
+        Some(
+            div()
+                .text_size(px(10.))
+                .text_color(theme.text.disabled)
+                .px(px(8.))
+                .py(px(6.))
+                .child("Nothing found")
+                .into_any(),
+        )
+    } else {
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(2.))
+                .children(model_items)
+                .into_any(),
+        )
+    };
+
+    let dropdown = if model_open {
+        Some(
+            div()
+                .id("composer-model-dropdown")
+                .absolute()
+                .bottom(px(26.))
+                .right(px(0.))
+                .min_w(px(200.))
+                .bg(theme.bg.primary)
+                .border_1()
+                .border_color(theme.border.default)
+                .rounded(px(6.))
+                .p(px(4.))
+                .flex()
+                .flex_col()
+                .gap(px(2.))
+                .child(
+                    div()
+                        .flex_none()
+                        .px(px(6.))
+                        .py(px(4.))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .w_full()
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .text_size(px(10.))
+                                        .text_color(theme.text.disabled)
+                                        .child("🔍"),
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .text_size(px(10.5))
+                                        .text_color(theme.text.primary)
+                                        .child(search_display),
+                                )
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .text_size(px(9.))
+                                        .text_color(theme.text.muted)
+                                        .child(counter_text),
+                                ),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .w_full()
+                        .h(px(1.))
+                        .bg(theme.border.subtle),
+                )
+                .child(
+                    div()
+                        .id("composer-model-dropdown-list")
+                        .flex_1()
+                        .max_h(px(250.))
+                        .overflow_y_scroll()
+                        .children(list_content),
+                ),
+        )
+    } else {
+        None
+    };
 
     Some(
         div()
@@ -332,33 +456,16 @@ fn model_picker(
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.composer_model_dropdown_open =
                                     !this.composer_model_dropdown_open;
+                                if !this.composer_model_dropdown_open {
+                                    this.composer_model_search.clear();
+                                }
                                 this.composer_mode_dropdown_open = false;
                                 cx.notify();
                             }))
                     })
                     .child(format!("{} ⌄", selected_model_display)),
             )
-            .when(model_open, |el| {
-                el.child(
-                    div()
-                        .id("composer-model-dropdown")
-                        .absolute()
-                        .bottom(px(26.))
-                        .right(px(0.))
-                        .min_w(px(200.))
-                        .max_h(px(300.))
-                        .overflow_y_scroll()
-                        .bg(theme.bg.primary)
-                        .border_1()
-                        .border_color(theme.border.default)
-                        .rounded(px(6.))
-                        .p(px(4.))
-                        .flex()
-                        .flex_col()
-                        .gap(px(2.))
-                        .children(model_items),
-                )
-            }),
+            .children(dropdown),
     )
 }
 
@@ -438,6 +545,7 @@ fn mode_picker(panel: &SidePanelLeft, cx: &mut Context<SidePanelLeft>) -> Option
                                 this.composer_mode_dropdown_open =
                                     !this.composer_mode_dropdown_open;
                                 this.composer_model_dropdown_open = false;
+                                this.composer_model_search.clear();
                                 cx.notify();
                             }))
                     })
@@ -538,14 +646,66 @@ impl SidePanelLeft {
             if self.composer_model_dropdown_open || self.composer_mode_dropdown_open {
                 self.composer_model_dropdown_open = false;
                 self.composer_mode_dropdown_open = false;
+                self.composer_model_search.clear();
                 cx.notify();
                 return;
             }
         }
 
-        if self.composer_model_dropdown_open || self.composer_mode_dropdown_open {
+        // ── Model picker search input ──────────────────────────────────
+        if self.composer_model_dropdown_open {
+            let key = event.keystroke.key.as_str();
+            let modifiers = &event.keystroke.modifiers;
+            match key {
+                "escape" => {
+                    self.composer_model_dropdown_open = false;
+                    self.composer_model_search.clear();
+                }
+                "return" | "enter" => {
+                    // Select first filtered item.
+                    let q = self.composer_model_search.to_lowercase();
+                    if let Some(first) = self.available_models.iter().find(|m| {
+                        let id = m.id.to_lowercase();
+                        let name = m.name.to_lowercase();
+                        q.is_empty() || id.contains(&q) || name.contains(&q)
+                    }) {
+                        let m_id = first.id.clone();
+                        self.composer_selected_model = m_id.clone();
+                        self.composer_model_dropdown_open = false;
+                        self.composer_model_search.clear();
+                        if let Some(client) = self.clients.get(&self.active_agent_id).cloned() {
+                            cx.spawn(async move |this, cx| {
+                                if let Err(e) = client.set_model(&m_id).await {
+                                    tracing::warn!("set_model failed: {e}");
+                                }
+                                let _ = this.update(cx, |_this, cx| {
+                                    cx.notify();
+                                });
+                            })
+                            .detach();
+                        }
+                    }
+                }
+                "backspace" => {
+                    self.composer_model_search.pop();
+                }
+                _ => {
+                    if let Some(ch) = event.keystroke.key_char.as_ref() {
+                        if !modifiers.alt && !modifiers.platform && !modifiers.control {
+                            self.composer_model_search.push_str(ch);
+                        }
+                    }
+                }
+            }
+            cx.notify();
+            return;
+        }
+
+        if self.composer_mode_dropdown_open {
             self.composer_model_dropdown_open = false;
             self.composer_mode_dropdown_open = false;
+            cx.notify();
+            return;
         }
 
         let key = event.keystroke.key.as_str();

@@ -6,6 +6,19 @@ pub mod sessions_list;
 mod state;
 mod tool_card;
 
+/// Detects RTL base direction by the first strong (directional) character.
+pub fn is_rtl_text(text: &str) -> bool {
+    for ch in text.chars() {
+        match ch {
+            '\u{05D0}'..='\u{05EA}' => return true,
+            '\u{0600}'..='\u{06FF}' | '\u{0750}'..='\u{077F}' | '\u{08A0}'..='\u{08FF}' => return true,
+            'A'..='Z' | 'a'..='z' => return false,
+            _ => {}
+        }
+    }
+    false
+}
+
 pub use state::{PanelState, SidePanelLeftState};
 
 use chronos_luau::bar::BAR_HEIGHT;
@@ -100,6 +113,7 @@ pub struct SidePanelLeft {
     pub(crate) composer_yolo_bypass_id: Option<String>,
     pub(crate) composer_model_dropdown_open: bool,
     pub(crate) composer_mode_dropdown_open: bool,
+    pub(crate) composer_model_search: String,
     pub(crate) composer_focused: bool,
     /// Streaming state for the current ACP prompt turn.
     pub(crate) streaming: state::StreamingState,
@@ -218,6 +232,7 @@ impl SidePanelLeft {
             composer_yolo_bypass_id: None,
             composer_model_dropdown_open: false,
             composer_mode_dropdown_open: false,
+            composer_model_search: String::new(),
             composer_focused: false,
             streaming: state::StreamingState::new(),
             resize_start_x: None,
