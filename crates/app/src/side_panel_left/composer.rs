@@ -3,7 +3,7 @@ use chronos_ui::{Theme, on_fill};
 use gpui::{IntoElement, SharedString, Window, div, prelude::*, px};
 
 use super::SidePanelLeft;
-use super::chat_view::{ChatMessage, MessageRole};
+use super::chat_view::{ChatMessage, MessageRole, Segment};
 use super::is_rtl_text;
 use super::state::AgentStatus;
 
@@ -788,9 +788,7 @@ impl SidePanelLeft {
 
         self.chat.push_message(ChatMessage {
             role: MessageRole::User,
-            content: text.clone(),
-            thought: None,
-            tool_calls: Vec::new(),
+            segments: vec![Segment::Response { content: text.clone() }],
         });
         self.chat.scroll_to_bottom();
 
@@ -802,12 +800,10 @@ impl SidePanelLeft {
             // Create a streaming channel for real-time events.
             let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
 
-            // Push a placeholder agent message that will be updated in-place.
+            // Push a placeholder agent message (segments filled by streaming).
             self.chat.push_message(ChatMessage {
                 role: MessageRole::Agent,
-                content: String::new(),
-                thought: None,
-                tool_calls: Vec::new(),
+                segments: Vec::new(),
             });
             self.chat.scroll_to_bottom();
 
@@ -826,31 +822,62 @@ impl SidePanelLeft {
                                 prompt_response.session_id, prompt_response.text.len());
                             tracing::debug!("composer: finalize update entered");
                             this.streaming.reset();
-                            this.chat.collapsed_reasoning
-                                .insert(this.chat.messages.len().wrapping_sub(1));
                             this.state.session_id = Some(prompt_response.session_id);
-                            // Finalize the last agent message with complete data.
                             if let Some(last_msg) = this.chat.messages.last_mut() {
                                 if last_msg.role == MessageRole::Agent {
-                                    last_msg.content = prompt_response.text;
-                                    last_msg.thought = if prompt_response.thought.is_empty() {
-                                        None
-                                    } else {
-                                        Some(prompt_response.thought)
-                                    };
-                                    last_msg.tool_calls = prompt_response
-                                        .tools
-                                        .into_iter()
-                                        .map(|t| super::chat_view::ToolCallPreview {
-                                            id: t.id,
-                                            name: t.name,
-                                            status: t.status,
-                                            args: t.args,
-                                            result: t.result,
+                                    // H1: guard against lost streaming events.
+                                    let response_len: usize = last_msg.segments.iter()
+                                        .filter_map(|s| match s {
+                                            Segment::Response { content } => Some(content.len()),
+                                            _ => None,
                                         })
-                                        .collect();
+                                        .sum();
+                                    let expected_len = prompt_response.text.len();
+                                    if response_len != expected_len {
+                                        tracing::warn!(
+                                            "composer: response segment length {} != prompt_response.text.len() {}",
+                                            response_len, expected_len,
+                                        );
+                                    }
+                                    let has_response = last_msg.segments.iter().any(|s| matches!(s, Segment::Response { .. }));
+                                    if !has_response && !prompt_response.text.is_empty() {
+                                        tracing::warn!(
+                                            "composer: no Response segments from streaming, inserting from prompt_response ({} chars)",
+                                            expected_len,
+                                        );
+                                        last_msg.segments.push(Segment::Response {
+                                            content: prompt_response.text,
+                                        });
+                                    }
+                                    let has_thinking = last_msg.segments.iter().any(|s| matches!(s, Segment::Thinking { .. }));
+                                    if !has_thinking && !prompt_response.thought.is_empty() {
+                                        last_msg.segments.push(Segment::Thinking {
+                                            content: prompt_response.thought,
+                                        });
+                                    }
+                                    // Sync tool call statuses from final response.
+                                    for final_tool in &prompt_response.tools {
+                                        if let Some(tool) = last_msg.segments.iter_mut().find_map(|s| {
+                                            if let Segment::ToolCall { tool } = s {
+                                                if tool.id == final_tool.id { Some(tool) } else { None }
+                                            } else { None }
+                                        }) {
+                                            tool.status = final_tool.status.clone();
+                                            tool.args.clone_from(&final_tool.args);
+                                            tool.result.clone_from(&final_tool.result);
+                                        }
+                                    }
                                     // D1: honestly close any tool still pending.
                                     this.mark_pending_tools_stale();
+                                }
+                            }
+                            // Collapse all Thinking segments in the last message.
+                            let last_msg_idx = this.chat.messages.len().wrapping_sub(1);
+                            if let Some(last_msg) = this.chat.messages.last() {
+                                for (seg_idx, seg) in last_msg.segments.iter().enumerate() {
+                                    if matches!(seg, Segment::Thinking { .. }) {
+                                        this.chat.collapsed_reasoning.insert((last_msg_idx, seg_idx));
+                                    }
                                 }
                             }
                             this.chat.scroll_to_bottom();
@@ -882,12 +909,29 @@ impl SidePanelLeft {
                             || e.to_string().contains("reply channel closed");
                         let _ = this.update(cx, |this, cx| {
                             this.streaming.reset();
-                            this.chat.collapsed_reasoning
-                                .insert(this.chat.messages.len().wrapping_sub(1));
-                            // Replace the placeholder with an error message.
                             if let Some(last_msg) = this.chat.messages.last_mut() {
                                 if last_msg.role == MessageRole::Agent {
-                                    last_msg.content = format!("Error: {e}");
+                                    let has_empty_response = last_msg.segments.last().map_or(false, |s| {
+                                        matches!(s, Segment::Response { content } if content.is_empty())
+                                    });
+                                    if has_empty_response {
+                                        if let Some(Segment::Response { content }) = last_msg.segments.last_mut() {
+                                            *content = format!("Error: {e}");
+                                        }
+                                    } else {
+                                        last_msg.segments.push(Segment::Response {
+                                            content: format!("Error: {e}"),
+                                        });
+                                    }
+                                }
+                            }
+                            // Collapse all Thinking segments in the last message.
+                            let last_msg_idx = this.chat.messages.len().wrapping_sub(1);
+                            if let Some(last_msg) = this.chat.messages.last() {
+                                for (seg_idx, seg) in last_msg.segments.iter().enumerate() {
+                                    if matches!(seg, Segment::Thinking { .. }) {
+                                        this.chat.collapsed_reasoning.insert((last_msg_idx, seg_idx));
+                                    }
                                 }
                             }
                             // D1: honestly close any tool still pending on failure.
@@ -950,7 +994,18 @@ impl SidePanelLeft {
                                         StreamingEvent::TextChunk(delta) => {
                                             if let Some(last_msg) = this.chat.messages.last_mut() {
                                                 if last_msg.role == MessageRole::Agent {
-                                                    last_msg.content.push_str(&delta);
+                                                    let append = last_msg.segments.last_mut().and_then(|s| {
+                                                        if let Segment::Response { content } = s {
+                                                            Some(content)
+                                                        } else {
+                                                            None
+                                                        }
+                                                    });
+                                                    if let Some(content) = append {
+                                                        content.push_str(&delta);
+                                                    } else {
+                                                        last_msg.segments.push(Segment::Response { content: delta });
+                                                    }
                                                 }
                                             }
                                             this.chat.scroll_to_bottom();
@@ -958,18 +1013,24 @@ impl SidePanelLeft {
                                         StreamingEvent::ThoughtChunk(delta) => {
                                             if let Some(last_msg) = this.chat.messages.last_mut() {
                                                 if last_msg.role == MessageRole::Agent {
-                                                    match &mut last_msg.thought {
-                                                        Some(thought) => thought.push_str(&delta),
-                                                        None => {
-                                                            last_msg.thought = Some(delta);
+                                                    let append = last_msg.segments.last_mut().and_then(|s| {
+                                                        if let Segment::Thinking { content } = s {
+                                                            Some(content)
+                                                        } else {
+                                                            None
                                                         }
+                                                    });
+                                                    if let Some(content) = append {
+                                                        content.push_str(&delta);
+                                                    } else {
+                                                        let seg_idx = last_msg.segments.len();
+                                                        last_msg.segments.push(Segment::Thinking { content: delta });
+                                                        let msg_idx = this.chat.messages.len().wrapping_sub(1);
+                                                        this.chat.collapsed_reasoning.remove(&(msg_idx, seg_idx));
                                                     }
                                                 }
                                             }
                                             this.chat.scroll_to_bottom();
-                                            let last =
-                                                this.chat.messages.len().wrapping_sub(1);
-                                            this.chat.collapsed_reasoning.remove(&last);
                                         }
                                         StreamingEvent::ToolCall {
                                             id,
@@ -983,24 +1044,25 @@ impl SidePanelLeft {
                                                     // D1: merge by stable tool-call id, not by
                                                     // display name — two tools with the same
                                                     // title would otherwise collapse into one.
-                                                    if let Some(tc) = last_msg
-                                                        .tool_calls
-                                                        .iter_mut()
-                                                        .find(|t| t.id == id)
-                                                    {
-                                                        tc.status = status;
-                                                        tc.args = args;
-                                                        tc.result = result;
+                                                    let found = last_msg.segments.iter_mut().rev().find_map(|s| {
+                                                        if let Segment::ToolCall { tool } = s {
+                                                            if tool.id == id { Some(tool) } else { None }
+                                                        } else { None }
+                                                    });
+                                                    if let Some(tool) = found {
+                                                        tool.status = status;
+                                                        tool.args = args;
+                                                        tool.result = result;
                                                     } else {
-                                                        last_msg.tool_calls.push(
-                                                            super::chat_view::ToolCallPreview {
+                                                        last_msg.segments.push(Segment::ToolCall {
+                                                            tool: super::chat_view::ToolCallPreview {
                                                                 id,
                                                                 name,
                                                                 status,
                                                                 args,
                                                                 result,
                                                             },
-                                                        );
+                                                        });
                                                     }
                                                 }
                                             }
@@ -1053,24 +1115,36 @@ impl SidePanelLeft {
                                 }
                                 let _ = this.update(cx, |this, cx| {
                                     this.streaming.reset();
-                                    this.chat.collapsed_reasoning
-                                        .insert(this.chat.messages.len().wrapping_sub(1));
                                     if let Some(last_msg) = this.chat.messages.last_mut() {
-                                        if last_msg.role == MessageRole::Agent
-                                            && last_msg.content.is_empty()
-                                        {
-                                            last_msg.content = if events_received == 0 {
-                                                format!(
-                                                    "⏱ Turn timed out after {}s — no streaming \
-                                                     events reached the UI (channel broken).",
-                                                    TURN_TIMEOUT.as_secs()
-                                                )
-                                            } else {
-                                                format!(
-                                                    "⏱ Turn timed out after {}s of agent silence.",
-                                                    TURN_TIMEOUT.as_secs()
-                                                )
-                                            };
+                                        if last_msg.role == MessageRole::Agent {
+                                            let has_nonempty_response = last_msg.segments.iter().any(|s| {
+                                                matches!(s, Segment::Response { content } if !content.is_empty())
+                                            });
+                                            if !has_nonempty_response {
+                                                last_msg.segments.push(Segment::Response {
+                                                    content: if events_received == 0 {
+                                                        format!(
+                                                            "⏱ Turn timed out after {}s — no streaming \
+                                                             events reached the UI (channel broken).",
+                                                            TURN_TIMEOUT.as_secs()
+                                                        )
+                                                    } else {
+                                                        format!(
+                                                            "⏱ Turn timed out after {}s of agent silence.",
+                                                            TURN_TIMEOUT.as_secs()
+                                                        )
+                                                    },
+                                                });
+                                            }
+                                        }
+                                    }
+                                    // Collapse all Thinking segments in the last message.
+                                    let last_msg_idx = this.chat.messages.len().wrapping_sub(1);
+                                    if let Some(last_msg) = this.chat.messages.last() {
+                                        for (seg_idx, seg) in last_msg.segments.iter().enumerate() {
+                                            if matches!(seg, Segment::Thinking { .. }) {
+                                                this.chat.collapsed_reasoning.insert((last_msg_idx, seg_idx));
+                                            }
                                         }
                                     }
                                     this.mark_pending_tools_stale();
@@ -1105,9 +1179,9 @@ impl SidePanelLeft {
         } else {
             self.chat.push_message(ChatMessage {
                 role: MessageRole::Agent,
-                content: "ACP client not connected. Please wait for initialization.".to_string(),
-                thought: None,
-                tool_calls: Vec::new(),
+                segments: vec![Segment::Response {
+                    content: "ACP client not connected. Please wait for initialization.".to_string(),
+                }],
             });
             self.chat.scroll_to_bottom();
         }
@@ -1126,10 +1200,12 @@ impl SidePanelLeft {
             if msg.role != MessageRole::Agent {
                 continue;
             }
-            for tc in msg.tool_calls.iter_mut() {
-                let s = tc.status.trim().to_ascii_lowercase();
-                if !TERMINAL.contains(&s.as_str()) {
-                    tc.status = "stale".to_string();
+            for seg in msg.segments.iter_mut() {
+                if let Segment::ToolCall { tool } = seg {
+                    let s = tool.status.trim().to_ascii_lowercase();
+                    if !TERMINAL.contains(&s.as_str()) {
+                        tool.status = "stale".to_string();
+                    }
                 }
             }
         }
@@ -1144,17 +1220,30 @@ impl SidePanelLeft {
         }
         tracing::info!("composer: turn END (reason=cancel)");
         self.streaming.reset();
-        self.chat.collapsed_reasoning
-            .insert(self.chat.messages.len().wrapping_sub(1));
         if let Some(last_msg) = self.chat.messages.last_mut() {
             if last_msg.role == MessageRole::Agent {
-                if last_msg.content.is_empty() {
-                    last_msg.content = "⏹ Turn cancelled by user.".to_string();
+                let found = last_msg.segments.iter_mut().rev().find_map(|s| {
+                    if let Segment::Response { content } = s { Some(content) } else { None }
+                });
+                if let Some(content) = found {
+                    if content.is_empty() {
+                        *content = "⏹ Turn cancelled by user.".to_string();
+                    } else {
+                        content.push_str("\n\n⏹ Turn cancelled by user.");
+                    }
                 } else {
-                    // Don't discard a half-received answer — append the marker.
-                    last_msg
-                        .content
-                        .push_str("\n\n⏹ Turn cancelled by user.");
+                    last_msg.segments.push(Segment::Response {
+                        content: "⏹ Turn cancelled by user.".to_string(),
+                    });
+                }
+            }
+        }
+        // Collapse all Thinking segments in the last message.
+        let last_msg_idx = self.chat.messages.len().wrapping_sub(1);
+        if let Some(last_msg) = self.chat.messages.last() {
+            for (seg_idx, seg) in last_msg.segments.iter().enumerate() {
+                if matches!(seg, Segment::Thinking { .. }) {
+                    self.chat.collapsed_reasoning.insert((last_msg_idx, seg_idx));
                 }
             }
         }

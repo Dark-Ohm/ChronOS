@@ -16,12 +16,6 @@ pub enum AgentStatus {
 pub struct StreamingState {
     /// Whether a streaming turn is in progress.
     pub active: bool,
-    /// Accumulated text chunks from the agent.
-    pub text_buffer: String,
-    /// Accumulated thought/reasoning chunks.
-    pub thought_buffer: String,
-    /// Tool calls received so far (keyed by tool_call_id).
-    pub tool_calls: std::collections::HashMap<String, super::chat_view::ToolCallPreview>,
     /// Join handle for the event receiver task (aborted on drop/cancel).
     pub receiver_task: Option<gpui::Task<()>>,
     /// Join handle for the ACP prompt task (aborted on drop/cancel).
@@ -32,9 +26,6 @@ impl StreamingState {
     pub fn new() -> Self {
         Self {
             active: false,
-            text_buffer: String::new(),
-            thought_buffer: String::new(),
-            tool_calls: std::collections::HashMap::new(),
             receiver_task: None,
             acp_task: None,
         }
@@ -42,9 +33,6 @@ impl StreamingState {
 
     pub fn reset(&mut self) {
         self.active = false;
-        self.text_buffer.clear();
-        self.thought_buffer.clear();
-        self.tool_calls.clear();
         // `gpui::Task` has no abort(); dropping the handle cancels the task.
         drop(self.receiver_task.take());
         drop(self.acp_task.take());

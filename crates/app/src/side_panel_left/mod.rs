@@ -289,9 +289,9 @@ impl SidePanelLeft {
                         this.state.agent_status = state::AgentStatus::Disconnected;
                         this.chat.push_message(chat_view::ChatMessage {
                             role: chat_view::MessageRole::Agent,
-                            content: format!("Error: failed to create session: {e}"),
-                            thought: None,
-                            tool_calls: Vec::new(),
+                            segments: vec![chat_view::Segment::Response {
+                                content: format!("Error: failed to create session: {e}"),
+                            }],
                         });
                         cx.notify();
                     });

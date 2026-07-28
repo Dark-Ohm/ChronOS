@@ -13,7 +13,6 @@ pub enum MessageRole {
 
 #[derive(Clone, Debug)]
 pub struct ToolCallPreview {
-    /// Stable ACP tool-call id (used for merging updates, D1).
     pub id: String,
     pub name: String,
     pub status: String,
@@ -22,18 +21,23 @@ pub struct ToolCallPreview {
 }
 
 #[derive(Clone, Debug)]
+pub enum Segment {
+    Thinking { content: String },
+    ToolCall { tool: ToolCallPreview },
+    Response { content: String },
+}
+
+#[derive(Clone, Debug)]
 pub struct ChatMessage {
     pub role: MessageRole,
-    pub content: String,
-    pub thought: Option<String>,
-    pub tool_calls: Vec<ToolCallPreview>,
+    pub segments: Vec<Segment>,
 }
 
 pub struct ChatView {
     pub(crate) messages: Vec<ChatMessage>,
     scroll: ScrollHandle,
     pub expanded_tool_calls: std::collections::HashSet<(usize, usize)>,
-    pub collapsed_reasoning: std::collections::HashSet<usize>,
+    pub collapsed_reasoning: std::collections::HashSet<(usize, usize)>,
 }
 
 impl ChatView {
@@ -50,19 +54,16 @@ impl ChatView {
         self.messages.push(msg);
     }
 
-    pub fn toggle_reasoning(&mut self, msg_idx: usize) {
-        if self.collapsed_reasoning.contains(&msg_idx) {
-            self.collapsed_reasoning.remove(&msg_idx);
+    pub fn toggle_reasoning(&mut self, msg_idx: usize, seg_idx: usize) {
+        let key = (msg_idx, seg_idx);
+        if self.collapsed_reasoning.contains(&key) {
+            self.collapsed_reasoning.remove(&key);
         } else {
-            self.collapsed_reasoning.insert(msg_idx);
+            self.collapsed_reasoning.insert(key);
         }
     }
 
     pub fn scroll_to_bottom(&self) {
-        // Use the fork's flag-based API (`div.rs:4063`), consumed at layout.
-        // Writing `f32::MAX` into the offset by hand poisons the layout
-        // arithmetic (`child_bounds.top() + offset.y`) once the content
-        // actually becomes scrollable.
         self.scroll.scroll_to_bottom();
     }
 
@@ -74,7 +75,6 @@ impl ChatView {
     ) -> impl IntoElement {
         let theme = *Theme::global(cx);
         let has_messages = !self.messages.is_empty();
-        let expanded = &panel.chat.expanded_tool_calls;
 
         let messages_el = div()
             .id("chat-messages-scroll")
@@ -95,7 +95,7 @@ impl ChatView {
                     el = el.child(render_message(
                         msg,
                         msg_idx,
-                        expanded,
+                        &self.expanded_tool_calls,
                         &self.collapsed_reasoning,
                         panel.streaming.active,
                         is_last,
@@ -122,79 +122,31 @@ impl ChatView {
     }
 }
 
-fn render_tool_cards(
-    tool_calls: &[ToolCallPreview],
-    msg_idx: usize,
-    expanded: &std::collections::HashSet<(usize, usize)>,
+fn render_segment_content(
+    content: &str,
     theme: &Theme,
-    cx: &mut Context<SidePanelLeft>,
-) -> Option<impl IntoElement + use<>> {
-    if tool_calls.is_empty() {
-        return None;
-    }
-
-    let cards: Vec<_> = tool_calls
-        .iter()
-        .enumerate()
-        .map(|(tc_idx, tc)| {
-            let is_expanded = expanded.contains(&(msg_idx, tc_idx));
-            div().id(format!("tool-card-{msg_idx}-{tc_idx}")).child(
-                ToolCard {
-                    name: &tc.name,
-                    status: &tc.status,
-                    args: tc.args.as_deref(),
-                    result: tc.result.as_deref(),
-                    expanded: is_expanded,
-                    theme,
-                }
-                .render(Some(cx.listener(move |this, _, _, cx| {
-                    let key = (msg_idx, tc_idx);
-                    if this.chat.expanded_tool_calls.contains(&key) {
-                        this.chat.expanded_tool_calls.remove(&key);
-                    } else {
-                        this.chat.expanded_tool_calls.insert(key);
-                    }
-                    cx.notify();
-                }))),
-            )
-        })
-        .collect();
-
-    Some(
-        div()
-            .mt(px(6.))
-            .flex()
-            .flex_col()
-            .gap(px(4.))
-            .children(cards),
-    )
-}
-
-fn render_message(
-    msg: &ChatMessage,
-    msg_idx: usize,
-    expanded: &std::collections::HashSet<(usize, usize)>,
-    collapsed_reasoning: &std::collections::HashSet<usize>,
-    streaming_active: bool,
-    is_last: bool,
-    theme: &Theme,
-    cx: &mut Context<SidePanelLeft>,
 ) -> impl IntoElement + use<> {
-    let is_user = msg.role == MessageRole::User;
-
-    let content = div()
+    div()
         .text_size(px(12.))
         .line_height(px(18.))
         .text_color(theme.text.primary)
-        // T152 Defect A: base-direction-aware alignment. The gpui fork has no
-        // `text_direction` API, so we right-align RTL content (Hebrew/Arabic)
-        // and leave LTR as-is. Intra-paragraph bidi is handled by the shaper.
-        .when(is_rtl_text(&msg.content), |el| el.text_right())
-        .child(msg.content.clone());
+        .when(is_rtl_text(content), |el| el.text_right())
+        .child(content.to_string())
+}
 
+fn render_thinking_block(
+    content: &str,
+    msg_idx: usize,
+    seg_idx: usize,
+    collapsed_reasoning: &std::collections::HashSet<(usize, usize)>,
+    streaming_active: bool,
+    is_last_msg_and_seg: bool,
+    theme: &Theme,
+    cx: &mut Context<SidePanelLeft>,
+) -> impl IntoElement + use<> {
     let reasoning_collapsed = {
-        let user_collapsed = collapsed_reasoning.contains(&msg_idx);
-        if is_last && streaming_active {
+        let user_collapsed = collapsed_reasoning.contains(&(msg_idx, seg_idx));
+        if is_last_msg_and_seg && streaming_active {
             false
         } else {
             user_collapsed
@@ -202,59 +154,136 @@ fn render_message(
     };
 
     let reasoning_toggle = cx.listener(move |this, _, _, cx| {
-        this.chat.toggle_reasoning(msg_idx);
+        this.chat.toggle_reasoning(msg_idx, seg_idx);
         cx.notify();
     });
 
-    let tool_cards_section = render_tool_cards(&msg.tool_calls, msg_idx, expanded, theme, cx);
+    if content.is_empty() {
+        return div().into_any_element();
+    }
 
-    let reasoning_section = msg.thought.as_ref().filter(|t| !t.is_empty()).map(|thought| {
-        let header = div()
-            .id(format!("reasoning-header-{msg_idx}"))
-            .cursor_pointer()
-            .text_size(px(10.))
-            .font_weight(gpui::FontWeight::MEDIUM)
-            .text_color(theme.text.muted)
-            .on_click(reasoning_toggle)
-            .child(if reasoning_collapsed {
-                "Reasoning  ⌄"
-            } else {
-                "Reasoning  ⌃"
-            });
-
-        let body = if reasoning_collapsed {
-            None
+    let header = div()
+        .id(format!("reasoning-header-{msg_idx}-{seg_idx}"))
+        .cursor_pointer()
+        .text_size(px(10.))
+        .font_weight(gpui::FontWeight::MEDIUM)
+        .text_color(theme.text.muted)
+        .on_click(reasoning_toggle)
+        .child(if reasoning_collapsed {
+            "Reasoning  ⌄"
         } else {
-            Some(
-                div()
-                    .id(format!("reasoning-body-{msg_idx}"))
-                    .text_size(px(11.))
-                    .line_height(px(16.))
-                    .text_color(theme.text.muted)
-                    .overflow_y_scroll()
-                    .max_h(px(300.))
-                    .child(thought.clone()),
-            )
-        };
+            "Reasoning  ⌃"
+        });
 
-        div()
-            .id(format!("reasoning-{msg_idx}"))
-            .mt(px(4.))
-            .rounded(px(6.))
-            .bg(theme.bg.tertiary)
-            .border_1()
-            .border_color(theme.border.subtle)
-            .px(px(8.))
-            .py(px(6.))
-            .flex()
-            .flex_col()
-            .gap(px(4.))
-            .child(header)
-            .children(body)
-    });
+    let body = if reasoning_collapsed {
+        None
+    } else {
+        Some(
+            div()
+                .id(format!("reasoning-body-{msg_idx}-{seg_idx}"))
+                .text_size(px(11.))
+                .line_height(px(16.))
+                .text_color(theme.text.muted)
+                .overflow_y_scroll()
+                .max_h(px(300.))
+                .child(content.to_string()),
+        )
+    };
+
+    div()
+        .id(format!("reasoning-{msg_idx}-{seg_idx}"))
+        .rounded(px(6.))
+        .bg(theme.bg.tertiary)
+        .border_1()
+        .border_color(theme.border.subtle)
+        .px(px(8.))
+        .py(px(6.))
+        .flex()
+        .flex_col()
+        .gap(px(4.))
+        .child(header)
+        .children(body)
+        .into_any_element()
+}
+
+fn render_tool_card_segment(
+    tool: &ToolCallPreview,
+    msg_idx: usize,
+    seg_idx: usize,
+    expanded: &std::collections::HashSet<(usize, usize)>,
+    theme: &Theme,
+    cx: &mut Context<SidePanelLeft>,
+) -> impl IntoElement + use<> {
+    let is_expanded = expanded.contains(&(msg_idx, seg_idx));
+    ToolCard {
+        name: &tool.name,
+        status: &tool.status,
+        args: tool.args.as_deref(),
+        result: tool.result.as_deref(),
+        expanded: is_expanded,
+        theme,
+    }
+    .render(Some(cx.listener(move |this, _, _, cx| {
+        let key = (msg_idx, seg_idx);
+        if this.chat.expanded_tool_calls.contains(&key) {
+            this.chat.expanded_tool_calls.remove(&key);
+        } else {
+            this.chat.expanded_tool_calls.insert(key);
+        }
+        cx.notify();
+    })))
+    .into_any_element()
+}
+
+fn render_message(
+    msg: &ChatMessage,
+    msg_idx: usize,
+    expanded: &std::collections::HashSet<(usize, usize)>,
+    collapsed_reasoning: &std::collections::HashSet<(usize, usize)>,
+    streaming_active: bool,
+    is_last: bool,
+    theme: &Theme,
+    cx: &mut Context<SidePanelLeft>,
+) -> impl IntoElement + use<> {
+    let is_user = msg.role == MessageRole::User;
+
+    let last_seg_idx = msg.segments.len().saturating_sub(1);
+    let mut seg_elements: Vec<gpui::AnyElement> = Vec::new();
+
+    for (seg_idx, seg) in msg.segments.iter().enumerate() {
+        let is_last_seg = seg_idx == last_seg_idx;
+        let is_last_msg_and_seg = is_last && is_last_seg;
+
+        match seg {
+            Segment::Thinking { content } => {
+                seg_elements.push(render_thinking_block(
+                    content,
+                    msg_idx,
+                    seg_idx,
+                    collapsed_reasoning,
+                    streaming_active,
+                    is_last_msg_and_seg,
+                    theme,
+                    cx,
+                ).into_any_element());
+            }
+            Segment::ToolCall { tool } => {
+                seg_elements.push(render_tool_card_segment(
+                    tool,
+                    msg_idx,
+                    seg_idx,
+                    expanded,
+                    theme,
+                    cx,
+                ).into_any_element());
+            }
+            Segment::Response { content } => {
+                seg_elements.push(render_segment_content(content, theme).into_any_element());
+            }
+        }
+    }
 
     if is_user {
-        // User message: right-aligned bubble
         div().w_full().flex().justify_end().child(
             div()
                 .bg(theme.bg.elevated)
@@ -263,11 +292,9 @@ fn render_message(
                 .py(px(7.))
                 .flex()
                 .flex_col()
-                .child(content)
-                .children(tool_cards_section),
+                .children(seg_elements),
         )
     } else {
-        // Agent message: left-aligned bubble
         div()
             .w_full()
             .flex()
@@ -283,9 +310,7 @@ fn render_message(
                     .flex()
                     .flex_col()
                     .gap(px(6.))
-                    .children(tool_cards_section)
-                    .children(reasoning_section)
-                    .child(content),
+                    .children(seg_elements),
             )
     }
 }
