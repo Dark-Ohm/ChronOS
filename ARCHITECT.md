@@ -159,6 +159,35 @@ or `done/`. Each minion's personal file (`orchestration/agents/<NAME>.md`) is
 now a thin pointer to its current active `TNNN` — the task file, not the agent
 file, is the source of truth. Full history: `orchestration/tasks/MIGRATION.md`.
 
+## Role model (2026-07-28, replaces per-tool minion files)
+
+Minions are no longer named after the tool that runs them (HERMES, OPENCODE,
+…) but after what they own. Four roles, entry points in
+`orchestration/agents/`, shared rules in `orchestration/agents/RULES.md`
+(single source — do not restate them per role):
+
+| Role | Owns | Zone |
+|---|---|---|
+| `FRONTEND` | anything visible: GPUI markup, widget state, interaction, theme | `crates/app/**`, `crates/ui/**` |
+| `BACKEND` | services, protocols, data: D-Bus, IPC, ACP, stores, background work | `crates/services/**`, `crates/luau/**`, `crates/plugins/**` |
+| `QA` | evidence: live runs, frames, logs, regressions, reproductions | no product code without its own brief |
+| `RECON` | facts from foreign sources: crate internals, agent sources, reference trees | read-only; output goes to `notes/` |
+
+Two boundaries that make this work rather than dilute it:
+
+1. **No "architect" role among minions.** There is one architect and it is
+   me. A second one makes "the architect decided" unverifiable — and we
+   already lost a round to an invented architect instruction (T146) and a
+   round to a minion editing `HANDOFF.md` (T144). Recon brings facts,
+   the architect decides.
+2. **QA does not accept work.** A report about someone else's work lies
+   exactly as readily as a report about one's own. QA supplies evidence;
+   acceptance stays with the architect. QA's value is cost: it takes the
+   grim frames and smoke runs off my hands, not the judgement.
+
+File zones now fall out of the roles instead of being hand-partitioned per
+wave — that was the main reason to switch.
+
 ## Wave map (2026-07-22, at time of T-ID migration)
 
 | Wave | T-range | State |
