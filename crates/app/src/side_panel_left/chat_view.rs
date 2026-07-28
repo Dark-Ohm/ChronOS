@@ -32,6 +32,7 @@ pub struct ChatView {
     pub(crate) messages: Vec<ChatMessage>,
     scroll: ScrollHandle,
     pub expanded_tool_calls: std::collections::HashSet<(usize, usize)>,
+    pub collapsed_reasoning: std::collections::HashSet<usize>,
 }
 
 impl ChatView {
@@ -40,11 +41,20 @@ impl ChatView {
             messages: Vec::new(),
             scroll: ScrollHandle::new(),
             expanded_tool_calls: std::collections::HashSet::new(),
+            collapsed_reasoning: std::collections::HashSet::new(),
         }
     }
 
     pub fn push_message(&mut self, msg: ChatMessage) {
         self.messages.push(msg);
+    }
+
+    pub fn toggle_reasoning(&mut self, msg_idx: usize) {
+        if self.collapsed_reasoning.contains(&msg_idx) {
+            self.collapsed_reasoning.remove(&msg_idx);
+        } else {
+            self.collapsed_reasoning.insert(msg_idx);
+        }
     }
 
     pub fn scroll_to_bottom(&self) {
@@ -78,8 +88,19 @@ impl ChatView {
             .py(px(14.))
             .when(has_messages, |el| {
                 let mut el = el;
+                let last_idx = self.messages.len().saturating_sub(1);
                 for (msg_idx, msg) in self.messages.iter().enumerate() {
-                    el = el.child(render_message(msg, msg_idx, expanded, &theme, cx));
+                    let is_last = msg_idx == last_idx;
+                    el = el.child(render_message(
+                        msg,
+                        msg_idx,
+                        expanded,
+                        &self.collapsed_reasoning,
+                        panel.streaming.active,
+                        is_last,
+                        &theme,
+                        cx,
+                    ));
                 }
                 el
             })
@@ -106,7 +127,7 @@ fn render_tool_cards(
     expanded: &std::collections::HashSet<(usize, usize)>,
     theme: &Theme,
     cx: &mut Context<SidePanelLeft>,
-) -> Option<impl IntoElement> {
+) -> Option<impl IntoElement + use<>> {
     if tool_calls.is_empty() {
         return None;
     }
@@ -152,9 +173,12 @@ fn render_message(
     msg: &ChatMessage,
     msg_idx: usize,
     expanded: &std::collections::HashSet<(usize, usize)>,
+    collapsed_reasoning: &std::collections::HashSet<usize>,
+    streaming_active: bool,
+    is_last: bool,
     theme: &Theme,
     cx: &mut Context<SidePanelLeft>,
-) -> impl IntoElement {
+) -> impl IntoElement + use<> {
     let is_user = msg.role == MessageRole::User;
 
     let content = div()
@@ -167,10 +191,51 @@ fn render_message(
         })
         .child(msg.content.clone());
 
+    let reasoning_collapsed = {
+        let user_collapsed = collapsed_reasoning.contains(&msg_idx);
+        if is_last && streaming_active {
+            false
+        } else {
+            user_collapsed
+        }
+    };
+
+    let reasoning_toggle = cx.listener(move |this, _, _, cx| {
+        this.chat.toggle_reasoning(msg_idx);
+        cx.notify();
+    });
+
     let tool_cards_section = render_tool_cards(&msg.tool_calls, msg_idx, expanded, theme, cx);
 
-    // Reasoning block (thought): collapsed by default, muted style
     let reasoning_section = msg.thought.as_ref().filter(|t| !t.is_empty()).map(|thought| {
+        let header = div()
+            .id(format!("reasoning-header-{msg_idx}"))
+            .cursor_pointer()
+            .text_size(px(10.))
+            .font_weight(gpui::FontWeight::MEDIUM)
+            .text_color(theme.text.muted)
+            .on_click(reasoning_toggle)
+            .child(if reasoning_collapsed {
+                "Reasoning  ⌄"
+            } else {
+                "Reasoning  ⌃"
+            });
+
+        let body = if reasoning_collapsed {
+            None
+        } else {
+            Some(
+                div()
+                    .id(format!("reasoning-body-{msg_idx}"))
+                    .text_size(px(11.))
+                    .line_height(px(16.))
+                    .text_color(theme.text.muted)
+                    .overflow_y_scroll()
+                    .max_h(px(300.))
+                    .child(thought.clone()),
+            )
+        };
+
         div()
             .id(format!("reasoning-{msg_idx}"))
             .mt(px(4.))
@@ -183,22 +248,8 @@ fn render_message(
             .flex()
             .flex_col()
             .gap(px(4.))
-            .child(
-                div()
-                    .text_size(px(10.))
-                    .font_weight(gpui::FontWeight::MEDIUM)
-                    .text_color(theme.text.muted)
-                    .child("Reasoning"),
-            )
-            .child(
-                div()
-                    .text_size(px(11.))
-                    .line_height(px(16.))
-                    .text_color(theme.text.muted)
-                    .overflow_hidden()
-                    .max_h(px(80.))
-                    .child(thought.clone()),
-            )
+            .child(header)
+            .children(body)
     });
 
     if is_user {
@@ -231,9 +282,9 @@ fn render_message(
                     .flex()
                     .flex_col()
                     .gap(px(6.))
+                    .children(tool_cards_section)
+                    .children(reasoning_section)
                     .child(content),
             )
-            .children(reasoning_section)
-            .children(tool_cards_section)
     }
 }

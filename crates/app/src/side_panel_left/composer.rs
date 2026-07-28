@@ -666,6 +666,8 @@ impl SidePanelLeft {
                                 prompt_response.session_id, prompt_response.text.len());
                             tracing::debug!("composer: finalize update entered");
                             this.streaming.reset();
+                            this.chat.collapsed_reasoning
+                                .insert(this.chat.messages.len().wrapping_sub(1));
                             this.state.session_id = Some(prompt_response.session_id);
                             // Finalize the last agent message with complete data.
                             if let Some(last_msg) = this.chat.messages.last_mut() {
@@ -720,6 +722,8 @@ impl SidePanelLeft {
                             || e.to_string().contains("reply channel closed");
                         let _ = this.update(cx, |this, cx| {
                             this.streaming.reset();
+                            this.chat.collapsed_reasoning
+                                .insert(this.chat.messages.len().wrapping_sub(1));
                             // Replace the placeholder with an error message.
                             if let Some(last_msg) = this.chat.messages.last_mut() {
                                 if last_msg.role == MessageRole::Agent {
@@ -802,6 +806,10 @@ impl SidePanelLeft {
                                                     }
                                                 }
                                             }
+                                            this.chat.scroll_to_bottom();
+                                            let last =
+                                                this.chat.messages.len().wrapping_sub(1);
+                                            this.chat.collapsed_reasoning.remove(&last);
                                         }
                                         StreamingEvent::ToolCall {
                                             id,
@@ -885,6 +893,8 @@ impl SidePanelLeft {
                                 }
                                 let _ = this.update(cx, |this, cx| {
                                     this.streaming.reset();
+                                    this.chat.collapsed_reasoning
+                                        .insert(this.chat.messages.len().wrapping_sub(1));
                                     if let Some(last_msg) = this.chat.messages.last_mut() {
                                         if last_msg.role == MessageRole::Agent
                                             && last_msg.content.is_empty()
@@ -974,6 +984,8 @@ impl SidePanelLeft {
         }
         tracing::info!("composer: turn END (reason=cancel)");
         self.streaming.reset();
+        self.chat.collapsed_reasoning
+            .insert(self.chat.messages.len().wrapping_sub(1));
         if let Some(last_msg) = self.chat.messages.last_mut() {
             if last_msg.role == MessageRole::Agent {
                 if last_msg.content.is_empty() {
