@@ -73,6 +73,7 @@ fn main() {
 
         subscriber.start(cx);
         theme_config::init(cx);
+        gpui_component::init(cx);
         edit_mode::init(cx);
         bar::init(cx);
         notifications::init(cx);

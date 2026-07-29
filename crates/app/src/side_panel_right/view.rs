@@ -15,10 +15,11 @@ use std::{
 use chronos_services::net_stats::{self, NetState};
 use chronos_services::{DiskInfo, MprisState, Service, SystemResourcesState};
 use gpui::{
-    App, AsyncApp, Context, IntoElement, Render, ScrollHandle, Window, div, layer_shell::*,
-    prelude::*, px,
+    App, AsyncApp, Context, Entity, FocusHandle, IntoElement, Render, ScrollHandle, Window, div,
+    layer_shell::*, prelude::*, px,
 };
 use gpui::AnimationExt;
+use gpui_component::input::{Input, InputState};
 
 use crate::motion;
 use crate::side_panel_right::disks::render_disks_section;
@@ -72,6 +73,8 @@ pub struct SidePanelRightView {
     last_exclusive_zone: Option<f32>,
     resize_start_x: Option<f32>,
     resize_start_width: Option<f32>,
+    /// T157: real gpui-component Input state for footprint measurement.
+    measure_input: Option<Entity<InputState>>,
 }
 
 impl SidePanelRightView {
@@ -136,6 +139,7 @@ impl SidePanelRightView {
             last_exclusive_zone: None,
             resize_start_x: None,
             resize_start_width: None,
+            measure_input: None,
         }
     }
 
@@ -396,6 +400,17 @@ impl Render for SidePanelRightView {
                                         .child(render_header(cx))
                                         // 2. Permission card (flex:none) — rsx
                                         .child(render_permission_card(cx))
+                                        // T157: real gpui-component Input consumer (measurement)
+                                        .child({
+                                            if self.measure_input.is_none() {
+                                                self.measure_input = Some(cx.new(|cx| {
+                                                    InputState::new(window, cx)
+                                                        .placeholder("T157 measure — type here…")
+                                                }));
+                                            }
+                                            let state = self.measure_input.as_ref().unwrap();
+                                            div().h(px(40.)).w_full().child(Input::new(state))
+                                        })
                                         // 3. Scrollable middle — UNCHANGED body
                                         .child(
                                             div()

@@ -25,6 +25,7 @@ futures-util.workspace = true
 chronos-luau = { path = "../luau" }
 chronos-services = { path = "../services" }
 chronos-ui = { path = "../ui" }
+gpui-component.workspace = true
 dirs = "6"
 chrono.workspace = true
 inotify = "0.11"
