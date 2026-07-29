@@ -103,7 +103,15 @@ impl ThreadStore {
             "INSERT INTO threads (id, agent_id, cwd, created_at, updated_at) VALUES (?1,?2,?3,?4,?5)",
             params![id, agent_id, cwd, now, now],
         )?;
-        Ok(self.get(id)?.expect("just inserted"))
+        // Defensive: an INSERT can succeed but the follow-up SELECT miss the
+        // row in pathological cases (WAL pragma switch under contention). The
+        // store's mutex makes that nearly impossible, so this isn't expected —
+        // but the prior version used `.expect("just inserted")` which is a
+        // hard panic; `anyhow!(…)` lets the caller handle the missing row
+        // instead of crashing the shell.
+        self.get(id)?
+            .ok_or_else(|| anyhow::anyhow!("insert succeeded but row missing: {id}"))
+
     }
 
     pub fn get(&self, id: &str) -> Result<Option<ThreadRecord>, anyhow::Error> {

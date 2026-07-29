@@ -1,14 +1,18 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex as StdMutex};
+
 use agent_client_protocol::{
     ActiveSession, Agent, ConnectionTo, SessionMessage, UntypedMessage,
     schema::v1::{
-        ContentBlock, SessionNotification, SessionUpdate, ToolCallContent, ToolCallStatus,
+        ContentBlock, ListSessionsRequest, LoadSessionRequest, SessionNotification, SessionUpdate,
+        ToolCallContent, ToolCallStatus,
     },
     util::MatchDispatch,
 };
+// SessionInfo is re-exported further down via `pub use` (T150 acceptance:
+// type comes from the ACP schema, not a project-local copy).
 use anyhow::{Context, Result};
-use serde::Deserialize;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
@@ -47,15 +51,20 @@ pub enum StreamingEvent {
 }
 
 /// ACP session info returned by session/list.
-#[derive(Debug, Clone, Deserialize)]
-pub struct SessionInfo {
-    #[serde(rename = "sessionId")]
-    pub session_id: String,
-    pub cwd: Option<String>,
-    pub title: Option<String>,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: Option<String>,
-}
+///
+/// Re-exported from `agent_client_protocol::schema::v1` so that
+/// `session/list` gets a typed response (`ListSessionsResponse { sessions: Vec<SessionInfo> }`)
+/// instead of `serde_json::Value` parsed at runtime (T150 acceptance review: prior
+/// use of `UntypedMessage` here discarded schema validation that the ACP SDK
+/// already provides — a typo or schema drift would only surface mid-parse).
+/// Field shapes (`session_id`, `cwd?`, `title?`, `updated_at?`) match our needs
+/// exactly; rename to camelCase happens via `#[serde(rename_all = "camelCase")]`
+/// on the upstream struct.
+///
+/// `pub use` doubles as an import: the name `SessionInfo` is now in this
+/// module's namespace and accessible to callers (e.g. `hermes_acp::SessionInfo`)
+/// without an extra `use …Schema::v1::SessionInfo` line.
+pub use agent_client_protocol::schema::v1::SessionInfo;
 
 use super::session::{AcpSession, ModelInfo, SessionMode, SessionModels, SessionModes};
 use super::transport::{HermesConfig, HermesTransport};
@@ -106,8 +115,12 @@ pub(crate) enum Command {
         reply: tokio::sync::oneshot::Sender<Result<Vec<SessionInfo>>>,
     },
     /// Load a session by ACP session id, replaying history as streaming events.
+    /// `cwd` is required by the ACP `session/load` schema (it tells the agent which
+    /// working directory the loaded session belongs to); the UI reads it from the
+    /// thread store (`threads.cwd`) and passes it through.
     LoadSession {
         acp_session_id: String,
+        cwd: PathBuf,
         reply: tokio::sync::oneshot::Sender<Result<()>>,
         on_event: tokio::sync::mpsc::UnboundedSender<StreamingEvent>,
     },
@@ -125,9 +138,16 @@ pub(crate) async fn execute_command(
     session: &SharedSession,
     intercepted_models: &SharedModels,
 ) {
+    // Five `let _ = reply.send(...)` lines below: per project rule (CLAUDE.md),
+    // the drop is intentional — the oneshot `reply` is owned by the public
+    // `HermesClient::*` caller, and that caller may panic between
+    // `cmd_tx.send(Command::…)` and `rx.await`, leaving us with no receiver.
+    // Silencing the send is correct; the caller's panic propagates the
+    // failure elsewhere and dropping the result here is harmless.
     match cmd {
         Command::CreateSession { reply } => {
             let result = ensure_fresh_session(cx, session, intercepted_models).await;
+            // Receiver may have dropped — silence intentional (see function header).
             let _ = reply.send(result);
         }
         Command::SendPrompt {
@@ -140,22 +160,35 @@ pub(crate) async fn execute_command(
             } else {
                 send_prompt_on_active(cx, session, &prompt, intercepted_models).await
             };
+            // Receiver may have dropped — silence intentional (see function header).
             let _ = reply.send(result);
         }
         Command::SetModel { model_id, reply } => {
             let result = set_model_on_active(cx, session, &model_id).await;
+            // Receiver may have dropped — silence intentional (see function header).
             let _ = reply.send(result);
         }
         Command::ListSessions { cwd, reply } => {
             let result = list_sessions_command(cx, cwd.as_deref()).await;
+            // Receiver may have dropped — silence intentional (see function header).
             let _ = reply.send(result);
         }
         Command::LoadSession {
             acp_session_id,
+            cwd,
             reply,
             on_event,
         } => {
-            let result = load_session_command(cx, session, &acp_session_id, &on_event, intercepted_models).await;
+            let result = load_session_command(
+                cx,
+                session,
+                &acp_session_id,
+                &cwd,
+                &on_event,
+                intercepted_models,
+            )
+            .await;
+            // Receiver may have dropped — silence intentional (see function header).
             let _ = reply.send(result);
         }
     }
@@ -770,94 +803,65 @@ async fn ensure_fresh_session(
     Ok(meta)
 }
 
-/// Send session/set_model on the active session.
+/// Send `session/list` to the agent.
 ///
-/// Uses `UntypedMessage` because `SetSessionModelRequest` was removed from
-/// ACP 2.0.0 schema (upstream dropped `session/set_model`). Hermes 0.18.2
-/// still expects the old method name.
-///
-/// Send session/list to the agent via UntypedMessage (ACP 2.0.0 has no typed method).
+/// Typed path (`ListSessionsRequest` / `ListSessionsResponse`) — T150 acceptance
+/// review observed that the prior `UntypedMessage` + `serde_json::from_value`
+/// pass discarded schema validation the ACP SDK already provides; renaming a
+/// field upstream would then surface as a runtime deserialization warning.
 async fn list_sessions_command(
     cx: &ConnectionTo<Agent>,
     cwd: Option<&str>,
 ) -> Result<Vec<SessionInfo>> {
-    let mut params = serde_json::Map::new();
-    if let Some(c) = cwd {
-        params.insert("cwd".to_string(), serde_json::Value::String(c.to_string()));
-    }
-    let request = UntypedMessage::new("session/list", serde_json::Value::Object(params))?;
+    let request = ListSessionsRequest::new().cwd(cwd.map(PathBuf::from));
 
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    cx.send_request_to(Agent, request)
-        .on_receiving_result(async move |result| {
-            let outcome = match result {
-                Ok(value) => {
-                    match serde_json::from_value::<Vec<SessionInfo>>(value) {
-                        Ok(sessions) => {
-                            debug!(count = sessions.len(), "session/list OK");
-                            Ok(sessions)
-                        }
-                        Err(e) => {
-                            warn!("session/list: failed to deserialize response: {e}");
-                            Ok(Vec::new())
-                        }
-                    }
-                }
-                Err(e) => {
-                    warn!("session/list failed: {e}");
-                    Err(anyhow::anyhow!("list_sessions error: {e}"))
-                }
-            };
-            let _ = tx.send(outcome);
-            Ok(())
-        })
-        .context("failed to send session/list request")?;
+    let resp = cx
+        .send_request(request)
+        .block_task()
+        .await
+        .context("session/list request failed")?;
 
-    rx.await.context("list_sessions response channel closed")?
+    debug!(
+        count = resp.sessions.len(),
+        has_next = resp.next_cursor.is_some(),
+        "session/list OK"
+    );
+    Ok(resp.sessions)
 }
 
-/// Send session/load to the agent. The agent replays history as session/update
-/// events on the same connection — we handle them through the existing streaming
-/// path (stream_read_turn). Because `load_session` doesn't create a new prompt
-/// turn, we DON'T use stream_read_turn; we just hold the session so subsequent
-/// prompts reuse it.
+/// Send `session/load` to the agent. The agent replays history as
+/// `session/update` events on the same connection — we handle them through the
+/// existing streaming path (`stream_read_turn`). Because `load_session` doesn't
+/// create a new prompt turn, we don't dispatch on a `StopReason`; the replay
+/// ends, then `stream_read_turn` closes via its D6/D7 watchdog (T147).
+///
+/// ACP 2.0.0 schema requires both `sessionId` and `cwd` on `LoadSessionRequest`
+/// — typed path enforces it; the prior `UntypedMessage` payload only sent
+/// `sessionId` and would have been rejected at runtime by a strict agent.
 async fn load_session_command(
     cx: &ConnectionTo<Agent>,
     session: &SharedSession,
     acp_session_id: &str,
+    cwd: &std::path::Path,
     on_event: &tokio::sync::mpsc::UnboundedSender<StreamingEvent>,
-    intercepted_models: &SharedModels,
+    _intercepted_models: &SharedModels,
 ) -> Result<()> {
-    let request = UntypedMessage::new(
-        "session/load",
-        serde_json::json!({"sessionId": acp_session_id}),
-    )?;
-
+    // `SessionId` derives `#[from(Arc<str>, String, &'static str)]` — no
+    // `From<&'a str>`. Pass owned `String` to satisfy the lifetime; cwd also
+    // owned so the request outlives the lock-free path here.
     let session_id = acp_session_id.to_string();
-    let (tx, rx) = tokio::sync::oneshot::channel();
+    let cwd_owned = cwd.to_path_buf();
+    let cwd_log = cwd_owned.display().to_string();
 
-    info!(%session_id, "Sending session/load");
+    info!(%session_id, %cwd_log, "Sending session/load");
 
-    cx.send_request_to(Agent, request)
-        .on_receiving_result(async move |result| {
-            match result {
-                Ok(_value) => {
-                    info!(%session_id, "session/load OK");
-                    let _ = tx.send(Ok(()));
-                }
-                Err(e) => {
-                    warn!(%session_id, "session/load failed: {e}");
-                    let _ = tx.send(Err(anyhow::anyhow!("load_session error: {e}")));
-                }
-            }
-            Ok(())
-        })
-        .context("failed to send session/load request")?;
+    cx.send_request(LoadSessionRequest::new(session_id.clone(), cwd_owned))
+        .block_task()
+        .await
+        .context("session/load request failed")?;
 
-    rx.await.context("load_session response channel closed")??;
+    info!(%session_id, "session/load OK; consuming replay via stream_read_turn");
 
-    // After loading, the agent replays the history as streaming events.
-    // Read them via the same stream_read_turn mechanism used by send_prompt.
     let mut active = {
         let mut guard = session.lock().await;
         guard.take().context("no active session for load")?
@@ -911,6 +915,7 @@ async fn set_model_on_active(
                     Err(anyhow::anyhow!("set_model error: {e}"))
                 }
             };
+            // Receiver may have dropped — silence intentional (same pattern as execute_command).
             let _ = tx.send(outcome);
             Ok(())
         })
@@ -1078,16 +1083,32 @@ impl HermesClient {
     }
 
     /// Load an ACP session by id, replaying history as streaming events.
-    /// Returns Ok(()) when the replay starts; events arrive on `event_tx`.
+    /// Returns Ok(()) when the load + replay finish; events arrive on `event_tx`
+    /// throughout.
+    ///
+    /// `cwd` is required by the ACP `session/load` schema. The UI reads it
+    /// from the thread store (`threads.cwd`) — see T151.
     pub async fn load_session(
         &self,
         acp_session_id: &str,
+        cwd: &std::path::Path,
         event_tx: tokio::sync::mpsc::UnboundedSender<StreamingEvent>,
     ) -> Result<()> {
+        // Defensive: an empty cwd would round-trip to Hermes as `cwd: ""`
+        // and get rejected mid-protocol with a runtime error after we've paid
+        // the round-trip cost. New threads in the store have empty cwd until
+        // set; surface a clear error locally instead.
+        if cwd.as_os_str().is_empty() {
+            anyhow::bail!(
+                "load_session: cwd is empty — refusing to send empty path to ACP \
+                 (thread {acp_session_id} has no cwd yet)"
+            );
+        }
         let (reply, rx) = tokio::sync::oneshot::channel();
         self.cmd_tx
             .send(Command::LoadSession {
                 acp_session_id: acp_session_id.to_string(),
+                cwd: cwd.to_path_buf(),
                 reply,
                 on_event: event_tx,
             })

@@ -32,7 +32,10 @@ nvml-wrapper.workspace = true
 agent-client-protocol = "2.0.0"
 dirs = "6"
 toml = "0.8"
-rusqlite = { version = "0.32", features = ["bundled"] }
+# Accept any patch updates, lock minor+major in lockfile via cargo update.
+# Pin applied: 2026-07-29 T150 (8 majors behind 0.40; we are on bleeding-edge per MEMORY.md,
+# no transitive constraints to inherit).
+rusqlite = { version = "0.40", features = ["bundled"] }
 
 [dev-dependencies]
 # futures-util from workspace provides StreamExt for tests
