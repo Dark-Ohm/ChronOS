@@ -6,6 +6,7 @@ use agent_client_protocol::{
     util::MatchDispatch,
 };
 use anyhow::{Context, Result};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex;
@@ -43,6 +44,17 @@ pub enum StreamingEvent {
     Done,
     /// Turn failed.
     Error(String),
+}
+
+/// ACP session info returned by session/list.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SessionInfo {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    pub cwd: Option<String>,
+    pub title: Option<String>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: Option<String>,
 }
 
 use super::session::{AcpSession, ModelInfo, SessionMode, SessionModels, SessionModes};
@@ -88,6 +100,17 @@ pub(crate) enum Command {
         model_id: String,
         reply: tokio::sync::oneshot::Sender<Result<()>>,
     },
+    /// List sessions known to the agent (session/list).
+    ListSessions {
+        cwd: Option<String>,
+        reply: tokio::sync::oneshot::Sender<Result<Vec<SessionInfo>>>,
+    },
+    /// Load a session by ACP session id, replaying history as streaming events.
+    LoadSession {
+        acp_session_id: String,
+        reply: tokio::sync::oneshot::Sender<Result<()>>,
+        on_event: tokio::sync::mpsc::UnboundedSender<StreamingEvent>,
+    },
 }
 
 /// Execute a command against the ACP connection, reusing `active` across turns.
@@ -121,6 +144,18 @@ pub(crate) async fn execute_command(
         }
         Command::SetModel { model_id, reply } => {
             let result = set_model_on_active(cx, session, &model_id).await;
+            let _ = reply.send(result);
+        }
+        Command::ListSessions { cwd, reply } => {
+            let result = list_sessions_command(cx, cwd.as_deref()).await;
+            let _ = reply.send(result);
+        }
+        Command::LoadSession {
+            acp_session_id,
+            reply,
+            on_event,
+        } => {
+            let result = load_session_command(cx, session, &acp_session_id, &on_event, intercepted_models).await;
             let _ = reply.send(result);
         }
     }
@@ -741,6 +776,103 @@ async fn ensure_fresh_session(
 /// ACP 2.0.0 schema (upstream dropped `session/set_model`). Hermes 0.18.2
 /// still expects the old method name.
 ///
+/// Send session/list to the agent via UntypedMessage (ACP 2.0.0 has no typed method).
+async fn list_sessions_command(
+    cx: &ConnectionTo<Agent>,
+    cwd: Option<&str>,
+) -> Result<Vec<SessionInfo>> {
+    let mut params = serde_json::Map::new();
+    if let Some(c) = cwd {
+        params.insert("cwd".to_string(), serde_json::Value::String(c.to_string()));
+    }
+    let request = UntypedMessage::new("session/list", serde_json::Value::Object(params))?;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    cx.send_request_to(Agent, request)
+        .on_receiving_result(async move |result| {
+            let outcome = match result {
+                Ok(value) => {
+                    match serde_json::from_value::<Vec<SessionInfo>>(value) {
+                        Ok(sessions) => {
+                            debug!(count = sessions.len(), "session/list OK");
+                            Ok(sessions)
+                        }
+                        Err(e) => {
+                            warn!("session/list: failed to deserialize response: {e}");
+                            Ok(Vec::new())
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("session/list failed: {e}");
+                    Err(anyhow::anyhow!("list_sessions error: {e}"))
+                }
+            };
+            let _ = tx.send(outcome);
+            Ok(())
+        })
+        .context("failed to send session/list request")?;
+
+    rx.await.context("list_sessions response channel closed")?
+}
+
+/// Send session/load to the agent. The agent replays history as session/update
+/// events on the same connection — we handle them through the existing streaming
+/// path (stream_read_turn). Because `load_session` doesn't create a new prompt
+/// turn, we DON'T use stream_read_turn; we just hold the session so subsequent
+/// prompts reuse it.
+async fn load_session_command(
+    cx: &ConnectionTo<Agent>,
+    session: &SharedSession,
+    acp_session_id: &str,
+    on_event: &tokio::sync::mpsc::UnboundedSender<StreamingEvent>,
+    intercepted_models: &SharedModels,
+) -> Result<()> {
+    let request = UntypedMessage::new(
+        "session/load",
+        serde_json::json!({"sessionId": acp_session_id}),
+    )?;
+
+    let session_id = acp_session_id.to_string();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    info!(%session_id, "Sending session/load");
+
+    cx.send_request_to(Agent, request)
+        .on_receiving_result(async move |result| {
+            match result {
+                Ok(_value) => {
+                    info!(%session_id, "session/load OK");
+                    let _ = tx.send(Ok(()));
+                }
+                Err(e) => {
+                    warn!(%session_id, "session/load failed: {e}");
+                    let _ = tx.send(Err(anyhow::anyhow!("load_session error: {e}")));
+                }
+            }
+            Ok(())
+        })
+        .context("failed to send session/load request")?;
+
+    rx.await.context("load_session response channel closed")??;
+
+    // After loading, the agent replays the history as streaming events.
+    // Read them via the same stream_read_turn mechanism used by send_prompt.
+    let mut active = {
+        let mut guard = session.lock().await;
+        guard.take().context("no active session for load")?
+    };
+
+    let (_text, _thought, _tools) = stream_read_turn(&mut active, on_event).await?;
+
+    {
+        let mut guard = session.lock().await;
+        *guard = Some(active);
+    }
+
+    Ok(())
+}
+
 /// DELETE when Hermes ships ACP 2.0.0-compatible model config options.
 async fn set_model_on_active(
     _cx: &ConnectionTo<Agent>,
@@ -928,6 +1060,36 @@ impl HermesClient {
             .send(Command::SetModel {
                 model_id: model_id.to_string(),
                 reply,
+            })
+            .context("command channel closed")?;
+        rx.await.context("reply channel closed")?
+    }
+
+    /// List sessions known to the ACP agent, optionally filtered by cwd.
+    pub async fn list_sessions(&self, cwd: Option<&str>) -> Result<Vec<SessionInfo>> {
+        let (reply, rx) = tokio::sync::oneshot::channel();
+        self.cmd_tx
+            .send(Command::ListSessions {
+                cwd: cwd.map(|s| s.to_string()),
+                reply,
+            })
+            .context("command channel closed")?;
+        rx.await.context("reply channel closed")?
+    }
+
+    /// Load an ACP session by id, replaying history as streaming events.
+    /// Returns Ok(()) when the replay starts; events arrive on `event_tx`.
+    pub async fn load_session(
+        &self,
+        acp_session_id: &str,
+        event_tx: tokio::sync::mpsc::UnboundedSender<StreamingEvent>,
+    ) -> Result<()> {
+        let (reply, rx) = tokio::sync::oneshot::channel();
+        self.cmd_tx
+            .send(Command::LoadSession {
+                acp_session_id: acp_session_id.to_string(),
+                reply,
+                on_event: event_tx,
             })
             .context("command channel closed")?;
         rx.await.context("reply channel closed")?

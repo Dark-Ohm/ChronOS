@@ -17,6 +17,7 @@ pub mod network;
 pub mod notification;
 pub mod power;
 pub mod system_resources;
+pub mod threads;
 pub mod tray;
 pub mod udisks;
 pub mod upower;

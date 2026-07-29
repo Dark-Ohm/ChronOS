@@ -32,6 +32,7 @@ nvml-wrapper.workspace = true
 agent-client-protocol = "2.0.0"
 dirs = "6"
 toml = "0.8"
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 # futures-util from workspace provides StreamExt for tests
