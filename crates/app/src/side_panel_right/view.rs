@@ -75,6 +75,10 @@ pub struct SidePanelRightView {
     resize_start_width: Option<f32>,
     /// T157: real gpui-component Input state for footprint measurement.
     measure_input: Option<Entity<InputState>>,
+    /// T157 smoke: one-shot flag to auto-open System tab/focus input for grim.
+    smoke_opened: bool,
+    /// T157 smoke: one-shot flag to avoid re-setting the demo text in the Input.
+    smoke_text_set: bool,
 }
 
 impl SidePanelRightView {
@@ -140,6 +144,8 @@ impl SidePanelRightView {
             resize_start_x: None,
             resize_start_width: None,
             measure_input: None,
+            smoke_opened: false,
+            smoke_text_set: false,
         }
     }
 
@@ -265,6 +271,11 @@ impl SidePanelRightView {
 impl Render for SidePanelRightView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sample_network();
+        // T157 smoke: auto-open System tab so the Input consumer is visible.
+        if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL").is_some() && !self.smoke_opened {
+            self.smoke_opened = true;
+            self.on_tab_select(PanelTab::System, cx);
+        }
         let power_arm = self.power_arm;
         let gpu = self.system.gpu_percent;
 
@@ -409,6 +420,15 @@ impl Render for SidePanelRightView {
                                                 }));
                                             }
                                             let state = self.measure_input.as_ref().unwrap();
+                                            if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL").is_some() {
+                                                state.update(cx, |state, cx| state.focus(window, cx));
+                                                if !self.smoke_text_set {
+                                                    self.smoke_text_set = true;
+                                                    state.update(cx, |state, cx| {
+                                                        state.set_value("T157 real input", window, cx);
+                                                    });
+                                                }
+                                            }
                                             div().h(px(40.)).w_full().child(Input::new(state))
                                         })
                                         // 3. Scrollable middle — UNCHANGED body

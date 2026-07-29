@@ -31,6 +31,7 @@ use gpui::{
     App, Bounds, DisplayId, Global, Size, Window, WindowBackgroundAppearance, WindowBounds,
     WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
 };
+use gpui_component::Root;
 
 use crate::side_panel_right::view::SidePanelRightView;
 
@@ -51,7 +52,7 @@ pub struct RightPanelResize;
 pub(crate) const PANEL_EDGE_GAP: f32 = BAR_HEIGHT;
 
 pub struct SidePanelRightState {
-    handle: Option<WindowHandle<SidePanelRightView>>,
+    handle: Option<WindowHandle<Root>>,
     /// `true` when opened by hotkey/bar-click (`toggle` / `open_pinned`) —
     /// stays open until re-toggled. `false` when opened by hover — closes
     /// on mouse-leave debounce unless a pin request arrives while peeked.
@@ -158,7 +159,7 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
             exclusive_zone: Some(px(RAIL_ONLY_WIDTH)),
             exclusive_edge: Some(Anchor::RIGHT),
             margin: None,
-            keyboard_interactivity: KeyboardInteractivity::None,
+            keyboard_interactivity: KeyboardInteractivity::OnDemand,
             ..Default::default()
         }),
         ..Default::default()
@@ -175,8 +176,9 @@ fn open_window(cx: &mut App, pinned: bool) {
         return;
     }
     let display_id = crate::monitor::pult_display(cx);
-    match cx.open_window(window_options(display_id, cx), |_, view_cx| {
-        view_cx.new(|cx| SidePanelRightView::new(cx))
+    match cx.open_window(window_options(display_id, cx), |window, view_cx| {
+        let view = view_cx.new(|cx| SidePanelRightView::new(cx));
+        view_cx.new(|cx| Root::new(view, window, cx).bordered(false))
     }) {
         Ok(handle) => {
             let state = cx.global_mut::<SidePanelRightState>();
