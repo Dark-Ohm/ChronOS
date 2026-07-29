@@ -25,6 +25,9 @@ use gpui_platform::application;
 use ipc::IpcSubscriber;
 use tracing_subscriber::EnvFilter;
 
+#[cfg(feature = "hot-reload")]
+use subsecond;
+
 fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
@@ -59,6 +62,22 @@ fn main() {
 
             // Initialize global AppState so watch() / AppState::compositor() etc. work
             state::AppState::init(services, cx);
+
+            // Register hot-reload patch handler if feature is enabled
+            #[cfg(feature = "hot-reload")]
+            {
+                use std::sync::Arc;
+                subsecond::register_handler(Arc::new(|| {
+                    tracing::info!("Applying hot-reload patch");
+                    if let Some(jump_table) = unsafe { subsecond::get_jump_table() } {
+                        if let Err(e) = unsafe { subsecond::apply_patch(jump_table.clone()) } {
+                            tracing::error!("Failed to apply hot-reload patch: {e}");
+                        }
+                    } else {
+                        tracing::warn!("No jump table available for hot-reload patch");
+                    }
+                }));
+            }
 
             subscriber.start(cx);
             theme_config::init(cx);

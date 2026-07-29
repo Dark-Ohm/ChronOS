@@ -141,72 +141,86 @@ impl BarWidget for NetworkWidget {
     }
 
     fn render(&self, _window: &mut Window, cx: &App) -> AnyElement {
-        let net = AppState::network(cx);
-        let data = net.get();
-        let theme = Theme::global(cx);
-
-        // Read procfs counters and compute speeds (time-gated, cached).
-        let (dl_speed, ul_speed) = match read_interface_bytes() {
-            Ok((rx, tx)) => {
-                // unwrap_or_else for poisoned mutex: in single-threaded GPUI
-                // the lock is never truly poisoned, but panicking in render
-                // would tear down the bar. Silently recover.
-                let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                let result = update_speed(&mut *guard, rx, tx, Instant::now(), SAMPLE_INTERVAL);
-                (result.dl, result.ul)
-            }
-            Err(_) => {
-                // Read error — return cached values.
-                // No logging: transient procfs errors (e.g. race with interface
-                // creation) self-heal on the next 1s tick. Spamming every
-                // second would drown real warnings.
-                let guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                (guard.cached_dl, guard.cached_ul)
-            }
-        };
-
-        let view = compute_view(data.connectivity, dl_speed, ul_speed);
-        let dot_color = indicator_color(dl_speed, ul_speed, data.connectivity, theme);
-        let speed_color = if view.disconnected {
-            theme.text.disabled
-        } else {
-            theme.text.secondary
-        };
-
-        div()
-            .flex()
-            .items_center()
-            .gap(px(4.))
-            .child(
-                div()
-                    .w(px(6.))
-                    .h(px(6.))
-                    .rounded_full()
-                    .bg(dot_color)
-                    .flex_none(),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .items_end()
-                    .child(
-                        div()
-                            .child(format!("\u{2193} {}", view.dl))
-                            .text_color(speed_color)
-                            .text_size(theme.font_sizes.xs)
-                            .font_family(theme.font_mono),
-                    )
-                    .child(
-                        div()
-                            .child(format!("\u{2191} {}", view.ul))
-                            .text_color(speed_color)
-                            .text_size(theme.font_sizes.xs)
-                            .font_family(theme.font_mono),
-                    ),
-            )
-            .into_any_element()
+        #[cfg(feature = "hot-reload")]
+        {
+            use subsecond::call;
+            call(|| render_network_widget(self, cx))
+        }
+        #[cfg(not(feature = "hot-reload"))]
+        {
+            render_network_widget(self, cx)
+        }
     }
+}
+
+/// Core render logic extracted so it can be hot-patched via `subsecond::call`.
+/// This function must be pure-ish: no local state, only reads from services/globals.
+fn render_network_widget(this: &NetworkWidget, cx: &App) -> AnyElement {
+    let net = AppState::network(cx);
+    let data = net.get();
+    let theme = Theme::global(cx);
+
+    // Read procfs counters and compute speeds (time-gated, cached).
+    let (dl_speed, ul_speed) = match read_interface_bytes() {
+        Ok((rx, tx)) => {
+            // unwrap_or_else for poisoned mutex: in single-threaded GPUI
+            // the lock is never truly poisoned, but panicking in render
+            // would tear down the bar. Silently recover.
+            let mut guard = this.state.lock().unwrap_or_else(|e| e.into_inner());
+            let result = update_speed(&mut *guard, rx, tx, Instant::now(), SAMPLE_INTERVAL);
+            (result.dl, result.ul)
+        }
+        Err(_) => {
+            // Read error — return cached values.
+            // No logging: transient procfs errors (e.g. race with interface
+            // creation) self-heal on the next 1s tick. Spamming every
+            // second would drown real warnings.
+            let guard = this.state.lock().unwrap_or_else(|e| e.into_inner());
+            (guard.cached_dl, guard.cached_ul)
+        }
+    };
+
+    let view = compute_view(data.connectivity, dl_speed, ul_speed);
+    let dot_color = indicator_color(dl_speed, ul_speed, data.connectivity, theme);
+    let speed_color = if view.disconnected {
+        theme.text.disabled
+    } else {
+        theme.text.secondary
+    };
+
+    div()
+        .flex()
+        .items_center()
+        .gap(px(4.))
+        .child(
+            div()
+                .w(px(6.))
+                .h(px(6.))
+                .rounded_full()
+                .bg(dot_color)
+                .flex_none(),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .items_end()
+                .child(
+                    div()
+                        .child(format!("\u{2193} {}", view.dl))
+                        .text_color(speed_color)
+                        .text_size(theme.font_sizes.xs)
+                        .font_family(theme.font_mono),
+                )
+                .child(
+                    div()
+                        .child(format!("\u{2191} {}", view.ul))
+                        .text_color(speed_color)
+                        .text_size(theme.font_sizes.xs)
+                        .font_family(theme.font_mono),
+                ),
+        )
+        .into_any_element()
 }
 
 /// Register the network widget with the global bar registry.
