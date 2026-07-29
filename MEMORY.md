@@ -177,3 +177,37 @@ _Cross-session durable: these are explicitly deferred, each tied to a named futu
 - **ashpd — только фича `async-io`** (форк gpui пинит её; `tokio`-фича даёт compile_error на унификации). Портал-вызовы — `async_io::block_on` в std-треде (образец: `project_switcher::add_project`).
 - **Порядок виджетов бара = порядок регистрации** в `bar/widgets/mod.rs::register_builtin`; сепараторы — позиционные виджеты (`separator.rs`).
 - **Project switcher (2026-07-20):** `project_switcher/` + `bar/widgets/project.rs`; `projects.toml` (паттерн dock.toml); ветка — прямой парс `.git/HEAD` на 1s-тикере.
+
+## 2026-07-29 — компонент, замер, RTL, инфраструктура памяти
+
+- **База замера бинаря: 22 520 192 байт** (`target/release/chronos`, после
+  T150 и T154). Прежняя 22 475 648 (`44d365e`) устарела. Мерить базу и цель
+  **в одном каталоге**: путь сборки вшивается в бинарь, замер в соседнем
+  worktree даёт паразитные сотни байт.
+- **Голая зависимость в `Cargo.toml` даёт дельту ≈0.** При `lto = true`,
+  `opt-level = "z"`, `strip = true` линкер выбрасывает всё без живых
+  ссылок. Мерить только с настоящим потребителем в дереве рендера.
+- **`gpui-component` принят как инфраструктура IDE-панели** (реверс
+  июльского варианта C, `DECISIONS.log` 29.07). `Input` с гейтами T156 =
+  **+1 822 848 байт (+1.74 MiB)**.
+- **`Root` обязателен**: окно, где рендерится `Input` компонента, должно
+  быть обёрнуто в `gpui_component::Root`, иначе паника на `window.root()`.
+  Плюс `KeyboardInteractivity::OnDemand` для клавиш на layer-shell.
+- **`num-traits` приходит через `rust-i18n → serde-saphyr`**, а не от фичи
+  `chart` — выключение `chart` его из графа не убирает.
+- **RTL в форке**: глифы идут в логическом порядке, а `x` **убывает**.
+  Любой код, считающий ширину как `next_x - prev_x`, для иврита/арабского
+  даёт отрицательные значения. Починены `compute_wrap_boundaries` (перенос
+  строк) — `de62111`; позиционирование строки по краю всё ещё сломано.
+- **`is_word_char`** в `line_wrapper.rs` теперь знает иврит (U+0590–05FF),
+  арабский (U+0600–06FF) и Arabic Supplement — `d8920c1`.
+- **Ядро без модулей**: после обновления `linux-cachyos` каталог
+  `/lib/modules/<работающее ядро>` исчезает, `modprobe` любого модуля
+  падает. Следствия: rootless podman без сети (`tun`), `ydotoold` не
+  стартует (`uinput`), синтетический ввод для приёмки UI недоступен.
+  Лечится только перезагрузкой.
+- **Hindsight**: `infra/hindsight/compose.yaml`, API на **:8888** (не 8080),
+  LLM — `infra/hindsight/run-llm.sh` (наш `Chronos-Engine`, порт 11435,
+  K=`q8_0`, V=`turbo3`, `-ngl 24`). `--reasoning off` действует **только**
+  вместе с `--jinja`. Перенос банка — через `document-transfer`
+  (переэмбеддит факты без переизвлечения LLM).
