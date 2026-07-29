@@ -1154,6 +1154,7 @@ dependencies = [
  "nucleo",
  "portable-pty",
  "serde",
+ "serde_json",
  "smallvec",
  "tokio",
  "toml 0.8.23",

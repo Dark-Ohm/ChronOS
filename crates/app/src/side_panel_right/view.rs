@@ -20,6 +20,8 @@ use gpui::{
 };
 use gpui::AnimationExt;
 use gpui_component::input::{Input, InputState};
+use gpui_component::table::{Column, DataTable, TableDelegate, TableState};
+use gpui_component::v_virtual_list;
 
 use crate::motion;
 use crate::side_panel_right::disks::render_disks_section;
@@ -75,7 +77,17 @@ pub struct SidePanelRightView {
     resize_start_width: Option<f32>,
     /// T157: real gpui-component Input state for footprint measurement.
     measure_input: Option<Entity<InputState>>,
-    /// T157 smoke: one-shot flag to auto-open System tab/focus input for grim.
+    /// T157: real gpui-component DataTable state for footprint measurement.
+    /// Holds the delegate inside, so the table widget stays actually linked
+    /// under `lto = true` + `strip = true` in [profile.release] — LTO will
+    /// drop any code path with no live reference.
+    measure_table: Option<Entity<TableState<DemoTableDelegate>>>,
+    /// T157: real gpui-component VirtualList state for footprint measurement.
+    /// The inner `Render for DemoVirtualList` constructs `v_virtual_list`
+    /// each frame; keeping an `Entity` here makes the v-table allocation
+    /// survive across renders.
+    measure_vlist: Option<Entity<DemoVirtualList>>,
+/// T157 smoke: one-shot flag to auto-open System tab/focus input for grim.
     smoke_opened: bool,
     /// T157 smoke: one-shot flag to avoid re-setting the demo text in the Input.
     smoke_text_set: bool,
@@ -144,6 +156,8 @@ impl SidePanelRightView {
             resize_start_x: None,
             resize_start_width: None,
             measure_input: None,
+            measure_table: None,
+            measure_vlist: None,
             smoke_opened: false,
             smoke_text_set: false,
         }
@@ -431,7 +445,38 @@ impl Render for SidePanelRightView {
                                             }
                                             div().h(px(40.)).w_full().child(Input::new(state))
                                         })
-                                        // 3. Scrollable middle — UNCHANGED body
+                                        // T157: real gpui-component DataTable consumer (measurement).
+                                        // `DataTable` derives `RenderOnce` and `track_focus`s its
+                                        // own focus_handle; this keeps table-management code linked
+                                        // (virtualised rows, sort, col-resize delegate calls).
+                                        .child({
+                                            if self.measure_table.is_none() {
+                                                self.measure_table = Some(cx.new(|cx| {
+                                                    TableState::new(DemoTableDelegate::new(), window, cx)
+                                                }));
+                                            }
+                                            let table_state = self.measure_table.as_ref().unwrap();
+                                            div()
+                                                .h(px(200.))
+                                                .w_full()
+                                                .child(
+                                                    DataTable::new(table_state)
+                                                        .stripe(true)
+                                                        .bordered(true),
+                                                )
+                                        })
+                                        // T157: real gpui-component VirtualList consumer
+                                        // (third component in the IDE-panel footprint
+                                        // measurement — Input, Table, VirtualList).
+                                        .child({
+                                            if self.measure_vlist.is_none() {
+                                                self.measure_vlist =
+                                                    Some(cx.new(|_cx| DemoVirtualList::new()));
+                                            }
+                                            let vlist = self.measure_vlist.as_ref().unwrap();
+                                            div().h(px(200.)).w_full().child(vlist.clone())
+                                        })
+// 3. Scrollable middle — UNCHANGED body
                                         .child(
                                             div()
                                                 .id("side-panel-scroll")
@@ -617,4 +662,110 @@ pub(crate) fn schedule_release_from_app(cx: &mut gpui::App, generation: u64) {
         });
     })
     .detach();
+}
+
+// ---------------------------------------------------------------------------
+// T157 measurement scaffolding: minimal, real consumer-side stand-ins for the
+// gpui-component `Table` and `VirtualList` widgets, sized so they survive
+// `lto = true` + `strip = true` in `[profile.release]`. T158 replaces this with
+// the real IDE-panel integration; the bytes measured here are what gpui-
+// component costs once it's in the linker graph for real.
+// ---------------------------------------------------------------------------
+
+/// Minimal in-memory table delegate for the T157 footprint. 4 columns, 20
+/// rows, fixed-width text per cell. Real text (not empty `String`) so the
+/// render path through `render_td` survives LTO.
+struct DemoTableDelegate {
+    rows: Vec<Vec<String>>,
+    columns: Vec<(&'static str, &'static str)>,
+}
+
+impl DemoTableDelegate {
+    fn new() -> Self {
+        Self {
+            rows: (0..20)
+                .map(|i| {
+                    vec![
+                        format!("ID-{i:02}"),
+                        format!("user {i}"),
+                        format!("task {i}"),
+                        format!("ready"),
+                    ]
+                })
+                .collect(),
+            columns: vec![
+                ("id", "ID"),
+                ("user", "User"),
+                ("proc", "Process"),
+                ("status", "Status"),
+            ],
+        }
+    }
+}
+
+impl TableDelegate for DemoTableDelegate {
+    fn columns_count(&self, _: &gpui::App) -> usize {
+        self.columns.len()
+    }
+    fn rows_count(&self, _: &gpui::App) -> usize {
+        self.rows.len()
+    }
+    fn column(&self, col_ix: usize, _: &gpui::App) -> Column {
+        let (key, name) = self.columns[col_ix];
+        Column::new(key, name)
+    }
+    fn render_td(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        _: &mut Window,
+        _: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        div()
+            .w_full()
+            .h_full()
+            .child(self.rows[row_ix][col_ix].clone())
+    }
+}
+
+/// Minimal stateful view that builds a `v_virtual_list` per frame. The
+/// existence of this `Render` impl plus the live `Entity<DemoVirtualList>`
+/// on `SidePanelRightView.measure_vlist` is what keeps the v-table code path
+/// actually linked after LTO drops anything with no references.
+struct DemoVirtualList {
+    items: Vec<String>,
+}
+
+impl DemoVirtualList {
+    fn new() -> Self {
+        Self {
+            items: (0..50).map(|i| format!("vlist item {i:02}")).collect(),
+        }
+    }
+}
+
+impl Render for DemoVirtualList {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity().clone();
+        let sizes = std::rc::Rc::new(
+            (0..self.items.len())
+                .map(|_| gpui::size(px(0.), px(24.)))
+                .collect::<Vec<_>>(),
+        );
+        v_virtual_list(
+            view,
+            "t157-demo-vlist",
+            sizes,
+            move |this, range, _window, _cx| {
+                range
+                    .map(|ix| {
+                        div()
+                            .h(px(24.))
+                            .w_full()
+                            .child(this.items[ix].clone())
+                    })
+                    .collect()
+            },
+        )
+    }
 }
