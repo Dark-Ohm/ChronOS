@@ -1,11 +1,30 @@
 use chronos_services::hermes_acp::StreamingEvent;
 use chronos_ui::{Theme, on_fill};
-use gpui::{IntoElement, SharedString, Window, div, prelude::*, px};
+use gpui::{
+    Context, CursorStyle, ExternalPaths, IntoElement, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, Point, SharedString, Window, div, prelude::*, px,
+};
 
 use super::SidePanelLeft;
 use super::chat_view::{ChatMessage, MessageRole, Segment};
 use super::is_rtl_text;
+use super::text_input::{TextInputElement, next_word_boundary, prev_word_boundary};
 use super::state::AgentStatus;
+
+/// Compute cursor byte-offset from a mouse position, using last prepaint geometry.
+fn mouse_offset(
+    line: &Option<gpui::ShapedLine>,
+    bounds: &Option<gpui::Bounds<gpui::Pixels>>,
+    position: &Point<gpui::Pixels>,
+    actual_content: &str,
+) -> usize {
+    if actual_content.is_empty() { return 0; }
+    let Some(line) = line else { return 0 };
+    let Some(bounds) = bounds else { return 0 };
+    if position.y < bounds.top() { return 0; }
+    if position.y > bounds.bottom() { return actual_content.len(); }
+    line.closest_index_for_x(position.x - bounds.left()).min(actual_content.len())
+}
 
 impl SidePanelLeft {
     /// Scan available_modes for a mode whose `id` contains "bypass", "dont",
@@ -47,7 +66,7 @@ pub fn render_composer(
     cx: &mut Context<SidePanelLeft>,
 ) -> impl IntoElement {
     let theme = *Theme::global(cx);
-    let text = &panel.composer_text;
+    let text = &panel.composer_input.content;
     let has_text = !text.is_empty();
 
     let send_active = has_text && panel.state.agent_status != AgentStatus::Thinking;
@@ -82,17 +101,7 @@ pub fn render_composer(
     let enabled = panel.state.agent_status != AgentStatus::Disconnected;
     let focus = panel.composer_focus.clone();
 
-    let input_display: SharedString = if text.is_empty() {
-        format!("Message {agent_display_name} — @ to include context, / for commands").into()
-    } else {
-        text.clone().into()
-    };
-
-    let input_text_color = if text.is_empty() {
-        theme.text.muted
-    } else {
-        theme.text.primary
-    };
+    let placeholder: SharedString = format!("Message {agent_display_name} — @ to include context, / for commands").into();
 
     let panel_content_width = panel.state.width - 24.0;
     let glyph_approx_px = 7.0;
@@ -124,10 +133,7 @@ pub fn render_composer(
         .overflow_y_scroll()
         .text_size(px(12.5))
         .line_height(px(18.))
-        .text_color(input_text_color)
-        // T152 Defect A: same base-direction-aware alignment as chat bubbles.
-        // The gpui fork has no text_direction API, so we right-align RTL
-        // composer input (Hebrew/Arabic) and leave LTR as-is.
+        .text_color(theme.text.primary)
         .when(is_rtl_text(text), |el| el.text_right())
         .track_focus(&focus)
         .on_click(cx.listener(|this, _, window, cx| {
@@ -136,12 +142,82 @@ pub fn render_composer(
             this.composer_mode_dropdown_open = false;
             this.composer_model_search.clear();
             window.focus(&this.composer_focus, cx);
+            this.start_blink(cx);
             cx.notify();
         }))
+        .cursor(CursorStyle::IBeam)
         .on_key_down(cx.listener(|this, event, window, cx| {
             this.handle_composer_key(event, window, cx);
         }))
-        .child(input_display);
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, event: &MouseDownEvent, _window, cx| {
+                let content = this.composer_input.content.clone();
+                let offset = mouse_offset(&this.composer_last_layout, &this.composer_last_bounds, &event.position, &content);
+                let shift = event.modifiers.shift;
+                this.composer_input.on_mouse_down(offset, shift);
+                // Double-click detection: select word (only when actual content exists)
+                let now = std::time::Instant::now();
+                let last = this.composer_last_click;
+                this.composer_last_click = Some((now, event.position));
+                let double = last.map_or(false, |(t, p)| {
+                    now.duration_since(t).as_millis() < 500
+                        && (p.x - event.position.x).abs() < px(5.)
+                        && (p.y - event.position.y).abs() < px(5.)
+                });
+                if double && !content.is_empty() {
+                    this.composer_input.move_to(prev_word_boundary(&content, offset));
+                    this.composer_input.select_to(next_word_boundary(&content, offset));
+                }
+                cx.notify();
+            }),
+        )
+        .on_mouse_up(
+            MouseButton::Left,
+            cx.listener(|this, _: &MouseUpEvent, _, cx| {
+                this.composer_input.on_mouse_up();
+                cx.notify();
+            }),
+        )
+        .on_mouse_up_out(
+            MouseButton::Left,
+            cx.listener(|this, _: &MouseUpEvent, _, cx| {
+                this.composer_input.on_mouse_up();
+                cx.notify();
+            }),
+        )
+        .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+            let content = this.composer_input.content.clone();
+            let offset = mouse_offset(&this.composer_last_layout, &this.composer_last_bounds, &event.position, &content);
+            this.composer_input.on_mouse_move(offset);
+            cx.notify();
+        }))
+        .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
+            let text = paths.paths().iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            this.composer_input.insert_char(&text);
+            this.composer_input.has_drop_hover = false;
+            cx.notify();
+        }))
+        .on_drag_move::<ExternalPaths>(cx.listener(|this, _event: &gpui::DragMoveEvent<ExternalPaths>, _, cx| {
+            this.composer_input.has_drop_hover = true;
+            cx.notify();
+        }))
+        .when(panel.composer_input.has_drop_hover, |el| {
+            el.bg(theme.accent.primary.opacity(0.08))
+        })
+        .child(
+            TextInputElement {
+                content: if text.is_empty() { placeholder.clone() } else { text.clone() },
+                selected_range: panel.composer_input.selected_range.clone(),
+                selection_reversed: panel.composer_input.selection_reversed,
+                cursor_visible: panel.composer_input.cursor_visible,
+                is_focused: panel.composer_focused,
+                entity: cx.weak_entity(),
+            },
+        );
 
     // ── Input container (bordered box: attach + textarea + send) ─────
     let input_container = div()
@@ -636,6 +712,28 @@ fn send_button(
 
 // ── Existing helper methods (unchanged) ─────────────────────────────────
 impl SidePanelLeft {
+    pub(crate) fn start_blink(&mut self, cx: &mut gpui::Context<Self>) {
+        self.composer_input.cursor_visible = true;
+        self.composer_blink_task.take();
+        let handle = cx.weak_entity();
+        let interval = super::text_input::CURSOR_BLINK_INTERVAL;
+        let task = cx.spawn(async move |_, cx| {
+            loop {
+                cx.background_executor().timer(interval).await;
+                let Ok(()) = handle.update(cx, |this, cx| {
+                    this.composer_input.cursor_visible = !this.composer_input.cursor_visible;
+                    cx.notify();
+                }) else { break };
+            }
+        });
+        self.composer_blink_task = Some(task);
+    }
+
+    pub(crate) fn stop_blink(&mut self) {
+        self.composer_input.cursor_visible = false;
+        self.composer_blink_task.take();
+    }
+
     pub(crate) fn handle_composer_key(
         &mut self,
         event: &gpui::KeyDownEvent,
@@ -650,6 +748,9 @@ impl SidePanelLeft {
                 cx.notify();
                 return;
             }
+            self.composer_focused = false;
+            cx.notify();
+            return;
         }
 
         // ── Model picker search input ──────────────────────────────────
@@ -662,7 +763,6 @@ impl SidePanelLeft {
                     self.composer_model_search.clear();
                 }
                 "return" | "enter" => {
-                    // Select first filtered item.
                     let q = self.composer_model_search.to_lowercase();
                     if let Some(first) = self.available_models.iter().find(|m| {
                         let id = m.id.to_lowercase();
@@ -711,58 +811,49 @@ impl SidePanelLeft {
         let key = event.keystroke.key.as_str();
         let modifiers = &event.keystroke.modifiers;
 
+        use super::text_input::TextInputState;
+
         match key {
-            "backspace" => {
-                self.composer_text.pop();
-                self.composer_cursor = self.composer_text.len();
-                cx.notify();
+            "backspace" if modifiers.platform => self.composer_input.delete_word_backward(),
+            "backspace" => self.composer_input.backspace(),
+            "delete" => self.composer_input.delete_forward(),
+            "left" if modifiers.control => self.composer_input.cursor_left_word(),
+            "left" if modifiers.shift => self.composer_input.select_left(),
+            "left" => self.composer_input.cursor_left(),
+            "right" if modifiers.control => self.composer_input.cursor_right_word(),
+            "right" if modifiers.shift => self.composer_input.select_right(),
+            "right" => self.composer_input.cursor_right(),
+            "home" if modifiers.shift => self.composer_input.select_home(),
+            "home" => self.composer_input.home(),
+            "end" if modifiers.shift => self.composer_input.select_end(),
+            "end" => self.composer_input.end(),
+            "escape" => {
+                self.composer_focused = false;
+                self.stop_blink();
             }
-            "left" => {
-                if self.composer_cursor > 0 {
-                    self.composer_cursor -= 1;
-                }
-                cx.notify();
-            }
-            "right" => {
-                if self.composer_cursor < self.composer_text.len() {
-                    self.composer_cursor += 1;
-                }
-                cx.notify();
-            }
-            "home" => {
-                self.composer_cursor = 0;
-                cx.notify();
-            }
-            "end" => {
-                self.composer_cursor = self.composer_text.len();
-                cx.notify();
-            }
+            "enter" if modifiers.shift => self.composer_input.insert_char("\n"),
             "enter" => {
-                if modifiers.shift {
-                    self.composer_text.push('\n');
-                    self.composer_cursor = self.composer_text.len();
-                    cx.notify();
-                } else {
-                    self.send_composer(_window, cx);
-                }
+                self.send_composer(_window, cx);
+                return;
             }
             "up" | "down" => {}
             _ => {
-                if let Some(ch) = event.keystroke.key_char.as_ref() {
+                if (modifiers.control || modifiers.platform) && key == "a" {
+                    self.composer_input.select_all();
+                } else if modifiers.platform && key == "c" {
+                    self.composer_input.copy_selection(cx);
+                } else if modifiers.platform && key == "x" {
+                    self.composer_input.cut_selection(cx);
+                } else if modifiers.platform && key == "v" {
+                    self.composer_input.paste(cx);
+                } else if let Some(ch) = event.keystroke.key_char.as_ref() {
                     if !modifiers.alt && !modifiers.platform && !modifiers.control {
-                        if self.composer_cursor >= self.composer_text.len() {
-                            self.composer_text.push_str(ch);
-                        } else {
-                            self.composer_cursor =
-                                self.composer_cursor.min(self.composer_text.len());
-                            self.composer_text.insert_str(self.composer_cursor, ch);
-                        }
-                        self.composer_cursor += ch.len();
-                        cx.notify();
+                        self.composer_input.insert_char(ch);
                     }
                 }
             }
         }
+        cx.notify();
     }
 
     pub(crate) fn send_composer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -771,7 +862,7 @@ impl SidePanelLeft {
             return;
         }
 
-        let text = self.composer_text.trim().to_string();
+        let text = self.composer_input.content.trim().to_string();
         if text.is_empty() {
             return;
         }
@@ -783,8 +874,7 @@ impl SidePanelLeft {
             text
         );
 
-        self.composer_text.clear();
-        self.composer_cursor = 0;
+        self.composer_input.clear();
 
         self.chat.push_message(ChatMessage {
             role: MessageRole::User,

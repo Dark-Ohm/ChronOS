@@ -4,6 +4,7 @@ mod hover_strip;
 mod panel;
 pub mod sessions_list;
 mod state;
+pub mod text_input;
 mod tool_card;
 
 /// Detects RTL base direction by the first strong (directional) character.
@@ -27,10 +28,12 @@ use chronos_services::hermes_acp::{
 };
 use chronos_services::{ModelInfo, SessionMode};
 use gpui::{
-    App, Bounds, DisplayId, Focusable, Global, Size, Window, WindowBackgroundAppearance,
-    WindowBounds, WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
+    App, Bounds, DisplayId, Focusable, Global, Size, UTF16Selection, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions,
+    layer_shell::*, point, prelude::*, px,
 };
 use std::collections::HashMap;
+use std::ops::Range;
 
 pub struct LeftPanelResize;
 
@@ -103,8 +106,12 @@ pub struct SidePanelLeft {
     available_models: Vec<chronos_services::ModelInfo>,
     pub(crate) chat: chat_view::ChatView,
     pub(crate) composer_focus: gpui::FocusHandle,
-    pub(crate) composer_text: String,
-    pub(crate) composer_cursor: usize,
+    pub(crate) composer_input: text_input::TextInputState,
+    /// Shaped line from the last TextInputElement prepaint; needed by
+    /// EntityInputHandler::bounds_for_range / character_index_for_point
+    /// for IME candidate window positioning.
+    pub(crate) composer_last_layout: Option<gpui::ShapedLine>,
+    pub(crate) composer_last_bounds: Option<gpui::Bounds<gpui::Pixels>>,
     pub(crate) composer_selected_model: String,
     pub(crate) composer_selected_mode: String,
     /// The mode ID that was active before YOLO toggle, to restore on toggle-off.
@@ -115,6 +122,8 @@ pub struct SidePanelLeft {
     pub(crate) composer_mode_dropdown_open: bool,
     pub(crate) composer_model_search: String,
     pub(crate) composer_focused: bool,
+    pub(crate) composer_last_click: Option<(std::time::Instant, gpui::Point<gpui::Pixels>)>,
+    pub(crate) composer_blink_task: Option<gpui::Task<()>>,
     /// Streaming state for the current ACP prompt turn.
     pub(crate) streaming: state::StreamingState,
     resize_start_x: Option<f32>,
@@ -154,6 +163,129 @@ impl Render for SidePanelLeft {
 impl Focusable for SidePanelLeft {
     fn focus_handle(&self, _cx: &gpui::App) -> gpui::FocusHandle {
         self.composer_focus.clone()
+    }
+}
+
+impl gpui::EntityInputHandler for SidePanelLeft {
+    fn text_for_range(
+        &mut self,
+        range_utf16: Range<usize>,
+        actual_range: &mut Option<Range<usize>>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<String> {
+        let range = self.composer_input.range_from_utf16(&range_utf16);
+        actual_range.replace(self.composer_input.range_to_utf16(&range));
+        Some(self.composer_input.content[range].to_string())
+    }
+
+    fn selected_text_range(
+        &mut self,
+        _ignore_disabled_input: bool,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<UTF16Selection> {
+        Some(UTF16Selection {
+            range: self.composer_input.range_to_utf16(&self.composer_input.selected_range),
+            reversed: self.composer_input.selection_reversed,
+        })
+    }
+
+    fn marked_text_range(
+        &self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<Range<usize>> {
+        self.composer_input
+            .marked_range
+            .as_ref()
+            .map(|range| self.composer_input.range_to_utf16(range))
+    }
+
+    fn unmark_text(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
+        self.composer_input.marked_range = None;
+    }
+
+    fn replace_text_in_range(
+        &mut self,
+        range_utf16: Option<Range<usize>>,
+        new_text: &str,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let range = range_utf16
+            .as_ref()
+            .map(|r| self.composer_input.range_from_utf16(r))
+            .or(self.composer_input.marked_range.clone())
+            .unwrap_or(self.composer_input.selected_range.clone());
+        self.composer_input.replace_range(range, new_text);
+        cx.notify();
+    }
+
+    fn replace_and_mark_text_in_range(
+        &mut self,
+        range_utf16: Option<Range<usize>>,
+        new_text: &str,
+        new_selected_range_utf16: Option<Range<usize>>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let range = range_utf16
+            .as_ref()
+            .map(|r| self.composer_input.range_from_utf16(r))
+            .or(self.composer_input.marked_range.clone())
+            .unwrap_or(self.composer_input.selected_range.clone());
+        self.composer_input.content =
+            (self.composer_input.content[..range.start].to_owned()
+                + new_text
+                + &self.composer_input.content[range.end..])
+                .into();
+        if !new_text.is_empty() {
+            self.composer_input.marked_range = Some(range.start..range.start + new_text.len());
+        } else {
+            self.composer_input.marked_range = None;
+        }
+        let new_range = new_selected_range_utf16
+            .as_ref()
+            .map(|r| self.composer_input.range_from_utf16(r))
+            .map(|r| r.start + range.start..r.end + range.end)
+            .unwrap_or(range.start + new_text.len()..range.start + new_text.len());
+        self.composer_input.selected_range = new_range;
+        cx.notify();
+    }
+
+    fn bounds_for_range(
+        &mut self,
+        range_utf16: Range<usize>,
+        bounds: Bounds<gpui::Pixels>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<Bounds<gpui::Pixels>> {
+        let layout = self.composer_last_layout.as_ref()?;
+        let range = self.composer_input.range_from_utf16(&range_utf16);
+        Some(Bounds::from_corners(
+            gpui::point(
+                bounds.left() + layout.x_for_index(range.start),
+                bounds.top(),
+            ),
+            gpui::point(
+                bounds.left() + layout.x_for_index(range.end),
+                bounds.bottom(),
+            ),
+        ))
+    }
+
+    fn character_index_for_point(
+        &mut self,
+        point: gpui::Point<gpui::Pixels>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<usize> {
+        let bounds = self.composer_last_bounds.as_ref()?;
+        let line_point = bounds.localize(&point)?;
+        let layout = self.composer_last_layout.as_ref()?;
+        let utf8_index = layout.index_for_x(point.x - line_point.x)?;
+        Some(self.composer_input.offset_to_utf16(utf8_index))
     }
 }
 
@@ -224,8 +356,11 @@ impl SidePanelLeft {
             available_models: Vec::new(),
             chat: chat_view::ChatView::new(),
             composer_focus: cx.focus_handle(),
-            composer_text: String::new(),
-            composer_cursor: 0,
+            composer_last_click: None,
+            composer_blink_task: None,
+            composer_input: text_input::TextInputState::new(),
+            composer_last_layout: None,
+            composer_last_bounds: None,
             composer_selected_model: String::new(),
             composer_selected_mode: String::new(),
             composer_previous_mode: String::new(),
