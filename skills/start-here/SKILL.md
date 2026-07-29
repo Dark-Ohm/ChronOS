@@ -82,6 +82,9 @@ Routing only — open the skill and follow it.
 | `crates/app`, `crates/services`, `crates/luau`, `crates/ui`, bar/dock/launcher/osd/notifications/tray_menu, `Service` trait, subscribers, Lua hot-reload, wallpaper_ctl, IPC payloads | **`chronos-shell`** (+ `references/slow-service-dispatch.md` for audio/brightness drag) |
 | Bar-anchored popups (volume/updates/system/history), blur, animation boot, **slider drag markers**, footer clip | **`chronos-gpui-popup`** |
 | Visual polish: gradient fills / gradient "borders", drop + inset shadows, frosted glass, hover/enter motion, which style props interpolate | **`eye-candy`** |
+| `gpui-component` (Longbridge toolkit): проводка, фичи, `Root` для `Input`, замер размера бинаря | **`gpui-component-in-chronos`** |
+| Иврит/арабский/RTL рендерится криво, или трогаешь `paint_line`/`aligned_origin_x`/`compute_wrap_boundaries` | **`rtl-text-rendering`** |
+| LLM-бэкенд: шлюз OmniRoute :20128, локальный llama-server Chronos-Engine, KV-кэш turbo3, reasoning off | **`chronos-llm-backends`** |
 | Layer-shell geometry: popup height / clip / `window.resize`, **or** full-height side panel under bar with equal top/bottom gaps, **or** `on_hover` + `gpui-animation` single-slot | **`gpui-layer-shell`** |
 | `gpui-rsx` / `rsx!`, mockup HTML→panel chrome, `overflow_y_scroll`+`ScrollHandle`, hover E0631, rsx vs builder `div()` | **`gpui-rsx`** |
 | What can OUR fork do / API "doesn't resolve" / before claiming "fork can't X" | **`chronos-gpui`** |
