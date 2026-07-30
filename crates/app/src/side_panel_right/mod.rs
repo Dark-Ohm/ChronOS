@@ -143,12 +143,13 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     // y=BAR_HEIGHT; height = display − that one gap makes the panel reach the
     // display bottom (no bottom void).
     let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
+    let current_width = cx.global::<SidePanelRightState>().width;
     WindowOptions {
         display_id,
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: point(px(0.), px(0.)),
-            size: Size::new(px(RAIL_ONLY_WIDTH), px(panel_h)),
+            size: Size::new(px(current_width), px(panel_h)),
         })),
         app_id: Some("chronos-side-panel-right".to_string()),
         window_background: WindowBackgroundAppearance::Transparent,
@@ -156,9 +157,12 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
             namespace: "side_panel_right".to_string(),
             layer: Layer::Overlay,
             anchor: Anchor::TOP | Anchor::RIGHT,
-            exclusive_zone: Some(px(RAIL_ONLY_WIDTH)),
+            exclusive_zone: Some(px(current_width)),
             exclusive_edge: Some(Anchor::RIGHT),
             margin: None,
+            // OnDemand is required for gpui-component `Input` to receive keyboard
+            // events. The panel's dismissal contract (spec §7) is enforced in code
+            // by never calling `close()` on focus loss or pointer-leave.
             keyboard_interactivity: KeyboardInteractivity::OnDemand,
             ..Default::default()
         }),
@@ -176,15 +180,26 @@ fn open_window(cx: &mut App, pinned: bool) {
         return;
     }
     let display_id = crate::monitor::pult_display(cx);
+    // Normal opens always start rail-only. The smoke path sets width to
+    // DEFAULT_CONTENT_WIDTH before calling open_pinned, so it opens expanded.
+    if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL").is_none() {
+        cx.global_mut::<SidePanelRightState>().width = RAIL_ONLY_WIDTH;
+    }
     match cx.open_window(window_options(display_id, cx), |window, view_cx| {
         let view = view_cx.new(|cx| SidePanelRightView::new(cx));
+        // Wrap the panel view in gpui_component::Root.
+        //
+        // Component widgets such as Input expect the window root to be a component Root;
+        // without it, Input panics on `window.root()` because the root element is not a
+        // component-managed node. This is not a ChronOS choice but a hard requirement of
+        // gpui-component.
         view_cx.new(|cx| Root::new(view, window, cx).bordered(false))
     }) {
         Ok(handle) => {
             let state = cx.global_mut::<SidePanelRightState>();
             state.handle = Some(handle);
             state.pinned = pinned;
-            state.width = RAIL_ONLY_WIDTH;
+
             tracing::info!(
                 "side_panel_right: opened ({})",
                 if pinned { "pinned" } else { "peek" }
@@ -290,6 +305,9 @@ pub fn init(cx: &mut App) {
             // Optional smoke: pin-open for grim without hover/ydotool.
             // Not product wiring — only when env is set.
             if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL").is_some() {
+                // Smoke path: open the panel already expanded so automated screenshots
+                // and tests can see the content without a manual rail click.
+                cx.global_mut::<SidePanelRightState>().ensure_content_width();
                 open_pinned(cx);
             }
         });

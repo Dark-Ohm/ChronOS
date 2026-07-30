@@ -75,17 +75,20 @@ pub struct SidePanelRightView {
     last_exclusive_zone: Option<f32>,
     resize_start_x: Option<f32>,
     resize_start_width: Option<f32>,
-    /// T157: real gpui-component Input state for footprint measurement.
+        /// T157/T158 temporary scaffolding — gpui-component `Input` footprint.
+    /// Keeps the real Input/rope/display_map path linked under LTO.
+    /// Replaced by the actual composer/settings fields in Shell-IDE slice 3.
     measure_input: Option<Entity<InputState>>,
-    /// T157: real gpui-component DataTable state for footprint measurement.
-    /// Holds the delegate inside, so the table widget stays actually linked
-    /// under `lto = true` + `strip = true` in [profile.release] — LTO will
-    /// drop any code path with no live reference.
+    /// T157/T158 temporary scaffolding — gpui-component `DataTable` footprint.
+    /// Holds the delegate inside so the table widget stays actually linked
+    /// under `lto = true` + `strip = true` in [profile.release].
+    /// Replaced by the files/sessions list in Shell-IDE slice 3.
     measure_table: Option<Entity<TableState<DemoTableDelegate>>>,
-    /// T157: real gpui-component VirtualList state for footprint measurement.
+    /// T157/T158 temporary scaffolding — gpui-component `VirtualList` footprint.
     /// The inner `Render for DemoVirtualList` constructs `v_virtual_list`
     /// each frame; keeping an `Entity` here makes the v-table allocation
     /// survive across renders.
+    /// Replaced by the transcript/list view in Shell-IDE slice 3.
     measure_vlist: Option<Entity<DemoVirtualList>>,
 /// T157 smoke: one-shot flag to auto-open System tab/focus input for grim.
     smoke_opened: bool,
@@ -665,11 +668,16 @@ pub(crate) fn schedule_release_from_app(cx: &mut gpui::App, generation: u64) {
 }
 
 // ---------------------------------------------------------------------------
-// T157 measurement scaffolding: minimal, real consumer-side stand-ins for the
-// gpui-component `Table` and `VirtualList` widgets, sized so they survive
-// `lto = true` + `strip = true` in `[profile.release]`. T158 replaces this with
-// the real IDE-panel integration; the bytes measured here are what gpui-
-// component costs once it's in the linker graph for real.
+// T158 temporary measurement scaffolding.
+//
+// The following `measure_*` fields, `DemoTableDelegate`, and `DemoVirtualList`
+// are real gpui-component consumers kept in the linker graph so that the size
+// measurements from T157 remain meaningful. They are intentionally minimal and
+// will be replaced by the actual Files, Editor, and transcript widgets in the
+// IDE-panel integration (Shell-IDE spec §3, slice 3).
+//
+// Do not use them as product code; do not inline or delete them until the real
+// consumers are wired.
 // ---------------------------------------------------------------------------
 
 /// Minimal in-memory table delegate for the T157 footprint. 4 columns, 20
