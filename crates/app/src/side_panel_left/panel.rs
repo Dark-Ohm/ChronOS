@@ -1,4 +1,4 @@
-use gpui::{AnimationExt, Context, IntoElement, Window, div, img, prelude::*, px};
+use gpui::{AnimationExt, AnyElement, Context, IntoElement, Window, div, img, prelude::*, px};
 
 use chronos_ui::{Theme, elevation_glow_bar};
 
@@ -50,7 +50,7 @@ pub fn render_panel(
         .sessions
         .iter()
         .find(|s| s.active)
-        .map(|s| s.title.clone())
+        .map(|s| s.display_title().to_string())
         .unwrap_or_else(|| "New Agent Thread".to_string());
 
     // Resize handlers (borrows cx) — must be built before ANY other call
@@ -470,7 +470,7 @@ fn build_sessions_sidebar(
             )
             .children(sessions.iter().map(|s| {
                 let is_active = s.active;
-                let sid = s.id.clone();
+                let sid = s.record.id.clone();
                 div()
                     .id(format!("session-dot-{sid}"))
                     .w(px(28.))
@@ -520,8 +520,201 @@ fn build_sessions_sidebar(
             })
             .into_any()
     } else {
+        // ── Search / rename input ────────────────────────────────────────
+        // When `rename_thread_id` is set, shows an inline rename input;
+        // otherwise shows the search bar (or nothing if not focused and
+        // query is empty).
+        let search_or_rename: Option<AnyElement> = if panel.rename_thread_id.is_some() {
+            // Inline rename input
+            Some(
+                div()
+                    .id("thread-rename-input")
+                    .flex_none()
+                    .mx(px(8.))
+                    .mt(px(4.))
+                    .px(px(8.))
+                    .py(px(5.))
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(theme.accent.primary)
+                    .text_size(px(11.5))
+                    .text_color(theme.text.primary)
+                    .child(panel.rename_input.clone())
+                    .into_any_element(),
+            )
+        } else if panel.search_focused || !panel.thread_search.is_empty() {
+            // Search input
+            Some(
+                div()
+                    .id("thread-search-input")
+                    .flex_none()
+                    .mx(px(8.))
+                    .mt(px(4.))
+                    .mb(px(2.))
+                    .px(px(8.))
+                    .py(px(5.))
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(if panel.search_focused {
+                        theme.accent.primary
+                    } else {
+                        theme.border.default
+                    })
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .text_size(px(11.5))
+                    .text_color(theme.text.muted)
+                    .child("🔍")
+                    .child({
+                        if panel.thread_search.is_empty() {
+                            div().text_color(theme.text.muted).child("Search threads…")
+                        } else {
+                            div()
+                                .text_color(theme.text.primary)
+                                .child(panel.thread_search.clone())
+                        }
+                    })
+                    .into_any_element(),
+            )
+        } else {
+            None
+        };
+
+        // ── Context menu (floating) ──────────────────────────────────────
+        let context_menu: Option<AnyElement> = panel.thread_menu_open.as_ref().map(|menu_id| {
+            let mid = menu_id.clone();
+            let is_pinned = panel
+                .sessions
+                .iter()
+                .find(|t| t.record.id == *menu_id)
+                .map(|t| t.record.pinned)
+                .unwrap_or(false);
+            let is_archived = panel
+                .sessions
+                .iter()
+                .find(|t| t.record.id == *menu_id)
+                .map(|t| t.record.archived)
+                .unwrap_or(false);
+
+            // Build each menu item with its own cx.listener (on_click expects
+            // a closure, not a ClickEvent — see E0277 fix).
+            let mid_rename = mid.clone();
+            let rename_handler = cx.listener(move |this, _, _, cx| {
+                let tid = mid_rename.clone();
+                let title = this
+                    .sessions
+                    .iter()
+                    .find(|t| t.record.id == tid)
+                    .map(|t| t.display_title().to_string())
+                    .unwrap_or_default();
+                this.begin_rename(&tid, &title, cx);
+            });
+            let mid_pin = mid.clone();
+            let pin_handler = cx.listener(move |this, _, _, cx| {
+                this.toggle_pin(&mid_pin, cx);
+            });
+            let mid_archive = mid.clone();
+            let archive_handler = cx.listener(move |this, _, _, cx| {
+                this.toggle_archive(&mid_archive, cx);
+            });
+            let mid_delete = mid.clone();
+            let delete_handler = cx.listener(move |this, _, _, cx| {
+                this.delete_thread(&mid_delete, cx);
+            });
+            let pin_label = if is_pinned { "Unpin" } else { "Pin" };
+            let archive_label = if is_archived { "Unarchive" } else { "Archive" };
+
+            div()
+                .id("thread-context-menu")
+                .absolute()
+                .right(px(8.))
+                .top(px(40.))
+                .w(px(130.))
+                .rounded(px(8.))
+                .bg(theme.bg.primary)
+                .border_1()
+                .border_color(theme.border.subtle)
+                .shadow(vec![gpui::BoxShadow::new(
+                    px(0.),
+                    px(4.),
+                    gpui::hsla(0., 0., 0., 0.3),
+                )
+                .blur_radius(px(12.))])
+                .p(px(4.))
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .id("ctx-rename")
+                        .w_full()
+                        .px(px(10.))
+                        .py(px(5.))
+                        .rounded(px(4.))
+                        .text_size(px(11.5))
+                        .text_color(theme.text.primary)
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme.border.subtle))
+                        .on_click(rename_handler)
+                        .child("Rename"),
+                )
+                .child(
+                    div()
+                        .id("ctx-pin")
+                        .w_full()
+                        .px(px(10.))
+                        .py(px(5.))
+                        .rounded(px(4.))
+                        .text_size(px(11.5))
+                        .text_color(theme.text.primary)
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme.border.subtle))
+                        .on_click(pin_handler)
+                        .child(pin_label),
+                )
+                .child(
+                    div()
+                        .id("ctx-archive")
+                        .w_full()
+                        .px(px(10.))
+                        .py(px(5.))
+                        .rounded(px(4.))
+                        .text_size(px(11.5))
+                        .text_color(theme.text.primary)
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme.border.subtle))
+                        .on_click(archive_handler)
+                        .child(archive_label),
+                )
+                .child(
+                    div()
+                        .id("ctx-divider")
+                        .h(px(1.))
+                        .my(px(2.))
+                        .mx(px(4.))
+                        .bg(theme.border.subtle),
+                )
+                .child(
+                    div()
+                        .id("ctx-delete")
+                        .w_full()
+                        .px(px(10.))
+                        .py(px(5.))
+                        .rounded(px(4.))
+                        .text_size(px(11.5))
+                        .text_color(gpui::hsla(0.0, 0.65, 0.65, 1.0))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme.border.subtle))
+                        .on_click(delete_handler)
+                        .child("Delete"),
+                )
+
+                .into_any_element()
+        });
+
         div()
             .id("sessions-sidebar-expanded")
+            .relative()
             .w(px(SIDEBAR_EXPANDED_WIDTH))
             .h_full()
             .flex()
@@ -603,6 +796,7 @@ fn build_sessions_sidebar(
                             )
                     }),
             )
+            .children(search_or_rename)
             .child(
                 div()
                     .id("sessions-new")
@@ -619,6 +813,9 @@ fn build_sessions_sidebar(
                     .text_color(theme.text.secondary)
                     .cursor_pointer()
                     .hover(|s| s.bg(theme.border.subtle).border_color(theme.text.disabled))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.create_new_session(cx);
+                    }))
                     .child("+ New session"),
             )
             .child(
@@ -633,8 +830,11 @@ fn build_sessions_sidebar(
                     .p(px(8.))
                     .children(sessions.iter().map(|s| {
                         let is_active = s.active;
-                        let title = s.title.clone();
-                        let sid = s.id.clone();
+                        let title = s.short_title();
+                        let sid = s.record.id.clone();
+                        let is_pinned = s.record.pinned;
+                        let sid_click = sid.clone();
+                        let sid_right = sid.clone();
                         div()
                             .id(format!("session-item-{sid}"))
                             .w_full()
@@ -647,6 +847,14 @@ fn build_sessions_sidebar(
                             .cursor_pointer()
                             .when(is_active, |el| el.bg(theme.border.default))
                             .when(!is_active, |el| el.hover(|s| s.bg(theme.border.subtle)))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.select_session(&sid_click, cx);
+                            }))
+                            .on_mouse_down(gpui::MouseButton::Right, cx.listener(
+                                move |this, _ev, _window, cx| {
+                                    this.open_thread_menu(&sid_right, cx);
+                                },
+                            ))
                             .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(if is_active {
                                 theme.status.success
                             } else {
@@ -654,6 +862,8 @@ fn build_sessions_sidebar(
                             }))
                             .child(
                                 div()
+                                    .flex_1()
+                                    .min_w(px(0.))
                                     .text_size(px(11.5))
                                     .text_color(if is_active {
                                         theme.text.primary
@@ -662,8 +872,49 @@ fn build_sessions_sidebar(
                                     })
                                     .child(title),
                             )
+                            .when(is_pinned, |el| {
+                                el.child(
+                                    div()
+                                        .text_size(px(9.))
+                                        .text_color(theme.text.muted)
+                                        .child("📌"),
+                                )
+                            })
                     })),
             )
+            .child(
+                div()
+                    .id("sessions-footer")
+                    .flex_none()
+                    .px(px(8.))
+                    .py(px(6.))
+                    .border_t_1()
+                    .border_color(theme.border.subtle)
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .id("archived-toggle")
+                            .text_size(px(10.5))
+                            .text_color(if panel.show_archived {
+                                theme.accent.primary
+                            } else {
+                                theme.text.muted
+                            })
+                            .cursor_pointer()
+                            .hover(|s| s.text_color(theme.text.primary))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_archived(cx);
+                            }))
+                            .child(if panel.show_archived {
+                                "Hide archived"
+                            } else {
+                                "Show archived"
+                            }),
+                    ),
+            )
+            .children(context_menu)
             .into_any()
     }
 }

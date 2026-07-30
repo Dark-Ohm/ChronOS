@@ -740,6 +740,60 @@ impl SidePanelLeft {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // ── Sidebar search / rename input ────────────────────────────────
+        if self.search_focused {
+            let key = event.keystroke.key.as_str();
+            let modifiers = &event.keystroke.modifiers;
+            match key {
+                "escape" => {
+                    if self.rename_thread_id.is_some() {
+                        self.cancel_rename(cx);
+                    } else {
+                        self.search_focused = false;
+                        self.thread_search.clear();
+                        self.search_threads("", cx);
+                    }
+                    return;
+                }
+                "return" | "enter" => {
+                    if self.rename_thread_id.is_some() {
+                        self.commit_rename(cx);
+                    } else {
+                        self.search_focused = false;
+                        let q = self.thread_search.clone();
+                        self.search_threads(&q, cx);
+                    }
+                    return;
+                }
+                "backspace" => {
+                    if self.rename_thread_id.is_some() {
+                        self.rename_input.pop();
+                    } else {
+                        self.thread_search.pop();
+                        let q = self.thread_search.clone();
+                        self.search_threads(&q, cx);
+                    }
+                    cx.notify();
+                    return;
+                }
+                _ => {
+                    if let Some(ch) = event.keystroke.key_char.as_ref() {
+                        if !modifiers.alt && !modifiers.platform && !modifiers.control {
+                            if self.rename_thread_id.is_some() {
+                                self.rename_input.push_str(ch);
+                            } else {
+                                self.thread_search.push_str(ch);
+                                let q = self.thread_search.clone();
+                                self.search_threads(&q, cx);
+                            }
+                        }
+                    }
+                    cx.notify();
+                    return;
+                }
+            }
+        }
+
         if event.keystroke.key == "escape" {
             if self.composer_model_dropdown_open || self.composer_mode_dropdown_open {
                 self.composer_model_dropdown_open = false;
@@ -876,6 +930,15 @@ impl SidePanelLeft {
 
         self.composer_input.clear();
 
+        // Set auto-title from the first user message (T151).
+        let is_first_user_message = !self.chat.messages.iter().any(|m| m.role == MessageRole::User);
+        if is_first_user_message {
+            let thread_id = self.state.active_session_id.clone();
+            if let Some(thread_id) = thread_id {
+                self.set_auto_title(&thread_id, &text, cx);
+            }
+        }
+
         self.chat.push_message(ChatMessage {
             role: MessageRole::User,
             segments: vec![Segment::Response { content: text.clone() }],
@@ -972,6 +1035,8 @@ impl SidePanelLeft {
                             }
                             this.chat.scroll_to_bottom();
                             this.state.agent_status = AgentStatus::Connected;
+                            // Cache the updated transcript to the store (T151).
+                            this.cache_transcript(cx);
                             // Update available modes/models from the session.
                             if let Some(modes) = prompt_response.modes {
                                 this.available_modes = modes.available;

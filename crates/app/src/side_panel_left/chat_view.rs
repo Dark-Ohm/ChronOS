@@ -1,17 +1,18 @@
 use gpui::{Context, IntoElement, ScrollHandle, Window, div, point, prelude::*, px};
 use super::is_rtl_text;
 use chronos_ui::Theme;
+use serde::{Deserialize, Serialize};
 
 use super::SidePanelLeft;
 use super::tool_card::ToolCard;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum MessageRole {
     User,
     Agent,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ToolCallPreview {
     pub id: String,
     pub name: String,
@@ -20,14 +21,14 @@ pub struct ToolCallPreview {
     pub result: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Segment {
     Thinking { content: String },
     ToolCall { tool: ToolCallPreview },
     Response { content: String },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: MessageRole,
     pub segments: Vec<Segment>,
