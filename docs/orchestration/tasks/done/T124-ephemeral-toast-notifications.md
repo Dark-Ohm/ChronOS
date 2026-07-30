@@ -6,12 +6,12 @@ Commit: `813b3aa`. Live grim user. Anim debt. Review: report-log/T124-*-review.m
 ---
 
 <!-- T124 — Global ephemeral toast stack (not history_popup).
-     Мокап: design/Toast-Notifications.dc.html. Агент не в имени брифа. -->
+     Мокап: docs/design/Toast-Notifications.dc.html. Агент не в имени брифа. -->
 
 # T124 — Ephemeral toast notifications (global stack)
 
 **Статус: OPEN, не назначен.**  
-**Мокап (канон):** `design/Toast-Notifications.dc.html`  
+**Мокап (канон):** `docs/design/Toast-Notifications.dc.html`  
 **Код сегодня:** `crates/app/src/notifications/{mod,view}.rs`  
 **Не путать с:** `notifications/history_popup/` (T120, bell inbox) — **out of scope**.
 

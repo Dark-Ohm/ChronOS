@@ -1,7 +1,7 @@
 # T126 — Left panel: sessions sidebar as bar + chat dock exclusive
 
 **Статус: OPEN, не назначен.**  
-**Канон:** `DECISIONS.log` → `## 2026-07-25 — Left panel: sessions sidebar is the bar; chat overlay + dock switch`  
+**Канон:** `docs/DECISIONS.log` → `## 2026-07-25 — Left panel: sessions sidebar is the bar; chat overlay + dock switch`  
 **HANDOFF:** шапка 2026-07-25 (вечер+) left-panel модель.  
 **Код:** `crates/app/src/side_panel_left/`  
 **Форк:** `../Source/gpui` — **только читать** API `Window::set_exclusive_zone` / `set_exclusive_edge`. **Не** менять Source.  

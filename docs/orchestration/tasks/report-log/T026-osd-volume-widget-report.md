@@ -36,6 +36,6 @@
 - **low/known:** poll audio 250мс → OSD отстаёт ~¼с (HANDOFF/DECISIONS, MVP)
 - **low:** dual-monitor — OSD только primary; second display без плашки
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 - Не трогал: OSD — UI-модуль поверх уже задокументированного audio-сервиса; новых отклонённых альтернатив нет
 - Коммит: `osd : плашка громкости поверх audio-сервиса` (только `osd/` + `main.rs`)

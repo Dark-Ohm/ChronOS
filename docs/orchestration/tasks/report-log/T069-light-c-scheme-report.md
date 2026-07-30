@@ -11,7 +11,7 @@
 
 1. **`light_scheme()` переписана под Light C** (`schemes.rs:55`). Старая
    Latte-инверсия удалена. Новая схема — холодная сине-лавандовая база,
-   индиго-текст, акцент `#007acc` НЕ переопределён (правило design.md /
+   индиго-текст, акцент `#007acc` НЕ переопределён (правило docs/design.md /
    DECISIONS). Имя схемы `"Light"`, описание «Светлая схема ChronOS (Light C)».
 2. **Механизм выбора схемы (MVP — env).** `Theme::init` теперь читает
    `std::env::var("CHRONOS_THEME")`; валидное имя (case-insensitive) →
@@ -41,7 +41,7 @@
 | `#c4c8e6` | `border.default` | cardBorder — разделитель карточки | мокап `lightBase.cardBorder` |
 | `#d4d7ee` | `border.subtle` | subtle-разделитель (тоньше default) | **додумано** (осветление default) |
 | `#007acc` | `border.focused` | accent — glow-ребро/фокус-контур | мокап `lightBase.accent` (неон в деталях) |
-| `#007acc` | `accent.primary` | акцент НЕ переопределён | `Theme::default` (правило design.md) |
+| `#007acc` | `accent.primary` | акцент НЕ переопределён | `Theme::default` (правило docs/design.md) |
 | `#007acc` | `accent.selection` | selection — дефолтный | `Theme::default` (MVP) |
 | `#1f9bdc` | `accent.hover` | hover — дефолтный | `Theme::default` (MVP) |
 | `#c4c8e6` | `interactive.default` | cardBorder — контур контрола | мокап `lightBase.cardBorder` |
@@ -70,9 +70,9 @@
 ## Не тронуто (по брифу)
 
 - `DEFAULT_BASE16` / `default_scheme()` — тёмная схема эталон, 0 изменений.
-- `accent.primary` = `#007acc` — НЕ переопределён (правило design.md).
+- `accent.primary` = `#007acc` — НЕ переопределён (правило docs/design.md).
 - `status.*` — Catppuccin Mocha из `Theme::default`, Light C не диктует.
-- crates/app, виджеты, попапы, design/* — чужая зона.
+- crates/app, виджеты, попапы, docs/design/* — чужая зона.
 
 ## Верификация
 
@@ -116,7 +116,7 @@
 
 `git diff` — только `crates/ui/Cargo.toml`, `crates/ui/src/theme/mod.rs`,
 `crates/ui/src/theme/schemes.rs`, `Cargo.lock` (lock-дрейф от +tracing).
-crates/app, виджеты, попапы, design/* — НЕ тронуты.
+crates/app, виджеты, попапы, docs/design/* — НЕ тронуты.
 
 ## Хвосты / эскалация
 
@@ -125,7 +125,7 @@ crates/app, виджеты, попапы, design/* — НЕ тронуты.
   нет. Попапы/launcher/system_popup в этом смоке НЕ открывались — рендер
   светлой темы на попапах отдельно не верифицирован (чужая зона, бриф
   просил только бар). Если при открытии попапов всплывут тёмные хардкоды —
-  отдельная задача (свип палитры, как Grok №15 для STYLE.md).
+  отдельная задача (свип палитры, как Grok №15 для docs/STYLE.md).
 - `Cargo.lock` дрейфнул от добавления `tracing` в `chronos-ui` —
   workspace-dep уже был в дереве, lock просто зафиксировал. Не блокер.
 - rustfmt-дрейф в `mod.rs` (parse_hex перенос строки, base16_roundtrip

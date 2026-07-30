@@ -3,7 +3,7 @@
 # hermes-report-22 — SIDEBAR V2 (мокап → rsx)
 
 **Исход:** DELIVERED (не коммит — по брифу).  
-**INTENT:** code was v1 body (300px, 14 bars, blue-cyan, no header/permission/disks/footer chrome); task expects pixel-close mockup layout on `gpui-rsx` where 1:1; mockup `design/System Sidebar.dc.html` is authority for hex/sizes; height under bar unchanged.  
+**INTENT:** code was v1 body (300px, 14 bars, blue-cyan, no header/permission/disks/footer chrome); task expects pixel-close mockup layout on `gpui-rsx` where 1:1; mockup `docs/design/System Sidebar.dc.html` is authority for hex/sizes; height under bar unchanged.  
 **AUTH:** user said «го /fable …» — execute №22 in-session (fable-loop). No git commit (brief: не коммить).
 
 ## Done criteria (observed)

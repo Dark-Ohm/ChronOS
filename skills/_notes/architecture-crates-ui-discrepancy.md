@@ -1,22 +1,22 @@
-# ARCHITECTURE.md `crates/ui` Discrepancy
+# docs/ARCHITECTURE.md `crates/ui` Discrepancy
 
 > Task 3 of skills-graph hardening. See [[checkpoint-skill]] for the full index.
 
 ## Problem
 
-`ARCHITECTURE.md` describes a planned `crates/ui` fork of `gpui-component`
+`docs/ARCHITECTURE.md` describes a planned `crates/ui` fork of `gpui-component`
 that does **not exist on disk**. During the sibling-confusion RED test, both
 agents independently flagged this: the doc presents a *planned* component
 library as if it were real, but `crates/` contains only `app`, `luau`,
 `plugins`, `services`.
 
 This is a doc-vs-reality gap. It is NOT a `start-here` problem — it lives in
-`ARCHITECTURE.md`, which `start-here` Step 0 tells agents to treat as
+`docs/ARCHITECTURE.md`, which `start-here` Step 0 tells agents to treat as
 canonical. A canonical doc that describes non-existent structure is a trap.
 
 ## Evidence
 
-- `ARCHITECTURE.md` §2/§3: references a future `crates/ui` fold-in of
+- `docs/ARCHITECTURE.md` §2/§3: references a future `crates/ui` fold-in of
   `gpui-component`.
 - `chronos/Cargo.toml` + `crates/`: no `crates/ui`, no `gpui_component`
   dependency. Confirmed in the sibling test (RED + GREEN both read the
@@ -32,7 +32,7 @@ state.
 
 ## Status
 
-- [ ] File a `philip` doc-accuracy pass on `ARCHITECTURE.md`
+- [ ] File a `philip` doc-accuracy pass on `docs/ARCHITECTURE.md`
 - [ ] Correct the `crates/ui` claim (planned vs. real)
 
 ## Related

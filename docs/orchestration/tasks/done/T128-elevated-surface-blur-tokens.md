@@ -1,7 +1,7 @@
 # T128 — Elevated surface + blur tokens (visual depth wave 1/4)
 
 **Статус: OPEN, не назначен.**  
-**Канон:** `DECISIONS.log` / `MEMORY.md` / `HANDOFF.md` — visual depth 1–3  
+**Канон:** `docs/DECISIONS.log` / `docs/MEMORY.md` / `docs/HANDOFF.md` — visual depth 1–3  
   (glass/glow → panel motion → real 3D spike). **This task = step 1 only.**  
 **Skills:** `backdrop-blur`, `chronos-gpui-popup`, `chronos-shell` theming.  
 **Не:** enter/exit animation (T129), toast motion (T130), 3D mesh (T131–132).

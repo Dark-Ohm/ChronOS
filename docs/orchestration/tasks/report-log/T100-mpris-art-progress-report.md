@@ -88,7 +88,7 @@ $ cargo build --release -p chronos  # EXIT 0 (~2m21s)
 - **low:** first-frame GPUI image decode may lag one repaint for new `file://` path (not observed as blocker).
 - **info:** sticky pin not set — auto-pick prefers Playing mock over idle Vivaldi; if user pins Vivaldi with empty metadata, card shows id/placeholder.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 Не обновлял — расширение существующего MPRIS-контракта, без новых решений.
 

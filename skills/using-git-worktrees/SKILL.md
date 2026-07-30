@@ -215,4 +215,4 @@ git worktree add ../ChronOS-wt-<name> <commit>
 
 Do **not** use `git stash` to clear foreign uncommitted work (HANDOFF field
 rule). Prefer a clean worktree on a known commit. Details: `chronos-shell`
-skill + `HANDOFF.md`.
+skill + `docs/HANDOFF.md`.

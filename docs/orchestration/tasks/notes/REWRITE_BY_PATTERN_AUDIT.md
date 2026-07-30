@@ -57,8 +57,8 @@
 
 **OUR hot-reload (per MEMORY + code):**
 - `feat-inotify-hot-reload` merged to `master` (`d7ab5a7`, 2026-07-09): inotify watcher on `crates/luau` `PluginManager` + launcher `cache.rs` reuses the pattern. `Cargo.lock` confirms `inotify`/`inotify-sys` present.
-- **BUT canonical `ARCHITECTURE.md:81` says "inotify hot-reload watcher — NOT YET" and `:218` "inotify hot-reload watcher still missing (§9)"** for the app-config path. Our app has **no `config/` module, no `theme` Global** (`search_files config|Config|theme` in `crates/app/src` → only `plugin_bridge` hot-reload mention). So: luau + launcher-entry hot-reload EXIST; **app config.toml/theme.toml hot-reload does NOT yet exist** in ChronOS.
-- ⚠️ **Discrepancy flag:** MEMORY says the branch is merged; ARCHITECTURE.md (declared canonical in AGENTS.md) says app-level hot-reload is "NOT YET". The merged work covered *plugins + desktop-entry cache*, not *app config/theme*. Treat donor's config/theme hot-reload as **net-new** to us.
+- **BUT canonical `docs/ARCHITECTURE.md:81` says "inotify hot-reload watcher — NOT YET" and `:218` "inotify hot-reload watcher still missing (§9)"** for the app-config path. Our app has **no `config/` module, no `theme` Global** (`search_files config|Config|theme` in `crates/app/src` → only `plugin_bridge` hot-reload mention). So: luau + launcher-entry hot-reload EXIST; **app config.toml/theme.toml hot-reload does NOT yet exist** in ChronOS.
+- ⚠️ **Discrepancy flag:** MEMORY says the branch is merged; docs/ARCHITECTURE.md (declared canonical in AGENTS.md) says app-level hot-reload is "NOT YET". The merged work covered *plugins + desktop-entry cache*, not *app config/theme*. Treat donor's config/theme hot-reload as **net-new** to us.
 
 **What they do BETTER we should steal (rewrite-by-pattern):**
 1. **Separate `watch_config` / `watch_theme` booleans** in `Config` (`config/mod.rs:27-29, 133-136`) — disable per-file reload without restart. Cheap, useful. *(Better than our single global watcher toggle.)*
@@ -84,7 +84,7 @@
 **It is NOT:** a global shortcut daemon, evdev, winit, layerr, or compositor IPC. It is purely **GPUI's `bind_keys` action dispatch within an already-focused view**. No OS-level global hotkey.
 
 **Does it address our launcher keyboard-focus Critical bug?** **NO.**
-- Our Critical bug (MEMORY 'Launcher keyboard focus (Critical)') is **compositor-level**: `KeyboardInteractivity::OnDemand` + explicit focus doesn't auto-acquire on Hyprland/Niri; `activate_window()` (xdg_activation) is *rejected for layer-shell* (SESSION_REPORT.md:111-112, DECISIONS.log:194-199). keybinds.rs operates **after** a view is focused — it maps keys→actions, it cannot make the compositor deliver keys to the surface. The fix lives in the **launcher window/focus code, not keybinds.rs** (see §5).
+- Our Critical bug (MEMORY 'Launcher keyboard focus (Critical)') is **compositor-level**: `KeyboardInteractivity::OnDemand` + explicit focus doesn't auto-acquire on Hyprland/Niri; `activate_window()` (xdg_activation) is *rejected for layer-shell* (SESSION_REPORT.md:111-112, docs/DECISIONS.log:194-199). keybinds.rs operates **after** a view is focused — it maps keys→actions, it cannot make the compositor deliver keys to the surface. The fix lives in the **launcher window/focus code, not keybinds.rs** (see §5).
 - keybinds.rs is still **worth stealing** as a cleaner input model than our raw `on_key_down` string matching (see §5).
 
 **Our analog:** ABSENT — our `launcher/view.rs` uses `on_key_down` with raw `key`/`key_char` string matching, no `actions!`/`bind_keys`/`key_context`.
@@ -141,7 +141,7 @@ traits/: `mod.rs` 1, `styled_ext.rs` 20. `ui.rs` 61 (re-exports).
 **Can the donor's pattern fix our Critical bug?** **PARTIAL — and NOT the real fix.**
 - Adding #1+#2 (per-frame `focus()` + `track_focus`) is a **cheap, legitimate hygiene improvement** (cost **S**) and *may* mitigate focus loss on some compositors by re-asserting GPUI focus each frame. **But** the root cause (per MEMORY/SESSION_REPORT/DECISIONS.log) is compositor-level: layer-shell `OnDemand` needs the compositor to deliver keyboard focus, and `activate_window()`→`xdg_activation_v1` is *rejected for layer-shell* (gpui itself comments this). If the compositor never routes keys to the surface, GPUI `focus()` is a **no-op** (GPUI believes focused, but no key events arrive). So per-frame focus() alone does **not** solve the Critical bug.
 - The OMP/DECISIONS.log conclusion is option **(c): migrate launcher to XDG toplevel** (auto-receives focus, `activate_window()` works) — that is the genuine fix; it is **architectural**, not a keybind tweak.
-- **Recommendation:** rewrite-by-pattern #1+#2+#5 (per-frame focus re-assert, `track_focus`, `key_context`+`actions!`) into `launcher/view.rs` as a *hygiene* fix (S cost), but treat it as a mitigation; the real resolution remains the toplevel migration tracked in DECISIONS.log (undecided, awaiting Architect).
+- **Recommendation:** rewrite-by-pattern #1+#2+#5 (per-frame focus re-assert, `track_focus`, `key_context`+`actions!`) into `launcher/view.rs` as a *hygiene* fix (S cost), but treat it as a mitigation; the real resolution remains the toplevel migration tracked in docs/DECISIONS.log (undecided, awaiting Architect).
 
 **Our analog:** launcher EXISTS (cache/search/launch/view/entry/mod) — focus handling is the gap.
 **Rewrite cost:** **S** for the focus-hygiene patch; **XL** for the actual toplevel migration.
@@ -152,7 +152,7 @@ traits/: `mod.rs` 1, `styled_ext.rs` 20. `ui.rs` 61 (re-exports).
 ## 6. AGENTS.md / claim flags (unconfirmable or wrong)
 
 - ❌ **Brief claim "no README"** is **FALSE**. Donor root has `README.md` (3846 B) + `CONTRIBUTING.md` + `CLAUDE.md`(→AGENTS.md symlink). Only **LICENSE** is absent (confirmed). The *legal conclusion* ("rewrite-by-pattern only") still holds (no license = all rights reserved), but the "no README" sub-claim is wrong.
-- ⚠️ **ChronOS `ARCHITECTURE.md:81/218` ("inotify hot-reload — NOT YET") vs MEMORY ("feat-inotify-hot-reload merged d7ab5a7").** Not contradictory on inspection: the merged branch delivered **luau plugin + launcher-entry** hot-reload, NOT app **config/theme** hot-reload. Per AGENTS.md, ARCHITECTURE.md wins → app config/theme hot-reload is genuinely **not yet present**. Flagged as a doc/state discrepancy, not unconfirmable.
+- ⚠️ **ChronOS `docs/ARCHITECTURE.md:81/218` ("inotify hot-reload — NOT YET") vs MEMORY ("feat-inotify-hot-reload merged d7ab5a7").** Not contradictory on inspection: the merged branch delivered **luau plugin + launcher-entry** hot-reload, NOT app **config/theme** hot-reload. Per AGENTS.md, docs/ARCHITECTURE.md wins → app config/theme hot-reload is genuinely **not yet present**. Flagged as a doc/state discrepancy, not unconfirmable.
 - ⚠️ **Donor `launcher/mod.rs:642` uses `KeyboardInteractivity::Exclusive`** — directly contradicts our MEMORY's hard-won finding that `Exclusive` *crashes Hyprland/Niri*. Donor's launcher may itself be broken on those compositors; do **not** copy their interactivity choice. Our `OnDemand` is the safer one.
 - ✅ Donor `panel.rs` (claimed in their AGENTS.md) **exists** — confirmed.
 - ✅ Donor `control_center/`, `osd/`, `notification/` all exist as described.
@@ -173,5 +173,5 @@ traits/: `mod.rs` 1, `styled_ext.rs` 20. `ui.rs` 61 (re-exports).
 
 **control_center scaffold verdict:** reusable *architecture* (service-subscribe + command-dispatch), throwaway *code*; not a drop-in scaffold until service backends exist → **MEDIUM**.
 **keybinds verdict:** pure in-app GPUI `bind_keys`+`key_context` (no global daemon); **does NOT fix** the Critical focus bug.
-**launcher focus fix verdict:** steal per-frame `focus()` + `track_focus` (#1+#2) as **S-cost hygiene**; real fix is XDG-toplevel migration (XL, undecided in DECISIONS.log).
+**launcher focus fix verdict:** steal per-frame `focus()` + `track_focus` (#1+#2) as **S-cost hygiene**; real fix is XDG-toplevel migration (XL, undecided in docs/DECISIONS.log).
 **ui crate verdict:** **mostly tied to upstream `main` gpui**; only `InputBuffer` logic + theme color math (`base16`/`colorize`) are portable-by-rewrite; **Button primitive absent**.

@@ -8,7 +8,7 @@
 
 ## Outcome
 
-Чат-часть левой панели приведена к мокапу `design/Agent Thread.dc.html` с тремя утверждёнными отклонениями (YOLO, тёмная send, единый канвас). Визуальные блоки A, B, C реализованы полностью.
+Чат-часть левой панели приведена к мокапу `docs/design/Agent Thread.dc.html` с тремя утверждёнными отклонениями (YOLO, тёмная send, единый канвас). Визуальные блоки A, B, C реализованы полностью.
 
 **C-2 (gpui-component TextInput) — BLOCKER.** Интеграция `gpui-component` невозможна из-за конфликта версий gpui: крейт зависит от `gpui = { git = "https://github.com/zed-industries/zed" }`, ChronOS использует `gpui-ce` (Dark-Ohm/Chronos-GPUI). API несовместим (`AssetSource`, `Result`, `SharedString` не экспортируются нашей версией). Падение компиляции:
 

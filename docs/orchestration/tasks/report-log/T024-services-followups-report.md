@@ -2,7 +2,7 @@
 
 # HERMES — отчёт по заданию №7 (services follow-ups)
 
-_Дата: 2026-07-17. Сессия после ребута (контекст из HERMES.md + HANDOFF.md)._
+_Дата: 2026-07-17. Сессия после ребута (контекст из HERMES.md + docs/HANDOFF.md)._
 _Автор правок: Hermes (зона services + bar/widgets network/battery)._
 
 ## Статус

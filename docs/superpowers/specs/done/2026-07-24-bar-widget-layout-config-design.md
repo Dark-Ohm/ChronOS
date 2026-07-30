@@ -51,7 +51,7 @@ dock.toml (Mimo №8) для своих доменов.
   после того, как эта фаза докажет себя на баре.
 - **Per-monitor оверрайды** (Noctalia `[bar.<name>.monitor.*]`) — у нас
   и так весь chrome сидит на одном пультовом мониторе
-  (`crate::monitor::pult_display`, `DECISIONS.log` 2026-07-19) — не
+  (`crate::monitor::pult_display`, `docs/DECISIONS.log` 2026-07-19) — не
   актуально сейчас, не проектируем впустую.
 - **Капсульная группировка виджетов** (Noctalia group drag) — визуальная
   фича поверх готового движка, не блокирует эту фазу.

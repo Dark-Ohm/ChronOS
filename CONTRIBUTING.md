@@ -6,7 +6,7 @@
 
 ## Docs
 
-`HANDOFF.md` → `ARCHITECTURE.md` → `DECISIONS.log`. Чат и бриф агента проигрывают.
+`docs/HANDOFF.md` → `docs/ARCHITECTURE.md` → `docs/DECISIONS.log`. Чат и бриф агента проигрывают.
 
 ## Done
 
@@ -38,6 +38,6 @@ CLI: `./scripts/install-dev-cli.sh` → `chronos-rebuild && chronos-stop && chro
 
 ## PR
 
-Не переизобретай то, что уже в `DECISIONS.log`. Вопрос лучше, чем 400 LOC мимо архитектуры.
+Не переизобретай то, что уже в `docs/DECISIONS.log`. Вопрос лучше, чем 400 LOC мимо архитектуры.
 
 Apache-2.0 — `LICENSE` / `NOTICE`.

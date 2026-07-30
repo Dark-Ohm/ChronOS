@@ -61,7 +61,7 @@ the shell contract.
 | Phase | Status | Notes |
 |---|---|---|
 | **Skills** — this family, agents route here first | ✅ DONE | |
-| **Mockup** `design/Agent Thread.dc.html` | ✅ DONE | |
+| **Mockup** `docs/design/Agent Thread.dc.html` | ✅ DONE | |
 | **v0 — Thread canvas** (T109): thread header + message flow + composer | ✅ DONE (C-2 blocker, см. ниже) | Визуальные блоки A, B, C по мокапу;
   три утверждённых отклонения;
   C-2 gpui-component BLOCKER — homemade textarea fallback |

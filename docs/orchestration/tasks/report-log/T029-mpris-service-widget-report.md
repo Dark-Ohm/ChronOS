@@ -66,6 +66,6 @@
 - **low**: poll 500ms — лишние D-Bus Get при idle; заменить property
   streams в follow-up.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 - Не обновлялись (новый сервис по шаблону Service trait; канон не
   менялся).

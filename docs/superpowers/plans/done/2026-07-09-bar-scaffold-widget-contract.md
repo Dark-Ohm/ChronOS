@@ -12,11 +12,11 @@
 
 - `panic = "unwind"` — a panic in any listener/thread must not kill the shell (workspace `Cargo.toml` profile).
 - gpui is pinned to local path `/home/neo/Projects/SOURCE/gpui/gpui-ce-main/crates/gpui` (rev `20340e14874a3b55122e5cb2aa0d023874e08b2d`) — do NOT bump.
-- Object-safe `BarWidget` trait + runtime registry. NO `enum Widget` + `match` dispatch (ARCHITECTURE.md §6).
+- Object-safe `BarWidget` trait + runtime registry. NO `enum Widget` + `match` dispatch (docs/ARCHITECTURE.md §6).
 - Registry is a GPUI global; all bar windows read the same registry (one widget set across monitors).
 - `BarWidget::render(&self, window: &mut Window, cx: &App) -> AnyElement` — immutable `cx` (see spec §4 rationale).
 - YAGNI: no bar config file, no blur/borders, no concrete widgets, no `crates/luau`, no hot-reload.
-- Reconciliation note: ARCHITECTURE.md §6 mentions `HashMap<String, Box<dyn BarWidget>>`; this plan uses `Vec<Box<dyn BarWidget>>` because widget ORDER within a section is significant for layout and `HashMap` is unordered. Name-keyed lookup is not needed at scaffold stage; revisit only if named widget replacement is required.
+- Reconciliation note: docs/ARCHITECTURE.md §6 mentions `HashMap<String, Box<dyn BarWidget>>`; this plan uses `Vec<Box<dyn BarWidget>>` because widget ORDER within a section is significant for layout and `HashMap` is unordered. Name-keyed lookup is not needed at scaffold stage; revisit only if named widget replacement is required.
 - Work in the existing worktree `feat/bar-scaffold-widget-contract` (`.worktrees/feat-bar-scaffold-widget-contract`). Commit frequently, one commit per task.
 
 ---

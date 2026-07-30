@@ -5,7 +5,7 @@
 **Зона файлов:** `crates/app/src/side_panel_left/composer.rs` — функции
 `model_picker` и `handle_composer_key`; при необходимости поле состояния в
 `SidePanelLeft` (там же, где `composer_model_dropdown_open`). Ничего больше.
-**`HANDOFF.md`, `ARCHITECTURE.md`, `DECISIONS.log` — не трогать никогда.**
+**`docs/HANDOFF.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.log` — не трогать никогда.**
 
 **Отчёт:** `docs/orchestration/tasks/report/T149-model-picker-search-report.md`.
 
@@ -90,4 +90,4 @@
 
 
 ---
-**ПРИНЯТО 2026-07-30 (Architect):** живой смок на пересобранном шелле, скрины `scratchpad/smoke-postreboot/`. Детали — TBD.md блок 2026-07-30. T154: найдены+исправлены 2 бага (удвоение, клипборд), коммит 9d6020c.
+**ПРИНЯТО 2026-07-30 (Architect):** живой смок на пересобранном шелле, скрины `scratchpad/smoke-postreboot/`. Детали — docs/TBD.md блок 2026-07-30. T154: найдены+исправлены 2 бага (удвоение, клипборд), коммит 9d6020c.

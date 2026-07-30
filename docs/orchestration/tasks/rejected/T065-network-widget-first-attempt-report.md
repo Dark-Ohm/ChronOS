@@ -52,7 +52,7 @@ test bar::widgets::network::tests::view_idle_with_connectivity ... ok
 - **u64 saturating_sub** — защита от wrap-around счётчиков ядра. Теоретически возможно при перезагрузке интерфейса (сброс счётчиков → rx < prev.rx → saturating → 0 на одном тике, потом нормально). **Severity: low.**
 - **Mutex в render** — `self.sample.lock().unwrap()`. В однопоточном GPUI конкурентности нет, но `unwrap()` может panic при poisoned mutex (крайне маловероятно). **Severity: negligible.**
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
-- **ARCHITECTURE.md** — не обновлялся. Widget-specific изменения не затрагивают архитектурные решения.
-- **DECISIONS.log** — не обновлялся. Решения в рамках чёткого задания (редизайн виджета), архитектурно бесспорные.
+- **docs/ARCHITECTURE.md** — не обновлялся. Widget-specific изменения не затрагивают архитектурные решения.
+- **docs/DECISIONS.log** — не обновлялся. Решения в рамках чёткого задания (редизайн виджета), архитектурно бесспорные.

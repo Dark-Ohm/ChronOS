@@ -22,6 +22,6 @@
 - **Severity: Low** — Эвристика «Unknown + 0% = нет батареи» — MVP. Фолз-позитив возможен если батарея разряжена полностью (state=Empty, не Unknown). Но Empty ≠ Unknown, так что должно быть ок.
 - **Severity: Low** — Если UPower-демон упадёт, status станет Unavailable — виджет скроется. Это корректное поведение.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
-- ARCHITECTURE.md: не обновлён (виджет — реализация, не архитектурное решение)
-- DECISIONS.log: не обновлён (нет новых решений)
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
+- docs/ARCHITECTURE.md: не обновлён (виджет — реализация, не архитектурное решение)
+- docs/DECISIONS.log: не обновлён (нет новых решений)

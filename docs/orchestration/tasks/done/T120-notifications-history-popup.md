@@ -15,7 +15,7 @@ Commits: `0ebe6de` `7415fcb` `a90a71a` + errata `253f25b` (detach/ROW_H/✕).
 **Статус: OPEN, не назначен.**  
 **План (канон шагов):**  
 `docs/superpowers/plans/2026-07-24-notifications-history-popup.md`  
-**Мокап:** `design/Notifications Popup.dc.html`  
+**Мокап:** `docs/design/Notifications Popup.dc.html`  
 **Эталон окна/якоря:** `crates/app/src/updates_popup/` + `bar/widgets/updates.rs` (post-T117)
 
 ## Как выполнять (обязательно)

@@ -253,7 +253,7 @@ cargo build --workspace                 → Finished (0 errors, мой edit не
 | Файл | Статус | Суть |
 |------|--------|------|
 | `crates/services/src/compositor/hyprland.rs` | MOD | `execute_command` → Lua-сокет; pure `command_to_socket_line`; +2 юнит-теста; убран `dispatch`-импорт |
-| `DECISIONS.log` | MOD | запись: hyprland-rs Dispatch отклонён (почему), Lua-сокет принят |
+| `docs/DECISIONS.log` | MOD | запись: hyprland-rs Dispatch отклонён (почему), Lua-сокет принят |
 
 **НЕ трогал (чужое / вне зоны):** `compositor/mod.rs`, `compositor/types.rs`, `compositor/niri.rs`, `state.rs` (OpenCode WIP), `lib.rs` (OpenCode tray), `examples/tray-smoke.rs` (OpenCode), `crates/app/`, `Source/`. Коммит — поимённым `git add` только двух перечисленных файлов. Перед коммитом `git show --stat` глазами: в коммите ровно 2 файла (урок №5: не захватывать чужой дифф).
 

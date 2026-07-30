@@ -16,7 +16,7 @@ elsewhere, follow the link; do not re-derive.
 
 ### Memory layers (order of authority)
 
-1. Repo docs: `HANDOFF.md` / `ARCHITECTURE.md` / `DECISIONS.log` / `MEMORY.md` /
+1. Repo docs: `docs/HANDOFF.md` / `docs/ARCHITECTURE.md` / `docs/DECISIONS.log` / `docs/MEMORY.md` /
    `AGENTS.md` — **win on conflict**.
 2. Self-hosted **Hindsight** (podman, bank `chronos-ecosystem`, REST `:8888`) —
    long-term supplementary memory. Live skill: **`hindsight-self-hosted`**
@@ -36,18 +36,18 @@ as a standalone project name.
 
 Do this before coding, architecture answers, or "done" claims.
 
-1. **`HANDOFF.md`** (repo root) — **first every Architect/minion session**: who
+1. **`docs/HANDOFF.md`** (repo root) — **first every Architect/minion session**: who
    is in the field, queue, blood technical facts, field rules (stash ban,
    worktree isolation, pkill -x, single-instance, release-only UX smokes).
 2. **`AGENTS.md`** — persona, house rules, stack/hardware, module scope.
-3. **`MEMORY.md`** — durable rules (no AI commit trailers, Russian by default,
+3. **`docs/MEMORY.md`** — durable rules (no AI commit trailers, Russian by default,
    strict `SESSION_REPORT` / report format).
-4. **`ARCHITECTURE.md`** — accepted decisions (canonical).
-5. **`DECISIONS.log`** — rejected alternatives; read in full, not only grep.
+4. **`docs/ARCHITECTURE.md`** — accepted decisions (canonical).
+5. **`docs/DECISIONS.log`** — rejected alternatives; read in full, not only grep.
 6. **Minion file if you are one** — `GROK.md` / `CLINE.md` / … last section =
    current assignment; report → `<name>-report.md` **at repo root**.
 7. **`docs/superpowers/specs/` + `plans/`** — historical; corrections go to
-   `ARCHITECTURE.md`, not back into frozen specs.
+   `docs/ARCHITECTURE.md`, not back into frozen specs.
 
 **Completion criterion:** one sentence each — what this repo is, what the last
 accepted wave finished, whether an open field rule or DECISIONS item bites your
@@ -119,7 +119,7 @@ Routing only — open the skill and follow it.
 
 - Claims of "works": run the command, show output (`verification-before-completion`).
 - Window/UX work: **release binary** + grim / live log — unit green is not enough.
-- Minion reports: root `<name>-report.md`, SESSION_REPORT sections from MEMORY.md.
+- Minion reports: root `<name>-report.md`, SESSION_REPORT sections from docs/MEMORY.md.
 - Architect archives accepted reports to `report-log/` with an explicit commit
   (uncommitted deletes resurrect under foreign git ops).
 - MCP/Hindsight session-end if those tools were used.
@@ -155,5 +155,5 @@ Routing only — open the skill and follow it.
 - Fork internals (working on `../Source/` itself): **`gpui-fork-start-here`**
 - Layer-shell placement / popup sizing / on_hover+animation: **`gpui-layer-shell`**
 - `rsx!` / mockup→chrome / scroll+hover blood facts: **`gpui-rsx`**
-- Operational queue: **`HANDOFF.md`**
+- Operational queue: **`docs/HANDOFF.md`**
 - Dev CLI: **`docs/dev-cli.md`**

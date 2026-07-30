@@ -1,7 +1,7 @@
 # T133 — Wallpaper × waytrogen: first-class GUI integration
 
 **Статус: OPEN, не назначен.**  
-**Канон:** `DECISIONS.log` 2026-07-25 — integrate waytrogen, do not rewrite it.  
+**Канон:** `docs/DECISIONS.log` 2026-07-25 — integrate waytrogen, do not rewrite it.  
 **Исправление брифа:** предыдущая версия сводила waytrogen к «spawn + две кнопки».  
 Неверно. **GUI waytrogen — это и есть gallery.** Мы её **подключаем**, не вырезаем
 и не заменяем своим picker'ом.

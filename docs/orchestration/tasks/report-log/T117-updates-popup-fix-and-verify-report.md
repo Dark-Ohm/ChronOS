@@ -17,7 +17,7 @@
 - `close()`: обработка ошибки `remove_window()` с `tracing::warn!`
 
 ### `344d01a` — pixel-faithful rewrite к мокапу
-Полностью переписан `view.rs` по `design/Updates Popup.dc.html`:
+Полностью переписан `view.rs` по `docs/design/Updates Popup.dc.html`:
 - Header: `font-size:13px`, `font-weight:600`, padding `12px 14px`, `border-bottom`, SVG `icons/x.svg` вместо текста `"✕"`, кнопка `22×22` с `rounded:6px`
 - Rows: padding `9px 14px`, `border-bottom`, имя `font-size:12.5px font-weight:500` + `text-overflow:ellipsis`
 - AUR badge: точные `rgba` цвета `#cba6f7` (bg `0.12`, border `0.3`), `font-size:9.5px font-weight:600`

@@ -2,7 +2,7 @@
 name: gpui-rsx
 description: >
   Use when writing ChronOS UI with `gpui-rsx` / `rsx!`, converting mockup HTML
-  (e.g. design/*.dc.html) into panel chrome, wiring `overflow_y_scroll` /
+  (e.g. docs/design/*.dc.html) into panel chrome, wiring `overflow_y_scroll` /
   ScrollHandle in rsx or div, fixing E0631 on `hover={…}`, E0425 `div` not
   found after rsx expand, or deciding rsx vs builder `div()`. Triggers:
   "mockup → rsx", "gpui-rsx", "rsx!", "overflowYScroll", side_panel static

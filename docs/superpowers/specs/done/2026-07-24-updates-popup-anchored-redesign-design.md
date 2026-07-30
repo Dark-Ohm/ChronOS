@@ -72,7 +72,7 @@ Header и footer остаются вне скролла — тот же защи
 - `HEADER_BUDGET_H`/`FOOTER_BUDGET_H` — остаются фиксированным бюджетом
   (не измеряются, тот же принцип что и сейчас).
 - `LIST_MAX_H` — потолок списка, **300→340px** по мокапу
-  (`design/Updates Popup.dc.html`).
+  (`docs/design/Updates Popup.dc.html`).
 - `MAX_POPUP_H` = `HEADER_BUDGET_H + DIVIDER_H + LIST_MAX_H +
   FOOTER_BUDGET_H` — та же формула, что и сейчас, просто список внутри
   скроллится, а не пропадает: если пакетов больше, чем влезает в 340px,
@@ -81,7 +81,7 @@ Header и footer остаются вне скролла — тот же защи
   .track_scroll(&self.scroll)` (builder, не rsx — динамический список с
   `cx.listener` на каждой строке, см. §3).
 
-## 3. Визуал — 1:1 по мокапу `design/Updates Popup.dc.html`
+## 3. Визуал — 1:1 по мокапу `docs/design/Updates Popup.dc.html`
 
 Dark (эталон) + Light (принятый "Light C") варианты, оба заданы в
 мокапе буквально (хексы, тени, watermark-сигил, glow-линия — канон,

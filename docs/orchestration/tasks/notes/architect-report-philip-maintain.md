@@ -22,7 +22,7 @@ Cline» → fable-judge → `/philip`. Код net_stats: `dbce8ac`. Отчёт C
 | Файл | Изменение |
 |---|---|
 | `docs/superpowers/plans/2026-07-20-right-side-panel.md` | Progress table; Task 1/7 `[x]` + DONE; Task 6 checkboxes **reopened** + NOT ACCEPTED; constraint path → `net_stats`; cargo errata (`chronos` bin, не `chronos-app`) |
-| `ARCHITECTURE.md` §7 | pure non-`Service` modules; `net_stats` + pointer that design §3.3 is stale on data path |
+| `docs/ARCHITECTURE.md` §7 | pure non-`Service` modules; `net_stats` + pointer that design §3.3 is stale on data path |
 | `skills/chronos-shell/SKILL.md` | table `net_stats`; render-immunity → `net_stats::update_speed`; `side_panel_right/` in app map; audio per-app mute marked WIP |
 
 ### fable-judge (чат, не файл)
@@ -72,7 +72,7 @@ git show HEAD:crates/services/src/audio/types.rs | rg AudioStream
 
 # docs commit
 git show e485989 --stat
-# ARCHITECTURE.md | plan | chronos-shell SKILL.md
+# docs/ARCHITECTURE.md | plan | chronos-shell SKILL.md
 ```
 
 ## Новые риски / известные баги
@@ -84,10 +84,10 @@ git show e485989 --stat
 - **Low:** Progress table в plan снова устареет, если чекбоксы двигать без
   коммита.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
-- **ARCHITECTURE.md** — обновлён §7 (`e485989`).
-- **DECISIONS.log** — в этом проходе Philip не трогал; follow-up коммиты
+- **docs/ARCHITECTURE.md** — обновлён §7 (`e485989`).
+- **docs/DECISIONS.log** — в этом проходе Philip не трогал; follow-up коммиты
   `18057b2`/`0f1c830` могут нести доп. docs (сверить `git log` при чтении).
 
 ## Ссылки

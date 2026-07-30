@@ -63,7 +63,7 @@
   still soft-hides (OSD) can keep soft-hide; remove_window is now safer
   for real destroy paths (launcher, dock, tray_menu when re-enabled).
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 - Не обновлялись (баг/фикс в Source fork, не канон ChronOS app).
   Рекомендация Архитектору: короткий пункт в HANDOFF «remove_window fixed
   in Source @ <hash>».

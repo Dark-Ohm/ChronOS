@@ -7,7 +7,7 @@ description: Use when wiring, measuring or cutting gpui-component (Longbridge to
 
 ## Статус решения
 
-**Взят как инфраструктура IDE-панели** (`DECISIONS.log`, 2026-07-29) —
+**Взят как инфраструктура IDE-панели** (`docs/DECISIONS.log`, 2026-07-29) —
 реверс июльского «варианта C». Условие пересмотра было прописано в самом
 июльском решении и сработало: строим полноценный Shell-IDE, а `table`,
 `tree`, `virtual_list`, `dock`, `form`, `setting`, `select`, `sidebar`,

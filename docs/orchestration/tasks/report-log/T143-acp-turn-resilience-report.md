@@ -246,7 +246,7 @@ chronos-rebuild && chronos-stop && chronos-start   # RUST_LOG=info
 | D | Живьём | Улика |
 |---|---|---|
 | D0 | **ПОДТВЕРЖДЁН** | Hermes после хендшейка пошёл по клиентской ветке записи; ни один наш `fs/*` не ответил ошибкой |
-| D1 | **ПОДТВЕРЖДЁН** | карточка `write: /home/neo/notes.txt` → `stale`, `terminal` → `Done` (кадр `left-zoom.png`); на отмене `read: HANDOFF.md` тоже `stale` |
+| D1 | **ПОДТВЕРЖДЁН** | карточка `write: /home/neo/notes.txt` → `stale`, `terminal` → `Done` (кадр `left-zoom.png`); на отмене `read: docs/HANDOFF.md` тоже `stale` |
 | D2 таймаут | **ПРОВАЛЕН** | ни разу не сработал за три висяка: 1.5 ч, 158 с и 258 с при `TURN_TIMEOUT=120s` |
 | D2 Cancel | **ПОДТВЕРЖДЁН с изъяном** | `turn END (reason=cancel)` в логе; но маркера «⏹ Turn cancelled by user.» в треде НЕТ |
 | D3 | не проверялся живьём | отклонён по коду (см. вердикт выше) |

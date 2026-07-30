@@ -60,6 +60,6 @@ KEY: шелл живой, `echo` доехал до VT grid (три строки:
 - Рендер 24 строк div'ами — spike OK, на 144Hz/длинном scrollback нужен custom Element.
 - Auto-probe **off by default**; только `CHRONOS_DT_PROBE=1`.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
-- Не обновлялись (спайк, не продуктовое API). Desktop-widget plugin API по-прежнему gap в MEMORY.md «На горизонте» — после приёмки спайка Архитектор может зафиксировать: `Layer::Background` + PTY/VT на Rust жизнеспособны на Hyprland 0.55.4.
+- Не обновлялись (спайк, не продуктовое API). Desktop-widget plugin API по-прежнему gap в docs/MEMORY.md «На горизонте» — после приёмки спайка Архитектор может зафиксировать: `Layer::Background` + PTY/VT на Rust жизнеспособны на Hyprland 0.55.4.

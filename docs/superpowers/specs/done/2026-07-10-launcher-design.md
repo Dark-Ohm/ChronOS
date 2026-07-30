@@ -25,7 +25,7 @@ from the shell process, and closes on selection or Escape.
 
 ### 2.1 GPUI entity — new layer-shell surface
 
-Per `ARCHITECTURE.md §4`, overlay layer is reserved for launcher/notifications/osd.
+Per `docs/ARCHITECTURE.md §4`, overlay layer is reserved for launcher/notifications/osd.
 The launcher opens as a **centered overlay window** on the focused display:
 
 ```rust
@@ -320,7 +320,7 @@ dependencies used by other crates.
 - **Icon rendering** — `.desktop` `Icon=` field parsed and stored, but actual
   icon loading/rendering is a follow-up (requires SVG/PNG → GPUI image, non-trivial)
 - **`LauncherView` trait integration** — module works standalone; trait
-  integration is a follow-up per `ARCHITECTURE.md §6`
+  integration is a follow-up per `docs/ARCHITECTURE.md §6`
 - **Multi-monitor** — launcher opens on focused display (same as bar); per-display
   launcher is a follow-up
 - **Categories / filtering** — single flat list; category filtering is YAGNI

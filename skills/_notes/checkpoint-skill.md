@@ -51,7 +51,7 @@ router.
 
 - `hindsight-self-hosted` — real Hindsight stack (bank `chronos-ecosystem`);
   do **not** use stale hindsight-local/cloud (`uvx hindsight-embed`).
-- Repo canon: `HANDOFF.md`, `ARCHITECTURE.md`, `DECISIONS.log`, `MEMORY.md`,
+- Repo canon: `docs/HANDOFF.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.log`, `docs/MEMORY.md`,
   `AGENTS.md`.
 
 ## Authority

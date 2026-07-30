@@ -107,7 +107,7 @@ hover на строках updates/tray меняет фон), `hyprctl layers -j`
 
 Планируемые коммиты (когда дерево станет зелёным):
 - №12: `notifications : жёсткий клип вместо pixel-оценки высоты (тот же паттерн, что updates_popup 67f7d10)` → `mod.rs` + `view.rs`.
-- №13: `ui : бордер+hover+AUR-бейдж на попапах (visual parity с design/*.dc.html)` → 4 `view.rs`.
+- №13: `ui : бордер+hover+AUR-бейдж на попапах (visual parity с docs/design/*.dc.html)` → 4 `view.rs`.
 
 ВНИМАНИЕ ПО АТОМАРНОСТИ: №12 и №13 оба правят
 `notifications/view.rs` (№12: строки body/list-clip; №13: бордер на тот

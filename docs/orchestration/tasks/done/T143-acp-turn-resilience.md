@@ -738,4 +738,4 @@ readiness.
 `tokio::time::timeout`, парсинг чанков и `session.lock()`. На главном потоке
 остались только `rx.await` на одном oneshot (`client.rs:789`) и `rx.recv()`
 канала событий в composer'е. Это и есть граница «tokio для IPC, GPUI для UI»
-из DECISIONS.log, а не её нарушение.
+из docs/DECISIONS.log, а не её нарушение.

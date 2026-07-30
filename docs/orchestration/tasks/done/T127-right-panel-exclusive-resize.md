@@ -1,7 +1,7 @@
 # T127 — Right panel: tab rail bar + content overlay + dock (mirror left)
 
 **Статус: OPEN, не назначен.**  
-**Канон:** `DECISIONS.log` → `## 2026-07-25 — Right panel: tab rail bar + content overlay + dock`  
+**Канон:** `docs/DECISIONS.log` → `## 2026-07-25 — Right panel: tab rail bar + content overlay + dock`  
 **Зеркало продукта:** T126 left (`side_panel_left` post-errata `f89e27d`) —  
 sessions sidebar ↔ **tab rail**, chat ↔ **content**, Super+A ↔ **Super+G**.  
 **Код:** `crates/app/src/side_panel_right/` + IPC  

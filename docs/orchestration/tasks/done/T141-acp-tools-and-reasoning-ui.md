@@ -1,7 +1,7 @@
 # T141 — ACP tool cards + reasoning blocks in chat
 
 **Статус: OPEN. После T140 (tools must actually run).**  
-**Канон:** revive design + mockups `design/Agent Thread.dc.html`.  
+**Канон:** revive design + mockups `docs/design/Agent Thread.dc.html`.  
 **Зависит:** T140 permission auto-approve.
 
 | | |

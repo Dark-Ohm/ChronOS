@@ -85,7 +85,7 @@ git status --short
 - **Severity low:** spawn fire-and-forget — если `systemctl`/`hyprctl`
   missing, только `warn!` в лог (корректно для soft-fail).
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 - Не обновлялись (ожидают приёмки/коммита Архитектора).
 

@@ -11,7 +11,7 @@ Review: report-log/T125-*-review.md.
 # T125 — System popup (anchored redesign)
 
 **Статус: OPEN, не назначен.**  
-**Мокап:** `design/System Popup.dc.html` (Dark + Light C)  
+**Мокап:** `docs/design/System Popup.dc.html` (Dark + Light C)  
 **Код:** `crates/app/src/system_popup/{mod,view,gaming_mode}.rs`  
 **Триггер:** `crates/app/src/bar/widgets/system.rs`  
 **Эталон якоря:** `updates_popup` / `volume_popup` post-T117/T121  

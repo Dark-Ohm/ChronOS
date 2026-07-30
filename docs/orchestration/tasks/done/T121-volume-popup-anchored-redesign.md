@@ -21,7 +21,7 @@ Review: `report-log/T121-volume-popup-anchored-redesign-review.md`.
 | | |
 |---|---|
 | **План (Task 1–5)** | `docs/superpowers/plans/2026-07-24-volume-popup-anchored-redesign.md` |
-| **Мокап** | `design/Volume Popup.dc.html` (Dark + Light C) |
+| **Мокап** | `docs/design/Volume Popup.dc.html` (Dark + Light C) |
 | **Эталон якоря** | `updates_popup/` + `bar/widgets/updates.rs` |
 | **Отчёт** | `docs/orchestration/tasks/report/T121-volume-popup-anchored-redesign-report.md` |
 

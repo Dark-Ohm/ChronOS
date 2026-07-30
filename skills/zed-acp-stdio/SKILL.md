@@ -75,7 +75,7 @@ default `"hermes" ["acp"]`), `HermesClient` wraps one connection,
 `#[derive(Clone)]`, sessions held per-client. Matches Zed's model above:
 one connection per agent server, sessions multiplexed on it.
 
-**Revised 2026-07-23 (`DECISIONS.log`, T108):** left panel gets a
+**Revised 2026-07-23 (`docs/DECISIONS.log`, T108):** left panel gets a
 multi-agent switcher (Hermes/Cline/OpenCode/... — whichever actually
 speak ACP stdio, verified not assumed). This replaces the older
 "one process per ChronOS shell" model below with Zed's actual pattern —

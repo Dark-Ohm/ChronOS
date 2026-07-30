@@ -29,9 +29,9 @@ embedded SVG assets via `crates/app/src/assets.rs`.
 
 ## Global Constraints
 
-- Design brief: `design.md` §"Shell-IDE правая панель (таб-контейнер)" —
+- Design brief: `docs/design.md` §"Shell-IDE правая панель (таб-контейнер)" —
   order of the 10 tabs is fixed, do not reorder.
-- Accepted mockup: `design/shell-ide-panel.zip` (Next.js/Tailwind preview,
+- Accepted mockup: `docs/design/shell-ide-panel.zip` (Next.js/Tailwind preview,
   `components/panel/theme.ts` has the literal canon hex values — this plan
   uses the same values via `Theme::global(cx)`, never hardcoded hex).
 - Palette: Catppuccin Mocha roles only, via `chronos_ui::Theme::global(cx)`
@@ -56,7 +56,7 @@ embedded SVG assets via `crates/app/src/assets.rs`.
 - Existing pattern for rendering an icon: `svg().path("icons/name.svg").size(px(N)).text_color(color)`
   (see `crates/app/src/bar/widgets/battery.rs:80`).
 - Live UX verification for window/layout code is release build + grim,
-  not unit tests alone (`HANDOFF.md`, `verification-before-completion`
+  not unit tests alone (`docs/HANDOFF.md`, `verification-before-completion`
   skill) — Task 5 below is mandatory, not optional polish.
 
 ## Out of scope for this plan (separate future plans/T-tasks)
@@ -150,7 +150,7 @@ Expected: FAIL to compile — `PanelTab` does not exist yet.
 
 //! Tab identity and fixed ordering for the IDE tab-container.
 //!
-//! Order is fixed by the design brief (`design.md` §"Shell-IDE правая
+//! Order is fixed by the design brief (`docs/design.md` §"Shell-IDE правая
 //! панель (таб-контейнер)") — do not reorder `ALL` without updating the
 //! brief and the accepted mockup.
 
@@ -423,7 +423,7 @@ Expected: FAIL to compile — `rail_button_bg` / module `rail` doesn't exist.
 //!
 //! One `on_hover`-free button per `PanelTab::ALL`; active tab gets an
 //! `accent.primary` bar on its left edge + `interactive.hover` fill.
-//! Design brief: `design.md` §"Shell-IDE правая панель (таб-контейнер)".
+//! Design brief: `docs/design.md` §"Shell-IDE правая панель (таб-контейнер)".
 
 use gpui::{div, prelude::*, px, svg, App, Hsla, IntoElement, Window};
 
@@ -762,7 +762,7 @@ Bump the width constant in `mod.rs`:
 
 ```rust
 // crates/app/src/side_panel_right/mod.rs:31
-/// Mockup width (`design/shell-ide-panel.zip` — tab container, 10 tabs).
+/// Mockup width (`docs/design/shell-ide-panel.zip` — tab container, 10 tabs).
 const PANEL_WIDTH: f32 = 560.;
 ```
 
@@ -779,7 +779,7 @@ Expected: clean, no errors. `cx.listener` closures and the `PanelTab: Copy`
 derive from Task 1 should make the borrow-checker happy — if you hit an
 RPIT-lifetime-capture error (E0502/E0499) on the closure passed to
 `render_rail`, this repo has hit this class of bug three times already
-(`HANDOFF.md` 2026-07-23) — the fix is building the rail element before
+(`docs/HANDOFF.md` 2026-07-23) — the fix is building the rail element before
 any other `cx.listener(...)` call in this render, not after.
 
 - [ ] **Step 6: Commit**

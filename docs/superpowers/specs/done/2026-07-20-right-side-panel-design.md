@@ -9,7 +9,7 @@
 
 ## 1. Цель
 
-Первая из двух боковых панелей ChronOS (см. `roadmap.md` §«Боковые панели»).
+Первая из двух боковых панелей ChronOS (см. `docs/roadmap.md` §«Боковые панели»).
 Правая панель — расширенная поверхность виджетов, слишком тяжёлых для бара:
 полноценный MPRIS-плеер, живой мониторинг CPU/RAM/GPU, сетевой трафик,
 и системные power-действия. Левая agent-панель (чат) — отдельная спека,
@@ -41,7 +41,7 @@
 
 Панель **не** держит экран постоянно занятым (в отличие от бара) —
 это lazy `Layer::Overlay`, по образцу launcher/notifications
-(`ARCHITECTURE.md §4`):
+(`docs/ARCHITECTURE.md §4`):
 
 ```rust
 WindowOptions {
@@ -89,7 +89,7 @@ event (`hyprctl`/hyprland-rs pointer position polling). Нужна развед�
 
 ### 2.3 Reentrant-close и dismiss
 
-Наследует стандартные попап-конвенции `ARCHITECTURE.md §4.1`:
+Наследует стандартные попап-конвенции `docs/ARCHITECTURE.md §4.1`:
 explicit dismiss only (Esc/re-toggle/click-away при pinned), close_this
 guard для reentrant `remove_window()`.
 
@@ -214,7 +214,7 @@ git/shell).
 финальная итерация). Ключевые решения:
 
 - Шрифты — `Inter` (UI-текст) + `JetBrains Mono` (числа/лейблы),
-  соответствует `STYLE.md` (`font_ui`/`font_mono`).
+  соответствует `docs/STYLE.md` (`font_ui`/`font_mono`).
   **Статус 2026-07-21:** оба поля в `Theme` (`font_mono` `3e04264`,
   `font_ui` `"Inter"` `18c88f0`). Потребители панели ещё пишутся
   (Task 9+); до подключения — GPUI default family.
@@ -254,7 +254,7 @@ git/shell).
   (аргументы `systemctl`/`loginctl`/`hyprctl`), без реального spawn
   в тестах.
 - Live smoke (обязательно, per `verification-before-completion`
-  skill и HANDOFF.md): release-сборка, реальный hover/pin на живом
+  skill и docs/HANDOFF.md): release-сборка, реальный hover/pin на живом
   Hyprland, реальная GPU-нагрузка (`glxgears`/игра) для проверки, что
   spectrum-бар GPU реально шевелится, `RUST_LOG=info`, grim-скриншоты
   обоих состояний (peek/pinned).

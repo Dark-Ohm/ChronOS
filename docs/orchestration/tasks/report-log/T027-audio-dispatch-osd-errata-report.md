@@ -1,6 +1,6 @@
 <!-- T027 — migrated 2026-07-22 from docs/orchestration/report-log/grok-report-3.md — see docs/orchestration/tasks/MIGRATION.md -->
 
-<!-- ⚠ АНОМАЛИЯ (не разобрана, см. HANDOFF.md "АНОМАЛИЯ" 2026-07-17): исходный
+<!-- ⚠ АНОМАЛИЯ (не разобрана, см. docs/HANDOFF.md "АНОМАЛИЯ" 2026-07-17): исходный
      grok-report-3.md был обнаружен молча перезаписанным неизвестным источником —
      содержимое ниже НЕ гарантированно то, что архитектор изначально принял.
      Не доверять деталям без сверки с git-историей коммитов 6f24bb3/f4edb88. -->
@@ -39,7 +39,7 @@
 - **low:** soft-hide оставляет layer-shell surface живым (input region пустой → клики pass-through). Если когда-нибудь понадобится полный destroy — чинить frame `.log_err` в Source/gpui.
 - **process:** параллельный WIP (Hermes/Mimo/OpenCode) периодически ломал `cargo test --workspace` (network/upower if-let, tray menu fields). Верификация — на изолированном дереве; их stash: `tmp-foreign-wip-*` (если ещё лежат — `git stash list`).
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 - Не трогал (dispatch уже подразумевался audio MVP; OSD soft-hide — UI-деталь)
 
 ## Коммиты

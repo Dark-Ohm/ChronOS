@@ -12,8 +12,8 @@ description: >
 
 # Chronos Shell
 
-Canonical design: `ARCHITECTURE.md` (accepted) + `DECISIONS.log` (rejected +
-why) at repo root. **Operational field state:** `HANDOFF.md` — read first in
+Canonical design: `docs/ARCHITECTURE.md` (accepted) + `docs/DECISIONS.log` (rejected +
+why) at repo root. **Operational field state:** `docs/HANDOFF.md` — read first in
 every multi-agent / minion session. This skill is *where the code lives and how
 it wires*; those docs win on *why*. Session routing: `start-here`.
 
@@ -370,7 +370,7 @@ Package name is **`chronos`** (`-p chronos`), not `chronos-app`.
   machinery is correct code, just unused while hover is off). Same
   reasoning applies to `exclusive_zone`: fine for a bar that opens rarely,
   bad UX for a panel resized/toggled constantly — tried, reverted the
-  same session (`DECISIONS.log` 2026-07-23).
+  same session (`docs/DECISIONS.log` 2026-07-23).
 - **IPC toggle command pattern** (`crates/app/src/ipc/`): a new externally
   triggerable action mirrors `toggle-launcher` exactly — payload const +
   `encode_*`/`is_*` pair in `messages.rs`, a new `mpsc::unbounded_channel`

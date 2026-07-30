@@ -93,7 +93,7 @@ needed to "keep the reactor alive". See `crates/app/src/main.rs` — the comment
 there is load-bearing, do not "simplify" it away.
 
 Corollary: prefer keeping tokio primitives off the main thread entirely
-(DECISIONS.log "Runtime split": tokio for IPC/D-Bus, GPUI executor for UI). The
+(docs/DECISIONS.log "Runtime split": tokio for IPC/D-Bus, GPUI executor for UI). The
 budget fix removes the cliff, it does not make main-thread tokio a good idea.
 
 ## How to diagnose this in one shot

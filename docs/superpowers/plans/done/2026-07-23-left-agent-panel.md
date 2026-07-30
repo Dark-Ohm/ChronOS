@@ -12,7 +12,7 @@
 
 - gpui-ce layer-shell: `WindowKind::LayerShell`, `Layer::Overlay`, `Anchor::LEFT | TOP | BOTTOM`
 - ACP SDK: `agent-client-protocol = "0.5"`, `agent-client-protocol-tokio = "0.5"`
-- gpui-component: `../Source/gpui-component` (already in ARCHITECTURE.md as planned `crates/ui`)
+- gpui-component: `../Source/gpui-component` (already in docs/ARCHITECTURE.md as planned `crates/ui`)
 - Hermes: stdio transport, one process per ChronOS shell
 - All UI under `crates/app/src/side_panel_left/`
 - All service code under `crates/services/src/hermes_acp/`

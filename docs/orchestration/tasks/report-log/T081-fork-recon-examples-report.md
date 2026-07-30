@@ -92,7 +92,7 @@ _Верифицировано: fable-judge (VERIFIED WITH CAVEATS) + Philip cita
 - **Low:** gpui-component не проверен компиляцией. ChronOS не использует (SKILL.md).
 - **Low:** Чужие файлы в Source/ (`brief.md`, `findings/`, `plan.json`) — от параллельных агентов. Не влияют на результаты.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 - Не обновлялись — разведка документирует, не меняет архитектуру.
 - Подтверждено: gpui_elements всё ещё исключён (ARCHITECTURE §2 актуален).

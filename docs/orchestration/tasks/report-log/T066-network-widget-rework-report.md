@@ -66,7 +66,7 @@ $ rg -n 'Theme \{' crates --type rust
 - `font_ui` пока никем не читается — потребители (Task 9 MPRIS-карточка и
   прочий UI панели) ещё впереди. Задел, не регресс.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 - Не обновлялись: мелкое API-поле темы, уже заложено в плане/спеке правой
   панели; отдельного ADR не требует.

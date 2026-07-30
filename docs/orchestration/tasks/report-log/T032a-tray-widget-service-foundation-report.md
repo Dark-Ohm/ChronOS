@@ -39,8 +39,8 @@
 - `NameOwnerChanged`-вотчер держит отдельный `DBusProxy` + stream; при ретрае `serve` (обрыв соединения) старый вотчер не отменяется явно — потенциально висячая задача при длительных обрывах. Severity: low (для десктоп-сессии соединение стабильно).
 - Текстовый бейдж вместо иконки — визуально не по-Tray-канону, но функционален. Severity: low (явный MVP-фоллбэк по спеке).
 
-## Статус ARCHITECTURE.md / DECISIONS.log
-- Не обновлял. Решение (tray = server-side watcher + client proxy, sync dispatch) повторяет уже закреплённый паттерн notification/ (server-side zbus 5.17, Handle-guard, std::sync::Mutex). Если Архитектор хочет зафиксировать tray в ARCHITECTURE.md — сказать, добавлю.
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
+- Не обновлял. Решение (tray = server-side watcher + client proxy, sync dispatch) повторяет уже закреплённый паттерн notification/ (server-side zbus 5.17, Handle-guard, std::sync::Mutex). Если Архитектор хочет зафиксировать tray в docs/ARCHITECTURE.md — сказать, добавлю.
 
 ---
 

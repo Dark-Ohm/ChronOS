@@ -57,7 +57,7 @@ The bar shows only state that remains meaningful across the desktop:
 - compact system cluster
 - clock
 
-The mode control always exposes an accessible text label, but it must respect the accepted bar composition in `STYLE.md`: CAVA remains strictly centered and the clock remains the far-right item. The mode switch therefore extends the existing project/context control in the right cluster or opens from the ChronOS entry; it must not occupy or displace the center slot. Tool-specific controls belong in panels, not the top bar.
+The mode control always exposes an accessible text label, but it must respect the accepted bar composition in `docs/STYLE.md`: CAVA remains strictly centered and the clock remains the far-right item. The mode switch therefore extends the existing project/context control in the right cluster or opens from the ChronOS entry; it must not occupy or displace the center slot. Tool-specific controls belong in panels, not the top bar.
 
 ### 3.2 Left rail and intelligence panel
 

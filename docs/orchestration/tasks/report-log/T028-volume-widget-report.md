@@ -53,5 +53,5 @@
 - **low**: click/scroll без hitbox-automation не закрыты end-to-end в этом
   отчёте.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 - Не обновлялись (UI-виджет в зоне bar/widgets, канон не менялся).

@@ -66,7 +66,7 @@ git show --stat HEAD
 - **Severity low (archived):** первый poll после close мог показать
   `pid: -1` на layer; повтор +0.5s — чисто 0.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 - Не обновлялись (скелет; канон в плане/спеке правой панели).
 

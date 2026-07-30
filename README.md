@@ -55,8 +55,8 @@ crates/
 └── plugins    Luau plugins (data, not a Rust crate) — e.g. clock/
 ```
 
-Canonical design lives in [`ARCHITECTURE.md`](ARCHITECTURE.md); rejected
-alternatives and their rationale in [`DECISIONS.log`](DECISIONS.log). The
+Canonical design lives in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); rejected
+alternatives and their rationale in [`docs/DECISIONS.log`](docs/DECISIONS.log). The
 original approved spec is kept as a historical record under
 [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
@@ -105,21 +105,21 @@ cargo test --workspace --lib --bins
 > **Note on verification.** For window/UX code, "compiles + green unit tests" is
 > not sufficient — changes are validated with a release binary against a live
 > Wayland session (`RUST_LOG=info`, `grim` screenshots). See
-> [`HANDOFF.md`](HANDOFF.md) for the smoke recipes.
+> [`docs/HANDOFF.md`](docs/HANDOFF.md) for the smoke recipes.
 
 ## Status
 
 **Work in progress — everything is subject to revision.** The shell already runs
 with a working bar (clock, workspaces, network, volume, MPRIS, tray), dock,
 launcher, notifications, OSD, wallpaper control and an SNI/DBusMenu tray. See
-[`HANDOFF.md`](HANDOFF.md) for the current state and open work.
+[`docs/HANDOFF.md`](docs/HANDOFF.md) for the current state and open work.
 
 ## Development
 
 **[Dark-Ohm](https://github.com/Dark-Ohm)** · rules in [`CONTRIBUTING.md`](CONTRIBUTING.md) ·
 agent tasks under [`docs/orchestration/`](docs/orchestration/).
 
-`HANDOFF.md` → `ARCHITECTURE.md` → `DECISIONS.log`.
+`docs/HANDOFF.md` → `docs/ARCHITECTURE.md` → `docs/DECISIONS.log`.
 ## License
 
 Licensed under the **Apache License, Version 2.0** — see [`LICENSE`](LICENSE).

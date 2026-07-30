@@ -44,5 +44,5 @@
 - **Low:** ydotool dual-monitor hitbox drift — automation, не UI.
 - **Info:** предыдущий orphan-коммит `8ad3da8` (popup без picker) не на master — этот коммит полный (popup+picker) поверх `2522018`.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 - Не трогал. Расширение MVP audio backend (pw-dump list + set-default) укладывается в существующий wpctl-путь; DECISIONS про native pipewire backend по-прежнему в силе.

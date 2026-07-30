@@ -12,7 +12,7 @@ Verified against `updates_popup`, `volume_popup`, `system_popup`,
 ## The 6-piece shape
 
 A popup needs exactly these parts. The reentrancy guard (`close_this`) is the
-one thing people get wrong and it leaves a GHOST popup (see HANDOFF.md
+one thing people get wrong and it leaves a GHOST popup (see docs/HANDOFF.md
 "СИСТЕМНЫЙ БАГ: window.remove_window()").
 
 > **`window_options` below is the LayerShell fallback / fixed-corner shape.**

@@ -29,7 +29,7 @@ existing bar-widget logic into a shared module (`net_stats`), one new
   `Instant`/`Duration` injected as parameters, exactly the pattern in
   `crates/services/src/net_stats.rs` (`update_speed`, `SAMPLE_INTERVAL`).
   Bar widget re-exports usage via `chronos_services::net_stats` (Task 1 done).
-- Popup/panel window lifecycle follows `ARCHITECTURE.md §4.1`: explicit
+- Popup/panel window lifecycle follows `docs/ARCHITECTURE.md §4.1`: explicit
   dismiss only, `close_this` for in-window close (never re-entrant
   `handle.update` for `remove_window()`). **Correction discovered during
   planning:** every existing popup in this codebase (`volume_popup`,
@@ -466,7 +466,7 @@ field:
     pub font_mono: &'static str,
     /// UI text (labels, titles, body copy) — everything that isn't a
     /// number or a mono-styled value. `font_mono` stays reserved for
-    /// digits/code/mono-widgets per STYLE.md.
+    /// digits/code/mono-widgets per docs/STYLE.md.
     pub font_ui: &'static str,
 ```
 
@@ -1387,7 +1387,7 @@ impl Render for SidePanelRightView {
 //! pinned (bar-widget click / hotkey, this task). Window lifecycle
 //! mirrors `system_popup/`/`volume_popup/`: `Layer::Overlay`,
 //! `KeyboardInteractivity::None`, `close_this` reentrancy guard
-//! (`ARCHITECTURE.md §4.1` — never re-entrant `handle.update` for
+//! (`docs/ARCHITECTURE.md §4.1` — never re-entrant `handle.update` for
 //! `remove_window()` from inside that window's own callback).
 //!
 //! **No Esc-to-close** — matches the real convention already in this
@@ -1453,7 +1453,7 @@ pub fn open_pinned(cx: &mut App) {
 ///
 /// Note the `match` instead of `let _ =`: `system_popup`/`volume_popup`
 /// swallow this Err today, and a swallowed `handle.update` Err is exactly
-/// what hid the ghost-window bug for a full session (HANDOFF.md
+/// what hid the ghost-window bug for a full session (docs/HANDOFF.md
 /// 2026-07-18). New code does not inherit that wart — an Err here means
 /// the handle was taken but the window never closed, i.e. a ghost.
 pub fn close(cx: &mut App) {
@@ -1469,7 +1469,7 @@ pub fn close(cx: &mut App) {
 
 /// Close from inside a callback that already holds `&mut Window` for this
 /// panel. Must not re-enter `handle.update` on the same id (ghost-window
-/// guard, `ARCHITECTURE.md §4.1`).
+/// guard, `docs/ARCHITECTURE.md §4.1`).
 pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
     let this = window.window_handle();
     let tracked = cx
@@ -2719,7 +2719,7 @@ In `view.rs`, on `impl SidePanelRightView`:
             cx.background_executor().timer(ARM_TIMEOUT).await;
             // NOT `let _ = view.update(..)` — an Err means the view is
             // gone while a power action sits armed, the exact class of
-            // swallowed Err that hid the ghost-window bug (HANDOFF.md
+            // swallowed Err that hid the ghost-window bug (docs/HANDOFF.md
             // 2026-07-18). Plan Global Constraints forbid it.
             match view.update(cx, |view, cx| {
                 // Only disarm if nothing re-armed a different action in
@@ -2902,7 +2902,7 @@ Expected: all five checks pass, no ghost windows (confirm via
 `hyprctl clients | grep chronos-side-panel` showing exactly zero or one
 window matching, never two), no panics in the log.
 
-- [ ] **Step 5: Update `roadmap.md`**
+- [ ] **Step 5: Update `docs/roadmap.md`**
 
 Add a closed-wave entry for this feature under a new
 `## Волна «правая боковая панель»` heading, listing every commit hash
@@ -2912,6 +2912,6 @@ to get the exact hashes — do not guess them).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/app/src/bar/widgets roadmap.md
+git add crates/app/src/bar/widgets docs/roadmap.md
 git commit -m "app : side_panel_right — интеграция с баром (клик-триггер), roadmap закрыт"
 ```

@@ -1,7 +1,7 @@
 # T139 — Left agent panel ChronOS character (not Zed clone)
 
 **Статус: OPEN. После T140–T141 (functional chat+tools).**  
-**Канон:** `design/Agent Panel.dc.html`, `design/Agent Thread.dc.html`; Theme tokens.
+**Канон:** `docs/design/Agent Panel.dc.html`, `docs/design/Agent Thread.dc.html`; Theme tokens.
 
 | | |
 |---|---|

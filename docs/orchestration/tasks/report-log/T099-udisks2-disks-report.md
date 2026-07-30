@@ -106,7 +106,7 @@ crates/app/src/side_panel_right/view.rs     # disks field + watch + render arg
 
 **Не включать** в этот коммит: mpris/*, mpris_card.rs, bar/widgets/mpris.rs, docs moves, agents, skills.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 Не обновлял. При приёмке: одна строка в ARCHITECTURE §services про udisks2 (poll, Mount/Unmount/PowerOff). DECISIONS — не требуется (новый сервис по существующему zbus-шаблону).
 

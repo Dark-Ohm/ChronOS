@@ -1,14 +1,14 @@
 # ChronOS — Roadmap
 
 Форвард-лук, одностраничный. Не дублирует детали — за рационализацией
-решений см. `DECISIONS.log`, за канонической архитектурой — `ARCHITECTURE.md`,
-за оперативным полем (кто чем занят прямо сейчас) — `HANDOFF.md`. Этот файл
+решений см. `docs/DECISIONS.log`, за канонической архитектурой — `docs/ARCHITECTURE.md`,
+за оперативным полем (кто чем занят прямо сейчас) — `docs/HANDOFF.md`. Этот файл
 отвечает на один вопрос: «куда мы идём и в каком порядке».
 
 Обновлено: 2026-07-26 — theme/panels critical closed; T129 motion PARKED;
-хвосты в `TBD.md`.
+хвосты в `docs/TBD.md`.
 
-## Северная звезда (позиционирование, `DECISIONS.log` 2026-07-24)
+## Северная звезда (позиционирование, `docs/DECISIONS.log` 2026-07-24)
 
 ChronOS — не очередной Hyprland-rice конфиг поверх Quickshell/AGS (end-4/
 dots-hyprland, ml4w, dank-material-shell). Это первого лица продукт на
@@ -22,13 +22,13 @@ GPU-accelerated retained-mode тулките с нуля). Личный инст
 
 Кварталы — приоритет и порядок, не жёсткие дедлайны (однопользовательский
 проект, скорость = сколько миньонов в поле). Детали каждого пункта — в
-секциях ниже по файлу или в `DECISIONS.log`/`HANDOFF.md`, здесь только
+секциях ниже по файлу или в `docs/DECISIONS.log`/`docs/HANDOFF.md`, здесь только
 последовательность и обоснование порядка.
 
 ### Q1 (2026-08 — 2026-09) — Добить Shell-IDE каркас, вскрыть Plugin API v2
 
 > **Обновлено 2026-07-29.** Каркас вкладок Q1 теперь стоит на
-> `gpui-component` — решение принято и зафиксировано в `DECISIONS.log`
+> `gpui-component` — решение принято и зафиксировано в `docs/DECISIONS.log`
 > (реверс июльского «варианта C»). Практически это значит: `table`,
 > `tree`, `virtual_list`, `dock`, `form`, `setting`, `select`, `sidebar`,
 > `tab` мы НЕ пишем руками, они приходят из компонента. Вкладки T113
@@ -75,7 +75,7 @@ GPU-accelerated retained-mode тулките с нуля). Личный инст
    `has_capability()` в реальный вызов, render DSL — добавить `image`/
    `on_click` (сейчас только `text`/`row`/`column`). Без этого community
    физически не может написать ничего сложнее перекраски текста — это
-   named gap, не абстрактная возможность (см. `DECISIONS.log`).
+   named gap, не абстрактная возможность (см. `docs/DECISIONS.log`).
 
 ### Q2 (2026-10 — 2026-12) — Editor-таб, фундамент
 
@@ -137,7 +137,7 @@ GPU-accelerated retained-mode тулките с нуля). Личный инст
 
 - **WASM как второй plugin-рантайм** — отклонено 2026-07-24, не решает
   реальное узкое место (host API, не исполнитель скрипта), см.
-  `DECISIONS.log`.
+  `docs/DECISIONS.log`.
 - **Chronos-lm (сиблинг-проект)** — отдельный трек, отдельная сессия, не
   смешивать с этим roadmap (`split-sessions-per-project` в памяти
   архитектора).
@@ -149,7 +149,7 @@ GPU-accelerated retained-mode тулките с нуля). Личный инст
 
 Настоящая конечная цель проекта уточнилась: ChronOS — shell-IDE гибрид
 (агент слева, IDE-панель на 10 вкладок справа), не только desktop shell.
-Полный разбор решений — `DECISIONS.log` 2026-07-24 (пять записей).
+Полный разбор решений — `docs/DECISIONS.log` 2026-07-24 (пять записей).
 
 - [x] **Dev hot-reload bake-off** — Track A (`hot-lib-reloader` +
       `crates/hotview`) победил, смержен в master (`b07eacd`). Track B
@@ -187,7 +187,7 @@ GPU-accelerated retained-mode тулките с нуля). Личный инст
 
 ## Волна «добивка бара» — ЗАКРЫТА (2026-07-20)
 
-Свип попапов на STYLE.md (Grok №15 `1d736da`), battery/mpris SVG +
+Свип попапов на docs/STYLE.md (Grok №15 `1d736da`), battery/mpris SVG +
 hover-свип + CAVA (Mimo №11 `6723493`), светлая тема Light C + hot-reload
 (GLM №1/№2 `0f0ee88`/`5bb6c77`), network — лампочка+спидометр (DeepSeek
 №1 `0838446`), трей-частокол (Hermes №16 `7eada8b`), upgrade-фидбек
@@ -221,8 +221,8 @@ DeepSeek). Ложный кровный факт про скролл опрове
 Светлая тема: Catppuccin Latte отменён как визуальный язык (глазам
 плохо), принята айдентика "атом/киберпанк/сигилы/сакральная
 геометрия/Хронос" — холодная сине-лавандовая база, неон только в
-линиях/glow/watermark, не в заливке. Эталон — `design/Project
-Switcher.dc.html` вариант "Light C", рационализация в `DECISIONS.log`.
+линиях/glow/watermark, не в заливке. Эталон — `docs/design/Project
+Switcher.dc.html` вариант "Light C", рационализация в `docs/DECISIONS.log`.
 
 **Порт `crates/ui/src/theme/schemes.rs::light_scheme()` ГОТОВ** (коммиты
 GLM №1/№2 `0f0ee88`/`5bb6c77`, 2026-07-20) — этот раздел годами держал
@@ -272,14 +272,14 @@ GLM №1/№2 `0f0ee88`/`5bb6c77`, 2026-07-20) — этот раздел год�
   **нет каретки/курсора в композере** (самопальный текст-инпут без
   курсора/выделения — см. ниже, `ccf-gpui-widgets`), модели/режимы теперь
   фетчатся на connect (`create_session()`), не ждут первого промпта.
-  Детали — HANDOFF, `DECISIONS.log` 2026-07-23, `T109-...md`.
+  Детали — HANDOFF, `docs/DECISIONS.log` 2026-07-23, `T109-...md`.
 - Кандидаты на потом (не v1): `gpui-video-player`, `gpui-liveplot`
   (разведаны 2026-07-20) — не подменять текущий план.
 
 ## Текстовый ввод — `ccf-gpui-widgets` (разведано 2026-07-20)
 
 Самая продуктово значимая находка сегодняшнего дня — закрывает
-named gap, а не абстрактную возможность. `DECISIONS.log` 2026-07-16
+named gap, а не абстрактную возможность. `docs/DECISIONS.log` 2026-07-16
 отказался от текстового ввода Kael как overkill («2987+243 LOC +
 отсутствующий undo_manager… launcher-ввод добить руками») и оставил
 заглушку. Boковая agent-панель с чатом (см. выше) без многострочного
@@ -387,9 +387,9 @@ gpui-зависимости нет → типизируется в потреб�
 - ~~`overflow_y_scroll()` не резолвится в нашем форке gpui~~ **НЕВЕРНО,
   опровергнуто 2026-07-20** (нужен `.id()` — см. DECISIONS). Ранее считалось —
   только
-  `overflow_hidden()` (клип, не скролл). См. ARCHITECTURE.md §4.1.
+  `overflow_hidden()` (клип, не скролл). См. docs/ARCHITECTURE.md §4.1.
 - `follow_mouse=1` — популярные попапы никогда не закрываются по потере
-  фокуса, только явным действием. См. ARCHITECTURE.md §4.1.
+  фокуса, только явным действием. См. docs/ARCHITECTURE.md §4.1.
 - ydotool на этой машине нестабилен (dual-monitor calibration drift) —
   живые клик-смоки синтетическим вводом ненадёжны, финальную приёмку
   кликом делает пользователь лично.
@@ -398,7 +398,7 @@ gpui-зависимости нет → типизируется в потреб�
 
 - [x] v1 T7–T11: hover-peek, MPRIS-карточка, метры CPU/RAM/GPU+сеть, power-row,
       бэкенды `net_stats`/`system_resources`/`power`/audio stream-mute/`font_ui`.
-- [x] **v2 по мокапу** `design/System Sidebar.dc.html` на `gpui-rsx` (`7109860`):
+- [x] **v2 по мокапу** `docs/design/System Sidebar.dc.html` на `gpui-rsx` (`7109860`):
       352px, скролл-середина, Catppuccin (отменяет сине-циан), header/permission/
       media/24-метры/диски/power-footer.
 - [x] Оживление: MPRIS art/progress (`3d9b8b3`), udisks2 живые диски (`8c8ccb7`).

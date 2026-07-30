@@ -5,7 +5,7 @@
 When creating a documentation suite (3+ related .md files), use `delegate_task` in batches of 3:
 
 ```
-Batch 1: README.md + ARCHITECTURE.md + ROADMAP.md  (dispatched together)
+Batch 1: README.md + docs/ARCHITECTURE.md + ROADMAP.md  (dispatched together)
 Batch 2: PITFALLS.md + ACP-PROTOCOL.md + GPUI-GUIDE.md  (dispatched after batch 1)
 ```
 

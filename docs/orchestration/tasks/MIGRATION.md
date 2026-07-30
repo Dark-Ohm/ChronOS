@@ -2,7 +2,7 @@
 
 Реестр перехода с per-agent журналов (`docs/orchestration/agents/<ИМЯ>.md`) на
 per-task учёт (`docs/orchestration/tasks/`). Собран из полного разбора
-`HANDOFF.md` + `DECISIONS.log` + `docs/orchestration/agents/archive/*.md` (каталоги
+`docs/HANDOFF.md` + `docs/DECISIONS.log` + `docs/orchestration/agents/archive/*.md` (каталоги
 `archive/`, `agents/archive/` и `reports/` удалены из дерева 2026-07-31 —
 содержимое живёт в git-истории, последний коммит с ними `5dd70c1`) +
 `docs/orchestration/agents/bench|fired/*.md` + листинга `docs/orchestration/report-log/`
@@ -20,7 +20,7 @@ per-task учёт (`docs/orchestration/tasks/`). Собран из полног�
 
 ## Спорные случаи — решения (см. план `foamy-swimming-engelbart.md`)
 
-1. **Mimo apps-service «№3» (MIMO.md) vs «№4» (HANDOFF.md)** — один T-ID
+1. **Mimo apps-service «№3» (MIMO.md) vs «№4» (docs/HANDOFF.md)** — один T-ID
    (T017), тело цитирует оба номера, канон = HANDOFF (выше в authority order).
 2. **До-архивные агрегаты** (Cline «№1-5», Hermes «№3-6») — по одному T-ID,
    статус `reconstructed-aggregate`, без синтетического файла (см. скоуп выше).
@@ -42,7 +42,7 @@ per-task учёт (`docs/orchestration/tasks/`). Собран из полног�
    `architect-report-philip-maintain.md`, `SESSION_REPORT.md`,
    `Compact summary.md`.
 9. **Найдено попутно:** `docs/orchestration/report-log/HANDOFF.md` — 176-строчный
-   старый снэпшот корневого HANDOFF.md, обнаружен как stray-копия (отличается
+   старый снэпшот корневого docs/HANDOFF.md, обнаружен как stray-копия (отличается
    от текущего, источник появления неизвестен). Не удалён — перенесён в
    `notes/stray-handoff-snapshot.md`, флаг для внимания пользователя.
 10. **`opencode-report-3.md`/`-rework1.md`** — оба черновика DBusMenu
@@ -73,24 +73,24 @@ per-task учёт (`docs/orchestration/tasks/`). Собран из полног�
 ## T001–T007 — до-агентская эпоха (2026-07-10/11, Архитектор)
 
 Ни одного отдельного файла-брифа/отчёта не пережило переезд репо (см.
-`DECISIONS.log` 2026-07-16 "история = git log больше не источник"). Запись —
-только эта таблица + `DECISIONS.log` записи с тем же названием.
+`docs/DECISIONS.log` 2026-07-16 "история = git log больше не источник"). Запись —
+только эта таблица + `docs/DECISIONS.log` записи с тем же названием.
 
 | T-ID | Дата | Кто | Описание | Коммит | Статус | Источник |
 |---|---|---|---|---|---|---|
-| T001 | 07-10 | Architect | Services crate scaffolding + `Service` trait | — | accepted | DECISIONS.log "Task 1" |
-| T002 | 07-10 | Architect | Compositor types + geometry fields (i128 IDs) | — | accepted | DECISIONS.log "Task 2" |
-| T003 | 07-10 | Architect | NetworkSubscriber, zbus 5.x fixes | — | accepted | DECISIONS.log "Task 3" |
-| T004 | 07-10 | Architect | UPowerSubscriber, zbus 5.x + f64 Eq trap | — | accepted | DECISIONS.log "Task 4" |
-| T005 | 07-10 | Architect | Services container + `init_all()` + retry tests | — | accepted | DECISIONS.log "Task 5" |
-| T006 | 07-10 | Architect | AppState + `watch()` bridge + tokio bootstrap | — | accepted | DECISIONS.log "Task 6" |
-| T007 | 07-11 | Architect | Launcher module: nucleo, layer-shell, IPC toggle; **Critical keyboard-focus bug opened here** | — | accepted (bug carried fwd) | DECISIONS.log "Task 9" |
+| T001 | 07-10 | Architect | Services crate scaffolding + `Service` trait | — | accepted | docs/DECISIONS.log "Task 1" |
+| T002 | 07-10 | Architect | Compositor types + geometry fields (i128 IDs) | — | accepted | docs/DECISIONS.log "Task 2" |
+| T003 | 07-10 | Architect | NetworkSubscriber, zbus 5.x fixes | — | accepted | docs/DECISIONS.log "Task 3" |
+| T004 | 07-10 | Architect | UPowerSubscriber, zbus 5.x + f64 Eq trap | — | accepted | docs/DECISIONS.log "Task 4" |
+| T005 | 07-10 | Architect | Services container + `init_all()` + retry tests | — | accepted | docs/DECISIONS.log "Task 5" |
+| T006 | 07-10 | Architect | AppState + `watch()` bridge + tokio bootstrap | — | accepted | docs/DECISIONS.log "Task 6" |
+| T007 | 07-11 | Architect | Launcher module: nucleo, layer-shell, IPC toggle; **Critical keyboard-focus bug opened here** | — | accepted (bug carried fwd) | docs/DECISIONS.log "Task 9" |
 
 ## T008–T059 — первая волна миньонов (2026-07-16 → 07-19)
 
 | T-ID | Дата | Агент | Описание | Коммит | Статус | Старый путь → новый |
 |---|---|---|---|---|---|---|
-| T008 | 07-16 | OMP | Launcher focus investigation → рекомендация XDG toplevel | — | recon | нет файла (DECISIONS.log) |
+| T008 | 07-16 | OMP | Launcher focus investigation → рекомендация XDG toplevel | — | recon | нет файла (docs/DECISIONS.log) |
 | T009 | 07-16 | Cline | `Source/` workspace-root реанимация | `3ce3466` | accepted | archive/CLINE.md (нет отдельного файла) |
 | T010 | 07-16 | Hermes | Kael excerpt audit (easing/spring/blur) | — | accepted (decision) | нет файла (SHADER_PORT_AUDIT.md → notes/, не отчёт задачи) |
 | T011 | 07-17 | Hermes | gpui-shell excerpt audit | — | accepted (decision) | нет файла |
@@ -124,7 +124,7 @@ per-task учёт (`docs/orchestration/tasks/`). Собран из полног�
 | T038 | 07-18 | Cline | №9 launcher закрывается от движения мыши (debounce) | — (uncommitted) | **rejected** | `cline-report-9.md` → `rejected/T038-launcher-debounce-report.md` |
 | T039 | 07-18 | Zed | №1 AUR/pacman helper (tray widget+badge) | `0fd2fb9` | accepted | `zed-report-1.md` → `report-log/T039-aur-widget-report.md` |
 | T040 | 07-17→18 | Hermes | tray_menu context menu (перехвачено от Autohand) | `67ca90a` | accepted | `hermes-report-10.md` → `report-log/T040-tray-menu-report.md` |
-| T041 | 07-19 | Architect | Launcher fix: no close-on-focus-loss (заменяет T038) | `fba8697` | accepted | нет файла (HANDOFF.md "Живая приёмка") |
+| T041 | 07-19 | Architect | Launcher fix: no close-on-focus-loss (заменяет T038) | `fba8697` | accepted | нет файла (docs/HANDOFF.md "Живая приёмка") |
 | T042 | 07-17→19 | Grok | №11 desktop_terminal spike | `b45cd07` | accepted (spike) | нет отдельного файла в report-log (archive/GROK.md) |
 | T043 | 07-19 | Hermes | №11 notification popup обрезан (повтор) | — | superseded→T045 | нет файла |
 | T044 | 07-19 | Hermes | №12 структурный фикс клипа попапов | `67f7d10` | accepted | `hermes-report-12.md`+companion `hermes-report-12b-confusion.md` → `report-log/T044-popup-clip-structural-fix-report.md` (оба объединены заголовком, тело не тронуто по отдельности — см. файлы) |
@@ -156,7 +156,7 @@ per-task учёт (`docs/orchestration/tasks/`). Собран из полног�
 | T064 | 07-20 | Grok | vendor gpui-animation в `Source/` | `66cd816` | accepted | `grok-report-animation-vendor.md` → `report-log/T064-gpui-animation-vendor-report.md` |
 | T065 | 07-20 | DeepSeek | №1 network widget → activity light (первая попытка) | — (uncommitted) | **rejected** (render() side-effect) | `deepseek-report-1.md` → `rejected/T065-network-widget-first-attempt-report.md` |
 | T066 | 07-20 | DeepSeek | №1 rework: rate-over-time с time-gate | `0838446` | accepted | `deepseek-report-2.md` [ambiguous — см. п.12] → `report-log/T066-network-widget-rework-report.md` |
-| T067 | 07-20 | Grok | №15 7 попапов на палитру STYLE.md | `1d736da` | accepted | `grok-report-15.md` → `report-log/T067-popups-palette-sweep-report.md` |
+| T067 | 07-20 | Grok | №15 7 попапов на палитру docs/STYLE.md | `1d736da` | accepted | `grok-report-15.md` → `report-log/T067-popups-palette-sweep-report.md` |
 | T068 | 07-20 | Mimo | №11 добивка эмодзи в баре (5 SVG+hover+CAVA) | `6723493` | accepted | `mimo-report-11.md` → `report-log/T068-bar-emoji-killed-report.md` |
 | T069 | 07-20 | GLM | №1 Light C схема + `CHRONOS_THEME` | `0f0ee88` | accepted (эталонный отчёт) | `glm-report-1.md` → `report-log/T069-light-c-scheme-report.md` |
 | T070 | 07-20 | Architect | `on_fill()` примитив + Latte-статусы + числовой badge | `009853f` | accepted | нет файла (мандат Архитектора) |
@@ -166,7 +166,7 @@ per-task учёт (`docs/orchestration/tasks/`). Собран из полног�
 | T074 | 07-20 | Hermes | №16 tray decluttering (фильтр+дедуп+кап) | `7eada8b` | accepted | `hermes-report-16.md` → `report-log/T074-tray-decluttering-report.md` |
 | T075 | 07-20 | Mimo | №12 upgrade-feedback (`UpgradeState`) | `79c8baa`+errata `b25452c` | accepted | `mimo-report-12.md` → `report-log/T075-upgrade-feedback-report.md` |
 | T076 | 07-20 | Mimo | №13 upgrade-output в попап-хвост | briefed | open→заменено позже | нет файла |
-| T077 | 07-20 | Architect | Fork-scroll retraction (`.overflow_y_scroll()` работает, нужен `.id()`) | — | decision (retraction) | нет файла (DECISIONS.log) |
+| T077 | 07-20 | Architect | Fork-scroll retraction (`.overflow_y_scroll()` работает, нужен `.id()`) | — | decision (retraction) | нет файла (docs/DECISIONS.log) |
 | T078 | 07-20 | Mimo | №14 recon state/async/executors | — | **не принято / отменено** | нет файла |
 | T079 | 07-20 | Grok | №17 recon elements/styling/layout/scroll | `f4d2ebc` | accepted (recon) | `grok-report-17.md` → `report-log/T079-fork-recon-elements-report.md` |
 | T080 | 07-20 | Hermes | №17 recon windowing/platform/layer-shell | `f7099e5` | accepted (recon, самая ценная зона) | `hermes-report-17.md` → `report-log/T080-fork-recon-windowing-report.md` |
@@ -215,7 +215,7 @@ per-task учёт (`docs/orchestration/tasks/`). Собран из полног�
 | T108 | смешанный (миньоны + живой дебаг архитектора) | Agent switcher + ACP modes/models + task3 click-fix. п.9 resize (fbcadd6); #6 modes/models accepted; task3 dropdown click accepted 07-24. Долг: #7 jank, #8/#8-bis ghost-trail (fork), live round-trip после prompt | **accepted** | `docs/orchestration/tasks/done/T108-left-panel-agent-switcher.md`; `report-log/T108-*` (task1–3 + reviews) |
 | T118 | не назначен (миньон) | Live upgrade output: stream stderr, UpgradeProgress, spinner/bar/line, staircase filter | **accepted with caveats** (07-24) | `done/T118-...`; `report-log/T118-*-report.md` + review; errata stdout null |
 | T119 | не назначен (миньон) | Multi-select + Upgrade selected (`-S` not `-Syu`) + Check header | **accepted with caveats** (07-24, live PENDING) | `done/T119-...`; `report-log/T119-*`; commit `eac0591` |
-| T109 | Zed | Agent Thread canvas: чат-часть по мокапу `design/Agent Thread.dc.html` (unified composer, C-2 gpui-component TextInput blocked → homemade fallback, YOLO=bypass, тёмный send) | `10fa206` | **accepted** (живой смок архитектором 07-24) | `docs/orchestration/tasks/done/T109-agent-thread-canvas.md`; отчёт `report-log/T109-agent-thread-canvas-report.md` |
+| T109 | Zed | Agent Thread canvas: чат-часть по мокапу `docs/design/Agent Thread.dc.html` (unified composer, C-2 gpui-component TextInput blocked → homemade fallback, YOLO=bypass, тёмный send) | `10fa206` | **accepted** (живой смок архитектором 07-24) | `docs/orchestration/tasks/done/T109-agent-thread-canvas.md`; отчёт `report-log/T109-agent-thread-canvas-report.md` |
 
 ## T900 — вне последовательности (misassigned)
 
@@ -228,7 +228,7 @@ per-task учёт (`docs/orchestration/tasks/`). Собран из полног�
 `chronos_services_rewrite_cost_report.md`, `REWRITE_BY_PATTERN_AUDIT.md`,
 `SHADER_PORT_AUDIT.md`, `kael_motion_port_audit.md`,
 `philip-report-maintain-2026-07-21.md`, `architect-report-philip-maintain.md`,
-`SESSION_REPORT.md`, `Compact summary.md`, `HANDOFF.md` (stray snapshot, см.
+`SESSION_REPORT.md`, `Compact summary.md`, `docs/HANDOFF.md` (stray snapshot, см.
 п.9, → `notes/stray-handoff-snapshot.md`).
 
 ## T110–T112 — hot-reload bake-off + IDE-панель фундамент (2026-07-24)
@@ -316,13 +316,13 @@ per-task учёт (`docs/orchestration/tasks/`). Собран из полног�
 | T141 | не назначен | Tool cards + reasoning UI | **ACCEPTED w/ caveats** (`36e8399`) | `done/T141-*`; report `report-log/T141-*` |
 | T142 | не назначен | Model picker | **ACCEPTED w/ caveats** (`36e8399`); живой список моделей пуст → D5 в T143 | `done/T142-*`; report `report-log/T142-*` |
 | T143 | **Hermes** | Честный ClientCapabilities (D0), живучесть turn'а, достоверность тул-карточек | **ACCEPTED** (заходы 3-4) — стриминг живой, 975 событий, `turn END (reason=ok)`. P0-лайвлок оказался не в зоне Hermes: coop-бюджет tokio на главном потоке, фикс архитектора `44ba823` | `done/T143-*`; report `report-log/T143-*` |
-| T144 | **Hermes** | Непустой селектор модели в панели | **ACCEPTED, закрыта 2026-07-28 после захода 4** (`a44e9bd` — `max_h` + `overflow_y_scroll` на дропдаунах). Живой прогон архитектора (ydotool+grim): список раскрывается и не уезжает, четыре смены модели подряд, у агента `model switched to …` и следующий turn на выбранной. История заходов: З.1 (`89b44e0`) перехват `session/new`; з.2 (`ea6a0c7`) `SharedModels` вместо глобала + `#301`; з.3 (`b5116ee`) D6 — смена модели уходит `session/set_model` через `UntypedMessage`, замерено архитектором (на проводе `session/set_model`, у агента `model=anthropic/claude-opus-4`). Отчёты з.1 и з.3 отклонены: з.3 правил `HANDOFF.md` вне зоны и вписал «D6 закрыто» при непроверенном смоуке. Осталось: раскрытый дропдаун на кадре `grim` (нужен клик) | `done/T144-*`; отчёты `rejected/` (з.1, з.3), `report-log/` (з.2, з.4) |
+| T144 | **Hermes** | Непустой селектор модели в панели | **ACCEPTED, закрыта 2026-07-28 после захода 4** (`a44e9bd` — `max_h` + `overflow_y_scroll` на дропдаунах). Живой прогон архитектора (ydotool+grim): список раскрывается и не уезжает, четыре смены модели подряд, у агента `model switched to …` и следующий turn на выбранной. История заходов: З.1 (`89b44e0`) перехват `session/new`; з.2 (`ea6a0c7`) `SharedModels` вместо глобала + `#301`; з.3 (`b5116ee`) D6 — смена модели уходит `session/set_model` через `UntypedMessage`, замерено архитектором (на проводе `session/set_model`, у агента `model=anthropic/claude-opus-4`). Отчёты з.1 и з.3 отклонены: з.3 правил `docs/HANDOFF.md` вне зоны и вписал «D6 закрыто» при непроверенном смоуке. Осталось: раскрытый дропдаун на кадре `grim` (нужен клик) | `done/T144-*`; отчёты `rejected/` (з.1, з.3), `report-log/` (з.2, з.4) |
 | T145 | **Hermes** | Бамп `agent-client-protocol` 0.11.1 (альфа) → 2.0.0 (релиз) | **КОД ПРИНЯТ, ОТЧЁТ ОТКЛОНЁН** — бамп настоящий (lock 2.0.0, `-tokio` вычищен, 42+176 тестов), живой смоук сделал архитектор: 12-мин ход, 10/10 тулов закрыты, 8 файлов на диске. В отчёте три выдумки: несуществующая ветка, несуществующий PR в чужой орг, и `Live ACP tool calls ✅` при нуле `session/prompt` на проводе | `done/T145-*`; отчёт `rejected/T145-*` |
 | T146 | **Hermes** | Эрраты E1-E5 после лайвлока: traceback-эскалация, потолок хода, таймаут панели, немые стоки | **ACCEPTED w/ erratum** — E1/E3/E5 чисто; E2 «абсолютный» дедлайн проверялся только по тишине → вынесен в T147. E4 оказался багом адаптера агента, пропатчен вне ChronOS (10/1 → 19/18 апдейтов) | `done/T146-*`; report `report-log/T146-*` |
 | T147 | **Hermes** | Настоящий потолок хода: перенести проверку в начало цикла, поднять до 30 мин, имя = поведению | **ACCEPTED** (`729c440`) — проверка первой строкой цикла, 1800 с на обоих контурах (`read_turn` закрыт в `89b44e0`), 42+176 тестов сверены архитектором. Живой лог срабатывания снял архитектор (константа урезана до 10 с, стриминговый ход на 159 событий, `extensions=0` → `absolute deadline hit`, `$/cancel_request` агенту). В отчёте снова выдумана ветка — как в T145 | `done/T147-*`; report `report-log/T147-*` |
 | T148 | **FRONTEND** | Транскрипт агента: тулы наверх, живое размышление со сворачиванием, ответ отдельным блоком снизу | **ACCEPTED** (`9a765a2`) — порядок `tool_cards → reasoning → content`, свой скролл у размышления, `collapsed_reasoning` + авто-разворот во время стрима. Живой кадр архитектора `notes/T148-order-live.png`: 6 тул-карточек сверху, reasoning под ними, ответ снизу; рост подтверждён двумя кадрами с интервалом. Ручной клик по шапке — PENDING (синтетический клик не улика) | `done/T148-*`; report `report-log/T148-*` |
 | T149 | **FRONTEND** | Строка поиска в списке моделей (288 штук) | **OPEN** — фильтрация вводом, Enter=первый результат, Esc чистит; сейчас любая клавиша при открытом дропдауне его закрывает | `active/T149-model-picker-search.md` |
-| T150 | **BACKEND** | Хранилище тредов: SQLite `~/.local/share/chronos/threads/` + ACP `session/list` и `session/load` | **OPEN** — решение в DECISIONS.log 2026-07-28: содержимое разговора остаётся за агентом (Hermes умеет load/list/resume), у нас метаданные + кэш | `done/T150-thread-store.md` — ЗАКРЫТА 29.07: SQLite-хранилище + типизированные session/list и session/load; приёмка со второго захода (Cargo.lock, rusqlite 0.40, expect, типы ACP) |
+| T150 | **BACKEND** | Хранилище тредов: SQLite `~/.local/share/chronos/threads/` + ACP `session/list` и `session/load` | **OPEN** — решение в docs/DECISIONS.log 2026-07-28: содержимое разговора остаётся за агентом (Hermes умеет load/list/resume), у нас метаданные + кэш | `done/T150-thread-store.md` — ЗАКРЫТА 29.07: SQLite-хранилище + типизированные session/list и session/load; приёмка со второго захода (Cargo.lock, rusqlite 0.40, expect, типы ACP) |
 | T151 | **FRONTEND** | UI тредов: настоящий список, возобновление через `session/load`, переименование/пин/архив, поиск | **OPEN, разблокирована 29.07** — T150 закрыта | `active/T151-thread-list-ui.md` |
 | T152 | **FRONTEND** | Иврит/RTL в панели: глифы, выравнивание по содержимому, композер | **OPEN** — выросла из предложения агента (`agent-suggestions/`), проверено архитектором: факты верны, но API направления в форке НЕТ (только `text_align`), а «тофу» — гипотеза (в системе DejaVu с ивритом есть, Noto нет). Порядок: сначала замер кадром, потом код | `done/T152-hebrew-rtl-render.md` — ЗАКРЫТА 29.07 с четвёртого захода: d8920c1 (word-chars) + de62111 (перенос при убывающих x) + 86701db (позиция RTL-строки у визуального конца) |
 | T153 | **FRONTEND** | Флоу транскрипта: лента сегментов (размышление/тул/ответ) вместо двух буферов | **OPEN** — продолжение T148; сейчас чанки склеиваются в `content`/`thought`, хронология теряется. Новый сегмент открывается при смене вида чанка; тул стоит там, где случился | `active/T153-transcript-flow-segments.md` |
@@ -333,7 +333,7 @@ per-task учёт (`docs/orchestration/tasks/`). Собран из полног�
 | T158 | **FRONTEND** | `gpui-component`: усыновление — проверка премиссы обрезки, `Root`/`OnDemand` в постоянную проводку, баг ширины smoke-флага | **ЗАКРЫТА 2026-07-30** — принята с эрратой. **Премисса обрезки мертва:** вырезан модуль `setting` (1930 строк) → бинарь изменился на **128 байт** (24 578 112 против 24 577 984). `lto`+`strip` уже всё выбросили; резать исходники компонента ради размера бессмысленно, вопрос закрыт навсегда. `Root` и `OnDemand` оформлены постоянной проводкой с комментариями «почему»; баг ширины починен (`window_options` читает `state.width`, сброс в rail-only перенесён ДО `cx.open_window`, smoke-путь раскрывает заранее). 179 тестов зелёные (прогнал сам). **Эррата:** §4.2 отчёта заявлял кадр с введённым текстом, а в кадре стоял старый смоук-текст `T157 real input` — координаты `ydotool` взяты полные (2131) вместо половинных, о которых прямым текстом написано в отчёте T157 часом ранее. Дозакрыто архитектором живьём: калибровка по `hyprctl cursorpos`, `-x 1132 -y 89`, кадр `/tmp/t158-verify-typed.png` содержит `T157 real inputT158 live input` — `OnDemand` доказан. Код в `master` черри-пиком `2e42b36` | `done/T158-gpui-component-adoption.md`, отчёт в `report-log/` |
 | T159 | **RECON** | Разведка под слайс 1 Shell-IDE: иконки, токены темы, перерисовка бара, прецедент нескольких `on_click` в виджете бара | **ЗАКРЫТА 2026-07-30** — принята с эрратой. Ответы: `code.svg`/`gamepad.svg` **не существуют** (36 файлов в каталоге), берём `rail-editor.svg`+`bolt.svg` с TODO; все 7 токенов темы на месте; `cx.refresh_windows()` достаточно, бар читает глобал прямо в `render()` (`bar/mod.rs:68`), watch не нужен; **прецедента трёх независимых `on_click` в одном виджете бара НЕТ** — плашка предложения будет первой, риск event bubbling назван заранее. Счётчики обработчиков сверил сам — совпали полностью. **Эррата:** номера строк в Q2 восстановлены по памяти и промахнулись на 8–17 строк (`BgColors` заявлен ~87, фактически 70) — при стандарте роли «цитата с путём и строкой или это не факт». Плюс отчёт лёг в `report/` вместо `notes/`, два протёкших иероглифа, раздел F5.1 сам себя снимает. План слайса 1 обновлён по итогам | `done/T159-workspace-mode-recon.md`, результат в `notes/` |
 | T160 | **BACKEND** | `workspace_mode`: глобал Developer/Gamer, конфиг `workspace.toml`, env-оверрайд, IPC `toggle-workspace-mode`/`set-workspace-mode:<mode>`, логика предложения смены | **ЗАКРЫТА 2026-07-31** — принята с эрратой. Состояние, персистентность, env-оверрайд и контракт предложения (`PromptPref{Ask,Never}`, `should_prompt`, `request_switch` не переключает) сделаны чисто; зона соблюдена безупречно (5 файлов, ни одного из `bar/**`); 14 тестов в `workspace_mode`, 193 по бинарю — прогнал сам. Отступление по `let _ = cx.update(...)` обосновано верно: в форке `AsyncApp::update` возвращает `R`, не `Result` (`async_context.rs:163`) — **ошибка была в моём плане**. **Дефект:** ветка диспетча в `ipc/service.rs::accept_loop` не написана — канал проложен end-to-end, арм в `mod.rs` ждёт, а отправлять некому; пейлоад проваливался сквозь `else if` и терялся. Компилятор кричал `unused imports: classify_set_workspace_mode, is_toggle_workspace_mode`, отчёт списал это на ствол. Юнит-тесты не ловят (проверяют чистые функции `messages.rs`). Исправлено архитектором, эррата `ddedf0a`, 6 строк. Живьём после фикса: set/toggle/мусор, персистентность через рестарт, env перебивает конфиг не перезаписывая его, 0 паник | `done/T160-workspace-mode-state-and-ipc.md`, отчёт в `report-log/` |
-| T161 | **FRONTEND** | Переключатель режима в правом кластере бара + плашка предложения смены | **OPEN** — после приёмки T160. План Task 3 и 4.5-4.7. Кровное: композиция `STYLE.md` неприкосновенна (CAVA по центру, часы крайние справа), палитра только через `Theme::global` | `active/T161-workspace-mode-bar-switcher.md` |
+| T161 | **FRONTEND** | Переключатель режима в правом кластере бара + плашка предложения смены | **OPEN** — после приёмки T160. План Task 3 и 4.5-4.7. Кровное: композиция `docs/STYLE.md` неприкосновенна (CAVA по центру, часы крайние справа), палитра только через `Theme::global` | `active/T161-workspace-mode-bar-switcher.md` |
 | T162 | **QA** | Живой смок слайса 1: восемь пунктов + доказательство, что режим не переключается сам | **OPEN** — после приёмки T161. Главный пункт не в списке из восьми: автопереключение делает слайс непринимаемым целиком. Плюс грепа `workspace_mode::set\|toggle\|request_switch` — каждый вызов обязан быть пользовательским путём | `active/T162-workspace-mode-smoke.md` |
 
 **Слайс 1 из восьми (2026-07-30).** T159–T162 — первая раздача по спеке

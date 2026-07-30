@@ -13,7 +13,7 @@
 **Goal:** Bring `volume_popup` to the same popup discipline as
 `updates_popup` (post-T117) and `notifications/history_popup` (T120):
 anchored to the bar volume widget, mockup-faithful chrome from
-`design/Volume Popup.dc.html` (dark + light C), interactive volume/mic
+`docs/design/Volume Popup.dc.html` (dark + light C), interactive volume/mic
 sliders (not fill-only ±5% rows), footer dual mute, device menus as in
 mockup.
 
@@ -32,7 +32,7 @@ service surface unless a gap appears.
 - Do not edit `gpui-rsx` source for consumer type errors; use
   `rsx_expand!` to debug.
 
-**Design canon:** `design/Volume Popup.dc.html`  
+**Design canon:** `docs/design/Volume Popup.dc.html`  
 **Lifecycle canon:** `crates/app/src/updates_popup/mod.rs` +
 `bar/widgets/updates.rs`  
 **rsx canon:** `.claude/skills/gpui-rsx/SKILL.md` +

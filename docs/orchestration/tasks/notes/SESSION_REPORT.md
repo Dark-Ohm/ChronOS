@@ -5,7 +5,7 @@
 ### Task 2 continuation — compositor geometry types
 - `crates/services/src/compositor/types.rs`: `Workspace.monitor_id: Option<i128>`, `Monitor.id: i128`, `Monitor.x/y: i32`, `Monitor.scale: f32`, `ActiveWindow.address: String`. `Eq` снят с `Monitor`/`CompositorState` (f32).
 - `crates/services/src/compositor/hyprland.rs`: fetch + active_window_changed заполняют новые поля (`w.monitor_id`/`m.id` напрямую, `address.to_string()`).
-- `DECISIONS.log` ×2 (geometry + i128 addendum), `MEMORY.md` «На горизонте».
+- `docs/DECISIONS.log` ×2 (geometry + i128 addendum), `docs/MEMORY.md` «На горизонте».
 
 ### Task 3 — NetworkSubscriber
 - `crates/services/src/network/{types,mod}.rs` (new) + re-export в `lib.rs`.
@@ -45,7 +45,7 @@
 - `crates/app/src/launcher/cache.rs`: `DesktopEntryCache` (GPUI `Global`), startup scan of `/usr/share/applications/` + `~/.local/share/applications/`, user-overrides-system dedup by filename. `inotify` watcher (dedicated OS thread, trailing 300ms debounce, `WatchDescriptor`-based event matching) → re-scan on changes.
 - `crates/app/src/launcher/launch.rs`: `launch(exec)` via `setsid sh -c` + triple `Stdio::null()` — detached process survives chronos kill (validated by `setsid` availability test).
 - `crates/app/src/launcher/view.rs`: `LauncherView` (GPUI `Render` + `Focusable`) — centered overlay, search input + result list, keyboard handling via `on_key_down` (printable chars, Backspace, Enter, Escape, Up/Down/Tab). `window.refresh()` on pattern/selection change.
-- `crates/app/src/launcher/mod.rs`: `window_options()` — centered overlay via layer-shell anchors (`TOP|BOTTOM|LEFT|RIGHT`) + margins (not `window_bounds` origin). `KeyboardInteractivity::OnDemand` (Exclusive rejected — see DECISIONS.log). `init()`/`open()`/`close()`/`toggle()` with `LauncherState` global tracking `WindowHandle`.
+- `crates/app/src/launcher/mod.rs`: `window_options()` — centered overlay via layer-shell anchors (`TOP|BOTTOM|LEFT|RIGHT`) + margins (not `window_bounds` origin). `KeyboardInteractivity::OnDemand` (Exclusive rejected — see docs/DECISIONS.log). `init()`/`open()`/`close()`/`toggle()` with `LauncherState` global tracking `WindowHandle`.
 - `crates/app/src/ipc/messages.rs` + `service.rs` + `mod.rs`: `ToggleLauncher` IPC message type, dual-channel accept loop (`ping` + `toggle`), `IpcSubscriber::start()` spawns combined handler calling `launcher::toggle(cx)`.
 - `crates/app/src/main.rs`: `launcher::init(cx)` + `launcher::cache::init/start_watcher(cx)`.
 - Unit tests in `search.rs` + `entry.rs` + `cache.rs` + `launch.rs` — **11 tests pass**.
@@ -68,7 +68,7 @@
 - `data.get()` → `data.get_cloned()`.
 - Убран `handle.enter()` (аналогично Task 3).
 - **`f64` Eq trap:** `UPowerData` plan derived `Eq`, но `battery_percent: f64` не `Eq`. Снят `Eq` (только `Clone` нужен). `BatteryState`/`PowerProfile` сохранили `Eq` (Copy enum, без float).
-- Сформулировано правило: **любой service data struct с float НЕ должен derive `Eq`** — третий hit (Monitor.scale, CompositorState, UPowerData). Зафиксировано в DECISIONS.log.
+- Сформулировано правило: **любой service data struct с float НЕ должен derive `Eq`** — третий hit (Monitor.scale, CompositorState, UPowerData). Зафиксировано в docs/DECISIONS.log.
 
 ### Task 6 (AppState)
 - План предлагал `gpui::App::new()` — реальный код использует `gpui_platform::application()` + `app.run(|cx| ...)`. Адаптировано под существующий API.
@@ -95,7 +95,7 @@
 - `NetworkSubscriber::connect`/`disconnect` — stubbed (bail), per plan.
 - `UPowerSubscriber::set_power_profile` — stubbed (bail), per plan.
 - `wifi_ssid`/`wifi_strength` (Network), `power_profile` заполнение (UPower) — deferred.
-- ARCHITECTURE.md §4 пересмотр — отложен (TODO в MEMORY.md).
+- docs/ARCHITECTURE.md §4 пересмотр — отложен (TODO в docs/MEMORY.md).
 
 ## Проверено фактом, не на словах
 - `cargo test` (full workspace) → **58 tests pass** (app: 26, luau: 25, services: 7).
@@ -117,7 +117,7 @@
 - `watch()` helper не используется в текущем коде — предупреждение `dead_code`. Будет потребляться downstream (bar widgets, launcher, notifications).
 - Публичные accessors `AppState::{compositor,network,upower,global}` — предупреждение `unused`. Предназначены для UI components (bar widgets, etc.).
 
-## Статус ARCHITECTURE.md / DECISIONS.log / MEMORY.md
-- ARCHITECTURE.md: НЕ обновлялся (§4 устарел частично — TODO в MEMORY.md, правка отложена per task.md).
-- DECISIONS.log: обновлён ×7 (geometry + i128 addendum + Network zbus + UPower zbus/f64 + float-Eq правило + Task 5 Services/retry/panic-guard + Task 6 AppState/watch).
-- MEMORY.md: обновлён (раздел «На горизонте»).
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log / docs/MEMORY.md
+- docs/ARCHITECTURE.md: НЕ обновлялся (§4 устарел частично — TODO в docs/MEMORY.md, правка отложена per task.md).
+- docs/DECISIONS.log: обновлён ×7 (geometry + i128 addendum + Network zbus + UPower zbus/f64 + float-Eq правило + Task 5 Services/retry/panic-guard + Task 6 AppState/watch).
+- docs/MEMORY.md: обновлён (раздел «На горизонте»).

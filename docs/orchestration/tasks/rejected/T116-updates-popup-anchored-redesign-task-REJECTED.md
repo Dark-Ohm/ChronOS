@@ -21,7 +21,7 @@
 
 **Референсы:** спека — `docs/superpowers/specs/
 2026-07-24-updates-popup-anchored-redesign-design.md`; мокап —
-`design/Updates Popup.dc.html` (dark эталон + light "Light C" принятый
+`docs/design/Updates Popup.dc.html` (dark эталон + light "Light C" принятый
 вариант, буквальные хексы/тени/opacity — канон, не выдумывать); механизм
 позиционирования — skill `anchored-popups` (`gpui/src/platform/popup.rs`).
 

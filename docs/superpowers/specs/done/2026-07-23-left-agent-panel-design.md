@@ -25,10 +25,10 @@ Left agent panel — surface для AI-ассистента (Hermes ACP). Два
 
 **Вне v1:** @mentions, subagents, inline diffs, terminal view
 
-**Добавлено в v1 (2026-07-23, DECISIONS.log):** свитчер агента в хедере —
+**Добавлено в v1 (2026-07-23, docs/DECISIONS.log):** свитчер агента в хедере —
 клик по названию текущего агента открывает список ACP-совместимых
 бэкендов (Hermes/Cline/OpenCode/...), выбор меняет активный бэкенд для
-новой сессии. Визуал принят (`design/Agent Panel.dc.html`, кадр 1,
+новой сессии. Визуал принят (`docs/design/Agent Panel.dc.html`, кадр 1,
 `showAgentMenu`). Архитектура — см. T108
 (`docs/orchestration/tasks/done/T107-left-agent-panel.md` НЕ переоткрывается,
 T108 строится поверх).
@@ -252,6 +252,6 @@ app.spawn_window(side_panel_left::create_window)?;
 - Right panel spec: `docs/superpowers/specs/2026-07-20-right-side-panel-design.md`
 - Zed AI recon: `skills/zed-ai/` (10 skills)
 - ACP Rust SDK: `agent-client-protocol` crate (Apache-2.0)
-- gpui-component: `longbridge/gpui-component` (Apache-2.0, planned in ARCHITECTURE.md)
-- ARCHITECTURE.md §4: layer-shell window patterns
-- DECISIONS.log: gpui-component decision at L303
+- gpui-component: `longbridge/gpui-component` (Apache-2.0, planned in docs/ARCHITECTURE.md)
+- docs/ARCHITECTURE.md §4: layer-shell window patterns
+- docs/DECISIONS.log: gpui-component decision at L303

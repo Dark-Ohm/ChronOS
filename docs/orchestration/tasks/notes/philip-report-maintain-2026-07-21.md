@@ -15,16 +15,16 @@
 
 ### Файлы, изменённые в `18057b2` + `0f1c830`
 
-- `ARCHITECTURE.md` — audio stream mute **не** как shipped API; в §4.1
+- `docs/ARCHITECTURE.md` — audio stream mute **не** как shipped API; в §4.1
   назван `side_panel_right` skeleton (`da744a2`).
 - `docs/superpowers/plans/2026-07-20-right-side-panel.md` — Task 7:
   errata registration (`main.rs`, не `lib.rs`), package `chronos`, smoke
   evidence, strikethrough stale `chronos-app` / `lib.rs` steps.
-- `HANDOFF.md` — Task 6: код готов, **коммита нет**; Task 7 accepted;
+- `docs/HANDOFF.md` — Task 6: код готов, **коммита нет**; Task 7 accepted;
   working-tree note про named add.
 - `docs/superpowers/specs/2026-07-20-right-side-panel-design.md` — §3.1/§4/§8
   Task 6 symbols + uncommitted disclaimer.
-- `DECISIONS.log` — 2026-07-21: stream mute остаётся на `wpctl`+`pw-dump`.
+- `docs/DECISIONS.log` — 2026-07-21: stream mute остаётся на `wpctl`+`pw-dump`.
 
 **Код не трогал.** `crates/services/src/audio/**` остаётся uncommitted WIP.
 
@@ -77,19 +77,19 @@ git log -3 --oneline
 
 ## Новые риски / известные баги
 
-- **Medium:** DECISIONS.log фиксирует backend-решение Task 6; читатель
+- **Medium:** docs/DECISIONS.log фиксирует backend-решение Task 6; читатель
   может принять «решено» за «в master». Смягчено HANDOFF + ARCHITECTURE
   («not on master until committed»).
 - **Low:** в plan body остались старые package names внутри closed Task 1
   steps; сверху errata/progress table — достаточно для агентов.
 - **Process:** `docs/orchestration/` gitignored — этот отчёт на диске, не в git.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
-- **ARCHITECTURE.md** — обновлён (`18057b2`): audio honesty + side_panel
+- **docs/ARCHITECTURE.md** — обновлён (`18057b2`): audio honesty + side_panel
   in §4.1 list.
-- **DECISIONS.log** — добавлена запись 2026-07-21 stream mute (`0f1c830`).
-- **HANDOFF.md** / design / plan — синхронизированы с evidence.
+- **docs/DECISIONS.log** — добавлена запись 2026-07-21 stream mute (`0f1c830`).
+- **docs/HANDOFF.md** / design / plan — синхронизированы с evidence.
 
 ## Итог одной строкой
 

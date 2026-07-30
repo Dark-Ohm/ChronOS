@@ -6,12 +6,12 @@
 `crates/services/src/lib.rs`), `crates/services/Cargo.toml`,
 `crates/services/src/hermes_acp/{client.rs,transport.rs}` — только добавление
 двух ACP-команд, существующее не переписывать. **UI не трогать вообще** —
-это T151. **`HANDOFF.md`, `ARCHITECTURE.md`, `DECISIONS.log` — не твои.**
+это T151. **`docs/HANDOFF.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.log` — не твои.**
 
 **Отчёт:** `docs/orchestration/tasks/report/T150-thread-store-report.md`.
 
 Решение, из которого растёт задача, уже принято и записано в
-`DECISIONS.log` (2026-07-28, «Thread persistence»). Читать его не
+`docs/DECISIONS.log` (2026-07-28, «Thread persistence»). Читать его не
 обязательно — всё существенное продублировано ниже.
 
 ---
@@ -170,7 +170,7 @@ threads(
 
 ### 2. `rusqlite 0.32` — древность
 
-На crates.io сейчас **0.40.1**. Мы на bleeding-edge (`MEMORY.md`), чужие
+На crates.io сейчас **0.40.1**. Мы на bleeding-edge (`docs/MEMORY.md`), чужие
 пины не наследуем. Восемь мажорных версий назад — это не «стабильно», это
 техдолг с первого дня. Поднять до 0.40, прогнать тесты заново.
 

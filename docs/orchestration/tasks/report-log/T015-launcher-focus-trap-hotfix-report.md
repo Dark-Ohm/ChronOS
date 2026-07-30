@@ -25,6 +25,6 @@
 - **Severity: Medium** — `observe_window_activation` может сработать во время уничтожения окна (после `window.remove_window()`). В таком случае `close()` будет no-op (handle уже taken). Безопасно, но нужен live-тест чтобы убедиться что нет двойного close или race condition.
 - **Severity: Low** — `is_window_active()` может возвращать `false` во время анимации pop-in (окно ещё не fully mapped). Если это вызовет ложное закрытие — потребуется гейтинг по initial focus state. Пока гипотеза, не проверена.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
-- ARCHITECTURE.md: не обновлён (focus trap hotfix не меняет архитектурных решений, только реализацию launcher UX)
-- DECISIONS.log: не обновлён (нет новых решений — удаление stay_focused/pin/re-assert логически следует из уже принятого решения о миграции на XDG toplevel)
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
+- docs/ARCHITECTURE.md: не обновлён (focus trap hotfix не меняет архитектурных решений, только реализацию launcher UX)
+- docs/DECISIONS.log: не обновлён (нет новых решений — удаление stay_focused/pin/re-assert логически следует из уже принятого решения о миграции на XDG toplevel)

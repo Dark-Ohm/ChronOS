@@ -1,11 +1,11 @@
 # Known Documentation Discrepancies (verified 2026-07-10)
 
-Audit of ARCHITECTURE.md / MEMORY.md / DECISIONS.log against actual code in
+Audit of docs/ARCHITECTURE.md / docs/MEMORY.md / docs/DECISIONS.log against actual code in
 `crates/`. Severity ratings from Philip audit workflow.
 
 ## 🔴 Critical
 
-### ARCHITECTURE.md §8: "LuaU is NEVER in the render path" — WRONG
+### docs/ARCHITECTURE.md §8: "LuaU is NEVER in the render path" — WRONG
 
 Doc claims:
 > LuaU is NEVER in the render path. Widgets render in Rust; LuaU only on events
@@ -22,7 +22,7 @@ the widget render path to cache Lua output in Rust and only update on events.
 
 ## 🟡 High
 
-### ARCHITECTURE.md §3 + MEMORY.md: "inotify hot-reload watcher — NOT YET IMPLEMENTED"
+### docs/ARCHITECTURE.md §3 + docs/MEMORY.md: "inotify hot-reload watcher — NOT YET IMPLEMENTED"
 
 Both docs (last updated 2026-07-09) claim the watcher is not implemented.
 Actual code: `crates/luau/src/watcher.rs` (192 lines) is fully implemented and
@@ -31,7 +31,7 @@ wired via `PluginManager::start_watcher()` called in `main.rs:53`.
 Status: **stale docs** — watcher was implemented and merged but §3/§9 were not
 updated to reflect completion.
 
-### ARCHITECTURE.md §7: Service trait signature ≠ code
+### docs/ARCHITECTURE.md §7: Service trait signature ≠ code
 
 Doc says: `trait Service { type Data; fn subscribe(); fn status(); fn dispatch(); }`
 
@@ -43,7 +43,7 @@ Actual (`crates/services/src/lib.rs:55-62`):
 
 ## 🟠 Medium
 
-### ARCHITECTURE.md §8: "< 4 ms" budget — aspiration, not enforced
+### docs/ARCHITECTURE.md §8: "< 4 ms" budget — aspiration, not enforced
 
 No timing measurement, assertions, or budget tracking exists in code.
 The claim is architectural intent, not a verified property.

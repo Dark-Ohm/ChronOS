@@ -5,8 +5,8 @@
 
 **Роль:** FRONTEND. **Зона файлов:**
 `crates/app/src/side_panel_left/{sessions_list.rs,mod.rs,panel.rs,state.rs}`.
-Сервисный слой не трогать — он в T150. **`HANDOFF.md`, `ARCHITECTURE.md`,
-`DECISIONS.log` — не твои.**
+Сервисный слой не трогать — он в T150. **`docs/HANDOFF.md`, `docs/ARCHITECTURE.md`,
+`docs/DECISIONS.log` — не твои.**
 
 **Отчёт:** `docs/orchestration/tasks/report/T151-thread-list-ui-report.md`.
 
@@ -36,7 +36,7 @@
    обработчик в `composer.rs`). Пока реплей идёт — видимое состояние
    загрузки, а не пустой экран.
    **Кэш из хранилища показывается сразу**, реплей его замещает. При
-   расхождении прав агент — так решено в `DECISIONS.log`.
+   расхождении прав агент — так решено в `docs/DECISIONS.log`.
 3. **Автозаголовок.** Первый промпт пользователя даёт имя треду (первая
    строка / ~60 символов, без переносов). `Session 3` как имя — то, от чего
    уходим.

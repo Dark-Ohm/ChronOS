@@ -4,7 +4,7 @@
 > Date: 2026-07-09
 > Scope: bar module scaffold + `BarWidget` runtime-contract. No concrete widgets, no LuaU runtime, no config file.
 > Branch: `feat/bar-scaffold-widget-contract` (worktree: `.worktrees/feat-bar-scaffold-widget-contract`)
-> Relation: implements `ARCHITECTURE.md` §6 (runtime module registry) for the bar.
+> Relation: implements `docs/ARCHITECTURE.md` §6 (runtime module registry) for the bar.
 
 ## 1. Goal
 

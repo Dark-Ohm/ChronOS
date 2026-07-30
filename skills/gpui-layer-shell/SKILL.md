@@ -188,7 +188,7 @@ same session — shoving tiled windows around on every open/resize of a
 panel meant to stay open while working is disruptive in a way it isn't
 for a bar that opens rarely. Full narrative + the hover-peek-vs-keybind-
 toggle decision it's paired with: `chronos-shell` skill Gotchas, and
-`DECISIONS.log` 2026-07-23.
+`docs/DECISIONS.log` 2026-07-23.
 
 ---
 

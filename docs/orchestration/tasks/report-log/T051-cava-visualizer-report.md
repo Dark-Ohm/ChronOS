@@ -41,5 +41,5 @@
 - **Low:** cava child CPU ~ continuously; framerate=30 в конфиге.
 - **Low:** dual-monitor bar crops; visualizer center per-bar window.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
-- Не трогал. Решение «shell real cava» уже в DECISIONS.log 2026-07-19 Top Bar redesign wave.
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
+- Не трогал. Решение «shell real cava» уже в docs/DECISIONS.log 2026-07-19 Top Bar redesign wave.

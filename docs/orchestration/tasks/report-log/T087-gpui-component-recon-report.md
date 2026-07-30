@@ -274,7 +274,7 @@ $ find … -name '*.rs' | xargs wc -l | tail -1
 
 ---
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 Не обновлялись (разведка; решение Архитектора после приёмки отчёта).
 Кандидат в DECISIONS после принятия:

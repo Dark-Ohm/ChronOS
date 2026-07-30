@@ -62,7 +62,7 @@ cargo build --workspace
 - **Severity low:** MPRIS `player_id` вида `org.mpris.MediaPlayer2.spotify` vs PipeWire `application.name=Spotify` — substring `"spotify"` сработает; полный bus-name без усечения может **не** матчить. Панель должна передавать short hint (как план: player identity, не обязательно full bus path).
 - Чужой WIP в том же working tree (`net_stats`, `side_panel_right`, `network.rs`, …) — **не тронут**.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 Не обновлялись — это расширение существующего audio MVP (wpctl), не новый архитектурный контур. При желании Архитектора: одна строка в ARCHITECTURE §services audio про `ToggleStreamMute` + name-match.
 

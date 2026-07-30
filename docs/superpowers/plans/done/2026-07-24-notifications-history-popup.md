@@ -15,7 +15,7 @@
 
 **Goal:** Bring `notifications/history_popup` (bar bell inbox) to the same
 popup discipline as post-T117 `updates_popup`: anchored to the bell,
-real scroll, pixel-faithful chrome from `design/Notifications Popup.dc.html`,
+real scroll, pixel-faithful chrome from `docs/design/Notifications Popup.dc.html`,
 plus history mutations the mockup assumes (per-item dismiss, Clear all).
 
 **Architecture:** Reuse the proven updates pattern — `canvas` bounds on the
@@ -30,7 +30,7 @@ must not be overloaded).
 `crates/app/src/bar/widgets/notification_bell.rs`,
 `crates/services/src/notification/`, `chronos_ui::Theme`.
 
-**Design canon (literal):** `design/Notifications Popup.dc.html` (dark only).
+**Design canon (literal):** `docs/design/Notifications Popup.dc.html` (dark only).
 **Popup discipline canon:** `docs/superpowers/plans/2026-07-24-updates-popup-anchored-redesign.md`
 + live code in `crates/app/src/updates_popup/` and `bar/widgets/updates.rs`.
 

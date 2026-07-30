@@ -12,7 +12,7 @@
 MVP-looking window into the pilot for the popup-system polish pass —
 anchored to its actual trigger icon via the fork's native
 `WindowKind::AnchoredPopup`, real scroll instead of a hard clip, and
-visual chrome matching `design/Updates Popup.dc.html` (dark + light).
+visual chrome matching `docs/design/Updates Popup.dc.html` (dark + light).
 
 **Architecture:** Trigger bounds captured via a `gpui::canvas()` overlay
 in the bar widget (stashed in a shared cell, read at mouse-down time),
@@ -32,7 +32,7 @@ existing `crates/app/src/updates_popup/`, `chronos_ui::Theme`.
 ## Global Constraints
 
 - Spec: `docs/superpowers/specs/2026-07-24-updates-popup-anchored-redesign-design.md`.
-- Design brief: `design/Updates Popup.dc.html` (dark reference + light
+- Design brief: `docs/design/Updates Popup.dc.html` (dark reference + light
   "accepted, Light C" variant — literal hex/shadow/opacity values, do not
   re-derive by eye).
 - **Spec correction found while planning:** the spec said
@@ -54,7 +54,7 @@ existing `crates/app/src/updates_popup/`, `chronos_ui::Theme`.
   `theme.is_light` flag.
 - **`light_scheme()` already exists and is wired**
   (`crates/ui/src/theme/schemes.rs`, commits `0f0ee88`/`5bb6c77`) — this
-  was misdocumented as "not started" in `roadmap.md` until corrected
+  was misdocumented as "not started" in `docs/roadmap.md` until corrected
   2026-07-24 during this plan's research. Both dark and light are live-
   switchable today; this plan can and should verify both, not just dark.
 - `unsafe_code = "deny"` at workspace level — nothing here needs `unsafe`.
@@ -64,7 +64,7 @@ existing `crates/app/src/updates_popup/`, `chronos_ui::Theme`.
   "never swallow a fallible call" rule, replace both with `.log_err()`
   since you're already touching that exact code, not left as-is.
 - Existing dismiss paths (Esc, "✕" button, re-toggle bar icon, "Upgrade
-  all") stay as they are — `ARCHITECTURE.md §4.1` already establishes
+  all") stay as they are — `docs/ARCHITECTURE.md §4.1` already establishes
   "explicit dismiss only, never focus-loss" and `AnchoredPopup`'s
   `grab: true` only ADDS native other-app-click dismissal on top; it does
   not replace or need new own-app dismiss wiring for this pass.
@@ -706,7 +706,7 @@ Grim it: `updates-popup-scrolled-dark.png`.
 Switch to light scheme (`theme.toml` or however `select_scheme()` is
 invoked live — check `chronos::theme_config` for the mechanism). Expected:
 watermark sigil + glow-top line + elevated shadow all visible, matching
-`design/Updates Popup.dc.html`'s light variant reasonably closely (exact
+`docs/design/Updates Popup.dc.html`'s light variant reasonably closely (exact
 gradient approximation noted in Task 5 Step 2 is an acceptable, reported
 deviation — everything else should match).
 

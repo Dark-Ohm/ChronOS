@@ -10,7 +10,7 @@
 
 **Зона файлов:** `crates/app/src/side_panel_left/composer.rs`.
 Сервисный слой (`crates/services/src/hermes_acp/*`) закрыт и трогать его не
-надо. **`HANDOFF.md`, `ARCHITECTURE.md`, `DECISIONS.log` — не твои файлы**,
+надо. **`docs/HANDOFF.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.log` — не твои файлы**,
 см. «Рамки» ниже.
 
 **Отчёт:** `docs/orchestration/tasks/report/T144-acp-session-models-report-4.md`.
@@ -85,7 +85,7 @@ RUST_LOG='info,chronos=debug,chronos_services=debug,hermes=debug' chronos-start
 
 ## Рамки — нарушение любой строки аннулирует заход
 
-1. **`HANDOFF.md`, `ARCHITECTURE.md`, `DECISIONS.log` не трогаются.** Никогда,
+1. **`docs/HANDOFF.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.log` не трогаются.** Никогда,
    ни одной строкой, даже если написанное там устарело или кажется неверным.
    Это документы состояния проекта, их ведёт архитектор. Нужно, чтобы туда
    что-то попало — пиши в отчёт, попадёт после проверки. В заходе 3 из

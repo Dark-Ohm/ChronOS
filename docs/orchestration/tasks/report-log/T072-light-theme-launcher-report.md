@@ -5,7 +5,7 @@
 ## Сделано (факт, не намерение)
 
 - `crates/app/src/launcher/view.rs`: явные `text_color(theme.text.primary)` на root/input/rows (раньше GPUI default = `black()` — в dark почти нечитаемо, в light случайно ок; теперь токены обеих схем).
-- `crates/app/src/system_popup/view.rs`: active-сегмент power-profile — `chronos_ui::on_fill(accent)` вместо `theme.text.primary` (STYLE.md: контент поверх насыщенной заливки). В dark `text.primary` == paper-полюс on_fill → пиксель тот же.
+- `crates/app/src/system_popup/view.rs`: active-сегмент power-profile — `chronos_ui::on_fill(accent)` вместо `theme.text.primary` (docs/STYLE.md: контент поверх насыщенной заливки). В dark `text.primary` == paper-полюс on_fill → пиксель тот же.
 - Коммит `3f6e165` — ровно 2 файла.
 
 ## Расхождения со спекой/планом
@@ -42,7 +42,7 @@
 - **LOW:** OSD остаётся на `bg.elevated` (чуть другая «высота» surface vs остальные попапы) — косметика, не light-баг.
 - **LOW:** nested history-cards = `bg.primary` внутри `bg.primary` shell — flat, одинаково в обеих схемах.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
-- Не обновлял: правок архитектуры нет; STYLE.md/`on_fill` уже канон (`4ced770`).
+- Не обновлял: правок архитектуры нет; docs/STYLE.md/`on_fill` уже канон (`4ced770`).
 EOF

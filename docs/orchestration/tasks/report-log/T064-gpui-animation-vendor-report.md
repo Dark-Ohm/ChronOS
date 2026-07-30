@@ -103,7 +103,7 @@ git -C /home/neo/projects/chronos-ecosystem/Source status --short
 - **Severity info:** bump upstream потребует re-apply PATCHES.md; без
   файла правки теряются молча — файл именно для этого.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 - Не обновлялись (вендор-дерево + отчёт; канон/NOTICE — Architect).
 

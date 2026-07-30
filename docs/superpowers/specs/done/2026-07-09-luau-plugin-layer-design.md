@@ -3,7 +3,7 @@
 > Status: approved design (brainstorming complete)
 > Date: 2026-07-09
 > Scope: `crates/luau` runtime + `chronos.bar` bridge + 1 example plugin. Minimal `chronos.*` API surface sufficient for a working LuaU clock widget in the bar.
-> Relation: implements `ARCHITECTURE.md` §5 (LuaU boundary & sandbox) + §6 (runtime module registry bridge) for the bar scaffold.
+> Relation: implements `docs/ARCHITECTURE.md` §5 (LuaU boundary & sandbox) + §6 (runtime module registry bridge) for the bar scaffold.
 
 ## 1. Goal
 
@@ -242,4 +242,4 @@ let plugin_manager = PluginManager::new(plugin_dirs, cx);
 3. `plugins/clock/` example plugin loads at startup, renders a clock in the bar's left section.
 4. Editing `init.luau` while Chronos is running triggers hot-reload; clock updates without restart.
 5. A plugin with `fs = false` in manifest cannot call `chronos.fs.read_file()` (sandbox enforced).
-6. `ARCHITECTURE.md` §5/§6 remain consistent with this spec.
+6. `docs/ARCHITECTURE.md` §5/§6 remain consistent with this spec.

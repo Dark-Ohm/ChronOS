@@ -91,7 +91,7 @@ cpu=34.4% ram=54.8% gpu=Some(6.0)
 - **NVML device 0 only** — multi-GPU не в скоупе; на этой машине (RTX 3070) ок.
 - `Cargo.lock` изменился (sysinfo/nvml-wrapper + transitive) — нужен в коммите проводки.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 - Не обновлял. Backend-сервис по существующему `Service`-паттерну; новые архитектурные решения не вводил. Синхрон доков — на Архитекторе при приёмке/коммите капстоуна.
 

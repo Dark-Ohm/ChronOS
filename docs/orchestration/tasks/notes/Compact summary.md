@@ -12,7 +12,7 @@ Summary:
    - StatusNotifierWatcher/SNI: ayatana/libappindicator apps (udiskie, nm-applet, blueman) pass bare OBJECT PATH to RegisterStatusNotifierItem (no bus name) → destination must be sender's unique name from zbus Header; canonical key `{sender}{path}` enables NameOwnerChanged cleanup
    - ServiceStatus enum: Initializing/Available/Unavailable/Degraded(String) — NO `Failed` variant
    - UPower on desktop: DisplayDevice always exists → service Available with percent=0.0/state=Unknown (defaults); "no battery" heuristic = Unknown && 0.0
-   - Audio MVP (Grok): wpctl subprocess + 250ms poll; external changes reach subscribers in ~400ms; native pipewire-rs deferred without pins (DECISIONS.log)
+   - Audio MVP (Grok): wpctl subprocess + 250ms poll; external changes reach subscribers in ~400ms; native pipewire-rs deferred without pins (docs/DECISIONS.log)
    - UX/perf smokes ONLY on release builds; gpui window code verified only by live runs (RUST_LOG=info + grim screenshots)
    - Non-self-contained shared-file commits epidemic (3 cases: OMP 7af364e, Hermes cfcef99, Autohand 1f508d6) → rule: `git diff --staged` eyeballed line-by-line, name-by-name git add
    - sudo timestamps are per-tty — background tasks need SUDO_ASKPASS helper
@@ -50,12 +50,12 @@ Summary:
      end
      ```
      Also contains switchWorkspace using `hl.dsp.workspace.move({ workspace = ws, monitor = mon })` + `hl.dsp.focus({ workspace = ws })`; monitorBase DP-1=0, HDMI-A-1=10
-   - `HANDOFF.md` — rewritten cold-start-oriented: bar wave fully accepted with hashes, wave-2 assignments, user's hyprland.lua tempworks (mic binds, easyeffects autostart), system-upgrade warning (cargo clean if builds break), Lua-Hyprland dispatch section
+   - `docs/HANDOFF.md` — rewritten cold-start-oriented: bar wave fully accepted with hashes, wave-2 assignments, user's hyprland.lua tempworks (mic binds, easyeffects autostart), system-upgrade warning (cargo clean if builds break), Lua-Hyprland dispatch section
    - `GROK.md` №2 — OSD volume overlay (crates/app/src/osd/): layer-shell по образцу notifications/mod.rs, Layer::Overlay, KeyboardInteractivity::None, anchor BOTTOM ~48px, subscribe audio via watch(), show on volume/mute delta, 1.5s hide timer, don't show first snapshot;release smoke via wpctl
    - `CLINE.md` №6 — tray icons: resolve icon_name (absolute path check → freedesktop-icons crate or manual /usr/share/icons+hicolor), gpui img(), fallback pixmap (RGBA ready) → letter; cache resolves; zone tray.rs TRANSFERRED from OpenCode
    - `HERMES.md` №7 — three services follow-ups: NetworkData.wired:bool from NM D-Bus (ActiveConnection.Type == "802-3-ethernet"), UPowerData.has_battery (EnumerateDevices/IsPresent, SYSTEM bus), network idle-flap fix (60s signal timeout treats quiet as disconnect); widgetheuristic replacements (zones network.rs/battery.rs transferred for these edits); 3 separate commits
    - `MIMO.md` №3 — applications service (crates/services/src/applications/): XDG desktop entries scan + inotify hot-reload (notify crate, ~500ms debounce), ApplicationsState{entries: Vec<AppEntry>}, no commands yet, launcher NOT migrated (next task); applications-smoke with touch/delete test
-   - `CLAUDE.md` — fully rewritten (b2ad267): removed llama.cpp fork header, dead recall()/reflect()/retain() protocol, stale D-001 DFlash refs; now: ChronOS project description, HANDOFF.md as first read, role with exceptions, full minion roster, Hindsight REST :8888 memory section, live-smoke rule, git discipline; user's behavior/personality rules preserved verbatim
+   - `CLAUDE.md` — fully rewritten (b2ad267): removed llama.cpp fork header, dead recall()/reflect()/retain() protocol, stale D-001 DFlash refs; now: ChronOS project description, docs/HANDOFF.md as first read, role with exceptions, full minion roster, Hindsight REST :8888 memory section, live-smoke rule, git discipline; user's behavior/personality rules preserved verbatim
    - `/tmp/.../scratchpad/askpass.sh` — `#!/bin/sh\necho 1111` (chmod 700) for background sudo
 
 4. Errors and fixes:
@@ -74,7 +74,7 @@ Summary:
    - Write tool "file modified since read" on CLINE.md — used bash heredoc instead.
 
 5. Problem Solving:
-   Solved: full bar-widget wave accepted end-to-end with live release smokes and screenshots (clock ticking, workspaces switching+clicking, network eth, battery hidden on desktop, tray with real ayatana items); Lua-Hyprland dispatch incompatibility discovered/diagnosed/fixed/documented (DECISIONS.log); audio service accepted (Grok debut); user's audio needs (mic binds, 35%, EasyEffects noise suppression default+autostart persistent across reboot); full system upgrade completed; wave-2 briefs written cold-session-proof; HANDOFF+CLAUDE.md+Hindsight all refreshed for reboot. Follow-ups queued: icon-theme/pixmap tray render (Cline), DBusMenu context menus, ReplaceExisting policy, wired/has_battery honest fields (Hermes), network flap (Hermes), OSD (Grok), applications service (Mimo).
+   Solved: full bar-widget wave accepted end-to-end with live release smokes and screenshots (clock ticking, workspaces switching+clicking, network eth, battery hidden on desktop, tray with real ayatana items); Lua-Hyprland dispatch incompatibility discovered/diagnosed/fixed/documented (docs/DECISIONS.log); audio service accepted (Grok debut); user's audio needs (mic binds, 35%, EasyEffects noise suppression default+autostart persistent across reboot); full system upgrade completed; wave-2 briefs written cold-session-proof; HANDOFF+CLAUDE.md+Hindsight all refreshed for reboot. Follow-ups queued: icon-theme/pixmap tray render (Cline), DBusMenu context menus, ReplaceExisting policy, wired/has_battery honest fields (Hermes), network flap (Hermes), OSD (Grok), applications service (Mimo).
 
 6. All user messages:
    - "/home/neo/projects/chronos-ecosystem/ChronOS/mimo-report.md /home/neo/projects/chronos-ecosystem/ChronOS/CLINE.md /home/neo/projects/chronos-ecosystem/ChronOS/AUTOHAND.md"
@@ -105,14 +105,14 @@ Summary:
    - User expected to reboot (kernel updated); all minions and I get fresh sessions
 
 9. Optional Next Step:
-   Write the short confirmation to the user that CLAUDE.md was not "чётко" and is now fixed: the llama.cpp-fork header, the dead recall()/reflect()/retain() protocol, and the stale minion roster were replaced (project = ChronOS shell, HANDOFF.md as first read, Hindsight REST:8888, full 7-minion roster, live-smoke and git-discipline rules), user's personality/behavior rules kept verbatim, committed b2ad267. Then wait: the user is about to reboot; next session begins with reading HANDOFF.md and accepting wave-2 reports (Grok OSD, Cline tray icons,Hermes services follow-ups, Mimo applications) as they arrive — no new tool work until reports or user direction.
+   Write the short confirmation to the user that CLAUDE.md was not "чётко" and is now fixed: the llama.cpp-fork header, the dead recall()/reflect()/retain() protocol, and the stale minion roster were replaced (project = ChronOS shell, docs/HANDOFF.md as first read, Hindsight REST:8888, full 7-minion roster, live-smoke and git-discipline rules), user's personality/behavior rules kept verbatim, committed b2ad267. Then wait: the user is about to reboot; next session begins with reading docs/HANDOFF.md and accepting wave-2 reports (Grok OSD, Cline tray icons,Hermes services follow-ups, Mimo applications) as they arrive — no new tool work until reports or user direction.
 
 If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/neo/.claude/projects/-home-neo-projects-chronos-ecosystem-ChronOS/1c2cb471-8e45-458e-bd21-21c9f2c0d6c3.jsonl
 Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break neverhappened.
 
                                                                                                                                                                                                                                                            12:20 PM claude-fable-5
 
-- первое чтение сессии — HANDOFF.md.
+- первое чтение сессии — docs/HANDOFF.md.
 - Ростер миньонов — был CLINE/HERMES/OMP, теперь все семеро + правило «задания самодостаточны под холодные сессии».
 - Добавил выстраданное этой сессией: исключения из «не кодишь» (эрраты, живой дебаг), «зелёные тесты ≠ работает» для UX-кода, эпидемию несамодостаточных коммитов, юридику reference/, bleeding-edge политику.
 

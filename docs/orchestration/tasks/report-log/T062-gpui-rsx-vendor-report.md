@@ -86,7 +86,7 @@
 - **Ожидание при проводке в workspace** (severity: низкий, НЕ проверено сборкой): крейт объявляет `syn = "2.0.117"` своей спекой (не `.workspace = true`); резолвер унифицирует с workspace-спекой `syn = "2.0.101"` к одной версии (2.0.119 уже удовлетворяет обе — факт по lock выше), features объединятся (`extra-traits`, `visit-mut` от workspace — аддитивны). Подтвердится первым `cargo check` после добавления в members. `[lints] workspace = true` у крейта НЕТ → от пустого `[workspace.lints]` Source не зависит. `edition = "2024"` собственный — совпадает с workspace.
 - **После проводки в members повторный standalone-check невозможен без `[workspace]`** — симметрично ситуации сейчас; не баг, свойство cargo.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 Не обновлял — не моя зона и не мой коммит (бриф: «Не коммить… Проводку/коммит — Архитектор»). Решение «берём, во владение» уже зафиксировано Архитектором в `docs/orchestration/agents/CLINE.md` (2026-07-20); атрибуция MIT в `Source/NOTICE` — часть его проводки (прецедент: gpui-animation, коммит `66cd816`).
 

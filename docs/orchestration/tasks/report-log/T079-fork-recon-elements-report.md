@@ -25,7 +25,7 @@ _Обновлено после post-submit: fable-judge, fable-method audit, Phi
 - Не делалось (осознанно / вне зоны):
   - полный `cargo run` всех examples зоны под Wayland;
   - правка `gpui-layer-shell` / `chronos-gpui/SKILL.md` nav (другие владельцы / follow-up);
-  - `ARCHITECTURE.md` / `DECISIONS.log` (recon-карта, не архитектурный контракт ChronOS).
+  - `docs/ARCHITECTURE.md` / `docs/DECISIONS.log` (recon-карта, не архитектурный контракт ChronOS).
 
 ## Проверено фактом, не на словах
 
@@ -123,7 +123,7 @@ f4d2ebc skills : chronos-gpui — элементы, стили, лэйаут, с
 - **Low:** untracked шум в Source (brief/findings/REPORT…) — чужой.
 - **Info:** plain-div autoscroll = повторный `scroll_to_bottom`; для terminal log предпочтительнее `list` + `FollowMode::Tail`.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 - Не обновлялись. Опровержение «скролла нет» уже в каноне (`e71f9aa`); №17 — детальная карта зоны elements/style/layout, не новый архитектурный decision ChronOS-кода.
 

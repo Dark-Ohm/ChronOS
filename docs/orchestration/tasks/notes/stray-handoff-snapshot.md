@@ -1,7 +1,7 @@
 # HANDOFF — контекст для новой сессии Архитектора
 
 **Обновлено: 2026-07-17. Читать сверху вниз — самое актуальное первым.
-При расхождении с ARCHITECTURE.md/DECISIONS.log побеждают они.**
+При расхождении с docs/ARCHITECTURE.md/DECISIONS.log побеждают они.**
 
 ## Кто ты и как работаешь
 
@@ -13,8 +13,8 @@ Hyprland 0.55.4+ (bar/dock/launcher/notifications/osd, плагины Luau,
 файлы (CLINE.md, HERMES.md, OMP.md), пользователь скармливает их своим
 локальным агентам, отчёты возвращаются в `<имя>-report.md`. Приёмку
 делаешь сам грепами/диффами — КАЖДОЕ утверждение отчёта сверяй с деревом
-(миньоны врут регулярно, счёт 4+). Канон — ARCHITECTURE.md, отклонённое —
-DECISIONS.log. Отвечать по-русски, коммиты БЕЗ AI-трейлеров, стиль
+(миньоны врут регулярно, счёт 4+). Канон — docs/ARCHITECTURE.md, отклонённое —
+docs/DECISIONS.log. Отвечать по-русски, коммиты БЕЗ AI-трейлеров, стиль
 `область : что сделано`.
 
 ## Два репозитория
@@ -59,7 +59,7 @@ clock ✅ (Cline, e415718+эррата e2845bd), workspaces ✅ (Hermes, cfcef99
 работает после Lua-socket фикса), network ✅ (Autohand, 1f508d6), battery ✅
 (Mimo, ba78b70), tray ✅ (OpenCode, 435af47+5b31628+75a1061 — ayatana-фикс,
 udiskie-бейдж виден живьём). **Audio-сервис ✅** (Grok №1, 079f1d4 — MVP wpctl
-+ 250ms poll, внешние изменения доезжают за ~400мс; DECISIONS.log 2026-07-17).
++ 250ms poll, внешние изменения доезжают за ~400мс; docs/DECISIONS.log 2026-07-17).
 104 теста workspace зелёные. Всё закоммичено, дерево чистое.
 
 Раздача НОВОЙ волны (задания в файлах, самодостаточные для свежих сессий):
@@ -95,7 +95,7 @@ udiskie-бейдж виден живьём). **Audio-сервис ✅** (Grok �
    UPowerData, wired:bool в NetworkData, network «signal timeout» флап
    раз в минуту, SVG/icon-theme иконки виджетов вместо юникода.
 4. Gradient borders (Source, после блюра), dock.
-5. Отложено (DECISIONS.log): FLIP/transitions (нет transform в Style),
+5. Отложено (docs/DECISIONS.log): FLIP/transitions (нет transform в Style),
    8-stop градиенты, effect layers, color filter.
 
 ## Lua-Hyprland: диспатчи (кровью, 2026-07-17)
@@ -107,7 +107,7 @@ hyprland-rs `Dispatch::call` НЕСОВМЕСТИМ с Lua-Hyprland — серв
 (compositor/hyprland.rs::command_to_socket_line, 2a076a3 + эррата df65f42:
 `hl.dsp.move` не существует, надо `hl.dsp.window.move`). Wiki описывает
 классический Hyprland — истина для форка ТОЛЬКО живой сокет
-(`hyprctl dispatch '<lua>'` для проверки). Полный разбор — DECISIONS.log
+(`hyprctl dispatch '<lua>'` для проверки). Полный разбор — docs/DECISIONS.log
 2026-07-17.
 
 ## Launcher Critical — ЗАКРЫТ (bfb1503, «немножко баговынно, но работает»)
@@ -140,7 +140,7 @@ was_active-гейт против ложного active=false первого Wayl
   std::sync::Mutex для состояния, `Handle::current()` захватить в `new()`
   для таймеров. (hermes-report №3, секция «Ключевые решения».)
 - Деп-политика: **bleeding edge** (CachyOS/Arch) — новейшие версии,
-  донорский код адаптируем к текущим API, пины не наследуем (MEMORY.md §Rules).
+  донорский код адаптируем к текущим API, пины не наследуем (docs/MEMORY.md §Rules).
 - Kael = Apache-2.0 (можно портировать с атрибуцией в NOTICE);
   gpui-shell = БЕЗ лицензии (только rewrite-по-паттерну, 0 строк).
 - Float в Service::Data → НЕ derive Eq (трижды наступали).

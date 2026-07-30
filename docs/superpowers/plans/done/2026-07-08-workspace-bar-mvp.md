@@ -4,16 +4,16 @@
 
 **Goal:** Stand up the Chronos Cargo workspace, prove the gpui-ce path-dependency builds and runs, add single-instance IPC, and get a real layer-shell bar window rendering on every monitor under Hyprland.
 
-**Architecture:** One binary crate, `crates/app`, path-depending directly on the local `gpui-ce-main` checkout (mirrors the working pattern already used by `hermes-gpui-ide/hermes-gpui/Cargo.toml`). No `crates/ui`, `crates/services`, `crates/luau`, or `crates/plugins` yet — those are separate subsystems with their own plans (see `ARCHITECTURE.md` §3). The bar in this plan is visual-only: hardcoded position/size/color, no config system, no widgets, no D-Bus. It exists to prove the windowing + multi-monitor + hot path works before anything is built on top of it.
+**Architecture:** One binary crate, `crates/app`, path-depending directly on the local `gpui-ce-main` checkout (mirrors the working pattern already used by `hermes-gpui-ide/hermes-gpui/Cargo.toml`). No `crates/ui`, `crates/services`, `crates/luau`, or `crates/plugins` yet — those are separate subsystems with their own plans (see `docs/ARCHITECTURE.md` §3). The bar in this plan is visual-only: hardcoded position/size/color, no config system, no widgets, no D-Bus. It exists to prove the windowing + multi-monitor + hot path works before anything is built on top of it.
 
 **Tech Stack:** Rust (edition 2024), `gpui` + `gpui_platform` (gpui-ce, path dependency), `tokio` (single-instance socket only — no services runtime yet), `tracing`.
 
 ## Global Constraints
 
-- gpui-ce source: local checkout at `/home/neo/Projects/SOURCE/gpui/gpui-ce-main`, pinned content corresponds to rev `20340e14874a3b55122e5cb2aa0d023874e08b2d` (2026-07-06). Path-dep now; migrate to `git = "...", rev = "..."` once `gpui-ce-main` is a git repo (ARCHITECTURE.md §2). Do not add `crates.io` or `zed/main` as a gpui source.
-- `panic = "unwind"` in `[profile.release]` — never `"abort"` (DECISIONS.log, 2026-07-08, "Panic strategy").
-- Multi-monitor bar: open one layer-shell window per `cx.displays()` entry, passing `display_id` into `WindowOptions` (ARCHITECTURE.md §4). This is what closes Zed issue #48501 — do not special-case "primary display only".
-- Single-instance via Unix socket at `$XDG_RUNTIME_DIR/chronos.sock`, falling back to `/tmp` (ARCHITECTURE.md §4, adapted from `gpui-shell`'s `ipc/service.rs`).
+- gpui-ce source: local checkout at `/home/neo/Projects/SOURCE/gpui/gpui-ce-main`, pinned content corresponds to rev `20340e14874a3b55122e5cb2aa0d023874e08b2d` (2026-07-06). Path-dep now; migrate to `git = "...", rev = "..."` once `gpui-ce-main` is a git repo (docs/ARCHITECTURE.md §2). Do not add `crates.io` or `zed/main` as a gpui source.
+- `panic = "unwind"` in `[profile.release]` — never `"abort"` (docs/DECISIONS.log, 2026-07-08, "Panic strategy").
+- Multi-monitor bar: open one layer-shell window per `cx.displays()` entry, passing `display_id` into `WindowOptions` (docs/ARCHITECTURE.md §4). This is what closes Zed issue #48501 — do not special-case "primary display only".
+- Single-instance via Unix socket at `$XDG_RUNTIME_DIR/chronos.sock`, falling back to `/tmp` (docs/ARCHITECTURE.md §4, adapted from `gpui-shell`'s `ipc/service.rs`).
 - Out of scope for this plan (separate future plans): `crates/ui` fork, `crates/services` D-Bus/compositor integrations, `crates/luau` + `crates/plugins`, config file + hot-reload, runtime widget registry, launcher/dock/notifications/osd modules. Do not build any of these here even if it looks convenient — YAGNI.
 
 ---
@@ -552,7 +552,7 @@ git commit -m "feat: wire single-instance IPC into Chronos entrypoint"
 - Modify: `crates/app/src/main.rs` (add `mod bar;` only — do NOT call `bar::init(cx)` yet, that's Task 5)
 
 **Interfaces:**
-- Produces (used by Task 5): `bar::init(cx: &mut App)` — spawns bar windows on every currently-known display, 100ms after startup (mirrors `gpui-shell`'s `bar::init`, ARCHITECTURE.md §4).
+- Produces (used by Task 5): `bar::init(cx: &mut App)` — spawns bar windows on every currently-known display, 100ms after startup (mirrors `gpui-shell`'s `bar::init`, docs/ARCHITECTURE.md §4).
 - Consumes: nothing from earlier tasks — this module is IPC-agnostic.
 
 Note: `mod bar;` must be added in this task, not deferred to Task 5, even though nothing calls `bar::init` yet. Without a `mod` declaration, `bar.rs` is an orphan file rustc never compiles — Step 3's build would trivially "succeed" without ever type-checking the new code, and the expected `dead_code` warning below would be impossible to produce.
@@ -734,7 +734,7 @@ git commit -m "feat: render Chronos bar on every monitor at startup"
 
 ## What This Plan Does Not Cover
 
-Deliberately deferred to their own plans, per `ARCHITECTURE.md`:
+Deliberately deferred to their own plans, per `docs/ARCHITECTURE.md`:
 - `crates/services` (D-Bus, Hyprland/Niri IPC, `trait Service`, tokio services runtime thread) — §7, §10.
 - `crates/ui` fork of `gpui-component` + theme system — §2 decision, §11.
 - `crates/luau` + `crates/plugins` sandboxed LuaU runtime and capability gating — §5.

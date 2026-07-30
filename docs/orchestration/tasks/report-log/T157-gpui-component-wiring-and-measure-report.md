@@ -268,4 +268,4 @@ systemctl --user stop t157.service
 | Table | +199,168 байт (+0.19 MiB) |
 | VirtualList | +14,976 байт (+0.01 MiB) |
 
-Решение по компоненту принято (DECISIONS.log). Цифра — бюджет, не гейт.
+Решение по компоненту принято (docs/DECISIONS.log). Цифра — бюджет, не гейт.

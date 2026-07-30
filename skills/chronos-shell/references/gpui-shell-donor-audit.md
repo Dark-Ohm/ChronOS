@@ -30,7 +30,7 @@ NEITHER — it only stores a `FocusHandle` and handles raw `on_key_down`.
 Steal #1+#2 as an **S-cost hygiene** patch.
 CAVEAT: mitigation only, not the real fix. Root cause is compositor-level
 (layer-shell `OnDemand` + `activate_window()`→`xdg_activation_v1` rejected for
-layer-shell). Real fix = XDG-toplevel migration (XL, undecided in DECISIONS.log).
+layer-shell). Real fix = XDG-toplevel migration (XL, undecided in docs/DECISIONS.log).
 NEVER copy donor's `KeyboardInteractivity::Exclusive` (mod.rs:642) — our MEMORY
 proves that crashes Hyprland/Niri.
 
@@ -52,7 +52,7 @@ thread (`crates/services/src/watcher.rs`, 200 ms debounce) sends `()` over an
 Better than ours: per-file `watch_config` / `watch_theme` booleans.
 FLAG: ChronOS app-level config/theme hot-reload does NOT exist yet (only luau
 + launcher-entry inotify from merged `feat-inotify-hot-reload`);
-ARCHITECTURE.md:81/218 confirm "NOT YET" for app config.
+docs/ARCHITECTURE.md:81/218 confirm "NOT YET" for app config.
 
 ## Item-by-item port cost (donor LOC → our analog → cost)
 

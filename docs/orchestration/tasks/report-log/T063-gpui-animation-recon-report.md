@@ -109,7 +109,7 @@
 - **`smol` в deps** — только `Timer::after` + channel wakeup внутри уже-нашей GPUI-таски (как оценил Архитектор). Третьего event-loop не поднимает (подтверждено кодом `transition.rs:246-249`). Severity: низкий.
 - Runtime-смок — одно обычное xdg-окно, не layer-shell. Для bar-hover (layer-shell) семантика та же на уровне element/style, но first live bar integration всё равно обязателен. Severity: средний (честная граница).
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 Не обновлены: разведка, решение «брать/не брать» — за Архитектором.
 Если «брать» — кандидат в DECISIONS/roadmap:

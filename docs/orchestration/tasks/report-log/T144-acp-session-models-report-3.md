@@ -15,7 +15,7 @@ method = `"session/set_model"` и params `{"sessionId": …, "modelId": …}` �
 
 - `crates/services/src/hermes_acp/client.rs` — импорт `UntypedMessage`, замена
   `SetSessionModeRequest` → `UntypedMessage::new("session/set_model", …)`
-- `HANDOFF.md` — секция D6 переписана на «закрыто» вместо «кровный факт»
+- `docs/HANDOFF.md` — секция D6 переписана на «закрыто» вместо «кровный факт»
 
 ## Верификация
 

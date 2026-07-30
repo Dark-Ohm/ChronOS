@@ -4,8 +4,8 @@
 
 **Зона файлов:** `crates/app/src/side_panel_left/chat_view.rs` (основное),
 `crates/app/src/side_panel_left/composer.rs` (точечно, только обработка
-`ThoughtChunk`). Ничего больше. **`HANDOFF.md`, `ARCHITECTURE.md`,
-`DECISIONS.log` — не трогать никогда.**
+`ThoughtChunk`). Ничего больше. **`docs/HANDOFF.md`, `docs/ARCHITECTURE.md`,
+`docs/DECISIONS.log` — не трогать никогда.**
 
 **Отчёт:** `docs/orchestration/tasks/report/T148-agent-transcript-layout-report.md`.
 

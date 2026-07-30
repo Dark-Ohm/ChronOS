@@ -39,7 +39,7 @@ description: Use when wiring or debugging an LLM backend for this machine — th
 Форк умеет то, чего нет в стоке: **свои типы KV-кэша**.
 
 - `turbo2/3/4`, `turbo*_tcq` — TurboQuant (WHT-ротация + PolarQuant/QJL).
-  `turbo3` живой, по скорости ≈ f16 (`ARCHITECTURE.md:132` форка).
+  `turbo3` живой, по скорости ≈ f16 (`docs/ARCHITECTURE.md:132` форка).
 - `kvarn2…8` — **не брать**: незакрытый Z-4, hot-window ломает retrieval
   внутри окна (включается только при `--kv-hot-size`, но не рисковать).
 - **`q3` для KV не существует** ни в стоке, ни в форке. Стоковый набор:

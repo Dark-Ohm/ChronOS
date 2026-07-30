@@ -2,7 +2,7 @@
 
 # Session: bar-виджет Network — 2026-07-17
 
-> Формат SESSION_REPORT (см. MEMORY.md §Rules). Дополняет AUTOHAND.md.
+> Формат SESSION_REPORT (см. docs/MEMORY.md §Rules). Дополняет AUTOHAND.md.
 > Это отчёт по **Заданию №2** (починка виджета после провала приёмки №1).
 
 ## Контекст приёмки
@@ -73,8 +73,8 @@
   через `main.rs`, а не через `lib.rs` (`chronos_app`). `cargo test -p chronos_app
   --lib bar::widgets::network` даёт 0 тестов по этой же причине — НЕ баг виджета.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 - Не обновлялись. Причина: рядовой виджет в существующем каркасе
   (BarWidget/BarWidgetRegistry), новых архитектурных решений не принималось.
-  Wired-эвристика — кандидат на DECISIONS.log, но требует сначала поля `wired: bool`
+  Wired-эвристика — кандидат на docs/DECISIONS.log, но требует сначала поля `wired: bool`
   в `NetworkData` (follow-up в services), поэтому пока не фиксирую.

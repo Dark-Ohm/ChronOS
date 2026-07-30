@@ -15,13 +15,13 @@
 - `estimate_popup_height()` — функция-геттер для консистентности с volume_popup
 - `open(cx, anchor_rect, parent)` — открывает с anchored, падает на LayerShell
 - `close(cx)` — через `handle.update`, без reentrancy
-- `close_this(window, cx)` — reentrancy guard (HANDOFF.md ghost window saga)
+- `close_this(window, cx)` — reentrancy guard (docs/HANDOFF.md ghost window saga)
 - `toggle(anchor_rect, parent, window, cx)` — bar widget entry point
 - `init(cx)` — подписки на brightness + upower, `GamingModeState::init`
 
 ### 2. `system_popup/view.rs` — Mockup chrome
 
-Полный пересмотр рендера под `design/System Popup.dc.html`:
+Полный пересмотр рендера под `docs/design/System Popup.dc.html`:
 
 - **Blur layer** — `window.paint_blur` (18px, radius_lg углы) как в volume_popup
 - **Light C recipe** — тень, inset accent ring, top glow, hexagon-sigil watermark (только для `is_light`)

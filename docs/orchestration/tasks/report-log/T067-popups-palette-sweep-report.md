@@ -1,6 +1,6 @@
 <!-- T067 — migrated 2026-07-22 from docs/orchestration/report-log/grok-report-15.md — see docs/orchestration/tasks/MIGRATION.md -->
 
-# Session: Grok №15 — свип попапов на палитру STYLE.md — 2026-07-20
+# Session: Grok №15 — свип попапов на палитру docs/STYLE.md — 2026-07-20
 
 **Коммит:** `1d736da`  
 **Зоны:** ровно 7 `view.rs` (см. файлы).  
@@ -16,7 +16,7 @@
 - `crates/app/src/notifications/history_popup/view.rs` — shell `bg.elevated` → `bg.primary`
 - `crates/app/src/notifications/view.rs` — карточка тоста/истории `bg.elevated` → `bg.primary`
 
-Без изменений (уже канон STYLE.md):
+Без изменений (уже канон docs/STYLE.md):
 - divider/секции/track: `bg.secondary`
 - hover: `theme.interactive.hover` (base03 ≡ elevated hex)
 - бордер: `border.subtle`, радиус: `theme.radius_lg`
@@ -56,9 +56,9 @@
 ## Новые риски / известные баги
 
 - В дереве параллельный WIP: `network.rs` (DeepSeek №1), `theme/*` + `Cargo.lock` (GLM №1). Коммит №15 — **только 7 файлов**, поимённый add.
-- Нотиф-карточка и shell history теперь оба `bg.primary` — визуально меньше «ступеньки» elevated между карточкой и оболочкой; это соответствует STYLE.md.
+- Нотиф-карточка и shell history теперь оба `bg.primary` — визуально меньше «ступеньки» elevated между карточкой и оболочкой; это соответствует docs/STYLE.md.
 
-## Статус ARCHITECTURE.md / DECISIONS.log
+## Статус docs/ARCHITECTURE.md / docs/DECISIONS.log
 
 - Не обновлялись: косметика палитры, решений не меняет.
 

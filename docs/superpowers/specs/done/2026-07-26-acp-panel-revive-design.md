@@ -27,7 +27,7 @@ UI is Zed-shaped without ChronOS character; more TBD._
 ### 3. “View stolen from Zed, no character”
 
 - Layout/chrome follow Zed agent panel patterns (sessions rail + thread + composer) by design skill path — functional copy without ChronOS identity.
-- Mockups exist: `design/Agent Panel.dc.html`, `design/Agent Thread.dc.html` — not fully reflected; empty thread is “huge void” (TBD).
+- Mockups exist: `docs/design/Agent Panel.dc.html`, `docs/design/Agent Thread.dc.html` — not fully reflected; empty thread is “huge void” (TBD).
 - Wanted: shell chrome (theme/surfaces/elevation already on left), denser ChronOS language, not second Zed.
 
 ## Non-goals (this front)
