@@ -230,6 +230,16 @@ impl gpui::EntityInputHandler for SidePanelLeft {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // While a sub-input owns the keyboard — the sidebar thread search /
+        // rename field (`search_focused`) or the model-picker search
+        // (`composer_model_dropdown_open`) — its text lives in a separate
+        // String driven by `on_key_down`. The composer's IME handler is still
+        // bound to `composer_focus`, so without this guard those keystrokes
+        // also land in `composer_input` and leak into the message box behind
+        // the popup.
+        if self.search_focused || self.composer_model_dropdown_open {
+            return;
+        }
         let range = range_utf16
             .as_ref()
             .map(|r| self.composer_input.range_from_utf16(r))
@@ -247,6 +257,12 @@ impl gpui::EntityInputHandler for SidePanelLeft {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Same guard as `replace_text_in_range`: don't let IME compose land in
+        // `composer_input` while a sub-input (thread search/rename or model
+        // search) owns the keyboard.
+        if self.search_focused || self.composer_model_dropdown_open {
+            return;
+        }
         let range = range_utf16
             .as_ref()
             .map(|r| self.composer_input.range_from_utf16(r))
