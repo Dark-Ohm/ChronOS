@@ -7,9 +7,9 @@
 >
 > **ChronOS-specific:** Architect does **not** spawn Claude/Grok subagents.
 > "Subagent" / "implementer" = a **local minion** assigned via
-> `orchestration/tasks/active/T120-*.md` (agent-agnostic T-brief — **no
+> `docs/orchestration/tasks/active/T120-*.md` (agent-agnostic T-brief — **no
 > personal names in the brief**). Orchestration rules: self-contained task
-> file, report → `orchestration/tasks/report/T120-*-report.md`, named
+> file, report → `docs/orchestration/tasks/report/T120-*-report.md`, named
 > `git add` only, no AI commit trailers. Architect accepts after greps /
 > diffs / build / live smoke.
 
@@ -291,7 +291,7 @@ notify-send "System" "Battery critical" -u critical
   optional after clear
 
 - [ ] **Step 6: Write report**
-  `orchestration/tasks/report/T120-notifications-history-popup-report.md`
+  `docs/orchestration/tasks/report/T120-notifications-history-popup-report.md`
   with: commits, test commands+counts, live yes/no, grim paths,
   residual debt. Honest PENDING if something blocked.
 

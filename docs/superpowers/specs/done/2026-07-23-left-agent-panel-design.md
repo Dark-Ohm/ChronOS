@@ -30,7 +30,7 @@ Left agent panel — surface для AI-ассистента (Hermes ACP). Два
 бэкендов (Hermes/Cline/OpenCode/...), выбор меняет активный бэкенд для
 новой сессии. Визуал принят (`design/Agent Panel.dc.html`, кадр 1,
 `showAgentMenu`). Архитектура — см. T108
-(`orchestration/tasks/done/T107-left-agent-panel.md` НЕ переоткрывается,
+(`docs/orchestration/tasks/done/T107-left-agent-panel.md` НЕ переоткрывается,
 T108 строится поверх).
 
 ---

@@ -5,9 +5,9 @@
 > Checkboxes `- [ ]` track steps.
 >
 > **ChronOS-specific:** Architect does **not** spawn Claude/Grok subagents.
-> "Implementer" = local minion via `orchestration/tasks/active/T121-*.md`
+> "Implementer" = local minion via `docs/orchestration/tasks/active/T121-*.md`
 > (**no personal names in the brief**). Report →
-> `orchestration/tasks/report/T121-*-report.md`. Named `git add`, no AI
+> `docs/orchestration/tasks/report/T121-*-report.md`. Named `git add`, no AI
 > trailers. Architect accepts after greps / build / live smoke.
 
 **Goal:** Bring `volume_popup` to the same popup discipline as
@@ -219,7 +219,7 @@ signatures in `crates/app/src/volume_popup/mod.rs` (open/toggle).
 - [ ] Expand device list if multi-device; select default.
 - [ ] grim: dark open, menu open, muted state; light if switchable.
 - [ ] Report  
-  `orchestration/tasks/report/T121-volume-popup-anchored-redesign-report.md`  
+  `docs/orchestration/tasks/report/T121-volume-popup-anchored-redesign-report.md`  
   with **rsx vs div map**, commits, live evidence, residual debt.
 - [ ] Architect accepts — minion does not self-accept.
 

@@ -1,7 +1,7 @@
 # TBD — хвосты и хотелки
 
 > Живой список **некритичного**: polish, wishlist, отложенные идеи.
-> Не замена `HANDOFF.md` (оперативка) и не `orchestration/tasks/` (T-ID).
+> Не замена `HANDOFF.md` (оперативка) и не `docs/orchestration/tasks/` (T-ID).
 > Когда пункт созрел → бриф T-ID или вычёркивание с датой/коммитом.
 >
 > **Обновлено:** 2026-07-30 (14:15) — live-смок на СВЕЖЕМ HEAD-бинаре:
@@ -184,7 +184,7 @@ Hermes/OmniRoute, не ChronOS. → отдельной задачей или в 
   Live: panels slide (`with_animation`); popups enter failed (hard cut +
   compositor fade on close). Code left in tree: `crates/app/src/motion.rs`,
   panel `with_animation`, popup `enter_t` tick. Re-open only with new brief.  
-  Commits: `aeff604`…`ce6fff3`. Brief local (orchestration/ gitignored).
+  Commits: `aeff604`…`ce6fff3`. Brief local (docs/orchestration/ gitignored).
 - [ ] T130 — toast enter/exit (blocked until T129 reopened or rewritten).
 - [ ] T131 — fork: 3D scene primitive + example.
 - [ ] T132 — один 3D demo surface в шелле.

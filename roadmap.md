@@ -160,7 +160,7 @@ GPU-accelerated retained-mode тулките с нуля). Личный инст
       System-таб byte-for-byte + 9 заглушек) принят, `0e10e51`.
 - [ ] **Shell-IDE правая панель — 9 реальных вкладок.** 3 розданы без
       привязки к минону (T113 Terminal, T114 ACP settings, T115 Files —
-      `orchestration/tasks/active/`). Остальные 6 (Editor, MCP, LSP,
+      `docs/orchestration/tasks/active/`). Остальные 6 (Editor, MCP, LSP,
       API-providers, Hyprland binds) НЕ розданы — 4 из них требуют новых
       backend-сервисов с нуля (в дереве их сегодня нет), Editor —
       крупнейший кусок, нужен отдельный скоупинг.

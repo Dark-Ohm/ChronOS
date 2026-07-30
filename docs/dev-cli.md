@@ -216,4 +216,4 @@ scripts/install-dev-cli.sh
 ```
 
 Краткая шпаргалка также в [`CONTRIBUTING.md`](../CONTRIBUTING.md#dev-cli).
-Задача-канон: `orchestration/tasks/done/T122-dev-shell-scripts.md`.
+Задача-канон: `docs/orchestration/tasks/done/T122-dev-shell-scripts.md`.

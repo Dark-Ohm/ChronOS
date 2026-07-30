@@ -102,8 +102,8 @@ crates.io). `../Source-wt-component` — worktree с `gpui-component`.
 
 ## Оркестрация
 
-- Задания живут в `orchestration/tasks/active/TNNN-*.md`, отчёты — в
-  `orchestration/tasks/report/`, принятые уезжают в `report-log/`,
+- Задания живут в `docs/orchestration/tasks/active/TNNN-*.md`, отчёты — в
+  `docs/orchestration/tasks/report/`, принятые уезжают в `report-log/`,
   отклонённые — в `rejected/`. История — `MIGRATION.md`.
 - Задание должно быть самодостаточным: у исполнителя холодная сессия.
   Точные пути, образцы в дереве, непересекающиеся зоны файлов, способ

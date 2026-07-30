@@ -4,7 +4,7 @@
 >
 > **ChronOS-specific note:** this repo's Architect does not dispatch Claude
 > subagents — this plan is executed by a human-directed local minion via
-> `orchestration/tasks/active/`, following `orchestration/agents/rules.md`
+> `docs/orchestration/tasks/active/`, following `docs/orchestration/agents/rules.md`
 > (поимённый `git add`, no unrequested commits to master). Treat
 > "subagent" below as "the assigned minion."
 

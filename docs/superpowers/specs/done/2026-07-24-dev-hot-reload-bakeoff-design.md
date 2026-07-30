@@ -119,7 +119,7 @@ tray_menu/обе side-панели/попапы). `unsafe_code = "deny"` в work
 - Документируется в `skills/chronos-shell/` (или отдельном скилле) как
   реальный dev-workflow: как запускать, что перезагружается, что нет.
 - Проигравший трек архивируется веткой (не удаляется), одна строка в
-  `orchestration/tasks/MIGRATION.md` с причиной.
+  `docs/orchestration/tasks/MIGRATION.md` с причиной.
 
 ## Явно вне рамок этой спеки
 

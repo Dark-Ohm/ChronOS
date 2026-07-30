@@ -117,7 +117,7 @@ launcher, notifications, OSD, wallpaper control and an SNI/DBusMenu tray. See
 ## Development
 
 **[Dark-Ohm](https://github.com/Dark-Ohm)** · rules in [`CONTRIBUTING.md`](CONTRIBUTING.md) ·
-agent tasks under [`orchestration/`](orchestration/).
+agent tasks under [`docs/orchestration/`](docs/orchestration/).
 
 `HANDOFF.md` → `ARCHITECTURE.md` → `DECISIONS.log`.
 ## License

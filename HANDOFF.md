@@ -1,8 +1,8 @@
 # HANDOFF — контекст для новой сессии Архитектора
 
-> **Переезд (2026-07-19):** оркестрация уехала из корня в `orchestration/`.
-> Брифы — `orchestration/agents/<ИМЯ>.md`, активные отчёты —
-> `orchestration/reports/<имя>-report.md`, архив — `orchestration/report-log/`.
+> **Переезд (2026-07-19):** оркестрация уехала из корня в `docs/orchestration/`.
+> Брифы — `docs/orchestration/agents/<ИМЯ>.md`, активные отчёты —
+> `docs/orchestration/reports/<имя>-report.md`, архив — `docs/orchestration/report-log/`.
 > Агент-стейт (`.cline/`, `.autohand/`, `.mimocode/`, `.clinerules/`, `contexts/`)
 > теперь в `.gitignore`. Корень несёт только профильные доки + скелет (README,
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
@@ -286,7 +286,7 @@ Ollama 4096 и лимит Jina «2 одновременных» — дроссе
 
 ### Где стоим (2026-07-29)
 
-**Очередь `orchestration/tasks/active/` — три состояния, не одна куча**
+**Очередь `docs/orchestration/tasks/active/` — три состояния, не одна куча**
 (коммит `7d3ff16`, канон в `ARCHITECT.md`):
 
 | Каталог | Смысл |
@@ -359,10 +359,10 @@ T154 требовал пятую. Пользователь решил: комп�
 ответственности: **FRONTEND** (`crates/app`, `crates/ui`), **BACKEND**
 (`crates/services`, `luau`, `plugins`), **QA** (улики: прогоны, кадры, логи —
 но НЕ приёмка), **RECON** (факты из чужих исходников, только чтение).
-Точки входа — `orchestration/agents/{FRONTEND,BACKEND,QA,RECON}.md`, общие
-правила один раз в `orchestration/agents/RULES.md`. Архитектор среди
+Точки входа — `docs/orchestration/agents/{FRONTEND,BACKEND,QA,RECON}.md`, общие
+правила один раз в `docs/orchestration/agents/RULES.md`. Архитектор среди
 миньонов не заводится намеренно — обоснование в `ARCHITECT.md` («Role
-model»). Старый `HERMES.md` — в `orchestration/agents/archive/`.
+model»). Старый `HERMES.md` — в `docs/orchestration/agents/archive/`.
 
 **Очередь:** T148 (транскрипт: тулы наверх, живое размышление, сворачивание,
 ответ отдельным блоком) и T149 (поиск по 288 моделям) — FRONTEND,
@@ -454,7 +454,7 @@ $ grep -a "turn START" <лог>
   11:58:01  model=nous:anthropic/claude-opus-4.7  text_len=2
 ```
 
-Кадр раскрытого списка — `orchestration/tasks/notes/T144-dropdown-open.png`.
+Кадр раскрытого списка — `docs/orchestration/tasks/notes/T144-dropdown-open.png`.
 Не блокер на будущее: 288 элементов рисуются без виртуализации (обычный
 `.children()`), лагов на глаз нет; если появятся — `uniform_list`.
 
@@ -481,7 +481,7 @@ $ grep -a "turn START" <лог>
 
 Подробности и метод диагностики — скилл
 `skills/tokio-coop-budget-on-main-thread/SKILL.md` и `ЗАХОД 6` в
-`orchestration/tasks/active/T143-acp-turn-resilience.md`. Там же список трёх
+`docs/orchestration/tasks/active/T143-acp-turn-resilience.md`. Там же список трёх
 опровергнутых UI-гипотез (таймер в цикле, проводка канала, прокрутка) — не
 проверять заново.
 
@@ -505,7 +505,7 @@ $ grep -a "turn START" <лог>
 файла): стриминг текста по чанкам, reasoning-блоки, тул-карточки,
 автоапрув пермишенов, повторные turn'ы в одной сессии.
 
-**Что сломано** — бриф `orchestration/tasks/active/T143-acp-turn-resilience.md`:
+**Что сломано** — бриф `docs/orchestration/tasks/active/T143-acp-turn-resilience.md`:
 
 | D | Дефект | Улика |
 |---|---|---|
@@ -577,12 +577,12 @@ clone without ChronOS character.
 | B | T138 | ACCEPTED w/ caveats — 2-й агент живьём так и не гонялся | `82405c3` |
 | C | T139 | ACCEPTED w/ caveats — визуал подтверждён скринами 02:39/07:55 | `66a86f5` |
 
-**Все T137–T142 закрыты 2026-07-27:** брифы → `orchestration/tasks/done/`,
+**Все T137–T142 закрыты 2026-07-27:** брифы → `docs/orchestration/tasks/done/`,
 отчёты уже в `report-log/` (дубли из inbox удалены), сводка —
-`orchestration/tasks/MIGRATION.md`. Остаточные дефекты не возвращены в
+`docs/orchestration/tasks/MIGRATION.md`. Остаточные дефекты не возвращены в
 эти T, а собраны в T143.
 
-**Reports →** `orchestration/tasks/report-log/T13*-report.md` (verdicts appended).  
+**Reports →** `docs/orchestration/tasks/report-log/T13*-report.md` (verdicts appended).  
 **Твой smoke:** rebuild → write_file; tool cards; model list; agents.toml; light/dark grim.
 
 ### Edit Mode — T134 CLOSED
@@ -590,7 +590,7 @@ clone without ChronOS character.
 
 ### Active T
 - **T143 — ACP turn resilience** — **заход 2, исполнитель Hermes**
-  (`orchestration/agents/HERMES.md`). Заход 1 принят частично:
+  (`docs/orchestration/agents/HERMES.md`). Заход 1 принят частично:
   D0/D1/D4 подтверждены живьём (2026-07-27), D3 REJECT, D2-таймаут
   провален живьём, D5 вынесен в отдельную T (корень — библиотека
   `agent-client-protocol` 0.11.1 не хранит `models` в `ActiveSession`;
@@ -693,7 +693,7 @@ Review → `report-log/T119-*-review.md`. Active tasks: **пусто** (T115
 Copy-paste из Chronos-FM ок; path-dep нет; **запрет**
 `view.rs`/`tabs.rs`/`mod.rs` (wire после приёмки); reject на
 фабрикованные тесты; live smoke + grim обязателен. Бриф:
-`orchestration/tasks/active/pause/T115-ide-panel-files-tab.md`.
+`docs/orchestration/tasks/active/pause/T115-ide-panel-files-tab.md`.
 
 **Обновлено: 2026-07-24 — T118 ПРИНЯТ WITH CAVEATS.**
 Streaming upgrade (`7329106` + stdout null errata). Spinner static /
@@ -727,11 +727,11 @@ Anchored-позиционирование, реальный скролл, pixel-
 захватывает вывод процесса вообще (`Command::status()`, наследует
 stdio родителя) — T118 требует потокового чтения + расширения
 `UpgradeState`. Бриф:
-`orchestration/tasks/active/T118-updates-popup-upgrade-output.md`.
+`docs/orchestration/tasks/active/T118-updates-popup-upgrade-output.md`.
 
 **Обновлено: 2026-07-24 (ночь) — решение пользователя: паузим раздачу
 новых фич, сначала полироль того, что уже есть.** T113/T114/T115 (Terminal/
-ACP settings/Files вкладки) остаются в `orchestration/tasks/active/`, НЕ
+ACP settings/Files вкладки) остаются в `docs/orchestration/tasks/active/`, НЕ
 раздаются миньонам, пока не закрыт полироль-фронт. Годовой план
 (`roadmap.md`, Q1) уже предполагал это по порядку (баги `desktop_terminal`/
 MPRIS — предпосылка для T113, не после него) — пользователь просто
@@ -751,7 +751,7 @@ MPRIS — предпосылка для T113, не после него) — по
 один триггер). Прошли полный brainstorming→spec→plan цикл: спека
 `docs/superpowers/specs/2026-07-24-updates-popup-anchored-redesign-design.md`,
 план `docs/superpowers/plans/2026-07-24-updates-popup-anchored-redesign.md`
-(6 задач, TDD), задача **T116** роздана в `orchestration/tasks/active/`
+(6 задач, TDD), задача **T116** роздана в `docs/orchestration/tasks/active/`
 (агент не назначен — T113/T114/T115 остаются замороженными, T116 НЕ
 заморожена, это и есть выбранный полироль-фронт). Механизм —
 `WindowKind::AnchoredPopup` (нативный форк, `anchored-popups` skill),
@@ -775,7 +775,7 @@ Task 6 PENDING (визуально не проверено)" — архитек�
 бы сборку). Код T116 остаётся в master (не откачен — остальное, вероятно,
 рабочее, просто непроверенное), задача переоткрыта как **T116 →
 `rejected/T116-*-REJECTED.md`**, новый бриф **T117**
-(`orchestration/tasks/active/T117-updates-popup-fix-and-verify.md`) —
+(`docs/orchestration/tasks/active/T117-updates-popup-fix-and-verify.md`) —
 чинит конкретный диагностированный баг, требует реальной живой приёмки
 ДО заявления "done", не после.
 
@@ -791,7 +791,7 @@ master, 3 вкладки IDE-панели розданы (T113-T115).**
    `crates/app`, упирается в workspace `unsafe_code = "deny"` —
    воспроизведено архитектором лично на том же ворктри. Ветка
    `spike/hot-reload-track-b` archived, не удалена. Оба зафиксированы в
-   `orchestration/tasks/done/T110-*`/`T111-*`. Находки задокументированы:
+   `docs/orchestration/tasks/done/T110-*`/`T111-*`. Находки задокументированы:
    `skills/hot-lib-reloader/`, `skills/evaluating-hot-reload-solutions/`
    (коммит `8822319`).
 2. **T112 (IDE-панель, фундамент таб-контейнера) принят**, коммит
@@ -812,7 +812,7 @@ master, 3 вкладки IDE-панели розданы (T113-T115).**
    реально подключился к живому Hermes, ни одного краша.
 5. **Розданы T113 (Terminal tab), T114 (ACP settings tab), T115 (Files
    tab)** — три из девяти оставшихся вкладок IDE-панели, без привязки к
-   конкретному минону (`orchestration/tasks/active/T11{3,4,5}-*.md`).
+   конкретному минону (`docs/orchestration/tasks/active/T11{3,4,5}-*.md`).
    Каждая пишет свой новый файл, НЕ трогает общий `view.rs`/`tabs.rs`/
    `mod.rs` — dispatch подключает архитектор сам после приёмки (иначе три
    минона дерутся за один файл). Оставшиеся 5 вкладок (Editor/MCP/LSP/
@@ -887,19 +887,19 @@ Wayland — коммит `fbcadd6`). Открыто: ghost-trail (форк, от
 2026-07-23 (три записи) и `ARCHITECT.md` (два новых урока дисциплины).**
 
 > **Переворот оркестрации (2026-07-22):** per-agent журналы →
-> per-task T-ID. Брифы теперь `orchestration/tasks/active/TNNN-slug.md`,
-> отчёты — `orchestration/tasks/report/` (inbox) →
-> `orchestration/tasks/report-log/`/`rejected/`. Полная сквозная
-> история (T001..T106+) — `orchestration/tasks/MIGRATION.md`. Роль
+> per-task T-ID. Брифы теперь `docs/orchestration/tasks/active/TNNN-slug.md`,
+> отчёты — `docs/orchestration/tasks/report/` (inbox) →
+> `docs/orchestration/tasks/report-log/`/`rejected/`. Полная сквозная
+> история (T001..T106+) — `docs/orchestration/tasks/MIGRATION.md`. Роль
 > архитектора и живой список дисциплины — `ARCHITECT.md` (корень).
-> `orchestration/agents/<ИМЯ>.md` теперь тонкий указатель на активный
+> `docs/orchestration/agents/<ИМЯ>.md` теперь тонкий указатель на активный
 > T-номер, не журнал. Открытые сейчас задачи:
 >
 > **⚠ Потеря данных при исполнении миграции (2026-07-22).** Форк-исполнитель
-> при сокращении `orchestration/agents/bench/MIMO.md` (1462 строки),
+> при сокращении `docs/orchestration/agents/bench/MIMO.md` (1462 строки),
 > `bench/OMP.md`, `fired/AUTOHAND.md` до тонких указателей прочитал только
 > ~30 строк каждого файла и переписал их целиком через `Write`, не проверив
-> git-статус. Эти три файла НИКОГДА не были в git (весь `orchestration/` в
+> git-статус. Эти три файла НИКОГДА не были в git (весь `docs/orchestration/` в
 > `.gitignore` с 2026-07-19) и не имели `archive/`-копии (в отличие от
 > CLINE/HERMES/GROK/ZED). **История MIMO/OMP/Autohand потеряна безвозвратно**
 > — не в trash, не в git log, snapper есть только для `root`-конфига (не
@@ -907,20 +907,20 @@ Wayland — коммит `fbcadd6`). Открыто: ghost-trail (форк, от
 
 | Task | Путь брифа | Статус |
 |---|---|---|
-| T102 (Task 12, бар-триггер) | `orchestration/tasks/active/T102-bar-trigger-integration.md` | OPEN, не назначен |
-| T103 (Chronos-AUR Трек A, Cline) | `orchestration/tasks/active/T103-chronos-aur-track-a-engine.md` | WIP |
-| T104 (Chronos-AUR Трек B, Grok) | `orchestration/tasks/active/T104-chronos-aur-track-b-shell-exec.md` | WIP |
-| T105 (Chronos-AUR Трек C, Hermes) | `orchestration/tasks/active/T105-chronos-aur-track-c-app-shell.md` | WIP |
-| T106 (Chronos-AUR Трек D, Zed) | `orchestration/tasks/active/T106-chronos-aur-track-d-pages.md` | WIP |
-| T107 (левая agent-панель) | `orchestration/tasks/done/T107-left-agent-panel.md` | **ПРИНЯТ** |
-| T108 (мульти-агентный свитчер) | `orchestration/tasks/done/T108-left-panel-agent-switcher.md` | **ACCEPTED** core; долг #7/#8 → future |
-| T109 (Agent Thread canvas) | `orchestration/tasks/done/T109-agent-thread-canvas.md` | **ПРИНЯТ** (живой смок 07-24) |
-| T110 (hot-reload Track A, OpenCode) | `orchestration/tasks/done/T110-hot-reload-track-a-hotlibreloader.md` | **ПРИНЯТ, победитель**, смержен `b07eacd` |
-| T111 (hot-reload Track B, GLM) | `orchestration/tasks/done/T111-hot-reload-track-b-subsecond.md` | **ПРИНЯТ, проиграл валидно** (unsafe API), архивирован |
-| T112 (IDE-панель фундамент, DeepSeek) | `orchestration/tasks/done/T112-ide-panel-tab-container.md` | **ПРИНЯТ** `0e10e51` |
-| T113 (IDE-панель, Terminal tab) | `orchestration/tasks/active/T113-ide-panel-terminal-tab.md` | OPEN, не назначен |
-| T114 (IDE-панель, ACP settings tab) | `orchestration/tasks/active/T114-ide-panel-acp-settings-tab.md` | OPEN, не назначен |
-| T115 (IDE-панель, Files tab) | `orchestration/tasks/active/T115-ide-panel-files-tab.md` | OPEN, не назначен |
+| T102 (Task 12, бар-триггер) | `docs/orchestration/tasks/active/T102-bar-trigger-integration.md` | OPEN, не назначен |
+| T103 (Chronos-AUR Трек A, Cline) | `docs/orchestration/tasks/active/T103-chronos-aur-track-a-engine.md` | WIP |
+| T104 (Chronos-AUR Трек B, Grok) | `docs/orchestration/tasks/active/T104-chronos-aur-track-b-shell-exec.md` | WIP |
+| T105 (Chronos-AUR Трек C, Hermes) | `docs/orchestration/tasks/active/T105-chronos-aur-track-c-app-shell.md` | WIP |
+| T106 (Chronos-AUR Трек D, Zed) | `docs/orchestration/tasks/active/T106-chronos-aur-track-d-pages.md` | WIP |
+| T107 (левая agent-панель) | `docs/orchestration/tasks/done/T107-left-agent-panel.md` | **ПРИНЯТ** |
+| T108 (мульти-агентный свитчер) | `docs/orchestration/tasks/done/T108-left-panel-agent-switcher.md` | **ACCEPTED** core; долг #7/#8 → future |
+| T109 (Agent Thread canvas) | `docs/orchestration/tasks/done/T109-agent-thread-canvas.md` | **ПРИНЯТ** (живой смок 07-24) |
+| T110 (hot-reload Track A, OpenCode) | `docs/orchestration/tasks/done/T110-hot-reload-track-a-hotlibreloader.md` | **ПРИНЯТ, победитель**, смержен `b07eacd` |
+| T111 (hot-reload Track B, GLM) | `docs/orchestration/tasks/done/T111-hot-reload-track-b-subsecond.md` | **ПРИНЯТ, проиграл валидно** (unsafe API), архивирован |
+| T112 (IDE-панель фундамент, DeepSeek) | `docs/orchestration/tasks/done/T112-ide-panel-tab-container.md` | **ПРИНЯТ** `0e10e51` |
+| T113 (IDE-панель, Terminal tab) | `docs/orchestration/tasks/active/T113-ide-panel-terminal-tab.md` | OPEN, не назначен |
+| T114 (IDE-панель, ACP settings tab) | `docs/orchestration/tasks/active/T114-ide-panel-acp-settings-tab.md` | OPEN, не назначен |
+| T115 (IDE-панель, Files tab) | `docs/orchestration/tasks/active/T115-ide-panel-files-tab.md` | OPEN, не назначен |
 
 ### T107/T108/T109 — LEFT AGENT PANEL (2026-07-23)
 
@@ -1242,19 +1242,19 @@ picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
 
 - **`8457bbc` Cline №11** — workspace-точки (7px, accent/disabled,
   `FocusWorkspace`). Зона только `workspaces.rs`. Live grim: точки +
-  активная синяя. Отчёт: `orchestration/report-log/cline-report-11.md`.
+  активная синяя. Отчёт: `docs/orchestration/report-log/cline-report-11.md`.
 - **`07df942` Mimo №8** — dock → `bar/widgets/dock.rs` + «Пуск»→
   `launcher::toggle`; оконный dock lifecycle снят; cache
   `config::cached`; context_menu `Anchor::TOP`. Live: **нет**
   `namespace: dock` в layers; ⏻ + pinned в левом кластере. Оговорки:
   `DockConfigSignal` без watch в bar (lag ~1s на unpin); menu по
   центру, не под иконкой. Отчёт:
-  `orchestration/report-log/mimo-report-8.md`.
+  `docs/orchestration/report-log/mimo-report-8.md`.
 - **`f4ddd72` Hermes №14** — history ring 100 + unread +
   `MarkAllRead`; `render_notification_card`; `history_popup/`
   lifecycle; bell+числовой бейдж. Live: 3×`notify-send` → grim
   `🔔 3`. Open попапа ydotool-ом не дожат — MarkAllRead unit-тесты.
-  Отчёт: `orchestration/report-log/hermes-report-14.md`.
+  Отчёт: `docs/orchestration/report-log/hermes-report-14.md`.
 - **`f7de445` Zed №2/№3 System popup** — brightness (ddcutil, оба
   дисплея, soft-fail) + power-profile 3-сегмент (UPower) + gaming mode
   (hyprctl eval). Приёмка: хирургический перенос Phase 2 из worktree
@@ -1265,7 +1265,7 @@ picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
   **Финальный клик-конфирм на master-бинаре за пользователем** (ydotool
   ненадёжен). **Известный хвост:** попап открывается на первом дисплее,
   не на кликнутом (`window.display()==None`) — чинится консолидацией,
-  не блокер. Отчёт: `orchestration/report-log/zed-report-2.md`.
+  не блокер. Отчёт: `docs/orchestration/report-log/zed-report-2.md`.
 - **`a3d36ba` Grok №14 MPRIS multi-player** — список плееров +
   sticky-выбор + `CyclePlayer` + scroll-цикл + `‹i/n›`. Живьём grim:
   `‹1/3›`, kill active → `‹1/2›`. Scroll-cycle только unit (ydotool
@@ -1286,8 +1286,8 @@ picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
   принят; System Popup мокап принят).
 
 Активные отчёты после приёмки **переносятся** в
-`orchestration/report-log/` (не копиями-дублями — active
-`orchestration/reports/` держать пустым/только WIP).
+`docs/orchestration/report-log/` (не копиями-дублями — active
+`docs/orchestration/reports/` держать пустым/только WIP).
 
 ### Открыто прямо сейчас
 
@@ -1519,7 +1519,7 @@ wave», канон — `ARCHITECTURE.md` §14, обзор — `roadmap.md`.
 
 ## Приёмка-разведка 2026-07-19 (сверка отчётов с деревом, БЕЗ билда/смока)
 
-Прочитаны 4 отчёта в `orchestration/reports/`, сверены с деревом грепами/
+Прочитаны 4 отчёта в `docs/orchestration/reports/`, сверены с деревом грепами/
 диффами/git show. Полноценная приёмка (build/test/живой смок) ЕЩЁ НЕ гонялась.
 
 - **Grok №11 (desktop_terminal)** — коммит `b45cd07` на месте: `desktop_terminal/
@@ -1553,7 +1553,7 @@ wave», канон — `ARCHITECTURE.md` §14, обзор — `roadmap.md`.
 > **Статус исполнения (ночь 2026-07-19):** A cava ✅ · B workspace-точки ✅
 > (`8457bbc`) · C dock→bar ✅ (`07df942`) · E history/bell ✅ (`f4ddd72`) ·
 > D project switcher — следующий (Mimo №9) · System popup — WIP Zed №2.
-> Брифы написаны в `orchestration/agents/{CLINE,MIMO,HERMES,ZED}.md`.
+> Брифы написаны в `docs/orchestration/agents/{CLINE,MIMO,HERMES,ZED}.md`.
 > Ниже — **решения и рационализация**, не очередь «ещё не писали брифы».
 
 Пользователь оценил живой прогон против референс-мокапов Claude Design
@@ -1951,7 +1951,7 @@ Grok №4) ← d361ec2 (volume-виджет) ← 7ec2c8f (приёмка Mimo �
 Всё нумерованное здесь раньше (Cline №7-9, Autohand №3, Grok №6,
 Hermes №9/11) — ЗАКРЫТО или заменено сегодняшней волной, см. верхний
 блок файла. Реально открытое, что НЕ входит в брифы
-Top Bar-волны (те — в верхнем блоке + `orchestration/agents/`):
+Top Bar-волны (те — в верхнем блоке + `docs/orchestration/agents/`):
 
 1. **`stash@{1}` (`tmp-foreign-wip-for-grok-verify`)** — живые
    интеграционные тесты network/upower Hermes, единственная копия,
@@ -2114,7 +2114,7 @@ D3 не сделан, D5 вынесен, вскрыт новый **D6**.
   Required` из плагина Hindsight в Hermes (облачный, хотя у нас
   self-hosted на :8888 — отдельная тема). Erratum: стек на `debug`, при
   `RUST_LOG=info` не виден.
-- **Заход 2 отдан Hermes** (`orchestration/agents/HERMES.md`).
+- **Заход 2 отдан Hermes** (`docs/orchestration/agents/HERMES.md`).
 
 Дисциплина: отчёт захода 1 содержал два ложных «сделано» (D3, D5) и
 описывал несуществующий код — обе лжи вскрыты грепом за минуты.

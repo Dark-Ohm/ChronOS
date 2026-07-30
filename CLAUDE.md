@@ -14,16 +14,16 @@ HANDOFF.md**: там актуальное состояние, кто в поле
   **`ARCHITECT.md`** (корень), читать целиком — этот раздел его не дублирует.
 - НЕ спавнишь своих субагентов. Оркестрируешь локальных агентов Архитектора.
   **С 2026-07-22 задание — не в личном файле агента, а в
-  `orchestration/tasks/active/TNNN-slug.md`** (сквозной T-ID, не per-agent
-  нумерация). Личные файлы (`orchestration/agents/CLINE.md`, HERMES.md,
+  `docs/orchestration/tasks/active/TNNN-slug.md`** (сквозной T-ID, не per-agent
+  нумерация). Личные файлы (`docs/orchestration/agents/CLINE.md`, HERMES.md,
   OMP.md, MIMO.md, AUTOHAND.md, OPENCODE.md, GROK.md, ZED.md — новые по
   образцу) остались только как точка входа ИНСТРУМЕНТА (каждый минион
   физически читает свой файл) — тонкий указатель на текущий активный
-  T-номер, не журнал. Отчёт → `orchestration/tasks/report/TNNN-slug-report.md`
+  T-номер, не журнал. Отчёт → `docs/orchestration/tasks/report/TNNN-slug-report.md`
   (inbox) → приёмку делаешь САМ: грепы, диффы, build/test, живые смоки.
   КАЖДОЕ утверждение отчёта сверяй с деревом — миньоны врут регулярно.
-  Принятые отчёты → `orchestration/tasks/report-log/`, отклонённые →
-  `orchestration/tasks/rejected/`. Полная история — `orchestration/tasks/
+  Принятые отчёты → `docs/orchestration/tasks/report-log/`, отклонённые →
+  `docs/orchestration/tasks/rejected/`. Полная история — `docs/orchestration/tasks/
   MIGRATION.md`.
 - Задания пиши самодостаточными: у миньона может быть холодная сессия.
   Полный контекст, точные пути, образцы в дереве, зоны файлов (непересекающиеся
@@ -64,10 +64,10 @@ HANDOFF.md**: там актуальное состояние, кто в поле
 - DECISIONS.log — что рассматривали и отклонили, почему.
 - ARCHITECT.md — роль архитектора + живой список дисциплины (датированные
   уроки из реальных инцидентов).
-- orchestration/tasks/MIGRATION.md — сквозная история всех задач (T-ID),
+- docs/orchestration/tasks/MIGRATION.md — сквозная история всех задач (T-ID),
   включая архив per-agent эпохи до 2026-07-22.
-- orchestration/agents/<ИМЯ_МИНЬОНА>.md — точка входа инструмента, указывает
-  на текущий активный `orchestration/tasks/active/TNNN-*.md`.
+- docs/orchestration/agents/<ИМЯ_МИНЬОНА>.md — точка входа инструмента, указывает
+  на текущий активный `docs/orchestration/tasks/active/TNNN-*.md`.
 - `git log --oneline` — краткая сводка.
 
 ## Как себя вести
@@ -100,10 +100,10 @@ HANDOFF.md**: там актуальное состояние, кто в поле
   `git ls-files <path>`, файл ли это под git.** Если НЕ отслежен (gitignored
   или просто untracked) — git не подстрахует откат; ОБЯЗАТЕЛЬНО читать файл
   ПОЛНОСТЬЮ (не первые N строк) до перезаписи, либо не перезаписывать целиком
-  вовсе (Edit точечно). Инцидент 2026-07-22: при переводе `orchestration/`
-  на per-task T-ID схему форк прочитал ~30 строк из `orchestration/agents/
+  вовсе (Edit точечно). Инцидент 2026-07-22: при переводе `docs/orchestration/`
+  на per-task T-ID схему форк прочитал ~30 строк из `docs/orchestration/agents/
   bench/MIMO.md` (1462 строки), `bench/OMP.md`, `fired/AUTOHAND.md` и
-  переписал их целиком — все три были вне git (`orchestration/` в
+  переписал их целиком — все три были вне git (`docs/orchestration/` в
   `.gitignore` с 2026-07-19), без `archive/`-копии. История потеряна
   безвозвратно, backup не нашёлся нигде (trash, git log, snapper — только
   `root`-конфиг, не `/home`). Подробности — HANDOFF.md 2026-07-22.
