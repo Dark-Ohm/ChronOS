@@ -175,9 +175,12 @@ pub fn current(cx: &App) -> WorkspaceMode {
 /// детекторов и таймеров.
 pub fn set(cx: &mut App, mode: WorkspaceMode) {
     if current(cx) == mode {
+        cx.global_mut::<WorkspaceModeState>().pending = None;
+        cx.refresh_windows();
         return;
     }
     cx.global_mut::<WorkspaceModeState>().mode = mode;
+    cx.global_mut::<WorkspaceModeState>().pending = None;
     let mut cfg = load_config();
     cfg.mode = Some(mode);
     save_config(&cfg);
