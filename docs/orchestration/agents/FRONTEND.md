@@ -12,14 +12,10 @@
 (верхний уровень). Что лежит в `active/check/` — на приёмке у архитектора,
 что в `active/pause/` — заблокировано; ни то, ни другое не разбирать.
 
-- `docs/orchestration/tasks/active/T161-workspace-mode-bar-switcher.md` —
-  переключатель Developer/Gamer в правом кластере бара + плашка предложения.
-  T160 закрыта и влита в `master`: `workspace_mode::{current,toggle,pending,
-  accept_prompt,dismiss_prompt}` уже есть, садишься на готовый API.
-  Разведка — `docs/orchestration/tasks/notes/T159-workspace-mode-recon.md`:
-  иконки `rail-editor.svg`/`bolt.svg` (code/gamepad НЕ существуют), все токены
-  темы на месте, `refresh_windows()` достаточно, и **это первый виджет бара с
-  тремя независимыми `on_click` — проверь event bubbling живьём**.
+- `docs/orchestration/tasks/active/T163-bar-layout-new-builtin-migration.md` —
+  новый builtin-виджет не доезжает до пользователя с сохранённым `bar.toml`.
+  Вскрыто приёмкой T161. Главный тест — сознательно удалённый виджет НЕ
+  воскресает.
 
 Закрыты и в `done/` — не брать: T152 (иврит/RTL), T154 (поле ввода
 композера), T155 (поглощена), T156 (cfg-гейты), T157 (замер: +1.96 MiB за
