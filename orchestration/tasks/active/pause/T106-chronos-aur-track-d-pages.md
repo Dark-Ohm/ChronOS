@@ -20,5 +20,5 @@ StreamEvent, core API, Page-slot) и твой трек по шагам. Это �
 реальный `pacman_search` в UI. План §TRACK D.
 
 **Коммит** в репо Chronos-AUR (MIT, свой), поимённо, малыми коммитами — по шагам
-плана. Отчёт в ChronOS/orchestration/reports/. Приёмку и свод интерфейсов делает
+плана. Отчёт в `orchestration/tasks/report/TNNN-<slug>-report.md` (каталог `orchestration/reports/` упразднён 2026-07-31). Приёмку и свод интерфейсов делает
 Архитектор.

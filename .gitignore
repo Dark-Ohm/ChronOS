@@ -38,3 +38,8 @@ contexts/
 .opencode/
 .superpowers/
 _ds/
+
+# Swap/backup файлы редакторов — не под git
+*.kate-swp
+*.swp
+*~

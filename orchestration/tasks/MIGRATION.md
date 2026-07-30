@@ -2,7 +2,9 @@
 
 Реестр перехода с per-agent журналов (`orchestration/agents/<ИМЯ>.md`) на
 per-task учёт (`orchestration/tasks/`). Собран из полного разбора
-`HANDOFF.md` + `DECISIONS.log` + `orchestration/agents/archive/*.md` +
+`HANDOFF.md` + `DECISIONS.log` + `orchestration/agents/archive/*.md` (каталоги
+`archive/`, `agents/archive/` и `reports/` удалены из дерева 2026-07-31 —
+содержимое живёт в git-истории, последний коммит с ними `5dd70c1`) +
 `orchestration/agents/bench|fired/*.md` + листинга `orchestration/report-log/`
 (две параллельные разведки, 2026-07-22). T-номер = порядковый (хронология),
 3 цифры, буквенный суффикс — под-задача/companion-файл того же T.
