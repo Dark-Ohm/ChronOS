@@ -174,10 +174,15 @@ impl WorkspaceMode {
         }
     }
 
+    // Разведка T159: `icons/code.svg` и `icons/gamepad.svg` в дереве НЕ
+    // существуют (36 файлов в `crates/app/assets/icons/`, ни одного
+    // подходящего по имени). GPUI при несуществующем пути молча рисует
+    // пустоту — поэтому берём существующие и помечаем TODO.
     pub fn icon_path(self) -> &'static str {
         match self {
-            WorkspaceMode::Developer => "icons/code.svg",
-            WorkspaceMode::Gamer => "icons/gamepad.svg",
+            // TODO: заменить на code.svg / gamepad.svg, когда добавим свои SVG.
+            WorkspaceMode::Developer => "icons/rail-editor.svg",
+            WorkspaceMode::Gamer => "icons/bolt.svg",
         }
     }
 
@@ -663,13 +668,15 @@ cargo test -p chronos --bins
 
 Ожидается: `test result: ok`, ноль failed. Тест `default_layout` в `layout_config.rs` (строка ~353) сверяет дефолтный правый кластер поимённо — если он падает, обнови его ожидаемый вектор, добавив `"workspace_mode"` после `"project"`, и только так; порядок остальных не трогай.
 
-- [ ] **Step 6: Проверить наличие иконок**
+- [ ] **Step 6: Подтвердить иконки**
+
+Разведка T159 уже проверила: `code.svg`/`gamepad.svg` в дереве нет, поэтому в Task 1 стоят `rail-editor.svg` и `bolt.svg`. Убедись, что они на месте:
 
 ```bash
-ls crates/app/assets/icons/code.svg crates/app/assets/icons/gamepad.svg
+ls crates/app/assets/icons/rail-editor.svg crates/app/assets/icons/bolt.svg
 ```
 
-Если какого-то файла нет — найди ближайший существующий в `crates/app/assets/icons/` (`ls crates/app/assets/icons/`) и подставь его путь в `WorkspaceMode::icon_path` в `crates/app/src/workspace_mode.rs`. **Не создавай SVG сам** и не оставляй путь к несуществующему файлу: иконка молча не отрисуется, и это всплывёт только на живом прогоне.
+Обе команды обязаны вернуть путь. Если какой-то файл пропал — найди ближайший существующий (`ls crates/app/assets/icons/`) и подставь. **Не создавай SVG сам** и не оставляй путь к несуществующему файлу: GPUI молча рисует пустоту, и это всплывёт только на живом кадре.
 
 - [ ] **Step 7: Живая проверка**
 
@@ -1030,7 +1037,9 @@ cargo test -p chronos --bins workspace_mode
 cargo check -p chronos --bin chronos && cargo test -p chronos --bins
 ```
 
-Ожидается: `Finished` + `test result: ok`, ноль failed. Если компилятор ругается на имена токенов темы (`theme.bg.elevated`, `theme.accent.primary`, `theme.text.muted`) — сверься с реальными полями в `crates/ui/src/theme/mod.rs` и возьми существующие; **не хардкодь hex** (спека §11 «do not hard-code palette values in runtime components»).
+Ожидается: `Finished` + `test result: ok`, ноль failed. Разведка T159 подтвердила, что все семь используемых токенов (`bg.elevated`, `text.primary/secondary/muted`, `accent.primary`, `interactive.hover`, `radius`) существуют в `crates/ui/src/theme/mod.rs` — подставлять ничего не придётся. **Не хардкодь hex** (спека §11 «do not hard-code palette values in runtime components»).
+
+**Риск, найденный разведкой T159 (Q4): это первый виджет бара с тремя независимыми `on_click` на разных `div`.** Прецедента в дереве нет — ближайшее (`dock.rs`) держит два типа события на одном элементе. Значит непроверено, не всплывёт ли всплытие события: клик по «Да» не должен заодно сработать как клик по самой пилюле режима и переключить его. **Проверь это живьём отдельным пунктом**, и если срабатывает — добавь `stop_propagation()` в обработчики плашки.
 
 - [ ] **Step 7: Живая проверка предложения**
 
