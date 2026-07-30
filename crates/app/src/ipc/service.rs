@@ -232,6 +232,12 @@ async fn accept_loop(
                         } else if is_toggle_edit_mode(&payload) {
                             let _ = edit_mode_toggle_sender.send(());
                             tracing::info!("IPC toggle-edit-mode received");
+                        } else if is_toggle_workspace_mode(&payload) {
+                            let _ = workspace_mode_sender.send(WorkspaceModeIpcCmd::Toggle);
+                            tracing::info!("IPC toggle-workspace-mode received");
+                        } else if let Some(mode) = classify_set_workspace_mode(&payload) {
+                            let _ = workspace_mode_sender.send(WorkspaceModeIpcCmd::Set(mode));
+                            tracing::info!(mode = mode.label(), "IPC set-workspace-mode received");
                         } else if let Some(cmd) = classify_wallpaper(&payload) {
                             let _ = wallpaper_sender.send(cmd);
                             tracing::info!("IPC wallpaper command received");
