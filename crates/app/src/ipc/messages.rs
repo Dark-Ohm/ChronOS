@@ -40,6 +40,8 @@ pub fn is_toggle_side_panel_left(payload: &str) -> bool {
 pub const TOGGLE_SIDE_PANEL_RIGHT_PAYLOAD: &str = "toggle-side-panel-right";
 pub const TOGGLE_THEME_PAYLOAD: &str = "toggle-theme";
 pub const TOGGLE_EDIT_MODE_PAYLOAD: &str = "toggle-edit-mode";
+pub const TOGGLE_WORKSPACE_MODE_PAYLOAD: &str = "toggle-workspace-mode";
+const SET_WORKSPACE_MODE_PREFIX: &str = "set-workspace-mode:";
 
 // Same contract as `encode_toggle_launcher` above — external keybind
 // daemons trigger the right agent panel (pinned-only, no hover-peek).
@@ -68,6 +70,31 @@ pub fn encode_toggle_edit_mode() -> String {
 
 pub fn is_toggle_edit_mode(payload: &str) -> bool {
     payload.trim() == TOGGLE_EDIT_MODE_PAYLOAD
+}
+
+// Тот же контракт, что и `encode_toggle_launcher` выше — внешние keybind-демоны
+// переключают режим рабочего пространства.
+#[allow(dead_code)]
+pub fn encode_toggle_workspace_mode() -> String {
+    TOGGLE_WORKSPACE_MODE_PAYLOAD.to_string()
+}
+
+pub fn is_toggle_workspace_mode(payload: &str) -> bool {
+    payload.trim() == TOGGLE_WORKSPACE_MODE_PAYLOAD
+}
+
+#[allow(dead_code)]
+pub fn encode_set_workspace_mode(mode: crate::workspace_mode::WorkspaceMode) -> String {
+    format!("{SET_WORKSPACE_MODE_PREFIX}{}", mode.label().to_ascii_lowercase())
+}
+
+/// Разбирает `set-workspace-mode:<mode>`. Неизвестный режим → `None`
+/// (команда игнорируется, режим не меняется).
+pub fn classify_set_workspace_mode(
+    payload: &str,
+) -> Option<crate::workspace_mode::WorkspaceMode> {
+    let rest = payload.trim().strip_prefix(SET_WORKSPACE_MODE_PREFIX)?;
+    crate::workspace_mode::WorkspaceMode::parse(rest)
 }
 
 pub fn is_wallpaper_next(payload: &str) -> bool {
@@ -101,6 +128,13 @@ pub enum WallpaperIpcCmd {
     Set(std::path::PathBuf),
     Gallery,
     Refresh,
+}
+
+/// Workspace-mode IPC command sent across the tokio channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceModeIpcCmd {
+    Toggle,
+    Set(crate::workspace_mode::WorkspaceMode),
 }
 
 /// Classify a raw IPC payload into a wallpaper command, if applicable.
@@ -287,5 +321,28 @@ mod tests {
         let payload = encode_toggle_edit_mode();
         assert!(is_toggle_edit_mode(&payload));
         assert!(!is_toggle_edit_mode("toggle-theme"));
+    }
+
+    #[test]
+    fn encodes_and_recognizes_toggle_workspace_mode() {
+        let payload = encode_toggle_workspace_mode();
+        assert!(is_toggle_workspace_mode(&payload));
+        assert!(!is_toggle_workspace_mode("toggle-edit-mode"));
+    }
+
+    #[test]
+    fn classifies_set_workspace_mode() {
+        use crate::workspace_mode::WorkspaceMode;
+        assert_eq!(
+            classify_set_workspace_mode(&encode_set_workspace_mode(WorkspaceMode::Gamer)),
+            Some(WorkspaceMode::Gamer)
+        );
+        assert_eq!(
+            classify_set_workspace_mode("set-workspace-mode:developer"),
+            Some(WorkspaceMode::Developer)
+        );
+        assert_eq!(classify_set_workspace_mode("set-workspace-mode:nonsense"), None);
+        assert_eq!(classify_set_workspace_mode("set-workspace-mode:"), None);
+        assert_eq!(classify_set_workspace_mode("toggle-workspace-mode"), None);
     }
 }

@@ -6,8 +6,9 @@ use tokio::net::UnixListener as TokioUnixListener;
 use tokio::sync::mpsc;
 
 use super::messages::{
-    WallpaperIpcCmd, classify_wallpaper, encode_ping, is_ping, is_toggle_edit_mode,
-    is_toggle_launcher, is_toggle_side_panel_left, is_toggle_side_panel_right, is_toggle_theme,
+    WallpaperIpcCmd, WorkspaceModeIpcCmd, classify_set_workspace_mode, classify_wallpaper,
+    encode_ping, is_ping, is_toggle_edit_mode, is_toggle_launcher, is_toggle_side_panel_left,
+    is_toggle_side_panel_right, is_toggle_theme, is_toggle_workspace_mode,
 };
 
 pub type IpcReceiver = mpsc::UnboundedReceiver<()>;
@@ -17,6 +18,7 @@ pub type IpcSidePanelLeftToggleReceiver = mpsc::UnboundedReceiver<()>;
 pub type IpcSidePanelRightToggleReceiver = mpsc::UnboundedReceiver<()>;
 pub type IpcThemeToggleReceiver = mpsc::UnboundedReceiver<()>;
 pub type IpcEditModeToggleReceiver = mpsc::UnboundedReceiver<()>;
+pub type IpcWorkspaceModeReceiver = mpsc::UnboundedReceiver<WorkspaceModeIpcCmd>;
 
 pub enum AcquireResult {
     Primary(IpcSubscriber),
@@ -62,6 +64,7 @@ impl IpcSubscriber {
         IpcSidePanelRightToggleReceiver,
         IpcThemeToggleReceiver,
         IpcEditModeToggleReceiver,
+        IpcWorkspaceModeReceiver,
     ) {
         let (ping_sender, ping_receiver) = mpsc::unbounded_channel();
         let (toggle_sender, toggle_receiver) = mpsc::unbounded_channel();
@@ -71,6 +74,7 @@ impl IpcSubscriber {
             mpsc::unbounded_channel();
         let (theme_toggle_sender, theme_toggle_receiver) = mpsc::unbounded_channel();
         let (edit_mode_toggle_sender, edit_mode_toggle_receiver) = mpsc::unbounded_channel();
+        let (workspace_mode_sender, workspace_mode_receiver) = mpsc::unbounded_channel();
 
         if let Some(std_listener) = self.listener.take() {
             // `from_std` requires a running tokio reactor, which is active here.
@@ -86,6 +90,7 @@ impl IpcSubscriber {
                             side_panel_right_toggle_sender,
                             theme_toggle_sender,
                             edit_mode_toggle_sender,
+                            workspace_mode_sender,
                         )
                         .await;
                     });
@@ -102,6 +107,7 @@ impl IpcSubscriber {
             side_panel_right_toggle_receiver,
             theme_toggle_receiver,
             edit_mode_toggle_receiver,
+            workspace_mode_receiver,
         )
     }
 }
@@ -180,6 +186,7 @@ async fn accept_loop(
     side_panel_right_toggle_sender: mpsc::UnboundedSender<()>,
     theme_toggle_sender: mpsc::UnboundedSender<()>,
     edit_mode_toggle_sender: mpsc::UnboundedSender<()>,
+    workspace_mode_sender: mpsc::UnboundedSender<WorkspaceModeIpcCmd>,
 ) {
     use tokio::io::AsyncReadExt;
 
@@ -193,6 +200,7 @@ async fn accept_loop(
                 let side_panel_right_toggle_sender = side_panel_right_toggle_sender.clone();
                 let theme_toggle_sender = theme_toggle_sender.clone();
                 let edit_mode_toggle_sender = edit_mode_toggle_sender.clone();
+                let workspace_mode_sender = workspace_mode_sender.clone();
                 tokio::spawn(async move {
                     let mut buffer = Vec::with_capacity(64);
                     let read = tokio::time::timeout(

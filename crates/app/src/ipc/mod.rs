@@ -4,6 +4,7 @@ mod service;
 use gpui::App;
 
 pub use service::IpcSubscriber;
+use messages::WorkspaceModeIpcCmd;
 
 impl IpcSubscriber {
     /// Starts listening for pings, launcher-toggle, and wallpaper requests.
@@ -18,6 +19,7 @@ impl IpcSubscriber {
             mut side_panel_right_toggle_receiver,
             mut theme_toggle_receiver,
             mut edit_mode_toggle_receiver,
+            mut workspace_mode_receiver,
         ) = self.start_listener();
 
         cx.spawn(async move |cx| {
@@ -32,6 +34,8 @@ impl IpcSubscriber {
             let mut last_theme_toggle_at =
                 std::time::Instant::now() - std::time::Duration::from_secs(1);
             let mut last_edit_mode_toggle_at =
+                std::time::Instant::now() - std::time::Duration::from_secs(1);
+            let mut last_workspace_mode_at =
                 std::time::Instant::now() - std::time::Duration::from_secs(1);
 
             loop {
@@ -123,6 +127,26 @@ impl IpcSubscriber {
                                 tracing::info!("IPC toggle-edit-mode received");
                                 let _ = cx.update(|cx| {
                                     crate::edit_mode::toggle(cx);
+                                });
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    workspace_mode_cmd = workspace_mode_receiver.recv() => {
+                        if let Some(cmd) = workspace_mode_cmd {
+                            let now = std::time::Instant::now();
+                            if now.duration_since(last_workspace_mode_at)
+                                >= std::time::Duration::from_millis(200)
+                            {
+                                last_workspace_mode_at = now;
+                                let _ = cx.update(|cx| match cmd {
+                                    WorkspaceModeIpcCmd::Toggle => {
+                                        crate::workspace_mode::toggle(cx)
+                                    }
+                                    WorkspaceModeIpcCmd::Set(mode) => {
+                                        crate::workspace_mode::set(cx, mode)
+                                    }
                                 });
                             }
                         } else {
