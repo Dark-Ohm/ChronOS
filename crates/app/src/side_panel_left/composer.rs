@@ -892,18 +892,23 @@ impl SidePanelLeft {
             }
             "up" | "down" => {}
             _ => {
+                // Printable character insertion is owned by the IME path
+                // (`replace_text_in_range` via the `EntityInputHandler` in
+                // text_input.rs) — do NOT insert `key_char` here too, or every
+                // keystroke lands twice. Only clipboard/select shortcuts, which
+                // the IME path never commits, are handled here.
+                //
+                // Clipboard uses `control || platform`: on Linux the clipboard
+                // is Ctrl (`control`); `platform` (Super/Cmd) is kept so the
+                // same binding works if ever run on macOS. Matches select-all.
                 if (modifiers.control || modifiers.platform) && key == "a" {
                     self.composer_input.select_all();
-                } else if modifiers.platform && key == "c" {
+                } else if (modifiers.control || modifiers.platform) && key == "c" {
                     self.composer_input.copy_selection(cx);
-                } else if modifiers.platform && key == "x" {
+                } else if (modifiers.control || modifiers.platform) && key == "x" {
                     self.composer_input.cut_selection(cx);
-                } else if modifiers.platform && key == "v" {
+                } else if (modifiers.control || modifiers.platform) && key == "v" {
                     self.composer_input.paste(cx);
-                } else if let Some(ch) = event.keystroke.key_char.as_ref() {
-                    if !modifiers.alt && !modifiers.platform && !modifiers.control {
-                        self.composer_input.insert_char(ch);
-                    }
                 }
             }
         }
