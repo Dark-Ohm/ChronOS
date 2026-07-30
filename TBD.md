@@ -126,6 +126,21 @@ T151+T154+T149 в `side_panel_left/`. Разбор на самодостаточ
   **Оговорка:** gemini через OmniRoute отдаёт JSON в markdown-фенсах,
   strict json_schema не форсит — если hindsight-парсер споткнётся, глянуть
   логи (но это parse-warn, не hang).
+  **ПРОВЕРЕНО после рестарта 2026-07-30 ~10:05:** конфиг загружен
+  (`LLM (consolidation): model=gemini/gemini-3.1-flash-lite-preview`), обе
+  застрявшие op переклеймлены и **пошли** (stage_age секунды, не 3248s);
+  слоты `2/1→1/1` (одна завершилась), контейнер healthy, регресс-чек — ни
+  одного op с `stage_age≥100s`. Hang устранён. Осталось лишь дождаться, что
+  очередь (`pending=1`) дренится — но механизм рабочий.
+
+- [ ] **№1c (новое) — scope `verification` тоже на reasoning-модели.** После
+  рестарта в логах: `Provider returned empty message content
+  (openai/hindsight-combo, scope=verification, finish_reason=length)` —
+  тот же корень, что #1b (reasoning-модель ест бюджет), но на scope
+  `verification`. Ретраит 3× и сдаётся (НЕ виснет, в отличие от
+  consolidation) — severity ниже. Если verification-качество важно —
+  проверить, есть ли `HINDSIGHT_API_VERIFICATION_LLM_MODEL` (по образцу
+  consolidation-фикса) и увести на gemini. Не срочно.
 
 - [x] **№2 — протечка ввода поиска моделей в композер. ИСПРАВЛЕНО 2026-07-30
   (`ce668ae`).** Гард в `replace_text_in_range` и
