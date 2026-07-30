@@ -21,9 +21,11 @@ System prompts/
 # Session logs
 log-dump/
 
-# Agent orchestration — the whole working kitchen (briefs, reports, archive,
-# per-agent caches/config). Local-only, never published.
-orchestration/
+# Agent orchestration (briefs, reports, T-ID ledger, archive) — под git
+# с 2026-07-31. До этого была local-only, из-за чего 2026-07-22 безвозвратно
+# потерялась история трёх файлов агентов: git не подстраховал откат.
+# Per-agent кэши инструментов ниже остаются вне git — это состояние тулзов,
+# не проектные документы.
 .autohand/
 .cline/
 .clinerules/

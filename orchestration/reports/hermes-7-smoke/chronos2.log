@@ -1,0 +1,44 @@
+2026-07-21T07:55:14.720024Z  INFO chronos: Chronos starting
+2026-07-21T07:55:14.721814Z  INFO chronos_services::applications: ApplicationsSubscriber: loaded 55 desktop entries
+2026-07-21T07:55:14.721833Z  INFO chronos_services::compositor: Detected compositor backend: Hyprland
+2026-07-21T07:55:14.722100Z  INFO chronos_services::cava: cava: process started (bars=24, ascii raw)
+2026-07-21T07:55:14.723377Z  INFO chronos_services::mpris: MprisSubscriber connected (session bus)
+2026-07-21T07:55:14.723700Z  INFO chronos_services::notification: org.freedesktop.Notifications server registered
+2026-07-21T07:55:14.723839Z  INFO chronos_services::tray: org.kde.StatusNotifierWatcher registered
+2026-07-21T07:55:14.726256Z  INFO chronos_services::network: NetworkSubscriber connected
+2026-07-21T07:55:14.726560Z  INFO chronos_services::tray: tray: item added: :1.316/org/ayatana/NotificationItem/udiskie (title=Some("udiskie"), icon=Some("drive-removable-media"), menu=Some("/org/ayatana/NotificationItem/udiskie/Menu"))
+2026-07-21T07:55:14.726566Z  INFO chronos_services::upower: UPowerSubscriber connected
+2026-07-21T07:55:14.741969Z  INFO gpui_linux::linux::platform: Compositor GPU hint: vendor=0x10de, device=0x2484 (from dev 226:128)
+2026-07-21T07:55:14.742102Z  INFO chronos: GPUI application context ready
+2026-07-21T07:55:14.742131Z  INFO chronos::theme_config: theme: env=None, file=/home/neo/.config/chronos/theme.toml, bg.primary l=0.15
+2026-07-21T07:55:14.742203Z  INFO chronos::notifications::history_popup: history_popup: subscribed to notification service
+2026-07-21T07:55:14.742208Z  INFO chronos::osd: OSD: subscribed to audio service
+2026-07-21T07:55:14.742212Z  INFO chronos::tray_menu: tray_menu: subscribed to tray service
+2026-07-21T07:55:14.742215Z  INFO chronos::updates_popup: updates_popup: subscribed to aur service
+2026-07-21T07:55:14.742238Z  INFO chronos::project_switcher: project_switcher: loaded 3 projects
+2026-07-21T07:55:14.742242Z  INFO chronos::volume_popup: volume_popup: subscribed to audio service
+2026-07-21T07:55:14.742247Z  INFO chronos::system_popup: system_popup: subscribed to brightness + upower services
+2026-07-21T07:55:14.742252Z  WARN chronos::side_panel_right: side_panel_right: CHRONOS_SMOKE_SIDE_PANEL set — auto open/close cycle for smoke
+2026-07-21T07:55:14.742254Z  INFO chronos::launcher: launcher::init called
+2026-07-21T07:55:14.742260Z  INFO chronos_luau::manager: Loaded 0 plugin(s)
+2026-07-21T07:55:14.742317Z  INFO chronos::ipc: IPC listener started
+2026-07-21T07:55:14.842749Z  INFO chronos::bar: Opening bar on pult display DisplayId(5)
+2026-07-21T07:55:14.884429Z  INFO chronos_services::audio: AudioSubscriber connected (wpctl MVP backend)
+2026-07-21T07:55:15.153378Z  INFO wgpu_hal::gles::egl: EGL says it can present to the window but not natively
+2026-07-21T07:55:15.163308Z  INFO wgpu_hal::vulkan::adapter: Found 6 cooperative matrix configurations supported by wgpu
+2026-07-21T07:55:15.206322Z  INFO gpui_wgpu::wgpu_context: Found 2 GPU adapter(s):
+2026-07-21T07:55:15.206331Z  INFO gpui_wgpu::wgpu_context:   - NVIDIA GeForce RTX 3070 (vendor=0x10de, device=0x2484, backend=Vulkan, type=DiscreteGpu)
+2026-07-21T07:55:15.206335Z  INFO gpui_wgpu::wgpu_context:   - NVIDIA GeForce RTX 3070/PCIe/SSE2 (vendor=0x10de, device=0x0000, backend=Gl, type=Other)
+2026-07-21T07:55:15.206338Z  INFO gpui_wgpu::wgpu_context: Testing adapter: NVIDIA GeForce RTX 3070 (Vulkan)...
+2026-07-21T07:55:15.705487Z  INFO gpui_wgpu::wgpu_context: Selected GPU (passed configuration test): NVIDIA GeForce RTX 3070 (Vulkan)
+2026-07-21T07:55:15.705598Z  INFO gpui_wgpu::wgpu_context: Selected GPU adapter: "NVIDIA GeForce RTX 3070" (Vulkan)
+2026-07-21T07:55:15.731838Z  INFO gpui_linux::linux::wayland::window: Server-side decorations requested, but the Wayland server does not support them. Falling back to client-side decorations.
+2026-07-21T07:55:15.906461Z  INFO chronos_services::brightness: BrightnessSubscriber connected: 15% on 2 displays
+2026-07-21T07:55:15.937330Z  INFO gpui_linux::linux::wayland::window: Server-side decorations requested, but the Wayland server does not support them. Falling back to client-side decorations.
+2026-07-21T07:55:15.939967Z  INFO chronos::desktop_terminal::view: desktop_terminal: shell spawned on PTY cols=80 rows=24 shell=/bin/zsh
+2026-07-21T07:55:15.951460Z  INFO chronos::desktop_terminal::view: desktop_terminal: first PTY chunk n=11 preview=\u{1b}[H\u{1b}[2J\u{1b}[3J
+2026-07-21T07:55:15.955282Z  INFO chronos::desktop_terminal: desktop_terminal: opened Layer::Background surface (600×400, margin top=80 left=48)
+2026-07-21T07:55:15.997465Z  INFO gpui_linux::linux::wayland::window: Server-side decorations requested, but the Wayland server does not support them. Falling back to client-side decorations.
+2026-07-21T07:55:15.997809Z  INFO chronos::side_panel_right: side_panel_right: opened pinned
+2026-07-21T07:55:16.046489Z  INFO chronos_services::aur: AurSubscriber connected (checkupdates/pacman -Qu MVP backend)
+2026-07-21T07:55:20.006902Z  INFO chronos::side_panel_right: side_panel_right: closed
