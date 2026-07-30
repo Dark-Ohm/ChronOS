@@ -133,14 +133,18 @@ T151+T154+T149 в `side_panel_left/`. Разбор на самодостаточ
   одного op с `stage_age≥100s`. Hang устранён. Осталось лишь дождаться, что
   очередь (`pending=1`) дренится — но механизм рабочий.
 
-- [ ] **№1c (новое) — scope `verification` тоже на reasoning-модели.** После
-  рестарта в логах: `Provider returned empty message content
-  (openai/hindsight-combo, scope=verification, finish_reason=length)` —
-  тот же корень, что #1b (reasoning-модель ест бюджет), но на scope
-  `verification`. Ретраит 3× и сдаётся (НЕ виснет, в отличие от
-  consolidation) — severity ниже. Если verification-качество важно —
-  проверить, есть ли `HINDSIGHT_API_VERIFICATION_LLM_MODEL` (по образцу
-  consolidation-фикса) и увести на gemini. Не срочно.
+- [x] **№1c — scope `verification` на reasoning-модели. РАЗОБРАНО, не чиним
+  (2026-07-30).** Один post-restart warning `empty message content
+  (hindsight-combo, scope=verification, finish_reason=length)`. Проверено:
+  (1) per-scope knob для verification **НЕТ** — hindsight поддерживает
+  `CONSOLIDATION/RETAIN/REFLECT/EMBEDDINGS/RERANKER _LLM_MODEL`, но не
+  `VERIFICATION`; (2) за 5 мин после — **ноль повторов**, активен только
+  `retain_extract_facts` (чисто). Событие разовое, фейл graceful (ретрай, не
+  hang), consolidation при нём дренился. Единственный фикс — сменить ГЛАВНУЮ
+  `HINDSIGHT_API_LLM_MODEL` (риск для рабочего retain на hindsight-combo,
+  замер 117с) ради не-повторяющегося graceful-фейла. Не оправдано. Если
+  verification начнёт стабильно падать — тогда пересмотреть (глобальная
+  модель или патч апстрима под `_VERIFICATION_LLM_MODEL`).
 
 - [x] **№2 — протечка ввода поиска моделей в композер. ИСПРАВЛЕНО 2026-07-30
   (`ce668ae`).** Гард в `replace_text_in_range` и
