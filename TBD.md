@@ -73,12 +73,51 @@ T151+T154+T149 в `side_panel_left/`. Разбор на самодостаточ
   оставил на решение юзера (не делать универсальных правок env).
   **Побочно:** запущенные агенты держат старый конфиг в памяти — подхватят
   локальный при следующем спавне/рестарте.
-- [ ] **№1b (новое) — застрявшая consolidation в Hindsight.** Две операции
-  `consolidation`/`consolidation_dedup` на банке chronos-ecosystem висят
-  ~54 мин (`stage=llm.openai.consolidation+structured`), держат 2/1
-  worker-слота (avail=0). Resource contention LLM-бэкенда. Разобраться:
-  жив ли OmniRoute-шлюз (:20128), не забиты ли слоты, не надо ли сбросить
-  застрявшие ops. Скилл `chronos-llm-backends` / `hindsight-self-hosted`.
+- [ ] **№1b — застрявшая consolidation в Hindsight. ДИАГНОЗ 2026-07-30,
+  фикс за юзером (решение по memory-бэкенду).**
+  **Симптом:** 2 op (`consolidation` + `consolidation_dedup`, банк
+  chronos-ecosystem) висят 78+ мин на `stage=llm.openai.consolidation+
+  structured`, `stage_age` растёт монотонно (один зависший вызов, не
+  ретраи). Держат оба слота (`reserved: consolidation=2/1 avail=0`), новая
+  consolidation (`pending=1`) не стартует. Client-timeout 300с не срабатывает
+  (streaming-hang).
+  **Корень:** шлюз :20128 жив (200), но `hindsight-combo` маршрутизируется
+  на `stepfun/step-3.7-flash` — **reasoning-модель**. Пробник `max_tokens:5`
+  вернул `content:null`, `finish_reason:length`, все токены в `reasoning`.
+  Consolidation с `STRICT_SCHEMA=true` (structured output): модель уходит в
+  reasoning, валидный JSON по схеме не выдаёт → зависание. Ровно ловушка из
+  скилла `chronos-llm-backends` («именно это ломало консолидацию»). Retain
+  проходит (без строгой схемы), consolidation — нет.
+  **Чистого env-knoba нет:** модель одна на всё (`HINDSIGHT_API_LLM_MODEL=
+  hindsight-combo`), reasoning-тумблера/отдельной consolidation-модели в env
+  контейнера нет. `--reasoning off` — только для локального llama-server
+  (:11435), не для облачного провайдера за шлюзом.
+  **Рекомендация:** перенаправить `hindsight-combo` в OmniRoute на
+  НЕ-reasoning модель со structured-output (retain тоже её переживёт —
+  reasoning ему не нужен), ИЛИ отправлять `reasoning_effort:none`/
+  `reasoning:{exclude:true}` в LLM-запросах hindsight, ИЛИ проверить, есть ли
+  у hindsight `HINDSIGHT_API_CONSOLIDATION_LLM_MODEL` (в текущем env нет).
+  **OmniRoute-конфиг** — в `~/.omniroute/storage.sqlite` (combo-роутинг в БД,
+  не плоский файл); хирургический reasoning-disable на стороне шлюза
+  требует правки SQLite/ненадёжного CLI — не делал.
+  **Расклинить сейчас:** 2 застрявшие op сбросятся рестартом контейнера
+  hindsight — НО скилл предупреждает: не рестартить под активной записью
+  (теряется retain-очередь). Ждать retain-idle или найти ops-cancel API.
+  Сервис при этом функционирует: retain идёт async, агенты не заблокированы;
+  висит только consolidation (деградация качества памяти со временем, не
+  срочно).
+  **РЕШЕНИЕ ЗА ЮЗЕРОМ (выбор модели памяти, не pc-use):** (A) сменить
+  `HINDSIGHT_API_LLM_MODEL` hindsight-combo→не-reasoning (напр.
+  `gemini/gemini-3.1-flash-lite-preview`) — фиксит consolidation, но retain
+  на новой модели не замерян; (B) `STRICT_SCHEMA=false` — слабее structured;
+  (C) просто рестарт-расклин, но op может зависнуть снова. Любой вариант =
+  рестарт hindsight в retain-idle окне. Скажи какой — исполню.
+
+- [x] **№2 — протечка ввода поиска моделей в композер. ИСПРАВЛЕНО 2026-07-30
+  (`ce668ae`).** Гард в `replace_text_in_range` и
+  `replace_and_mark_text_in_range` (mod.rs): при `search_focused ||
+  composer_model_dropdown_open` IME-хендлер не пишет в `composer_input`.
+  Build green. Живой смок отложен (нужен pc-use, общая машина).
 - [ ] **№2 — Протечка ввода поиска моделей в композер.** Пока открыт
   дропдаун моделей, IME-хендлер (висит на `composer_focus`) дублирует ввод
   в главный `composer_input`: после `gpt` в поиске композер тоже получил
