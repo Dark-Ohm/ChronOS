@@ -14,6 +14,7 @@ mod tray;
 mod updates;
 mod volume;
 mod workspaces;
+mod workspace_mode;
 
 use chronos_luau::bar::{BarSection, BarWidget, BarWidgetRegistry};
 use gpui::{AnyElement, App, Window};
@@ -56,6 +57,7 @@ fn instantiate(name: &str, section: BarSection) -> Option<Box<dyn BarWidget>> {
         "system" => Box::new(system::SystemWidget::new()),
         "notification_bell" => Box::new(notification_bell::NotificationBellWidget::new()),
         "battery" => Box::new(battery::BatteryWidget),
+        "workspace_mode" => Box::new(workspace_mode::WorkspaceModeWidget),
         "clock" => Box::new(clock::ClockWidget),
         _ => return None,
     };

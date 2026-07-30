@@ -22,6 +22,7 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "mpris",
     "cava",
     "project",
+    "workspace_mode",
     "volume",
     "network",
     "tray",
@@ -52,6 +53,7 @@ impl Default for BarLayoutConfig {
             center: vec!["mpris".into(), "cava".into()],
             right: vec![
                 "project".into(),
+                "workspace_mode".into(),
                 "separator".into(),
                 "volume".into(),
                 "network".into(),
@@ -353,6 +355,7 @@ mod tests {
             d.right,
             vec![
                 "project",
+                "workspace_mode",
                 "separator",
                 "volume",
                 "network",
