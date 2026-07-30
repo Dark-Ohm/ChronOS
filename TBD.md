@@ -53,14 +53,32 @@ T151+T154+T149 в `side_panel_left/`. Разбор на самодостаточ
 > **Приоритет (2026-07-30, правка юзера):** сперва №3 (дерево в порядок),
 > хвосты не копим. №1 и №2 — после того, как дерево разобрано и закоммичено.
 
-- [ ] **№1 — Hermes память → HTTP 402.** Плагин `hindsight`
-  в Hermes при `retain_memories`/`aretain_batch` бьётся в платный бэкенд
-  (`hindsight_client_api.exceptions.ApiException: (402)`), не в наш
-  self-hosted :8888. Ход агента не ломает, но память НЕ сохраняется.
-  Файлы: `~/.hermes/hermes-agent/plugins/memory/hindsight/{__init__.py,
-  plugin.yaml}`. **ВАЖНО: чинить per-agent, НЕ универсалкой** — прошлый раз
-  универсальный конфиг положил всех агентов, пришлось править руками.
-  Проверить, как hindsight-плагин подключается к КАЖДОМУ агенту отдельно.
+- [x] **№1 — Hermes память → HTTP 402. ИСПРАВЛЕНО 2026-07-30.**
+  Корень: `~/.hindsight/config.json` был самопротиворечив — `mode:
+  local_external`, но `api_url: https://api.hindsight.vectorize.io`
+  (облако) → retain бил в платный Vectorize с невалидным ключом → 402.
+  **Важно про «per-agent»:** оказалось, `_load_config()` в плагине читает
+  НЕ per-agent файлы (`~/.hindsight/{claude-code,cline,zed}.json` — пустые,
+  игнорируются этим кодом), а ОБЩИЙ `~/.hindsight/config.json` (или
+  `$HERMES_HOME/hindsight/config.json`, но `HERMES_HOME` не задан). То есть
+  сейчас конфиг общий, не per-agent. Фикс — одно поле: `api_url` →
+  `http://localhost:8888` (bare; клиент сам дописывает
+  `/v1/default/banks/chronos-ecosystem/memories` — кривой двойной путь из
+  `.env:486` как раз и ломал всех «универсально» раньше). Бэкап:
+  `~/.hindsight/config.json.bak-2026-07-30`. Проверено: config резолвит
+  локальный URL; сервер :8888 здоров (0.8.4), retain обрабатывается
+  асинхронно (LLM-экстракция ~47с — медленно, но не блокирует ход агента).
+  **НЕ трогал `~/.zshrc:28`** (`export HINDSIGHT_API_URL=<облако>`) — это
+  латентная ловушка-fallback для любого агента без `api_url` в конфиге;
+  оставил на решение юзера (не делать универсальных правок env).
+  **Побочно:** запущенные агенты держат старый конфиг в памяти — подхватят
+  локальный при следующем спавне/рестарте.
+- [ ] **№1b (новое) — застрявшая consolidation в Hindsight.** Две операции
+  `consolidation`/`consolidation_dedup` на банке chronos-ecosystem висят
+  ~54 мин (`stage=llm.openai.consolidation+structured`), держат 2/1
+  worker-слота (avail=0). Resource contention LLM-бэкенда. Разобраться:
+  жив ли OmniRoute-шлюз (:20128), не забиты ли слоты, не надо ли сбросить
+  застрявшие ops. Скилл `chronos-llm-backends` / `hindsight-self-hosted`.
 - [ ] **№2 — Протечка ввода поиска моделей в композер.** Пока открыт
   дропдаун моделей, IME-хендлер (висит на `composer_focus`) дублирует ввод
   в главный `composer_input`: после `gpt` в поиске композер тоже получил
