@@ -13,6 +13,7 @@
 //! Файл не перезаписывается молча при отсутствии/битом — только warn и дефолт.
 //! Запись происходит лишь при явной смене режима пользователем.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use gpui::{App, Global};
@@ -65,14 +66,37 @@ impl WorkspaceMode {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PromptPref {
+    /// Спрашивать при следующем сигнале от этого приложения.
+    #[default]
+    Ask,
+    /// Больше не спрашивать для этого приложения. Режим при этом НЕ
+    /// переключается автоматически — вариант «всегда переключать» намеренно
+    /// отсутствует, он нарушал бы §1 спеки.
+    Never,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorkspaceConfig {
     pub mode: Option<WorkspaceMode>,
+    #[serde(default)]
+    pub prompt_prefs: BTreeMap<String, PromptPref>,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+/// Ожидающее ответа предложение сменить режим. Ненавязчивое: живёт плашкой в
+/// баре, не крадёт фокус клавиатуры, не блокирует ввод.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingPrompt {
+    pub target: WorkspaceMode,
+    pub app_id: String,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct WorkspaceModeState {
     pub mode: WorkspaceMode,
+    pub pending: Option<PendingPrompt>,
 }
 
 impl Global for WorkspaceModeState {}
@@ -137,7 +161,7 @@ pub fn init(cx: &mut App) {
     let env = std::env::var(ENV_OVERRIDE).ok();
     let mode = resolve_initial(&load_config(), env.as_deref());
     tracing::info!(mode = mode.label(), "workspace_mode: initial");
-    cx.set_global(WorkspaceModeState { mode });
+    cx.set_global(WorkspaceModeState { mode, pending: None });
 }
 
 pub fn current(cx: &App) -> WorkspaceMode {
@@ -154,13 +178,79 @@ pub fn set(cx: &mut App, mode: WorkspaceMode) {
         return;
     }
     cx.global_mut::<WorkspaceModeState>().mode = mode;
-    save_config(&WorkspaceConfig { mode: Some(mode) });
+    let mut cfg = load_config();
+    cfg.mode = Some(mode);
+    save_config(&cfg);
     tracing::info!(mode = mode.label(), "workspace_mode: switched");
     cx.refresh_windows();
 }
 
 pub fn toggle(cx: &mut App) {
     set(cx, current(cx).other());
+}
+
+/// Чистая функция решения — тестируется без GPUI и файловой системы.
+pub fn should_prompt(
+    cfg: &WorkspaceConfig,
+    current: WorkspaceMode,
+    target: WorkspaceMode,
+    app_id: &str,
+) -> bool {
+    if current == target || app_id.trim().is_empty() {
+        return false;
+    }
+    cfg.prompt_prefs.get(app_id.trim()) != Some(&PromptPref::Never)
+}
+
+/// Точка входа для детекторов (игра вышла в фуллскрин, открылся проект).
+/// НИКОГДА не переключает режим сама — только ставит предложение в очередь.
+/// Детектор в этом слайсе не реализуется; функция — согласованный контракт.
+pub fn request_switch(cx: &mut App, target: WorkspaceMode, app_id: &str) {
+    if !should_prompt(&load_config(), current(cx), target, app_id) {
+        return;
+    }
+    let prompt = PendingPrompt {
+        target,
+        app_id: app_id.trim().to_string(),
+    };
+    tracing::info!(
+        target = target.label(),
+        app_id = %prompt.app_id,
+        "workspace_mode: prompting"
+    );
+    cx.global_mut::<WorkspaceModeState>().pending = Some(prompt);
+    cx.refresh_windows();
+}
+
+pub fn pending(cx: &App) -> Option<PendingPrompt> {
+    cx.try_global::<WorkspaceModeState>()
+        .and_then(|s| s.pending.clone())
+}
+
+/// Пользователь согласился — единственный путь, которым предложение может
+/// привести к смене режима.
+pub fn accept_prompt(cx: &mut App) {
+    let Some(prompt) = pending(cx) else {
+        return;
+    };
+    cx.global_mut::<WorkspaceModeState>().pending = None;
+    set(cx, prompt.target);
+}
+
+/// Пользователь отказался. `silence = true` — «больше не спрашивать для этого
+/// приложения»: пишет `PromptPref::Never` в конфиг.
+pub fn dismiss_prompt(cx: &mut App, silence: bool) {
+    let Some(prompt) = pending(cx) else {
+        return;
+    };
+    cx.global_mut::<WorkspaceModeState>().pending = None;
+    if silence {
+        let mut cfg = load_config();
+        cfg.prompt_prefs.insert(prompt.app_id.clone(), PromptPref::Never);
+        save_config(&cfg);
+        tracing::info!(app_id = %prompt.app_id, "workspace_mode: prompt silenced");
+    }
+    cx.refresh_windows();
 }
 
 #[cfg(test)]
@@ -189,20 +279,20 @@ mod tests {
 
     #[test]
     fn env_override_wins_over_config() {
-        let cfg = WorkspaceConfig { mode: Some(WorkspaceMode::Developer) };
+        let cfg = WorkspaceConfig { mode: Some(WorkspaceMode::Developer), prompt_prefs: BTreeMap::new() };
         assert_eq!(resolve_initial(&cfg, Some("gamer")), WorkspaceMode::Gamer);
     }
 
     #[test]
     fn bad_env_falls_through_to_config() {
-        let cfg = WorkspaceConfig { mode: Some(WorkspaceMode::Gamer) };
+        let cfg = WorkspaceConfig { mode: Some(WorkspaceMode::Gamer), prompt_prefs: BTreeMap::new() };
         assert_eq!(resolve_initial(&cfg, Some("nonsense")), WorkspaceMode::Gamer);
         assert_eq!(resolve_initial(&cfg, Some("   ")), WorkspaceMode::Gamer);
     }
 
     #[test]
     fn empty_config_falls_back_to_default() {
-        let cfg = WorkspaceConfig { mode: None };
+        let cfg = WorkspaceConfig { mode: None, prompt_prefs: BTreeMap::new() };
         assert_eq!(resolve_initial(&cfg, None), WorkspaceMode::Developer);
     }
 
@@ -211,5 +301,69 @@ mod tests {
         assert_ne!(WorkspaceMode::Developer.label(), WorkspaceMode::Gamer.label());
         assert!(!WorkspaceMode::Developer.label().is_empty());
         assert!(!WorkspaceMode::Gamer.label().is_empty());
+    }
+
+    fn cfg_with_pref(app: &str, pref: PromptPref) -> WorkspaceConfig {
+        let mut cfg = WorkspaceConfig::default();
+        cfg.prompt_prefs.insert(app.to_string(), pref);
+        cfg
+    }
+
+    #[test]
+    fn does_not_prompt_when_already_in_target_mode() {
+        let cfg = WorkspaceConfig::default();
+        assert!(!should_prompt(
+            &cfg,
+            WorkspaceMode::Gamer,
+            WorkspaceMode::Gamer,
+            "steam_app_570"
+        ));
+    }
+
+    #[test]
+    fn prompts_by_default_for_unknown_app() {
+        let cfg = WorkspaceConfig::default();
+        assert!(should_prompt(
+            &cfg,
+            WorkspaceMode::Developer,
+            WorkspaceMode::Gamer,
+            "steam_app_570"
+        ));
+    }
+
+    #[test]
+    fn never_pref_silences_that_app_only() {
+        let cfg = cfg_with_pref("steam_app_570", PromptPref::Never);
+        assert!(!should_prompt(
+            &cfg,
+            WorkspaceMode::Developer,
+            WorkspaceMode::Gamer,
+            "steam_app_570"
+        ));
+        assert!(should_prompt(
+            &cfg,
+            WorkspaceMode::Developer,
+            WorkspaceMode::Gamer,
+            "steam_app_620"
+        ));
+    }
+
+    #[test]
+    fn empty_app_id_never_prompts() {
+        let cfg = WorkspaceConfig::default();
+        assert!(!should_prompt(
+            &cfg,
+            WorkspaceMode::Developer,
+            WorkspaceMode::Gamer,
+            "  "
+        ));
+    }
+
+    #[test]
+    fn prompt_pref_roundtrips_through_toml() {
+        let cfg = cfg_with_pref("steam_app_570", PromptPref::Never);
+        let text = toml::to_string_pretty(&cfg).expect("сериализация конфига");
+        let back: WorkspaceConfig = toml::from_str(&text).expect("разбор конфига");
+        assert_eq!(back, cfg);
     }
 }
