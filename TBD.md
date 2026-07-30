@@ -77,61 +77,44 @@ T151+T154+T149 в `side_panel_left/`. Разбор на самодостаточ
   источник у агентов всё равно `~/.hindsight/config.json`.
   **Побочно:** запущенные агенты держат старый конфиг в памяти — подхватят
   локальный при следующем спавне/рестарте.
-- [ ] **№1b — застрявшая consolidation в Hindsight. ДИАГНОЗ 2026-07-30,
-  фикс за юзером (решение по memory-бэкенду).**
-  **Симптом:** 2 op (`consolidation` + `consolidation_dedup`, банк
-  chronos-ecosystem) висят 78+ мин на `stage=llm.openai.consolidation+
-  structured`, `stage_age` растёт монотонно (один зависший вызов, не
-  ретраи). Держат оба слота (`reserved: consolidation=2/1 avail=0`), новая
-  consolidation (`pending=1`) не стартует. Client-timeout 300с не срабатывает
-  (streaming-hang).
-  **Корень:** шлюз :20128 жив (200), но `hindsight-combo` маршрутизируется
-  на `stepfun/step-3.7-flash` — **reasoning-модель**. Пробник `max_tokens:5`
-  вернул `content:null`, `finish_reason:length`, все токены в `reasoning`.
-  Consolidation с `STRICT_SCHEMA=true` (structured output): модель уходит в
-  reasoning, валидный JSON по схеме не выдаёт → зависание. Ровно ловушка из
-  скилла `chronos-llm-backends` («именно это ломало консолидацию»). Retain
-  проходит (без строгой схемы), consolidation — нет.
-  **Чистого env-knoba нет:** модель одна на всё (`HINDSIGHT_API_LLM_MODEL=
-  hindsight-combo`), reasoning-тумблера/отдельной consolidation-модели в env
-  контейнера нет. `--reasoning off` — только для локального llama-server
-  (:11435), не для облачного провайдера за шлюзом.
-  **Рекомендация:** перенаправить `hindsight-combo` в OmniRoute на
-  НЕ-reasoning модель со structured-output (retain тоже её переживёт —
-  reasoning ему не нужен), ИЛИ отправлять `reasoning_effort:none`/
-  `reasoning:{exclude:true}` в LLM-запросах hindsight, ИЛИ проверить, есть ли
-  у hindsight `HINDSIGHT_API_CONSOLIDATION_LLM_MODEL` (в текущем env нет).
-  **OmniRoute-конфиг** — в `~/.omniroute/storage.sqlite` (combo-роутинг в БД,
-  не плоский файл); хирургический reasoning-disable на стороне шлюза
-  требует правки SQLite/ненадёжного CLI — не делал.
-  **Расклинить сейчас:** 2 застрявшие op сбросятся рестартом контейнера
-  hindsight — НО скилл предупреждает: не рестартить под активной записью
-  (теряется retain-очередь). Ждать retain-idle или найти ops-cancel API.
-  Сервис при этом функционирует: retain идёт async, агенты не заблокированы;
-  висит только consolidation (деградация качества памяти со временем, не
-  срочно).
-  **ФИКС ПРИМЕНЁН 2026-07-30 (архитектор выбрал сам).** Нашёлся per-scope
-  knob: `HINDSIGHT_API_CONSOLIDATION_LLM_MODEL`. Поставил **только
-  consolidation** на не-reasoning `gemini/gemini-3.1-flash-lite-preview`
-  (+`_BASE_URL=:20128`, `_PROVIDER=openai`), **retain не трогал** (остался
-  hindsight-combo, замерен 117с). Проверял альтернативы: `reasoning_effort:
-  none` gateway НЕ честит (stepfun всё равно 116/150 токенов в reasoning,
-  вывод в мусор); gemini-flash-lite отдаёт structured за 0.8с, `finish=stop`.
-  Правка в `chronos-ecosystem/infra/hindsight/.env` (НЕ в ChronOS-репо;
-  бэкап `.env.bak-2026-07-30-consolidation`). Рестарт контейнера — в
-  retain-idle окне (фоновый атомарный скрипт, т.к. агенты ретейнят
-  непрерывно; скилл: не рестартить под записью). Застрявшие op на re-claim
-  пойдут через gemini и завершатся. **Проверить после рестарта:** ops
-  расклинились, consolidation завершается без hang.
-  **Оговорка:** gemini через OmniRoute отдаёт JSON в markdown-фенсах,
-  strict json_schema не форсит — если hindsight-парсер споткнётся, глянуть
-  логи (но это parse-warn, не hang).
-  **ПРОВЕРЕНО после рестарта 2026-07-30 ~10:05:** конфиг загружен
-  (`LLM (consolidation): model=gemini/gemini-3.1-flash-lite-preview`), обе
-  застрявшие op переклеймлены и **пошли** (stage_age секунды, не 3248s);
-  слоты `2/1→1/1` (одна завершилась), контейнер healthy, регресс-чек — ни
-  одного op с `stage_age≥100s`. Hang устранён. Осталось лишь дождаться, что
-  очередь (`pending=1`) дренится — но механизм рабочий.
+- [ ] **№1b — consolidation в Hindsight виснет. ЧАСТИЧНО (consolidation
+  выключена как стабилизация); корневой баг — за апстримом/DB. 2026-07-30.**
+  **Симптом:** consolidation-op (`consolidation+structured`) висит бесконечно
+  (`stage_age` растёт монотонно до 3000s+, наблюдалось 18ч+), держит
+  worker-слот, `client-timeout 300с НЕ срабатывает`. retain/recall при этом
+  работают (разные слоты).
+  **Что исключено (проверено эмпирически, НЕ гипотезы):**
+  - *Модель.* `hindsight-combo`→stepfun (reasoning) И `gemini-flash-lite`
+    (не-reasoning) виснут ОДИНАКОВО. `reasoning_effort:none` gateway не
+    честит. → дело не только в reasoning.
+  - *Бюджет вывода.* `CONSOLIDATION_MAX_COMPLETION_TOKENS` 16000 и 4000 —
+    виснут одинаково (346–445s). → дело не в размере генерации.
+  - Вывод: **hang в слое запроса/соединения LLM-вызова**, client read-timeout
+    (300с) на нём не триггерится. Это баг hindsight/OmniRoute, конфигом с
+    моей стороны не лечится.
+  **Сделано (всё в `chronos-ecosystem/infra/hindsight/.env`, бэкапы рядом):**
+  - `CONSOLIDATION_LLM_MODEL=gemini/gemini-3.1-flash-lite-preview` (+base_url
+    :20128, provider openai) — не-reasoning, корректна КОГДА баг починят.
+  - `CONSOLIDATION_MAX_COMPLETION_TOKENS` 16000→4000.
+  - `ENABLE_AUTO_CONSOLIDATION=false` + `WORKER_CONSOLIDATION_MAX_SLOTS=0` —
+    consolidation выключена, НОВЫЕ op не копятся.
+  - Через admin-API (`DELETE /operations/{id}`) вычищен зависший `pending`
+    op `f232c96f` (200 OK).
+  **Не добито — «отравленная» op `2046edc5`** (status `processing`, висит с
+  2026-07-29 13:11): API-DELETE даёт 409 (processing) / 000 (timeout),
+  `consolidation/recover` её не берёт (`retried_count:0`), переживает рестарт
+  (воркер восстанавливает in-flight op, минуя `slots=0`). Убрать — только
+  прямой UPDATE статуса в Postgres hindsight (таблица operations) ИЛИ
+  апстрим-фикс. Слепую DB-хирургию по памяти НЕ делал.
+  **Импакт:** retain/recall работают; consolidation (построение observations)
+  OFF — но она и так была сломана >18ч. Одна poison-op тратит один зависший
+  LLM-коннект после рестарта.
+  **Что дальше (не-срочно, за пределами быстрого конфиг-фикса):** (1) очистить
+  `2046edc5` (DB-UPDATE status→failed или апстрим); (2) НАСТОЯЩИЙ корень —
+  почему `HINDSIGHT_API_LLM_TIMEOUT=300` не рвёт consolidation-вызов (httpx
+  read-timeout vs стрим, per-call timeout не проброшен?); после фикса —
+  вернуть `ENABLE_AUTO_CONSOLIDATION`/`WORKER_..._MAX_SLOTS` (gemini+кап уже
+  стоят).
 
 - [x] **№1c — scope `verification` на reasoning-модели. РАЗОБРАНО, не чиним
   (2026-07-30).** Один post-restart warning `empty message content
