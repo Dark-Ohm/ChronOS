@@ -125,8 +125,26 @@ impl FilesTab {
     fn open_entry(&mut self, entry: &FileEntryDto, cx: &mut Context<Self>) {
         if entry.kind == "dir" {
             self.navigate_to(PathBuf::from(&entry.path), cx);
+            return;
         }
-        // Files: read-only v1 — no open/preview (later capability / Editor tab).
+        // File click → push the path into the shared PreviewTarget. The
+        // Preview tab observes the global and starts reading in the
+        // background. We deliberately do NOT switch tabs here: the user
+        // opens Preview themselves, and T174's fallback compensates for
+        // `on_tab_select` no-ops on same-tab clicks.
+        let (path, next_generation) = {
+            let t = cx
+                .global::<crate::side_panel_right::preview_target::PreviewTarget>();
+            let same_path = t.path.as_deref() == Some(std::path::Path::new(&entry.path));
+            if same_path && t.generation > 0 {
+                return;
+            }
+            (PathBuf::from(&entry.path), t.generation.wrapping_add(1))
+        };
+        cx.set_global(crate::side_panel_right::preview_target::PreviewTarget {
+            path: Some(path),
+            generation: next_generation,
+        });
     }
 }
 

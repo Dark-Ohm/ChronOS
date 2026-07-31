@@ -9,6 +9,7 @@
 
 pub(crate) mod build;
 pub(crate) mod files;
+pub(crate) mod preview;
 pub(crate) mod system;
 pub(crate) mod terminal;
 
@@ -19,6 +20,7 @@ use crate::side_panel_right::tabs::PanelTab;
 
 use build::BuildTab;
 use files::FilesTab;
+use preview::PreviewTab;
 use system::SystemTab;
 use terminal::TerminalTab;
 
@@ -35,6 +37,7 @@ pub(crate) enum TabContent {
     Files(gpui::Entity<FilesTab>),
     Terminal(gpui::Entity<TerminalTab>),
     Build(gpui::Entity<BuildTab>),
+    Preview(gpui::Entity<PreviewTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
 
@@ -56,6 +59,9 @@ impl TabContent {
             // `TerminalTab::new` raises the PTY only then (no tab → no shell).
             PanelTab::Terminal => TabContent::Terminal(cx.new(|cx| TerminalTab::new(cx))),
             PanelTab::Build => TabContent::Build(cx.new(|cx| BuildTab::new(cx))),
+            // Preview: `PreviewTab::new` only subscribes to PreviewTarget; no
+            // I/O happens until the user actually clicks a file in Files.
+            PanelTab::Preview => TabContent::Preview(cx.new(|cx| PreviewTab::new(cx))),
             _ => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
         }
     }

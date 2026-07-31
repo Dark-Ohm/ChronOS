@@ -437,6 +437,13 @@ impl Render for SidePanelRightView {
                                 TabContent::Build(entity) => {
                                     col.child(entity.clone())
                                 }
+                                // T179: minimum addition to keep the enum
+                                // exhaustive; pairs with the same one-line match
+                                // arm in `tab_entity_id` below. View body itself
+                                // stays outside T179's zone.
+                                TabContent::Preview(entity) => {
+                                    col.child(entity.clone())
+                                }
                                 TabContent::Placeholder(entity) => {
                                     col.child(entity.clone())
                                 }
@@ -503,6 +510,10 @@ impl SidePanelRightView {
             TabContent::Files(e) => e.entity_id(),
             TabContent::Terminal(e) => e.entity_id(),
             TabContent::Build(e) => e.entity_id(),
+            // T179: minimum addition to keep the enum exhaustive; precedent
+            // set by T176 (Files) and T177 (Terminal). View body itself stays
+            // outside T179's zone — this is a one-line structural match.
+            TabContent::Preview(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })
     }

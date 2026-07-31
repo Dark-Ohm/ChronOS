@@ -16,6 +16,7 @@ mod hover_strip;
 mod mpris_card;
 mod permission;
 mod power_row;
+mod preview_target;
 mod rail;
 mod spectrum_row;
 mod surfaces;
@@ -292,6 +293,7 @@ pub fn toggle(cx: &mut App) {
 
 pub fn init(cx: &mut App) {
     cx.set_global(SidePanelRightState::default());
+    cx.set_global(preview_target::PreviewTarget::default());
     // Defer the strip one tick so `cx.displays()` / pult uuid match what
     // `bar::init` sees a moment later. Opening the strip synchronously in
     // `main` before the bar historically landed it on the wrong output

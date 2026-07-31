@@ -306,7 +306,6 @@ mod tests {
     #[test]
     fn empty_state_tabs_preferred_width_is_320() {
         for tab in [
-            PanelTab::Preview,
             PanelTab::Inspector,
             PanelTab::AcpSettings,
             PanelTab::McpSettings,
@@ -321,6 +320,13 @@ mod tests {
                 "{tab:?} empty-state preferred width must be 320"
             );
         }
+    }
+
+    #[test]
+    fn preview_preferred_width_is_560() {
+        // T179 §3: image and markdown need more than 320; 560 aligns with
+        // Editor/Terminal and gives a comfortable markdown line length.
+        assert_eq!(PanelTab::Preview.preferred_content_width(), 560.);
     }
 
     #[test]
@@ -515,9 +521,14 @@ impl PanelTab {
             // Build/Logs: cargo diagnostics need ~82 mono cols (640/7.8).
             // 560≈72 cols truncates long ` --> path:line` lines; 640 keeps them.
             PanelTab::Build => 640.,
+            // Preview: 560 matches Editor/Terminal and gives a comfortable
+            // markdown line length (~80 chars at ~7 px each). Image pixels
+            // render at native size via `object_fit: Contain`, so width is
+            // only a ceiling, not a target. Lower than Build because no
+            // mono diagnostics demand wider.
+            PanelTab::Preview => super::DEFAULT_CONTENT_WIDTH,
             // Empty-state tabs: icon + label + one-line description.
-            PanelTab::Preview
-            | PanelTab::Inspector
+            PanelTab::Inspector
             | PanelTab::AcpSettings
             | PanelTab::McpSettings
             | PanelTab::LspSettings
