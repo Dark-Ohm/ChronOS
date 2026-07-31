@@ -226,6 +226,115 @@ mod tests {
         });
     }
 
+    // --- T171: per-tab width behavioral tests ---
+
+    #[gpui::test]
+    async fn tab_select_applies_preferred_width(cx: &mut TestAppContext) {
+        use crate::side_panel_right::{RAIL_ONLY_WIDTH, SidePanelRightState};
+        cx.update(|cx| {
+            let mut state = SidePanelRightState::default();
+            state.dock_content = true; // content visible → width applies
+            cx.set_global(state);
+        });
+        let view = cx.new(|cx| SidePanelRightView::new(cx));
+        // System is the default active_tab — select a different tab first
+        // so on_tab_select actually applies width (same-tab re-click is no-op).
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Files, cx);
+        });
+        cx.update(|cx| {
+            let state = cx.global::<SidePanelRightState>();
+            assert_eq!(state.width, 440., "Files tab preferred width must be applied");
+            assert!(state.width > RAIL_ONLY_WIDTH, "must have expanded from rail-only");
+        });
+        // Switch to Editor → width should be 560 (DEFAULT_CONTENT_WIDTH).
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Editor, cx);
+        });
+        cx.update(|cx| {
+            let state = cx.global::<SidePanelRightState>();
+            assert_eq!(state.width, 560., "Editor tab preferred width must be applied");
+        });
+    }
+
+    #[gpui::test]
+    async fn dock_content_false_keeps_rail_only_width(cx: &mut TestAppContext) {
+        use crate::side_panel_right::{RAIL_ONLY_WIDTH, SidePanelRightState};
+        cx.update(|cx| {
+            cx.set_global(SidePanelRightState::default()); // dock_content = false
+        });
+        let view = cx.new(|cx| SidePanelRightView::new(cx));
+        // Select non-System tabs (System requires AppState service globals).
+        // Width must stay at RAIL_ONLY_WIDTH when dock_content == false.
+        for tab in [PanelTab::Files, PanelTab::Editor, PanelTab::Terminal] {
+            cx.update_entity(&view, |this, cx| {
+                this.on_tab_select(tab, cx);
+            });
+            cx.update(|cx| {
+                let state = cx.global::<SidePanelRightState>();
+                assert_eq!(
+                    state.width, RAIL_ONLY_WIDTH,
+                    "{tab:?}: width must stay RAIL_ONLY_WIDTH when dock_content == false"
+                );
+            });
+        }
+    }
+
+    #[gpui::test]
+    async fn same_tab_reclick_preserves_resize(cx: &mut TestAppContext) {
+        use crate::side_panel_right::SidePanelRightState;
+        cx.update(|cx| {
+            cx.set_global(SidePanelRightState::default());
+        });
+        let view = cx.new(|cx| SidePanelRightView::new(cx));
+        // Select Files (not default System — re-click is a no-op).
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Files, cx);
+        });
+        // Simulate a resize to 480.
+        cx.update(|cx| {
+            let state = cx.global_mut::<SidePanelRightState>();
+            state.resize(480.);
+        });
+        // Re-click Files — must not reset to 440.
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Files, cx);
+        });
+        cx.update(|cx| {
+            let state = cx.global::<SidePanelRightState>();
+            assert_eq!(state.width, 480., "re-clicking same tab must not reset manual resize");
+        });
+    }
+
+    #[gpui::test]
+    async fn switch_tab_restores_per_tab_resize_memory(cx: &mut TestAppContext) {
+        use crate::side_panel_right::SidePanelRightState;
+        cx.update(|cx| {
+            cx.set_global(SidePanelRightState::default());
+        });
+        let view = cx.new(|cx| SidePanelRightView::new(cx));
+        // Select Files, resize to 480 (via sim_resize to store per-tab memory).
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Files, cx);
+            this.sim_resize(480., cx);
+        });
+        // Switch to Editor — width becomes Editor's preferred (560).
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Editor, cx);
+        });
+        cx.update(|cx| {
+            assert_eq!(cx.global::<SidePanelRightState>().width, 560.);
+        });
+        // Switch back to Files — must restore 480, not 440.
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Files, cx);
+        });
+        cx.update(|cx| {
+            let state = cx.global::<SidePanelRightState>();
+            assert_eq!(state.width, 480., "returning to Files must restore its resized width");
+        });
+    }
+
     // --- placeholder descriptions ---
 
     #[test]

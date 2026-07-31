@@ -99,11 +99,13 @@ impl SidePanelRightState {
         self.width = new_width.clamp(RAIL_ONLY_WIDTH, MAX_WIDTH);
     }
 
-    /// Expand to default content width if still rail-only (dock on / tab open).
-    pub fn ensure_content_width(&mut self) {
-        if self.width <= RAIL_ONLY_WIDTH + 1.0 {
-            self.width = DEFAULT_CONTENT_WIDTH;
-        }
+    /// Expand from rail-only to the given target width.
+    /// Called when content becomes visible (tab open / dock toggle).
+    /// Expand or contract to the given target width.
+    /// Called when content becomes visible (tab open / dock toggle)
+    /// or when switching tabs with content already visible.
+    pub fn ensure_content_width(&mut self, target: f32) {
+        self.width = target;
         self.last_exclusive_zone = None; // force zone recompute next paint
     }
 }
@@ -305,7 +307,7 @@ pub fn init(cx: &mut App) {
             if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL").is_some() {
                 // Smoke path: open the panel already expanded so automated screenshots
                 // and tests can see the content without a manual rail click.
-                cx.global_mut::<SidePanelRightState>().ensure_content_width();
+                cx.global_mut::<SidePanelRightState>().ensure_content_width(DEFAULT_CONTENT_WIDTH);
                 open_pinned(cx);
             }
         });
@@ -362,7 +364,7 @@ mod tests {
     fn ensure_content_width_from_rail_only() {
         let mut state = SidePanelRightState::default();
         assert_eq!(state.width, RAIL_ONLY_WIDTH);
-        state.ensure_content_width();
+        state.ensure_content_width(DEFAULT_CONTENT_WIDTH);
         assert_eq!(state.width, DEFAULT_CONTENT_WIDTH);
     }
 

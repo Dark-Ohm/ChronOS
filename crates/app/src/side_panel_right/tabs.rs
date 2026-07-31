@@ -270,6 +270,59 @@ mod tests {
             );
         }
     }
+
+    // --- T171: per-tab preferred content width ---
+
+    #[test]
+    fn every_preferred_width_in_valid_range() {
+        use crate::side_panel_right::{MAX_WIDTH, RAIL_ONLY_WIDTH};
+        for tab in PanelTab::ALL {
+            let w = tab.preferred_content_width();
+            assert!(
+                w >= RAIL_ONLY_WIDTH && w <= MAX_WIDTH,
+                "{tab:?} preferred width {w} outside [{RAIL_ONLY_WIDTH}, {MAX_WIDTH}]"
+            );
+        }
+    }
+
+    #[test]
+    fn system_preferred_width_is_400() {
+        assert_eq!(PanelTab::System.preferred_content_width(), 400.);
+    }
+
+    #[test]
+    fn editor_and_terminal_preferred_width_is_default() {
+        use crate::side_panel_right::DEFAULT_CONTENT_WIDTH;
+        assert_eq!(PanelTab::Editor.preferred_content_width(), DEFAULT_CONTENT_WIDTH);
+        assert_eq!(PanelTab::Terminal.preferred_content_width(), DEFAULT_CONTENT_WIDTH);
+    }
+
+    #[test]
+    fn files_and_source_control_preferred_width_is_440() {
+        assert_eq!(PanelTab::Files.preferred_content_width(), 440.);
+        assert_eq!(PanelTab::SourceControl.preferred_content_width(), 440.);
+    }
+
+    #[test]
+    fn empty_state_tabs_preferred_width_is_320() {
+        for tab in [
+            PanelTab::Preview,
+            PanelTab::Inspector,
+            PanelTab::Build,
+            PanelTab::AcpSettings,
+            PanelTab::McpSettings,
+            PanelTab::LspSettings,
+            PanelTab::ApiProviders,
+            PanelTab::EditorSettings,
+            PanelTab::HyprlandBinds,
+        ] {
+            assert_eq!(
+                tab.preferred_content_width(),
+                320.,
+                "{tab:?} empty-state preferred width must be 320"
+            );
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
@@ -444,6 +497,27 @@ impl PanelTab {
             PanelTab::ApiProviders => "icons/rail-api.svg",
             PanelTab::EditorSettings => "icons/rail-editor-settings.svg",
             PanelTab::HyprlandBinds => "icons/rail-binds.svg",
+        }
+    }
+
+    /// Preferred content width for this tab (px). Used by the right panel
+    /// to resize when switching tabs. `DEFAULT_CONTENT_WIDTH` is the fallback
+    /// for any tab that does not override this.
+    pub fn preferred_content_width(self) -> f32 {
+        match self {
+            PanelTab::System => 400.,
+            PanelTab::Editor | PanelTab::Terminal => super::DEFAULT_CONTENT_WIDTH,
+            PanelTab::Files | PanelTab::SourceControl => 440.,
+            // Empty-state tabs: icon + label + one-line description.
+            PanelTab::Preview
+            | PanelTab::Inspector
+            | PanelTab::Build
+            | PanelTab::AcpSettings
+            | PanelTab::McpSettings
+            | PanelTab::LspSettings
+            | PanelTab::ApiProviders
+            | PanelTab::EditorSettings
+            | PanelTab::HyprlandBinds => 320.,
         }
     }
 }

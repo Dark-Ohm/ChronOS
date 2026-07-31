@@ -28,7 +28,7 @@ use crate::side_panel_right::tab::TabContent;
 use crate::side_panel_right::tab::system::format_net_pair;
 use crate::side_panel_right::tabs::PanelTab;
 use crate::side_panel_right::{
-    HANDLE_WIDTH, RAIL_ONLY_WIDTH, RightPanelResize, SidePanelRightState,
+    HANDLE_WIDTH, MAX_WIDTH, RAIL_ONLY_WIDTH, RightPanelResize, SidePanelRightState,
 };
 use crate::state::AppState;
 use crate::{scene, workspace_mode};
@@ -56,6 +56,10 @@ pub struct SidePanelRightView {
     /// Lazy, cached tab views — one per visited tab. Created on first
     /// activation, retained across switches and mode changes.
     tab_views: HashMap<PanelTab, TabContent>,
+    /// Per-tab user-resized widths (session-only, not persisted to disk).
+    /// When a tab is selected, its width here (or `preferred_content_width`
+    /// if never resized) is applied to `SidePanelRightState.width`.
+    tab_resize_memory: HashMap<PanelTab, f32>,
 }
 
 impl SidePanelRightView {
@@ -71,22 +75,42 @@ impl SidePanelRightView {
             resize_start_x: None,
             resize_start_width: None,
             tab_views: HashMap::new(),
+            tab_resize_memory: HashMap::new(),
         }
+    }
+
+    /// Return the effective width for `tab`: user-resized width if set,
+    /// otherwise the tab's `preferred_content_width`. Clamped to
+    /// `RAIL_ONLY_WIDTH .. MAX_WIDTH`.
+    fn active_tab_width(&self, tab: PanelTab, _cx: &Context<Self>) -> f32 {
+        let preferred = tab.preferred_content_width();
+        let w = self
+            .tab_resize_memory
+            .get(&tab)
+            .copied()
+            .unwrap_or(preferred);
+        w.clamp(RAIL_ONLY_WIDTH, MAX_WIDTH)
     }
 
     fn start_resize(&mut self, start_x: f32, cx: &mut Context<Self>) {
         let w = cx.global::<SidePanelRightState>().width;
         self.resize_start_x = Some(start_x);
         self.resize_start_width = Some(w);
-        // Rail-only: first grab on the handle pops content to default width
-        // (user "pulls the panel out of the bar"). Further drag adjusts freely.
+        // Rail-only: first grab on the handle pops content to the active
+        // tab's width (user "pulls the panel out of the bar"). Further
+        // drag adjusts freely.
         if w <= RAIL_ONLY_WIDTH + 1.0 {
+            let tab = self.active_tab;
+            let target = self.active_tab_width(tab, cx);
             let state = cx.global_mut::<SidePanelRightState>();
-            state.ensure_content_width();
-            self.resize_start_width = Some(state.width);
+            state.width = target;
+            state.last_exclusive_zone = None;
+            self.tab_resize_memory.insert(tab, target);
+            self.resize_start_width = Some(target);
             self.last_resized_width = f32::NAN;
             tracing::info!(
-                width = state.width,
+                width = target,
+                tab = tab.label(),
                 "side_panel_right: handle grab expanded rail → content"
             );
             cx.notify();
@@ -103,6 +127,8 @@ impl SidePanelRightView {
         let state = cx.global_mut::<SidePanelRightState>();
         state.resize(start_w - delta);
         state.last_exclusive_zone = None;
+        // Remember per-tab resize so returning to this tab restores it.
+        self.tab_resize_memory.insert(self.active_tab, state.width);
         crate::side_panel_right::hold_peek(cx);
         cx.notify();
     }
@@ -172,27 +198,33 @@ impl SidePanelRightView {
         .detach();
     }
 
-    /// Pure: clicking a rail button always makes that tab active — no toggle,
-    /// no special-case for re-clicking the already-active tab.
-    fn next_active_tab(_current: PanelTab, clicked: PanelTab) -> PanelTab {
-        clicked
-    }
-
     pub(crate) fn on_tab_select(&mut self, tab: PanelTab, cx: &mut Context<Self>) {
-        self.active_tab = Self::next_active_tab(self.active_tab, tab);
+        // Re-clicking the same tab is a no-op — don't reset the user's
+        // manual resize.
+        if tab == self.active_tab {
+            return;
+        }
+        self.active_tab = tab;
         // Lazy-create the tab view on first activation. Also called from
         // render() for the very-first-paint case. T168 errata 3.
         self.ensure_tab_view(self.active_tab, cx);
-        // Opening a tab from rail-only pulls content out (overlay).
+        // Apply per-tab width only when content is visible (trap #3).
+        let target = self.active_tab_width(self.active_tab, cx);
         {
             let state = cx.global_mut::<SidePanelRightState>();
             let before = state.width;
-            state.ensure_content_width();
+            let content_open = state.dock_content || state.width > RAIL_ONLY_WIDTH + 1.0;
+            if content_open {
+                state.ensure_content_width(target);
+            } else {
+                state.last_exclusive_zone = None;
+            }
             tracing::info!(
                 before,
                 after = state.width,
+                content_open,
                 tab = tab.label(),
-                "side_panel_right: tab select → ensure content width"
+                "side_panel_right: tab select → apply per-tab width"
             );
         }
         // Force next paint to re-apply resize even if a previous failed attempt
@@ -400,13 +432,10 @@ impl Render for SidePanelRightView {
                         let on_dock_toggle =
                             std::rc::Rc::new(move |_window: &mut Window, cx: &mut gpui::App| {
                                 this_for_dock.update(cx, |this, cx| {
+                                    let target = this.active_tab_width(this.active_tab, cx);
                                     let state = cx.global_mut::<SidePanelRightState>();
                                     state.dock_content = !state.dock_content;
-                                    if state.dock_content {
-                                        state.ensure_content_width();
-                                    } else {
-                                        state.last_exclusive_zone = None;
-                                    }
+                                    state.ensure_content_width(target);
                                     this.last_resized_width = f32::NAN;
                                     tracing::info!(
                                         dock = state.dock_content,
@@ -447,6 +476,14 @@ impl SidePanelRightView {
             TabContent::System(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })
+    }
+
+    /// Simulate a user resize for testing: stores width in both the
+    /// global state and per-tab memory.
+    pub(crate) fn sim_resize(&mut self, width: f32, cx: &mut Context<Self>) {
+        let state = cx.global_mut::<SidePanelRightState>();
+        state.resize(width);
+        self.tab_resize_memory.insert(self.active_tab, state.width);
     }
 }
 
