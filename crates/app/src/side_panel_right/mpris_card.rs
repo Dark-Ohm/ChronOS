@@ -7,14 +7,13 @@
 use std::path::{Path, PathBuf};
 
 use gpui::{
-    Context, ImageSource, IntoElement, ObjectFit, div, hsla, img, prelude::*, px, relative,
+    App, ImageSource, IntoElement, ObjectFit, div, hsla, img, prelude::*, px, relative,
 };
 use chronos_ui::{Theme, on_fill};
 
 use chronos_services::MprisState;
 
 use crate::side_panel_right::surfaces;
-use crate::side_panel_right::view::SidePanelRightView;
 use crate::state::AppState;
 
 
@@ -158,7 +157,7 @@ fn render_progress_bar(ratio: Option<f32>, theme: &Theme) -> impl IntoElement {
 
 pub fn render_mpris_card(
     state: &MprisState,
-    cx: &mut Context<SidePanelRightView>,
+    cx: &App,
 ) -> impl IntoElement {
     let theme = *Theme::global(cx);
     let player_id_for_mute = state.player_id.clone();

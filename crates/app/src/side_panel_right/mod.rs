@@ -19,12 +19,11 @@ mod power_row;
 mod rail;
 mod spectrum_row;
 mod surfaces;
+pub mod tab;
 mod tabs;
 pub mod view;
 mod wallpaper_card;
 
-pub use rail::render_rail;
-pub use tabs::PanelTab;
 
 use chronos_luau::bar::BAR_HEIGHT;
 use gpui::{

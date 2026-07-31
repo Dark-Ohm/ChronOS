@@ -8,64 +8,40 @@
 //! - Peek motion: state-driven `.transition_when` on an **inner** wrapper.
 
 use std::{
-    rc::Rc,
+    collections::HashMap,
     time::{Duration, Instant},
 };
 
 use chronos_services::net_stats::{self, NetState};
-use chronos_services::{DiskInfo, MprisState, Service, SystemResourcesState};
 use gpui::{
-    App, AsyncApp, Context, Entity, FocusHandle, IntoElement, Render, ScrollHandle, Window, div,
-    layer_shell::*, prelude::*, px,
+    AnimationExt, AsyncApp, IntoElement, Render,
+    Window, div, prelude::*, px,
 };
-use gpui::AnimationExt;
-use gpui_component::input::{Input, InputState};
-use gpui_component::table::{Column, DataTable, TableDelegate, TableState};
-use gpui_component::v_virtual_list;
 
 use crate::motion;
-use crate::side_panel_right::disks::render_disks_section;
-use crate::side_panel_right::header::render_header;
-use crate::side_panel_right::mpris_card::render_mpris_card;
-use crate::side_panel_right::wallpaper_card::render_wallpaper_card;
-use crate::side_panel_right::permission::render_permission_card;
 use crate::side_panel_right::power_row::{
     ARM_TIMEOUT, ArmState, PowerAction, is_confirming_click, on_click as arm_on_click, on_timeout,
     render_footer,
 };
-use crate::side_panel_right::rail::render_rail;
-use crate::side_panel_right::spectrum_row::{
-    H_CPU, H_GPU, H_NET, H_RAM, SpectrumHistory, color_cpu, color_gpu, color_net, color_ram,
-    color_value_default, push_sample, render_spectrum_row,
-};
+use crate::side_panel_right::surfaces;
+use crate::side_panel_right::tab::TabContent;
 use crate::side_panel_right::tabs::PanelTab;
 use crate::side_panel_right::{
-    DEFAULT_CONTENT_WIDTH, HANDLE_WIDTH, RAIL_ONLY_WIDTH, RightPanelResize, SidePanelRightState,
+    HANDLE_WIDTH, RAIL_ONLY_WIDTH, RightPanelResize, SidePanelRightState,
 };
-use crate::state::{self, AppState};
+use crate::state::AppState;
 use crate::{scene, workspace_mode};
 
 use chronos_ui::{Theme, elevation_glow_bar};
-
-use super::surfaces;
 
 /// Delay before peek-close after mouse leaves panel (or strip).
 const PEEK_LEAVE_DEBOUNCE: Duration = Duration::from_millis(280);
 
 pub struct SidePanelRightView {
-    mpris: MprisState,
-    system: SystemResourcesState,
-    disks: Vec<DiskInfo>,
-    wallpaper: chronos_services::WallpaperState,
-    waytrogen_available: bool,
-    cpu_history: SpectrumHistory,
-    ram_history: SpectrumHistory,
-    gpu_history: SpectrumHistory,
-    net_state: NetState,
-    net_dl_history: SpectrumHistory,
-    net_ul_history: SpectrumHistory,
     power_arm: ArmState,
-    scroll: ScrollHandle,
+    net_state: NetState,
+    net_dl_history: crate::side_panel_right::spectrum_row::SpectrumHistory,
+    net_ul_history: crate::side_panel_right::spectrum_row::SpectrumHistory,
     active_tab: PanelTab,
     /// Width the platform window was last physically resized to. `render`
     /// only issues `window.resize()` when `state.width` has drifted from
@@ -76,94 +52,24 @@ pub struct SidePanelRightView {
     last_exclusive_zone: Option<f32>,
     resize_start_x: Option<f32>,
     resize_start_width: Option<f32>,
-        /// T157/T158 temporary scaffolding — gpui-component `Input` footprint.
-    /// Keeps the real Input/rope/display_map path linked under LTO.
-    /// Replaced by the actual composer/settings fields in Shell-IDE slice 3.
-    measure_input: Option<Entity<InputState>>,
-    /// T157/T158 temporary scaffolding — gpui-component `DataTable` footprint.
-    /// Holds the delegate inside so the table widget stays actually linked
-    /// under `lto = true` + `strip = true` in [profile.release].
-    /// Replaced by the files/sessions list in Shell-IDE slice 3.
-    measure_table: Option<Entity<TableState<DemoTableDelegate>>>,
-    /// T157/T158 temporary scaffolding — gpui-component `VirtualList` footprint.
-    /// The inner `Render for DemoVirtualList` constructs `v_virtual_list`
-    /// each frame; keeping an `Entity` here makes the v-table allocation
-    /// survive across renders.
-    /// Replaced by the transcript/list view in Shell-IDE slice 3.
-    measure_vlist: Option<Entity<DemoVirtualList>>,
-/// T157 smoke: one-shot flag to auto-open System tab/focus input for grim.
-    smoke_opened: bool,
-    /// T157 smoke: one-shot flag to avoid re-setting the demo text in the Input.
-    smoke_text_set: bool,
+    /// Lazy, cached tab views — one per visited tab. Created on first
+    /// activation, retained across switches and mode changes.
+    tab_views: HashMap<PanelTab, TabContent>,
 }
 
 impl SidePanelRightView {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        let mpris_signal = AppState::mpris(cx).subscribe();
-        state::watch(cx, mpris_signal, |this: &mut Self, data: MprisState, cx| {
-            this.mpris = data;
-            cx.notify();
-        });
-
-        let sys_signal = AppState::system_resources(cx).subscribe();
-        state::watch(
-            cx,
-            sys_signal,
-            |this: &mut Self, data: SystemResourcesState, cx| {
-                push_sample(&mut this.cpu_history, data.cpu_percent);
-                push_sample(&mut this.ram_history, data.ram_percent);
-                if let Some(gpu) = data.gpu_percent {
-                    push_sample(&mut this.gpu_history, gpu);
-                }
-                this.system = data;
-                cx.notify();
-            },
-        );
-
-        let disks_signal = AppState::disks(cx).subscribe();
-        state::watch(
-            cx,
-            disks_signal,
-            |this: &mut Self, data: Vec<DiskInfo>, cx| {
-                this.disks = data;
-                cx.notify();
-            },
-        );
-
-        let wallpaper_signal = AppState::wallpaper(cx).subscribe();
-        state::watch(
-            cx,
-            wallpaper_signal,
-            |this: &mut Self, data: chronos_services::WallpaperState, cx| {
-                this.wallpaper = data;
-                cx.notify();
-            },
-        );
-
+    pub fn new(_cx: &mut Context<Self>) -> Self {
         Self {
-            mpris: AppState::mpris(cx).get(),
-            system: AppState::system_resources(cx).get(),
-            disks: AppState::disks(cx).get(),
-            wallpaper: AppState::wallpaper(cx).get(),
-            waytrogen_available: crate::wallpaper_ctl::waytrogen_available(),
-            cpu_history: SpectrumHistory::default(),
-            ram_history: SpectrumHistory::default(),
-            gpu_history: SpectrumHistory::default(),
-            net_state: NetState::default(),
-            net_dl_history: SpectrumHistory::default(),
-            net_ul_history: SpectrumHistory::default(),
             power_arm: ArmState::default(),
-            scroll: ScrollHandle::new(),
+            net_state: NetState::default(),
+            net_dl_history: Default::default(),
+            net_ul_history: Default::default(),
             active_tab: PanelTab::default(),
-            last_resized_width: crate::side_panel_right::RAIL_ONLY_WIDTH,
+            last_resized_width: RAIL_ONLY_WIDTH,
             last_exclusive_zone: None,
             resize_start_x: None,
             resize_start_width: None,
-            measure_input: None,
-            measure_table: None,
-            measure_vlist: None,
-            smoke_opened: false,
-            smoke_text_set: false,
+            tab_views: HashMap::new(),
         }
     }
 
@@ -208,7 +114,7 @@ impl SidePanelRightView {
             return;
         };
         let prev_t = self.net_state.sample.as_ref().map(|s| s.time);
-        let speed = net_stats::update_speed(
+        let _speed = net_stats::update_speed(
             &mut self.net_state,
             rx,
             tx,
@@ -217,8 +123,14 @@ impl SidePanelRightView {
         );
         let new_t = self.net_state.sample.as_ref().map(|s| s.time);
         if prev_t != new_t {
-            push_sample(&mut self.net_dl_history, speed.dl as f32);
-            push_sample(&mut self.net_ul_history, speed.ul as f32);
+            crate::side_panel_right::spectrum_row::push_sample(
+                &mut self.net_dl_history,
+                self.net_state.cached_dl as f32,
+            );
+            crate::side_panel_right::spectrum_row::push_sample(
+                &mut self.net_ul_history,
+                self.net_state.cached_ul as f32,
+            );
         }
     }
 
@@ -267,6 +179,11 @@ impl SidePanelRightView {
 
     pub(crate) fn on_tab_select(&mut self, tab: PanelTab, cx: &mut Context<Self>) {
         self.active_tab = Self::next_active_tab(self.active_tab, tab);
+        // Lazy-create the tab view on first activation (not in render —
+        // render may run many times per frame and must stay pure).
+        self.tab_views
+            .entry(self.active_tab)
+            .or_insert_with(|| TabContent::create(self.active_tab, cx));
         // Opening a tab from rail-only pulls content out (overlay).
         {
             let state = cx.global_mut::<SidePanelRightState>();
@@ -302,26 +219,25 @@ impl Render for SidePanelRightView {
                 "side_panel_right: active tab not in mode set → System"
             );
             self.active_tab = PanelTab::System;
-        }
-        // T157 smoke: auto-open System tab so the Input consumer is visible.
-        if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL").is_some() && !self.smoke_opened {
-            self.smoke_opened = true;
-            self.on_tab_select(PanelTab::System, cx);
+            // System may not have been visited yet — ensure the entry exists
+            // before the render path reads it via get().
+            self.tab_views
+                .entry(PanelTab::System)
+                .or_insert_with(|| TabContent::create(PanelTab::System, cx));
         }
         let power_arm = self.power_arm;
-        let gpu = self.system.gpu_percent;
 
         let dl = format_bytes_per_sec(self.net_state.cached_dl);
         let ul = format_bytes_per_sec(self.net_state.cached_ul);
         let net_summary = format!("↓ {dl}  ↑ {ul}");
 
         // --- Exclusive zone & width sync (mirror T126 left panel) ---
-        let panel_state = cx.global::<crate::side_panel_right::SidePanelRightState>();
+        let panel_state = cx.global::<SidePanelRightState>();
         let dock_content = panel_state.dock_content;
         let panel_width = panel_state.width;
 
         // Calculate exclusive zone: dock ON → full width, dock OFF → rail only
-        let rail_only_width = crate::side_panel_right::RAIL_ONLY_WIDTH;
+        let rail_only_width = RAIL_ONLY_WIDTH;
         let new_zone = if dock_content {
             panel_width
         } else {
@@ -336,9 +252,6 @@ impl Render for SidePanelRightView {
         }
 
         // Resize window if panel width changed (tab open / dock / drag).
-        // Always call `window.resize` — do NOT gate on `window.display(cx)`
-        // (can be None briefly; marking last_resized without resize stuck the
-        // surface at rail-only 54px forever — live 2026-07-25).
         if self.last_resized_width != panel_width {
             let display_h = crate::monitor::pult_display_info(cx)
                 .map(|d| f32::from(d.bounds().size.height))
@@ -372,6 +285,13 @@ impl Render for SidePanelRightView {
         let resize_mouse_handler = cx.listener(|this, ev: &gpui::MouseDownEvent, _w, cx| {
             this.start_resize(f32::from(ev.position.x), cx);
         });
+
+        // Lazy tab view — already created by on_tab_select, just look up.
+        let active = self.active_tab;
+        let tab_entry = self
+            .tab_views
+            .get(&active)
+            .expect("tab view must exist after on_tab_select");
 
         // OUTER: sole window-level `on_hover` (debounce). No transition_on_hover.
         // Layout: [handle | content? | rail] — rail flush right; handle is inner edge.
@@ -434,166 +354,23 @@ impl Render for SidePanelRightView {
                                 Some(glow) => col.child(elevation_glow_bar(glow)),
                                 None => col,
                             };
-                            col.when(self.active_tab == PanelTab::System, |col| {
-                                    col
-                                        // 1. Header (flex:none) — rsx
-                                        .child(render_header(cx))
-                                        // 2. Permission card (flex:none) — rsx
-                                        .child(render_permission_card(cx))
-                                        // T157: real gpui-component Input consumer (measurement)
-                                        .child({
-                                            if self.measure_input.is_none() {
-                                                self.measure_input = Some(cx.new(|cx| {
-                                                    InputState::new(window, cx)
-                                                        .placeholder("T157 measure — type here…")
-                                                }));
-                                            }
-                                            let state = self.measure_input.as_ref().unwrap();
-                                            if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL").is_some() {
-                                                state.update(cx, |state, cx| state.focus(window, cx));
-                                                if !self.smoke_text_set {
-                                                    self.smoke_text_set = true;
-                                                    state.update(cx, |state, cx| {
-                                                        state.set_value("T157 real input", window, cx);
-                                                    });
-                                                }
-                                            }
-                                            div().h(px(40.)).w_full().child(Input::new(state))
-                                        })
-                                        // T157: real gpui-component DataTable consumer (measurement).
-                                        // `DataTable` derives `RenderOnce` and `track_focus`s its
-                                        // own focus_handle; this keeps table-management code linked
-                                        // (virtualised rows, sort, col-resize delegate calls).
-                                        .child({
-                                            if self.measure_table.is_none() {
-                                                self.measure_table = Some(cx.new(|cx| {
-                                                    TableState::new(DemoTableDelegate::new(), window, cx)
-                                                }));
-                                            }
-                                            let table_state = self.measure_table.as_ref().unwrap();
-                                            div()
-                                                .h(px(200.))
-                                                .w_full()
-                                                .child(
-                                                    DataTable::new(table_state)
-                                                        .stripe(true)
-                                                        .bordered(true),
-                                                )
-                                        })
-                                        // T157: real gpui-component VirtualList consumer
-                                        // (third component in the IDE-panel footprint
-                                        // measurement — Input, Table, VirtualList).
-                                        .child({
-                                            if self.measure_vlist.is_none() {
-                                                self.measure_vlist =
-                                                    Some(cx.new(|_cx| DemoVirtualList::new()));
-                                            }
-                                            let vlist = self.measure_vlist.as_ref().unwrap();
-                                            div().h(px(200.)).w_full().child(vlist.clone())
-                                        })
-// 3. Scrollable middle — UNCHANGED body
-                                        .child(
-                                            div()
-                                                .id("side-panel-scroll")
-                                                .flex_1()
-                                                .min_h(px(0.))
-                                                .overflow_y_scroll()
-                                                .track_scroll(&self.scroll)
-                                                .flex()
-                                                .flex_col()
-                                                .gap(px(14.))
-                                                .p(px(14.))
-                                                .child(render_mpris_card(&self.mpris, cx))
-                                                .child(render_wallpaper_card(
-                                                    &self.wallpaper,
-                                                    self.waytrogen_available,
-                                                    cx,
-                                                ))
-                                                .child(
-                                                    div()
-                                                        .flex()
-                                                        .flex_col()
-                                                        .gap(px(10.))
-                                                        .child(render_spectrum_row(
-                                                            "CPU",
-                                                            &self.cpu_history,
-                                                            &format!(
-                                                                "{:.0}%",
-                                                                self.system.cpu_percent
-                                                            ),
-                                                            color_cpu(&theme),
-                                                            color_cpu(&theme),
-                                                            H_CPU,
-                                                            &theme,
-                                                        ))
-                                                        .child(render_spectrum_row(
-                                                            "RAM",
-                                                            &self.ram_history,
-                                                            &format!(
-                                                                "{:.0}%",
-                                                                self.system.ram_percent
-                                                            ),
-                                                            color_ram(&theme),
-                                                            color_ram(&theme),
-                                                            H_RAM,
-                                                            &theme,
-                                                        ))
-                                                        .when_some(gpu, |d, gpu_pct| {
-                                                            d.child(render_spectrum_row(
-                                                                "GPU",
-                                                                &self.gpu_history,
-                                                                &format!("{gpu_pct:.0}%"),
-                                                                color_gpu(&theme),
-                                                                color_gpu(&theme),
-                                                                H_GPU,
-                                                                &theme,
-                                                            ))
-                                                        }),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .flex()
-                                                        .flex_col()
-                                                        .gap(px(10.))
-                                                        .child(render_spectrum_row(
-                                                            "↓ down",
-                                                            &self.net_dl_history,
-                                                            &dl,
-                                                            color_net(&theme),
-                                                            color_value_default(&theme),
-                                                            H_NET,
-                                                            &theme,
-                                                        ))
-                                                        .child(render_spectrum_row(
-                                                            "↑ up",
-                                                            &self.net_ul_history,
-                                                            &ul,
-                                                            color_net(&theme),
-                                                            color_value_default(&theme),
-                                                            H_NET,
-                                                            &theme,
-                                                        )),
-                                                )
-                                                .child(render_disks_section(&self.disks, cx)),
-                                        )
-                                        // 4. Footer (flex:none)
-                                        .child(render_footer(&net_summary, power_arm, cx))
-                                })
-                                .when(self.active_tab != PanelTab::System, |col| {
-                                    col.child(
-                                        div()
-                                            .size_full()
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .child(div().text_color(theme.text.muted).child(
-                                                format!(
-                                                    "{} — coming soon",
-                                                    self.active_tab.label()
-                                                ),
-                                            )),
-                                    )
-                                })
+                            // --- Tab content ---
+                            match tab_entry {
+                                TabContent::System(entity) => {
+                                    col.child(entity.clone())
+                                        // Footer: power + net summary (stays on
+                                        // SidePanelRightView because render_footer
+                                        // takes Context<SidePanelRightView>).
+                                        .child(render_footer(
+                                            &net_summary,
+                                            power_arm,
+                                            cx,
+                                        ))
+                                }
+                                TabContent::Placeholder(entity) => {
+                                    col.child(entity.clone())
+                                }
+                            }
                         })
                     })
                     .child({
@@ -655,6 +432,20 @@ fn format_bytes_per_sec(bps: f64) -> String {
     }
 }
 
+#[cfg(test)]
+impl SidePanelRightView {
+    pub(crate) fn tab_count(&self) -> usize {
+        self.tab_views.len()
+    }
+
+    pub(crate) fn tab_entity_id(&self, tab: PanelTab) -> Option<gpui::EntityId> {
+        self.tab_views.get(&tab).map(|tc| match tc {
+            TabContent::System(e) => e.entity_id(),
+            TabContent::Placeholder(e) => e.entity_id(),
+        })
+    }
+}
+
 #[allow(dead_code)]
 pub(crate) fn peek_leave_debounce() -> Duration {
     PEEK_LEAVE_DEBOUNCE
@@ -678,115 +469,4 @@ pub(crate) fn schedule_release_from_app(cx: &mut gpui::App, generation: u64) {
         });
     })
     .detach();
-}
-
-// ---------------------------------------------------------------------------
-// T158 temporary measurement scaffolding.
-//
-// The following `measure_*` fields, `DemoTableDelegate`, and `DemoVirtualList`
-// are real gpui-component consumers kept in the linker graph so that the size
-// measurements from T157 remain meaningful. They are intentionally minimal and
-// will be replaced by the actual Files, Editor, and transcript widgets in the
-// IDE-panel integration (Shell-IDE spec §3, slice 3).
-//
-// Do not use them as product code; do not inline or delete them until the real
-// consumers are wired.
-// ---------------------------------------------------------------------------
-
-/// Minimal in-memory table delegate for the T157 footprint. 4 columns, 20
-/// rows, fixed-width text per cell. Real text (not empty `String`) so the
-/// render path through `render_td` survives LTO.
-struct DemoTableDelegate {
-    rows: Vec<Vec<String>>,
-    columns: Vec<(&'static str, &'static str)>,
-}
-
-impl DemoTableDelegate {
-    fn new() -> Self {
-        Self {
-            rows: (0..20)
-                .map(|i| {
-                    vec![
-                        format!("ID-{i:02}"),
-                        format!("user {i}"),
-                        format!("task {i}"),
-                        format!("ready"),
-                    ]
-                })
-                .collect(),
-            columns: vec![
-                ("id", "ID"),
-                ("user", "User"),
-                ("proc", "Process"),
-                ("status", "Status"),
-            ],
-        }
-    }
-}
-
-impl TableDelegate for DemoTableDelegate {
-    fn columns_count(&self, _: &gpui::App) -> usize {
-        self.columns.len()
-    }
-    fn rows_count(&self, _: &gpui::App) -> usize {
-        self.rows.len()
-    }
-    fn column(&self, col_ix: usize, _: &gpui::App) -> Column {
-        let (key, name) = self.columns[col_ix];
-        Column::new(key, name)
-    }
-    fn render_td(
-        &mut self,
-        row_ix: usize,
-        col_ix: usize,
-        _: &mut Window,
-        _: &mut Context<TableState<Self>>,
-    ) -> impl IntoElement {
-        div()
-            .w_full()
-            .h_full()
-            .child(self.rows[row_ix][col_ix].clone())
-    }
-}
-
-/// Minimal stateful view that builds a `v_virtual_list` per frame. The
-/// existence of this `Render` impl plus the live `Entity<DemoVirtualList>`
-/// on `SidePanelRightView.measure_vlist` is what keeps the v-table code path
-/// actually linked after LTO drops anything with no references.
-struct DemoVirtualList {
-    items: Vec<String>,
-}
-
-impl DemoVirtualList {
-    fn new() -> Self {
-        Self {
-            items: (0..50).map(|i| format!("vlist item {i:02}")).collect(),
-        }
-    }
-}
-
-impl Render for DemoVirtualList {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().clone();
-        let sizes = std::rc::Rc::new(
-            (0..self.items.len())
-                .map(|_| gpui::size(px(0.), px(24.)))
-                .collect::<Vec<_>>(),
-        );
-        v_virtual_list(
-            view,
-            "t157-demo-vlist",
-            sizes,
-            move |this, range, _window, _cx| {
-                range
-                    .map(|ix| {
-                        div()
-                            .h(px(24.))
-                            .w_full()
-                            .child(this.items[ix].clone())
-                    })
-                    .collect()
-            },
-        )
-    }
 }

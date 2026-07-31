@@ -154,7 +154,7 @@ fn disk_action(
 /// Live list from `DisksSubscriber`. Empty → "нет дисков".
 pub fn render_disks_section(
     disks: &[DiskInfo],
-    cx: &mut gpui::Context<crate::side_panel_right::view::SidePanelRightView>,
+    cx: &App,
 ) -> impl IntoElement {
     let theme = *Theme::global(cx);
     let cards: Vec<_> = disks.iter().map(|d| usage_card(d, &theme)).collect();
