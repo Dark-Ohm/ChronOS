@@ -114,9 +114,54 @@ scene.rs:237 — doc comment, не вызов. Новых вызовов `set`/`
 Finished `release` profile [optimized] target(s) in 3m 21s
 ```
 
-## Errata
+## Errata (2026-07-31)
 
-Нет.
+### 1. BLOCKER: `restore_for_mode` молча уничтожал пользовательский конфиг
+
+`restore_for_mode` фильтровал невалидные сцены и писал отфильтрованный конфиг на
+диск через `save_config`. Пользователь с опечаткой в `mode` терял сцену навсегда.
+Плюс `save_config` зовался на каждый `set()`, включая не-смену режима.
+
+**Исправлено:** `restore_for_mode` read-only на диске — фильтрация только для
+резолвинга в памяти, `save_config` убран, `config` в глобале не мутируется.
+`save_config` оставлен с `#[allow(dead_code)]` под будущий SceneManager.
+
+### 2. Четыре теста не проверяли реальные функции
+
+- `missing_file_returns_default` — создавал структуру, не вызывал `load_config`
+- `garbage_toml_returns_default` — проверял только `toml::from_str` → `Err`
+- `missing_version_defaults_to_one` — воспроизводил логику `if version == 0`
+  внутри самого теста
+- `empty_overrides_return_none` — проверял пустой вектор, не вызывал `resolve_last`
+
+**Исправлено:** извлечена `parse_config(content: &str) -> Result<ScenesConfig, _>` —
+чистая функция парсинга. Тесты переписаны на вызов реальных функций:
+`empty_content_returns_default`, `garbage_toml_returns_error`,
+`missing_version_normalized_to_one`, `empty_overrides_resolve_but_fields_empty`.
+
+### 3. Forward-compat доказан только на чтении
+
+Round-trip тест гонял `extra: HashMap::new()` — ничего не проверял.
+
+**Исправлено:** `roundtrip_with_extra` с непустым `extra` — `[scene.windows]`
+(вложенная таблица) + `future_flag` (скаляр). Если `toml::to_string_pretty` падает
+на `#[serde(flatten)]` + `[[scene]]`, тест ловит.
+
+### Верификация эрраты
+
+```
+cargo test -p chronos                 # 210 passed, 0 failed
+cargo clippy -p chronos --all-targets # только unwrap() в тестах
+rg -n "workspace_mode::(set|toggle|request_switch)" --type rust crates/
+# scene.rs:254 — doc comment, не вызов. Новых вызовов нет.
+rg -n "cx.primary_display" --type rust crates/app/src/scene.rs
+# (exit 1 — нет совпадений)
+```
+
+### Коммит эрраты
+
+`8d82a12` — `scene : эррата — restore_for_mode read-only, тесты на реальных
+функциях, round-trip с extra (T164)`. Только `scene.rs`, отчёт не в коммите.
 
 ## Что НЕ сделано (осознанно)
 
