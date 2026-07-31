@@ -11,9 +11,12 @@ UI не твой (это FRONTEND).
 **Активные задания** (слайс 2 спеки Shell-IDE, план —
 `docs/superpowers/plans/2026-07-31-shell-composition-slice-2.md`):
 
-- `docs/orchestration/tasks/active/T164-scene-state-model.md` — scene-модель:
-  состояние, персист `scenes.toml`, восстановление последней сцены режима.
-  **Первая в слайсе, на её API садится T165 — начинай с неё.**
+- `docs/orchestration/tasks/active/T164-scene-state-model.md` — **ЭРРАТА,
+  первый заход не принят.** Раздел «ЭРРАТА» в конце файла — читать его,
+  задание сверху уже выполнено. Блокер: `restore_for_mode` безусловно пишет
+  и фильтрует пользовательский `scenes.toml`, стирая сцены с непонятным
+  `mode`. Плюс четыре теста из девяти не вызывают проверяемые функции.
+  API заморожен, менять нельзя.
 - `docs/orchestration/tasks/active/T166-pult-display-consolidation.md` —
   единственный резолвер пультового вывода + hotplug. Идёт **параллельно**
   T164, зоны не пересекаются.
