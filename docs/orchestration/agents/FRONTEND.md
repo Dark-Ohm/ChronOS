@@ -11,10 +11,11 @@
 **Активные задания — волна 2 слайса 4, идут параллельно.** План слайса —
 `docs/superpowers/plans/2026-07-31-developer-workbench-slice-4.md`.
 
-- `docs/orchestration/tasks/active/T178-build-logs-tab.md` — вкладка
-  Build/Logs. Движок запуска задач в `crates/services/src/tasks/` (без
-  GPUI), корень — активный проект из `projects.toml`, а не `current_dir()`.
-  §41 спеки: статус сборки не выдумывать никогда.
+- ~~T178 (Build/Logs)~~ — **принята**, `done/` + `report-log/`. Одна эррата,
+  исправил сам: `has_cargo_toml` в `tasks/project.rs` была мёртвой копией
+  детекта — и **покрыта собственным тестом**, из-за чего зелёное покрытие
+  маскировало недостижимый код. Проверяй не «есть ли тест», а «зовёт ли
+  кто-то функцию из продукта».
 - `docs/orchestration/tasks/active/T179-preview-tab.md` — вкладка Preview.
   Предпросмотр файла, выбранного в Files (картинки, markdown рендером,
   текст); веб-превью — честное `unavailable`, движка нет. Точка расширения

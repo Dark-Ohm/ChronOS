@@ -2,7 +2,7 @@
 //! project switcher. Kept here so the Build tab (lib crate) does not depend
 //! on the binary-only `project_switcher` module.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::Deserialize;
 
@@ -56,24 +56,5 @@ pub fn load_active_project() -> Option<ActiveProject> {
     })
 }
 
-/// Whether `root` looks like a cargo workspace/package root.
-pub fn has_cargo_toml(root: &Path) -> bool {
-    root.join("Cargo.toml").is_file()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::tempdir;
-
-    #[test]
-    fn missing_file_is_none() {
-        // Function reads the real config path; we only unit-test parse of structure
-        // via has_cargo_toml / ActiveProject construction.
-        let dir = tempdir().unwrap();
-        assert!(!has_cargo_toml(dir.path()));
-        fs::write(dir.path().join("Cargo.toml"), "").unwrap();
-        assert!(has_cargo_toml(dir.path()));
-    }
-}
+// Cargo-root detection lives in `config::detect_cargo_tasks`, which checks the
+// manifest itself — a second copy here was dead code kept alive by its own test.
