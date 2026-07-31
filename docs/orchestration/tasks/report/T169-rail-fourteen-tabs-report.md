@@ -227,3 +227,74 @@ side_panel_right : рейл вырос до четырнадцати вклад�
 ```
 
 `git add` поимённый (6 файлов), без AI-трейлеров, `git diff --staged` глазами.
+
+---
+
+# Второй заход (T169-эррата) — destination-out не работает в рендерере
+
+**Блокер эрраты:** `mix-blend-mode:destination-out` в нашем рендерере **превращает «дырки» в заливку** — иконка становится сплошным пятном. Архитектор проверил живой кадр T168: `rail-terminal.svg` (рамка + `>_` через destination-out) и `rail-binds.svg` (клавиши через destination-out) отрисовываются как **голые прямоугольники**. Моя `rail-preview.svg` использовала тот же приём — гора и солнце как «дырки»; на экране получилось бы **третье подряд пятно** в рейле.
+
+Техдолг-приём удалён из моих трёх новых иконок, чтобы не тащить дальше. Старые `rail-terminal.svg` / `rail-binds.svg` — отдельная задача архитектора.
+
+## Что перерисовано
+
+### `rail-preview.svg` → outlined image frame (372 Б)
+
+Вместо сплошной подложки с «продырявленными» солнцем и горой — все три элемента явные, с обводкой:
+
+```
+fill="none" stroke="currentColor" stroke-width="16"
+- прямоугольник-фрейм          (round rect)
+- круг-солнце                  (циркумфикс)
+- ломаная-гора с двумя вершинами
+```
+
+Отличается от `rail-editor.svg` (документ со **сплошной** заливкой) и `rail-terminal.svg` (тоже сплошной outline-бокс) тем, что **вся** иконка outlined — нет ни одного полностью залитого примитива. Читается как «wireframe картинки».
+
+### `rail-build.svg` → 4 полосы с `fill-opacity` (271 Б)
+
+Вместо двух последних полос через destination-out — `fill-opacity="0.4"` на двух нижних:
+
+- верхние две: полная ширина 192 px, заливка 100 %
+- нижние две: ширина 152 px и 112 px, заливка 40 %
+
+`fill-opacity` рендерер **поддерживает** (есть в существующем `rail-editor.svg:120` — `<rect … fill="#000" fill-opacity="0"/>` для скрытого хака). Смысл сохранён: верхние модули готовы, нижние — «в работе, дописываются». Полосы не пересекаются, пятна на экране не будет.
+
+### `rail-source-control.svg` → T-shape commit graph (283 Б)
+
+Вместо симметричного merge-Λ (который похож на `rail-acp.svg`-Y и `rail-inspector.svg`-Λ) — линейный горизонтальный commit-graph с T-образным бранчем:
+
+```
+горизонтальный main-line   ━━━●━━━●━━━●
+серединный бранч вниз           │
+                                ●
+```
+
+4 круга: 3 на main, 1 на бранче. Два соединительных rect — оси main и бранча. Всё залито в `currentColor`, без обводок и destination-out. **В рейле Developer между `Terminal` и `AcpSettings` идут подряд Preview → Inspector → Build → SourceControl → AcpSettings**. Две «узловые» рядом (Inspector и AcpSettings) различаются ориентацией (Λ сверху-вниз vs Y-вниз-вверх), и SourceControl между ними теперь T-shape — линейный, не узловой, не путается.
+
+## Чем доказано
+
+```
+$ stat -c '%n %s' rail-{preview,build,source-control}.svg
+crates/app/assets/icons/rail-build.svg 271
+crates/app/assets/icons/rail-preview.svg 372
+crates/app/assets/icons/rail-source-control.svg 283
+
+$ grep -c 'destination-out' rail-*.svg
+0                              # ← было 4 (preview×2, build×2); стало 0
+
+$ grep -c 'fill-opacity' rail-build.svg
+2
+```
+
+Тесты 252/252 PASS, clippy чисто, release-сборка incremental за 1 с.
+Без правок Rust-файлов.
+
+## Коммит (второй)
+
+```
+side_panel_right(T169) : preview/build без destination-out, source-control разведён (T169 эррата)
+```
+
+`git add` трёх новых SVG поверх коммита `d3326bc`. Без AI-трейлеров.
+
