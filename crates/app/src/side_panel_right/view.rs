@@ -340,10 +340,7 @@ impl Render for SidePanelRightView {
         // (can be None briefly; marking last_resized without resize stuck the
         // surface at rail-only 54px forever — live 2026-07-25).
         if self.last_resized_width != panel_width {
-            let display_id = crate::monitor::pult_display(cx);
-            let display_h = display_id
-                .and_then(|id| cx.find_display(id))
-                .or_else(|| cx.primary_display())
+            let display_h = crate::monitor::pult_display_info(cx)
                 .map(|d| f32::from(d.bounds().size.height))
                 .or_else(|| window.display(cx).map(|d| f32::from(d.bounds().size.height)))
                 .unwrap_or(1080.);

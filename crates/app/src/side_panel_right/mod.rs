@@ -132,7 +132,6 @@ pub(crate) fn schedule_release_peek(cx: &mut App) {
 fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
     display_id
         .and_then(|id| cx.find_display(id))
-        .or_else(|| cx.primary_display())
         .map(|d| f32::from(d.bounds().size.height))
         .unwrap_or(1080.)
 }
@@ -179,7 +178,7 @@ fn open_window(cx: &mut App, pinned: bool) {
         }
         return;
     }
-    let display_id = crate::monitor::pult_display(cx);
+    let display_id = crate::monitor::pult_display_id_or_primary(cx);
     // Normal opens always start rail-only. The smoke path sets width to
     // DEFAULT_CONTENT_WIDTH before calling open_pinned, so it opens expanded.
     if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL").is_none() {

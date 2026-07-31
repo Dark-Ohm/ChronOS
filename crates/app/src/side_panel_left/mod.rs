@@ -50,6 +50,8 @@ pub struct SidePanelLeftState_ {
 impl Global for SidePanelLeftState_ {}
 
 fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
+    // `display_id` is always the result of `pult_display_id_or_primary` —
+    // the full fallback chain lives in `monitor.rs`. We just trust it.
     display_id
         .and_then(|id| cx.find_display(id))
         .map(|d| f32::from(d.bounds().size.height))
@@ -165,7 +167,7 @@ impl Render for SidePanelLeft {
         }
 
         if self.last_resized_width != Some(self.state.width) {
-            let display_id = crate::monitor::pult_display(cx);
+            let display_id = crate::monitor::pult_display_id_or_primary(cx);
             let display_h = display_height(display_id, cx);
             let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
             self.state.height = panel_h;
@@ -1077,7 +1079,7 @@ fn open_window(cx: &mut App, pinned: bool) {
         }
         return;
     }
-    let display_id = crate::monitor::pult_display(cx);
+    let display_id = crate::monitor::pult_display_id_or_primary(cx);
     match cx.open_window(window_options(display_id, cx), |_, view_cx| {
         view_cx.new(|cx| SidePanelLeft::new(cx))
     }) {

@@ -218,6 +218,10 @@ fn section_div(section: BarSection, widgets: Vec<AnyElement>) -> AnyElement {
 
 /// Returns window options for a top-anchored bar on the given display.
 fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
+    // Callers all pass a result of `pult_display_id_or_primary` here, which
+    // already implements the full fallback chain (configured uuid →
+    // largest by area → primary). Any further `.or_else(|| primary_display())`
+    // just re-runs the same chain, so we just trust the id we got.
     let display_size = display_id
         .and_then(|id| cx.find_display(id))
         .map(|display| display.bounds().size)
@@ -270,7 +274,7 @@ pub fn init(cx: &mut App) {
             .timer(Duration::from_millis(100))
             .await;
 
-        let _ = cx.update(|cx: &mut App| match crate::monitor::pult_display(cx) {
+        let _ = cx.update(|cx: &mut App| match crate::monitor::pult_display_id_or_primary(cx) {
             Some(display_id) => {
                 tracing::info!("Opening bar on pult display {:?}", display_id);
                 open_on_display(Some(display_id), cx);

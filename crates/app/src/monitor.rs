@@ -5,7 +5,22 @@
 //! chrome_monitor = "09e7b298-aad0-546d-a4de-adcb9106fd7d"
 //! ```
 //!
-//! Fallback: largest display by area. Auto-designates on first run.
+//! Fallback: largest display by area. Auto-designates on first run (writes
+//! the winning uuid to the config so subsequent boots are deterministic).
+//!
+//! Resolution layers (single source of truth — surfaces must never call
+//! `cx.primary_display()` directly):
+//!
+//! 1. `pult_display_id_or_primary(cx)` — flat `Option<DisplayId>`,
+//!    surfaces pass this to `WindowOptions.display_id`. Used by the 8
+//!    chrome surfaces (bar / both side panels / hover strips / dock menu /
+//!    desktop terminal).
+//! 2. `pult_display_info(cx)` — same chain, returns
+//!    `Option<Rc<dyn PlatformDisplay>>` for callers that want the full
+//!    object (e.g. to read bounds without a second `find_display`).
+//!
+//! Both honour the same chain:
+//!   configured uuid → largest by area → `cx.primary_display()`.
 //!
 //! Hotplug: periodic check detects when the configured display disappears
 //! and surfaces a notification via the existing notification service.
@@ -77,13 +92,42 @@ pub fn largest_display_index(
         .map(|(i, _)| i)
 }
 
+/// Pure resolver: pick the index of the chrome monitor from a precomputed
+/// summary list. The caller owns `cx.displays()` and pre-extracts uuid +
+/// area; this function only does the decision, no side effects.
+///
+/// Chain:
+///   1. uuid match → that display's index
+///   2. → largest by area (via [`largest_display_index`])
+///
+/// Empty input always returns `None`, even when a `configured_uuid` is
+/// supplied — there is simply nothing to address.
+fn resolve_pult_index(
+    displays: &[(Option<&str>, f64)],
+    configured_uuid: Option<&str>,
+) -> Option<usize> {
+    if let Some(expected) = configured_uuid {
+        if let Some(idx) = displays.iter().position(|(uuid, _)| {
+            uuid.map(|u| u == expected).unwrap_or(false)
+        }) {
+            return Some(idx);
+        }
+    }
+    largest_display_index(displays.iter().map(|(_, area)| (1.0, *area)))
+}
+
 /// DisplayId пультового монитора (chrome).
 ///
 /// Resolution order:
 /// 1. `monitor.toml` uuid matches a live display → use it
-/// 2. Fallback: largest display by area
-/// 3. Fallback: first display
-/// 4. None only if no displays at all
+/// 2. Fallback: largest display by area (auto-designate on first run)
+/// 3. `None` only if no displays at all
+///
+/// On first run (or any run where the configured uuid is missing), the
+/// largest-area winner is written to `monitor.toml` so subsequent boots
+/// are deterministic. This is an intentional side effect, not a bug:
+/// "auto-designates on first run" per spec §3.6. Once configured, every
+/// later call goes through step 1 and returns without side effects.
 pub fn pult_display(cx: &App) -> Option<DisplayId> {
     let displays = cx.displays();
     if displays.is_empty() {
@@ -92,36 +136,46 @@ pub fn pult_display(cx: &App) -> Option<DisplayId> {
 
     let cfg = load_config();
 
-    // Try uuid match from config.
-    if let Some(ref expected_uuid) = cfg.chrome_monitor {
-        for d in &displays {
-            if let Ok(uuid) = d.uuid() {
-                if uuid.to_string() == *expected_uuid {
-                    return Some(d.id());
-                }
-            }
+    // Build a slim summary of every display: (uuid_str_opt, width*height).
+    // This decouples the decision logic from the live `cx` — see
+    // [`resolve_pult_index`] for the pure half.
+    let summaries: Vec<(Option<String>, f64)> = displays
+        .iter()
+        .map(|d| {
+            let uuid = d.uuid().ok().map(|u| u.to_string());
+            let b = d.bounds();
+            let area = f64::from(b.size.width) * f64::from(b.size.height);
+            (uuid, area)
+        })
+        .collect();
+    let summary_refs: Vec<(Option<&str>, f64)> = summaries
+        .iter()
+        .map(|(u, a)| (u.as_deref(), *a))
+        .collect();
+
+    let Some(idx) = resolve_pult_index(&summary_refs, cfg.chrome_monitor.as_deref()) else {
+        return None;
+    };
+    let best = &displays[idx];
+    let best_uuid_str = best.uuid().ok().map(|u| u.to_string());
+
+    // Surface a single warning when we expected a specific uuid but
+    // couldn't find it (helps debug "shell landed on the wrong monitor").
+    if let Some(expected) = cfg.chrome_monitor.as_deref() {
+        if Some(expected) != best_uuid_str.as_deref() {
+            tracing::warn!(
+                "monitor: configured uuid {} not found among {} displays, using fallback",
+                expected,
+                displays.len()
+            );
         }
-        tracing::warn!(
-            "monitor: configured uuid {} not found among {} displays, using fallback",
-            expected_uuid,
-            displays.len()
-        );
     }
 
-    // Fallback: largest display by area.
-    let best_idx = largest_display_index(
-        displays.iter().map(|d| {
-            let b = d.bounds();
-            (f64::from(b.size.width), f64::from(b.size.height))
-        }),
-    )
-    .unwrap_or(0);
-    let best = &displays[best_idx];
-
-    // Auto-designate: write the winning uuid to config.
-    if let Ok(uuid) = best.uuid() {
-        let uuid_str = uuid.to_string();
-        if cfg.chrome_monitor.as_deref() != Some(&uuid_str) {
+    // Auto-designate: write the winner to config whenever the configured
+    // uuid is missing OR points at a different display. Idempotent — once
+    // config matches, this branch is dead on every subsequent call.
+    if let Some(uuid_str) = best_uuid_str {
+        if cfg.chrome_monitor.as_deref() != Some(uuid_str.as_str()) {
             tracing::info!("monitor: auto-designating {} as pult display", uuid_str);
             save_config(&MonitorConfig {
                 chrome_monitor: Some(uuid_str),
@@ -135,32 +189,55 @@ pub fn pult_display(cx: &App) -> Option<DisplayId> {
 /// Resolved pult display as a `PlatformDisplay` object.
 ///
 /// Full fallback chain: configured UUID → largest by area → first →
-/// `cx.primary_display()`. Use this instead of manual
-/// `find_display(id).or_else(|| primary_display())`.
+/// `cx.primary_display()`. Use this when the caller needs the full object
+/// (e.g. to read bounds without a second `find_display`).
 pub fn pult_display_info(cx: &App) -> Option<Rc<dyn PlatformDisplay>> {
     pult_display(cx)
         .and_then(|id| cx.find_display(id))
         .or_else(|| cx.primary_display())
 }
 
-/// Start periodic hotplug watcher.
-///
-/// Checks every 3 seconds if the configured display is still present.
-/// When it disappears: logs a warning and shows a notification.
-/// When it reappears: logs info and shows a notification.
-fn start_hotplug_watcher(cx: &mut App) {
-    let cfg = load_config();
-    let Some(uuid) = cfg.chrome_monitor else {
-        tracing::info!("monitor: no configured display, hotplug watcher not started");
-        return;
-    };
+/// Flat `DisplayId` helper with the same fallback chain as
+/// [`pult_display_info`]. Surfaces that just need an id for
+/// `WindowOptions.display_id` use this — no `find_display` or
+/// `primary_display` boilerplate per surface.
+pub fn pult_display_id_or_primary(cx: &App) -> Option<DisplayId> {
+    pult_display_info(cx).map(|d| d.id())
+}
 
+/// Periodic hotplug watcher.
+///
+/// Runs for the lifetime of the shell. Every 3 seconds:
+///   1. Re-reads `monitor.toml` so a fresh machine picks up the
+///      auto-designated uuid within ≤3 s of `bar::init` writing it.
+///   2. If a uuid is configured, checks whether that display is still
+///      present in `cx.displays()`.
+///   3. On a present → absent transition: warns + pushes a notification.
+///   4. On an absent → present transition: infos + pushes a notification.
+///
+/// Starts unconditionally — `monitor::init` is called *before* `bar::init`
+/// (see `main.rs`), and the only writes to the config happen as a
+/// side-effect of `pult_display`/`bar::init`. So on a fresh machine the
+/// first few ticks see no watched uuid and quietly loop; the moment the
+/// config is populated, monitoring begins. This is correct and avoids
+/// the race where the watcher bails before its job exists.
+fn start_hotplug_watcher(cx: &mut App) {
     cx.spawn(async move |cx| {
-        let mut was_present = true;
+        let mut last_present: Option<bool> = None;
         loop {
             cx.background_executor()
                 .timer(Duration::from_secs(3))
                 .await;
+
+            // Re-read cfg each tick so a fresh install picks up the
+            // auto-designation from `bar::init` within ~3 s.
+            let cfg = load_config();
+            let Some(uuid) = cfg.chrome_monitor.clone() else {
+                // No config yet — keep polling. Don't reset `last_present`
+                // (we never sampled), so the first uuid-match tick won't
+                // fire a spurious "reconnected" notification either way.
+                continue;
+            };
 
             let is_present = cx.update(|cx: &mut App| {
                 cx.displays().iter().any(|d| {
@@ -171,33 +248,52 @@ fn start_hotplug_watcher(cx: &mut App) {
                 })
             });
 
-            if was_present && !is_present {
-                tracing::warn!(
-                    "monitor: configured display {} disconnected, shell using fallback",
-                    uuid
-                );
-                let _ = cx.update(|cx: &mut App| {
-                    crate::notifications::push_internal(
-                        cx,
-                        "Display disconnected",
-                        &format!(
-                            "Display {}… disconnected. Shell on fallback.",
-                            &uuid[..8.min(uuid.len())]
-                        ),
-                    );
-                });
-            } else if !was_present && is_present {
-                tracing::info!("monitor: configured display {} reconnected", uuid);
-                let _ = cx.update(|cx: &mut App| {
-                    crate::notifications::push_internal(
-                        cx,
-                        "Display reconnected",
-                        &format!("Display {}… is back.", &uuid[..8.min(uuid.len())]),
-                    );
-                });
+            if last_present == Some(is_present) {
+                continue;
             }
 
-            was_present = is_present;
+            // Only notify on *real* transitions. The first sample is not a
+            // transition (`last_present: None` is "haven't sampled yet");
+            // firing a "Display reconnected" toast on every shell start
+            // would be user-visible noise (caught by T166 live boot log,
+            // 2026-07-31: spurious info on cold start).
+            match last_present {
+                Some(_prev) if _prev != is_present => {
+                    if !is_present {
+                        tracing::warn!(
+                            "monitor: configured display {} disconnected, shell using fallback",
+                            uuid
+                        );
+                        let preview = uuid.chars().take(8).collect::<String>();
+                        cx.update(|cx: &mut App| {
+                            crate::notifications::push_internal(
+                                cx,
+                                "Display disconnected",
+                                &format!(
+                                    "Display {}… disconnected. Shell on fallback.",
+                                    preview
+                                ),
+                            );
+                        });
+                    } else {
+                        tracing::info!(
+                            "monitor: configured display {} reconnected",
+                            uuid
+                        );
+                        let preview = uuid.chars().take(8).collect::<String>();
+                        cx.update(|cx: &mut App| {
+                            crate::notifications::push_internal(
+                                cx,
+                                "Display reconnected",
+                                &format!("Display {}… is back.", preview),
+                            );
+                        });
+                    }
+                }
+                _ => {}
+            }
+
+            last_present = Some(is_present);
         }
     })
     .detach();
@@ -241,5 +337,78 @@ mod tests {
     fn largest_display_index_first_is_largest() {
         let dims = [(3840.0, 2160.0), (1920.0, 1080.0)];
         assert_eq!(largest_display_index(dims.into_iter()), Some(0));
+    }
+
+    // -------- resolve_pult_index --------
+
+    /// Build a summaries slice that borrows directly from the input — no
+    /// copies, no `Box::leak`, no allocation. The returned Vec lives as
+    /// long as both inputs; tests construct them with literal arrays so
+    /// the lifetime is the test body.
+    fn make_displays<'a>(
+        uuids: &'a [&'a str],
+        areas: &'a [f64],
+    ) -> Vec<(Option<&'a str>, f64)> {
+        uuids
+            .iter()
+            .zip(areas.iter().copied())
+            .map(|(u, a)| (Some(*u), a))
+            .collect()
+    }
+
+    #[test]
+    fn resolve_pult_index_empty_even_with_config() {
+        assert_eq!(resolve_pult_index(&[], None), None);
+        assert_eq!(resolve_pult_index(&[], Some("anything")), None);
+    }
+
+    #[test]
+    fn resolve_pult_index_no_config_picks_largest() {
+        let d = make_displays(
+            &["a", "b", "c"],
+            &[1920.0 * 1080.0, 2560.0 * 1440.0, 1280.0 * 720.0],
+        );
+        assert_eq!(resolve_pult_index(&d, None), Some(1));
+    }
+
+    #[test]
+    fn resolve_pult_index_uuid_match_wins_regardless_of_area() {
+        let d = make_displays(
+            &["small", "big"],
+            &[1280.0 * 720.0, 3840.0 * 2160.0],
+        );
+        assert_eq!(resolve_pult_index(&d, Some("small")), Some(0));
+        assert_eq!(resolve_pult_index(&d, Some("big")), Some(1));
+    }
+
+    #[test]
+    fn resolve_pult_index_uuid_missing_falls_back_to_largest() {
+        let d = make_displays(
+            &["a", "b"],
+            &[1920.0 * 1080.0, 2560.0 * 1440.0],
+        );
+        assert_eq!(resolve_pult_index(&d, Some("never-seen")), Some(1));
+    }
+
+    #[test]
+    fn resolve_pult_index_skips_displays_without_uuid() {
+        // Display with no uuid can't match a configured uuid; it can still
+        // win as the largest fallback.
+        let d: Vec<(Option<&str>, f64)> = vec![
+            (None, 100.0),
+            (Some("real"), 1920.0 * 1080.0),
+        ];
+        assert_eq!(resolve_pult_index(&d, Some("real")), Some(1));
+        assert_eq!(resolve_pult_index(&d, None), Some(1));
+    }
+
+    #[test]
+    fn resolve_pult_index_equal_areas_first_wins() {
+        let d: Vec<(Option<&str>, f64)> = vec![
+            (Some("a"), 1920.0 * 1080.0),
+            (Some("b"), 1080.0 * 1920.0),
+        ];
+        assert_eq!(resolve_pult_index(&d, Some("a")), Some(0));
+        assert_eq!(resolve_pult_index(&d, None), Some(0));
     }
 }

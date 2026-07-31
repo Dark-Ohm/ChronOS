@@ -21,10 +21,12 @@ const TERM_HEIGHT: f32 = 400.;
 const MARGIN_TOP: f32 = 80.;
 const MARGIN_LEFT: f32 = 48.;
 
+/// Pick the chrome display for the terminal window. Same fallback chain
+/// as every other surface: configured uuid → largest display → primary.
+/// First-time use will seed `~/.config/chronos/monitor.toml` via
+/// `monitor::auto-designate` — that's the intended behaviour.
 fn pick_display(cx: &App) -> Option<DisplayId> {
-    cx.primary_display()
-        .map(|d| d.id())
-        .or_else(|| cx.displays().into_iter().next().map(|d| d.id()))
+    crate::monitor::pult_display_id_or_primary(cx)
 }
 
 /// Background layer, top-left with margins. `OnDemand` keyboard so the rest of

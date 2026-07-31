@@ -118,7 +118,7 @@ impl Render for DockMenuView {
 }
 
 fn pick_display(cx: &App) -> Option<DisplayId> {
-    crate::monitor::pult_display(cx)
+    crate::monitor::pult_display_id_or_primary(cx)
 }
 
 /// Layer-shell options for the context menu: centered horizontally,

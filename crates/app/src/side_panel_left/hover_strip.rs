@@ -39,6 +39,8 @@ impl Render for HoverStripView {
 fn strip_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     let display_h = display_id
         .and_then(|id| cx.find_display(id))
+        // Caller passes a result of `pult_display_id_or_primary`; full
+        // fallback chain lives in `monitor.rs`.
         .map(|d| f32::from(d.bounds().size.height))
         .unwrap_or(1080.);
     // Top gap only (under bar); reach display bottom like the panel.
@@ -69,7 +71,7 @@ fn strip_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOption
 /// `side_panel_left::init`, never toggled or closed for the life of the
 /// process.
 pub fn init_hover_strip(cx: &mut App) {
-    let display_id = crate::monitor::pult_display(cx);
+    let display_id = crate::monitor::pult_display_id_or_primary(cx);
     tracing::info!("side_panel_left: hover strip on display_id={display_id:?}");
     match cx.open_window(strip_window_options(display_id, cx), |_, view_cx| {
         view_cx.new(|_| HoverStripView {})
