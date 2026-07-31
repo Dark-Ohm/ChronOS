@@ -11,8 +11,8 @@
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активное задание:**
-`docs/orchestration/tasks/active/T175-chronos-fm-port-recon.md` — что
+**Активное задание:** T175 — **отчёт сдан**
+(`tasks/report/T175-chronos-fm-port-recon-report.md`), ждёт приёмки. — что
 переносится из `../Chronos-FM` во вкладку Files (слайс 4). Читаешь чужое
 дерево на ~5 тыс. строк и приносишь карту «берём / режем / переписываем» по
 каждому файлу, с `file:line` под каждым утверждением.
