@@ -1131,7 +1131,6 @@ dependencies = [
 name = "chronos"
 version = "0.1.0"
 dependencies = [
- "alacritty_terminal",
  "anyhow",
  "ashpd",
  "async-io",
@@ -1152,7 +1151,6 @@ dependencies = [
  "image",
  "inotify 0.11.4",
  "nucleo",
- "portable-pty",
  "serde",
  "serde_json",
  "smallvec",
@@ -1192,6 +1190,7 @@ name = "chronos-services"
 version = "0.1.0"
 dependencies = [
  "agent-client-protocol",
+ "alacritty_terminal",
  "anyhow",
  "chrono",
  "dirs",
@@ -1202,6 +1201,7 @@ dependencies = [
  "niri-ipc",
  "notify 8.2.0",
  "nvml-wrapper",
+ "portable-pty",
  "rusqlite",
  "serde",
  "serde_json",

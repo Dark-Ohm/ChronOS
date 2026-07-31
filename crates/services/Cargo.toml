@@ -32,6 +32,8 @@ nvml-wrapper.workspace = true
 agent-client-protocol = "2.0.0"
 dirs = "6"
 toml = "0.8"
+portable-pty = "0.9"
+alacritty_terminal = "0.26"
 # Accept any patch updates, lock minor+major in lockfile via cargo update.
 # Pin applied: 2026-07-29 T150 (8 majors behind 0.40; we are on bleeding-edge per MEMORY.md,
 # no transitive constraints to inherit).

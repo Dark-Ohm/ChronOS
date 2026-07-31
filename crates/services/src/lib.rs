@@ -18,6 +18,7 @@ pub mod network;
 pub mod notification;
 pub mod power;
 pub mod system_resources;
+pub mod terminal;
 pub mod threads;
 pub mod tray;
 pub mod udisks;
@@ -30,6 +31,7 @@ pub use applications::{
 pub use files::{
     DIR_LISTING_LIMIT, FileEntryDto, ListParams, ListResult, SortKey, list_dir_sync, sort_entries,
 };
+pub use terminal::{GridSnapshot, TermSize, Terminal, compute_grid};
 pub use audio::{AudioCommand, AudioDevice, AudioState, AudioSubscriber, EndpointState};
 pub use aur::{AurCommand, AurSubscriber, PackageUpdate, UpdateSource, UpgradeProgress, UpgradeState, UpdatesState};
 pub use brightness::{

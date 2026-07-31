@@ -9,6 +9,7 @@
 
 pub(crate) mod files;
 pub(crate) mod system;
+pub(crate) mod terminal;
 
 use gpui::{FontWeight, IntoElement, Render, Window, Context, div, prelude::*, px, svg};
 
@@ -17,6 +18,7 @@ use crate::side_panel_right::tabs::PanelTab;
 
 use files::FilesTab;
 use system::SystemTab;
+use terminal::TerminalTab;
 
 // ---------------------------------------------------------------------------
 // Registry — one entity type per populated tab, EmptyTab for the rest
@@ -29,6 +31,7 @@ use system::SystemTab;
 pub(crate) enum TabContent {
     System(gpui::Entity<SystemTab>),
     Files(gpui::Entity<FilesTab>),
+    Terminal(gpui::Entity<TerminalTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
 
@@ -46,6 +49,9 @@ impl TabContent {
         match tab {
             PanelTab::System => TabContent::System(cx.new(|cx| SystemTab::new(cx))),
             PanelTab::Files => TabContent::Files(cx.new(|cx| FilesTab::new(cx))),
+            // Lazy by construction: `create` runs on first activation, and
+            // `TerminalTab::new` raises the PTY only then (no tab → no shell).
+            PanelTab::Terminal => TabContent::Terminal(cx.new(|cx| TerminalTab::new(cx))),
             _ => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
         }
     }
@@ -370,7 +376,7 @@ mod tests {
 
     #[test]
     fn empty_tab_has_a_label() {
-        // System is the only tab with real content; the other 9 use EmptyTab.
+        // System, Files and Terminal have real content; the rest use EmptyTab.
         for tab in PanelTab::ALL {
             if tab == PanelTab::System {
                 continue;
