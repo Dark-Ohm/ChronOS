@@ -308,7 +308,6 @@ mod tests {
         for tab in [
             PanelTab::Preview,
             PanelTab::Inspector,
-            PanelTab::Build,
             PanelTab::AcpSettings,
             PanelTab::McpSettings,
             PanelTab::LspSettings,
@@ -322,6 +321,11 @@ mod tests {
                 "{tab:?} empty-state preferred width must be 320"
             );
         }
+    }
+
+    #[test]
+    fn build_preferred_width_is_640() {
+        assert_eq!(PanelTab::Build.preferred_content_width(), 640.);
     }
 }
 
@@ -508,10 +512,12 @@ impl PanelTab {
             PanelTab::System => 400.,
             PanelTab::Editor | PanelTab::Terminal => super::DEFAULT_CONTENT_WIDTH,
             PanelTab::Files | PanelTab::SourceControl => 440.,
+            // Build/Logs: cargo diagnostics need ~82 mono cols (640/7.8).
+            // 560≈72 cols truncates long ` --> path:line` lines; 640 keeps them.
+            PanelTab::Build => 640.,
             // Empty-state tabs: icon + label + one-line description.
             PanelTab::Preview
             | PanelTab::Inspector
-            | PanelTab::Build
             | PanelTab::AcpSettings
             | PanelTab::McpSettings
             | PanelTab::LspSettings

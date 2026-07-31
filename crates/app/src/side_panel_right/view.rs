@@ -434,6 +434,9 @@ impl Render for SidePanelRightView {
                                 TabContent::Terminal(entity) => {
                                     col.child(entity.clone())
                                 }
+                                TabContent::Build(entity) => {
+                                    col.child(entity.clone())
+                                }
                                 TabContent::Placeholder(entity) => {
                                     col.child(entity.clone())
                                 }
@@ -499,6 +502,7 @@ impl SidePanelRightView {
             TabContent::System(e) => e.entity_id(),
             TabContent::Files(e) => e.entity_id(),
             TabContent::Terminal(e) => e.entity_id(),
+            TabContent::Build(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })
     }

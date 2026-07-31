@@ -18,6 +18,7 @@ pub mod network;
 pub mod notification;
 pub mod power;
 pub mod system_resources;
+pub mod tasks;
 pub mod terminal;
 pub mod threads;
 pub mod tray;
@@ -30,6 +31,11 @@ pub use applications::{
 };
 pub use files::{
     DIR_LISTING_LIMIT, FileEntryDto, ListParams, ListResult, SortKey, list_dir_sync, sort_entries,
+};
+pub use tasks::{
+    DEFAULT_LOG_CAP, LogBuffer, LogLine, ResolveTasks, RunStatus, StreamKind,
+    ActiveProject, TaskDef, TaskSession, TaskSource, detect_cargo_tasks, load_active_project,
+    parse_tasks_toml, resolve_tasks,
 };
 pub use terminal::{GridSnapshot, TermSize, Terminal, compute_grid};
 pub use audio::{AudioCommand, AudioDevice, AudioState, AudioSubscriber, EndpointState};

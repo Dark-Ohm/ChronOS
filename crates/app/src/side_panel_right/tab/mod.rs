@@ -7,6 +7,7 @@
 //! Empty tabs render a common honest-empty-state component that describes
 //! what will be there without promising a delivery date (§13).
 
+pub(crate) mod build;
 pub(crate) mod files;
 pub(crate) mod system;
 pub(crate) mod terminal;
@@ -16,6 +17,7 @@ use gpui::{FontWeight, IntoElement, Render, Window, Context, div, prelude::*, px
 use chronos_ui::Theme;
 use crate::side_panel_right::tabs::PanelTab;
 
+use build::BuildTab;
 use files::FilesTab;
 use system::SystemTab;
 use terminal::TerminalTab;
@@ -32,6 +34,7 @@ pub(crate) enum TabContent {
     System(gpui::Entity<SystemTab>),
     Files(gpui::Entity<FilesTab>),
     Terminal(gpui::Entity<TerminalTab>),
+    Build(gpui::Entity<BuildTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
 
@@ -52,6 +55,7 @@ impl TabContent {
             // Lazy by construction: `create` runs on first activation, and
             // `TerminalTab::new` raises the PTY only then (no tab → no shell).
             PanelTab::Terminal => TabContent::Terminal(cx.new(|cx| TerminalTab::new(cx))),
+            PanelTab::Build => TabContent::Build(cx.new(|cx| BuildTab::new(cx))),
             _ => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
         }
     }
