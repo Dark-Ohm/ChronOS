@@ -8,10 +8,23 @@
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активных заданий нет.** Волна 1 слайса 4 закрыта: T176 (Files) и T177
-(Terminal) приняты. План слайса —
-`docs/superpowers/plans/2026-07-31-developer-workbench-slice-4.md`, дальше
-волна 2 (Build/Logs, Preview) — задания будут здесь.
+**Активные задания — волна 2 слайса 4, идут параллельно.** План слайса —
+`docs/superpowers/plans/2026-07-31-developer-workbench-slice-4.md`.
+
+- `docs/orchestration/tasks/active/T178-build-logs-tab.md` — вкладка
+  Build/Logs. Движок запуска задач в `crates/services/src/tasks/` (без
+  GPUI), корень — активный проект из `projects.toml`, а не `current_dir()`.
+  §41 спеки: статус сборки не выдумывать никогда.
+- `docs/orchestration/tasks/active/T179-preview-tab.md` — вкладка Preview.
+  Предпросмотр файла, выбранного в Files (картинки, markdown рендером,
+  текст); веб-превью — честное `unavailable`, движка нет. Точка расширения
+  уже ждёт в `files.rs:125-130`.
+
+**Пересечение зон — ровно два файла:** `tab/mod.rs` и `tabs.rs`, по одной
+ветке от каждого. Добавляешь только свою, чужую не трогаешь. Всё остальное
+разведено.
+
+Волна 1 закрыта: T176 (Files) и T177 (Terminal) приняты.
 
 **Два образца, оба в `done/` + `report-log/`:** T176 (Files) — сервисный
 слой отдельно, вьюха по образцу `SystemTab`, тяжёлое в `background_spawn`;
