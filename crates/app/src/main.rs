@@ -79,6 +79,7 @@ fn main() {
         edit_mode::init(cx);
         workspace_mode::init(cx);
         scene::init(cx);
+        monitor::init(cx);
         bar::init(cx);
         notifications::init(cx);
         notifications::history_popup::init(cx);

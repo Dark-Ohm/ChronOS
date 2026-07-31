@@ -220,7 +220,6 @@ fn section_div(section: BarSection, widgets: Vec<AnyElement>) -> AnyElement {
 fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     let display_size = display_id
         .and_then(|id| cx.find_display(id))
-        .or_else(|| cx.primary_display())
         .map(|display| display.bounds().size)
         .unwrap_or_else(|| Size::new(px(1920.), px(1080.)));
 

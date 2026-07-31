@@ -191,3 +191,35 @@ pub fn init(cx: &mut App) {
 
     cx.global_mut::<NotificationPopupState>().watcher = Some(watcher);
 }
+
+/// Push an internal (non-FDO) notification. Used for system events like
+/// display hotplug that don't go through the D-Bus daemon.
+pub fn push_internal(cx: &mut App, summary: &str, body: &str) {
+    use chronos_services::notification::types::{Notification, Urgency};
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    {
+        let state = cx.global_mut::<NotificationPopupState>();
+        let id = state.current.next_id;
+        state.current.next_id += 1;
+        let note = Notification {
+            id,
+            app_name: "ChronOS".into(),
+            app_icon: String::new(),
+            summary: summary.into(),
+            body: body.into(),
+            urgency: Urgency::Normal,
+            actions: vec![],
+            expire_at: Some(now_ms + 10_000),
+        };
+        state.current.notifications.push(note.clone());
+        state.current.push_history(note);
+        state.current.unread += 1;
+        state.current.recompute_flags();
+    }
+    sync_window(cx);
+}

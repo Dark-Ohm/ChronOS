@@ -52,7 +52,6 @@ impl Global for SidePanelLeftState_ {}
 fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
     display_id
         .and_then(|id| cx.find_display(id))
-        .or_else(|| cx.primary_display())
         .map(|d| f32::from(d.bounds().size.height))
         .unwrap_or(1080.)
 }

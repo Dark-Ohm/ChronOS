@@ -39,7 +39,6 @@ impl Render for HoverStripView {
 fn strip_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     let display_h = display_id
         .and_then(|id| cx.find_display(id))
-        .or_else(|| cx.primary_display())
         .map(|d| f32::from(d.bounds().size.height))
         .unwrap_or(1080.);
     // Top gap only (under bar); reach display bottom like the panel.
