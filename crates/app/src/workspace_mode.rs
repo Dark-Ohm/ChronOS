@@ -176,6 +176,9 @@ pub fn current(cx: &App) -> WorkspaceMode {
 pub fn set(cx: &mut App, mode: WorkspaceMode) {
     if current(cx) == mode {
         cx.global_mut::<WorkspaceModeState>().pending = None;
+        // Восстанавливаем сцену даже при не-смене режима: [last] мог
+        // измениться внешне (конфиг отредактирован вручную).
+        crate::scene::restore_for_mode(cx, mode);
         cx.refresh_windows();
         return;
     }
@@ -184,6 +187,7 @@ pub fn set(cx: &mut App, mode: WorkspaceMode) {
     let mut cfg = load_config();
     cfg.mode = Some(mode);
     save_config(&cfg);
+    crate::scene::restore_for_mode(cx, mode);
     tracing::info!(mode = mode.label(), "workspace_mode: switched");
     cx.refresh_windows();
 }
