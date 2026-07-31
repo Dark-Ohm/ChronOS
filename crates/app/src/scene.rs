@@ -103,17 +103,22 @@ fn config_path() -> PathBuf {
         .join(CONFIG_BASENAME)
 }
 
+/// Чистая функция парсинга — вынесена из `load_config`, чтобы тестировать
+/// разбор без файловой системы.
+pub fn parse_config(content: &str) -> Result<ScenesConfig, toml::de::Error> {
+    let mut cfg: ScenesConfig = toml::from_str(content)?;
+    // Отсутствие version трактуется как 1.
+    if cfg.version == 0 {
+        cfg.version = 1;
+    }
+    Ok(cfg)
+}
+
 pub fn load_config() -> ScenesConfig {
     let path = config_path();
     match std::fs::read_to_string(&path) {
-        Ok(content) => match toml::from_str::<ScenesConfig>(&content) {
-            Ok(mut cfg) => {
-                // Отсутствие version трактуется как 1.
-                if cfg.version == 0 {
-                    cfg.version = 1;
-                }
-                cfg
-            }
+        Ok(content) => match parse_config(&content) {
+            Ok(cfg) => cfg,
             Err(e) => {
                 tracing::warn!(
                     "scene: failed to parse {}: {e}, using defaults",
@@ -126,6 +131,10 @@ pub fn load_config() -> ScenesConfig {
     }
 }
 
+/// Запись конфига на диск. Вызывается ТОЛЬКО когда пользователь реально
+/// сменил активную сцену (будущий SceneManager), а не при каждом `set`.
+// Currently unused — scene manager (slice 3/4) will call this.
+#[allow(dead_code)]
 fn save_config(cfg: &ScenesConfig) {
     let path = config_path();
     if let Some(parent) = path.parent()
@@ -243,50 +252,52 @@ pub fn active_tab_override(cx: &App) -> Option<String> {
 
 /// Восстановить последнюю сцену для данного режима. Вызывается из
 /// `workspace_mode::set` при каждой смене (и не-смене) режима.
+///
+/// **Read-only на диске**: фильтрация невалидных сцен — только для выбора
+/// активной сцены в памяти. Конфиг на диске не перезаписывается, невалидные
+/// сцены не стираются. `[last]` персистится только когда пользователь
+/// реально сменил активную сцену (будущий SceneManager).
+///
 /// Сцена не найдена → `None` (композиция = дефолт режима, не ошибка).
 pub fn restore_for_mode(cx: &mut App, mode: WorkspaceMode) {
+    // Читаем конфиг как есть, фильтруем только для резолвинга.
     let cfg = &cx.global::<SceneState>().config;
-    let valid = filter_valid(cfg.scene.clone());
-    let mut cfg = cfg.clone();
-    cfg.scene = valid;
+    let mut for_resolve = cfg.clone();
+    for_resolve.scene = filter_valid(cfg.scene.clone());
 
-    let key = mode_label(mode).to_string();
-    let restored = resolve_last(&cfg, mode);
+    let restored = resolve_last(&for_resolve, mode);
 
-    // Персистим [last] на диск (§5: «[last] обновляется при смене
-    // активной сцены и персистится»).
     if let Some(ref scene) = restored {
-        cfg.last.insert(key, scene.id.clone());
         tracing::info!(
             scene = %scene.id,
             mode = mode_label(mode),
             "scene: restored"
         );
     } else {
-        cfg.last.remove(&key);
         tracing::info!(
             mode = mode_label(mode),
             "scene: no last scene, using mode defaults"
         );
     }
 
-    save_config(&cfg);
+    // Меняем ТОЛЬКО active — конфиг на диске не трогаем.
     cx.global_mut::<SceneState>().active = restored;
-    cx.global_mut::<SceneState>().config = cfg;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
 
 pub fn init(cx: &mut App) {
-    let mut cfg = load_config();
+    let cfg = load_config();
     let version = cfg.version;
     let scene_count = cfg.scene.len();
 
-    // Фильтруем невалидные сцены один раз при старте.
-    cfg.scene = filter_valid(cfg.scene);
+    // Резолвим активную сцену, фильтруя невалидные только для выбора.
+    // Сохранённый конфиг содержит все сцены, включая невалидные.
+    let mut for_resolve = cfg.clone();
+    for_resolve.scene = filter_valid(cfg.scene.clone());
 
     let mode = workspace_mode::current(cx);
-    let initial = resolve_last(&cfg, mode);
+    let initial = resolve_last(&for_resolve, mode);
 
     if let Some(ref scene) = initial {
         tracing::info!(
@@ -326,26 +337,22 @@ mod tests {
         }
     }
 
-    // 1. Пустой/отсутствующий файл → дефолт, без паники.
+    // 1. Пустая строка → дефолт, без паники.
     #[test]
-    fn missing_file_returns_default() {
-        let cfg = ScenesConfig {
-            version: 0,
-            last: HashMap::new(),
-            scene: vec![],
-            extra: HashMap::new(),
-        };
-        assert_eq!(cfg.version, 0);
-        // load_config() на отсутствующем файле вернёт default (version = 0),
-        // init трактует 0 как 1.
+    fn empty_content_returns_default() {
+        let result = parse_config("");
+        // Пустая строка — валидный пустой TOML: всё дефолтное.
+        let cfg = result.expect("пустой TOML парсится");
+        assert_eq!(cfg.version, 1); // 0 → нормализуется в 1
+        assert!(cfg.scene.is_empty());
+        assert!(cfg.last.is_empty());
     }
 
-    // 2. Мусор вместо TOML → warn + дефолт, файл не перезаписан.
+    // 2. Мусор вместо TOML → parse_config возвращает ошибку, не панику.
     #[test]
-    fn garbage_toml_returns_default() {
-        let result = toml::from_str::<ScenesConfig>("this is not { valid toml");
-        // Парсер может вернуть ошибку — это ожидаемо.
-        assert!(result.is_err());
+    fn garbage_toml_returns_error() {
+        let result = parse_config("this is not { valid toml");
+        assert!(result.is_err(), "мусорный TOML должен вернуть ошибку, не панику");
     }
 
     // 3. Неизвестная секция [scene.windows] и незнакомое поле → парсится, не теряет остальное.
@@ -429,9 +436,20 @@ mod tests {
         assert_eq!(filtered[0].id, "good");
     }
 
-    // 6. Round-trip: сериализация → парс → те же данные.
+    // 6. Round-trip: сериализация → парс → те же данные, ВКЛЮЧАЯ непустой extra.
     #[test]
-    fn roundtrip() {
+    fn roundtrip_with_extra() {
+        let mut scene_extra = HashMap::new();
+        scene_extra.insert(
+            "windows".into(),
+            toml::Value::Table({
+                let mut t = toml::map::Map::new();
+                t.insert("capture".into(), toml::Value::String("reserved".into()));
+                t
+            }),
+        );
+        scene_extra.insert("future_flag".into(), toml::Value::Integer(42));
+
         let original = ScenesConfig {
             version: 1,
             last: {
@@ -447,31 +465,28 @@ mod tests {
                 rail_tabs: vec!["system".into(), "files".into()],
                 active_tab: "files".into(),
                 dock: vec!["kitty".into()],
-                extra: HashMap::new(),
+                extra: scene_extra,
             }],
             extra: HashMap::new(),
         };
 
-        let text = toml::to_string_pretty(&original).unwrap();
-        let parsed: ScenesConfig = toml::from_str(&text).unwrap();
-        assert_eq!(parsed, original);
+        let text = toml::to_string_pretty(&original).expect("сериализация с непустым extra");
+        let parsed: ScenesConfig =
+            toml::from_str(&text).expect("десериализация round-trip с extra");
+        assert_eq!(parsed, original, "round-trip потерял данные из extra");
     }
 
-    // 7. version отсутствует → трактуется как 1.
+    // 7. version отсутствует → parse_config трактует как 1.
     #[test]
-    fn missing_version_defaults_to_one() {
+    fn missing_version_normalized_to_one() {
         let input = r#"
             [[scene]]
             id = "test"
             name = "Test"
             mode = "developer"
         "#;
-        let mut cfg: ScenesConfig = toml::from_str(input).unwrap();
-        assert_eq!(cfg.version, 0); // serde default
-        if cfg.version == 0 {
-            cfg.version = 1;
-        }
-        assert_eq!(cfg.version, 1);
+        let cfg = parse_config(input).expect("разбор без version");
+        assert_eq!(cfg.version, 1, "отсутствие version должно трактоваться как 1");
     }
 
     // 8. Неизвестный mode в [last] ссылается на сцену с другим mode → None.
@@ -489,21 +504,22 @@ mod tests {
         assert!(resolved.is_none());
     }
 
-    // 9. Пустые override-поля → None.
+    // 9. Пустые override-поля в resolve_last → Some, но поля пустые.
     #[test]
-    fn empty_overrides_return_none() {
-        // Проверяем чистую логику без GPUI.
-        let scene = Scene {
-            id: "test".into(),
-            name: "Test".into(),
+    fn empty_overrides_resolve_but_fields_empty() {
+        let cfg = cfg_with_scenes(vec![Scene {
+            id: "minimal".into(),
+            name: "Minimal".into(),
             mode: "developer".into(),
-            rail_tabs: vec![],
-            active_tab: String::new(),
-            dock: vec![],
             ..Default::default()
-        };
-        assert!(scene.rail_tabs.is_empty());
-        assert!(scene.active_tab.is_empty());
-        assert!(scene.dock.is_empty());
+        }]);
+        // resolve_last находит сцену.
+        let mut cfg = cfg;
+        cfg.last.insert("developer".into(), "minimal".into());
+        let resolved = resolve_last(&cfg, WorkspaceMode::Developer);
+        let scene = resolved.expect("сцена должна резолвиться");
+        assert!(scene.rail_tabs.is_empty(), "rail_tabs пуст → override = None");
+        assert!(scene.active_tab.is_empty(), "active_tab пуст → override = None");
+        assert!(scene.dock.is_empty(), "dock пуст → override = None");
     }
 }
