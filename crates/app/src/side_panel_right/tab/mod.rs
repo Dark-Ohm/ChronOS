@@ -7,6 +7,7 @@
 //! Empty tabs render a common honest-empty-state component that describes
 //! what will be there without promising a delivery date (§13).
 
+pub(crate) mod files;
 pub(crate) mod system;
 
 use gpui::{FontWeight, IntoElement, Render, Window, Context, div, prelude::*, px, svg};
@@ -14,6 +15,7 @@ use gpui::{FontWeight, IntoElement, Render, Window, Context, div, prelude::*, px
 use chronos_ui::Theme;
 use crate::side_panel_right::tabs::PanelTab;
 
+use files::FilesTab;
 use system::SystemTab;
 
 // ---------------------------------------------------------------------------
@@ -26,6 +28,7 @@ use system::SystemTab;
 #[derive(Clone)]
 pub(crate) enum TabContent {
     System(gpui::Entity<SystemTab>),
+    Files(gpui::Entity<FilesTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
 
@@ -42,6 +45,7 @@ impl TabContent {
         );
         match tab {
             PanelTab::System => TabContent::System(cx.new(|cx| SystemTab::new(cx))),
+            PanelTab::Files => TabContent::Files(cx.new(|cx| FilesTab::new(cx))),
             _ => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
         }
     }

@@ -5,6 +5,7 @@
 //! on each subscriber (NOT part of the trait).
 
 pub mod applications;
+pub mod files;
 pub mod audio;
 pub mod aur;
 pub mod brightness;
@@ -25,6 +26,9 @@ pub mod wallpaper;
 
 pub use applications::{
     AppEntry, ApplicationsCommand, ApplicationsState, ApplicationsSubscriber, strip_field_codes,
+};
+pub use files::{
+    DIR_LISTING_LIMIT, FileEntryDto, ListParams, ListResult, SortKey, list_dir_sync, sort_entries,
 };
 pub use audio::{AudioCommand, AudioDevice, AudioState, AudioSubscriber, EndpointState};
 pub use aur::{AurCommand, AurSubscriber, PackageUpdate, UpdateSource, UpgradeProgress, UpgradeState, UpdatesState};
