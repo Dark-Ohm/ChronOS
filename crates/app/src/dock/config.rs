@@ -1,17 +1,28 @@
-//! Dock persistent configuration — pinned application list.
+//! Dock persistent configuration — pinned application list + mode composition.
 //!
 //! Config file: `~/.config/chronos/dock.toml`
 //! Format:
 //! ```toml
 //! pinned = ["kitty", "thunar", "firefox", "code", "vivaldi"]
 //! ```
+//!
+//! Display composition (what the bar actually shows) is resolved at read time:
+//! scene override → mode default → stored `dock.toml` / `DEFAULT_PINNED`.
 
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
+use gpui::App;
 use serde::{Deserialize, Serialize};
 
+use crate::scene;
+use crate::workspace_mode::{self, WorkspaceMode};
+
 const DEFAULT_PINNED: &[&str] = &["kitty", "thunar", "firefox", "code", "vivaldi"];
+
+/// Gamer-mode dock default — launchers and companions, not the IDE suite.
+/// Ids match `.desktop` basenames where possible (`steam.desktop` → `steam`).
+const DEFAULT_PINNED_GAMER: &[&str] = &["steam", "discord", "firefox", "kitty"];
 
 /// Global config cache — loaded once, invalidated by unpin.
 static CONFIG_CACHE: OnceLock<Mutex<DockConfig>> = OnceLock::new();
@@ -21,8 +32,59 @@ fn config_cache() -> &'static Mutex<DockConfig> {
 }
 
 /// Get the cached config (nanosecond read, no disk I/O).
+/// This is the **stored** user list from `dock.toml`, not the mode-composed
+/// display list — use [`resolve_pinned`] for what the bar should paint.
 pub fn cached() -> DockConfig {
     config_cache().lock().unwrap().clone()
+}
+
+/// Mode-default pin list (no scene, no user file).
+pub fn default_pinned_for_mode(mode: WorkspaceMode) -> Vec<String> {
+    match mode {
+        WorkspaceMode::Developer => DEFAULT_PINNED.iter().map(|s| (*s).to_string()).collect(),
+        WorkspaceMode::Gamer => DEFAULT_PINNED_GAMER
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect(),
+    }
+}
+
+/// Resolve pins for display: scene override → mode default → stored config.
+///
+/// Pure relative to disk for the scene/mode legs; the stored leg reads the
+/// in-memory cache (filled at init / after unpin).
+pub fn resolve_pinned(cx: &App) -> Vec<String> {
+    resolve_pinned_with(
+        workspace_mode::current(cx),
+        scene::dock_override(cx),
+        &cached().pinned,
+    )
+}
+
+/// Testable core of [`resolve_pinned`].
+pub fn resolve_pinned_with(
+    mode: WorkspaceMode,
+    scene_override: Option<Vec<String>>,
+    stored: &[String],
+) -> Vec<String> {
+    if let Some(over) = scene_override {
+        if !over.is_empty() {
+            return over;
+        }
+    }
+    match mode {
+        // Developer: prefer the user's saved pins when present; else mode default.
+        WorkspaceMode::Developer => {
+            if stored.is_empty() {
+                default_pinned_for_mode(mode)
+            } else {
+                stored.to_vec()
+            }
+        }
+        // Gamer: mode default wins over the developer-oriented user file so
+        // the dock actually changes composition on mode switch.
+        WorkspaceMode::Gamer => default_pinned_for_mode(mode),
+    }
 }
 
 /// Reload the cache from disk.
@@ -150,5 +212,52 @@ mod tests {
     fn parse_invalid_toml_returns_none() {
         let result = toml::from_str::<DockConfig>("not valid toml [[[");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn mode_defaults_are_nonempty_and_differ() {
+        let dev = default_pinned_for_mode(WorkspaceMode::Developer);
+        let gamer = default_pinned_for_mode(WorkspaceMode::Gamer);
+        assert!(!dev.is_empty());
+        assert!(!gamer.is_empty());
+        assert_ne!(dev, gamer);
+    }
+
+    #[test]
+    fn scene_override_beats_mode_and_stored() {
+        let resolved = resolve_pinned_with(
+            WorkspaceMode::Developer,
+            Some(vec!["only-this".into()]),
+            &["kitty".into(), "code".into()],
+        );
+        assert_eq!(resolved, vec!["only-this".to_string()]);
+    }
+
+    #[test]
+    fn gamer_uses_mode_default_not_developer_stored() {
+        let resolved = resolve_pinned_with(
+            WorkspaceMode::Gamer,
+            None,
+            &["code".into(), "thunar".into()],
+        );
+        assert_eq!(resolved, default_pinned_for_mode(WorkspaceMode::Gamer));
+        assert!(!resolved.contains(&"code".to_string()));
+    }
+
+    #[test]
+    fn developer_prefers_stored_pins() {
+        let stored = vec!["a".into(), "b".into()];
+        let resolved = resolve_pinned_with(WorkspaceMode::Developer, None, &stored);
+        assert_eq!(resolved, stored);
+    }
+
+    #[test]
+    fn empty_scene_override_falls_through() {
+        let resolved = resolve_pinned_with(
+            WorkspaceMode::Gamer,
+            Some(vec![]),
+            &["code".into()],
+        );
+        assert_eq!(resolved, default_pinned_for_mode(WorkspaceMode::Gamer));
     }
 }

@@ -45,8 +45,8 @@ impl BarWidget for DockWidget {
     fn render(&self, _window: &mut Window, cx: &App) -> AnyElement {
         let theme = Theme::global(cx);
 
-        // Read cached config (no disk I/O per render).
-        let pinned = config::cached().pinned;
+        // Mode/scene composition (scene > mode default > stored dock.toml).
+        let pinned = config::resolve_pinned(cx);
 
         // Read applications state.
         let entries = AppState::applications(cx).get().entries.clone();

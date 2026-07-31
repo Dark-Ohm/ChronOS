@@ -208,15 +208,11 @@ fn mode_label(mode: WorkspaceMode) -> &'static str {
 // ── Public API (для T165 и остальных) ─────────────────────────────────────
 
 /// Активная сцена, если есть. `None` = чистый дефолт режима.
-// T165 consumer — suppress until wired.
-#[allow(dead_code)]
 pub fn current(cx: &App) -> Option<Scene> {
     cx.try_global::<SceneState>().and_then(|s| s.active.clone())
 }
 
 /// Оверрайд набора вкладок рейла из активной сцены. `None` = дефолт режима.
-// T165 consumer — suppress until wired.
-#[allow(dead_code)]
 pub fn rail_tabs_override(cx: &App) -> Option<Vec<String>> {
     let tabs = current(cx)?.rail_tabs;
     if tabs.is_empty() {
@@ -227,8 +223,6 @@ pub fn rail_tabs_override(cx: &App) -> Option<Vec<String>> {
 }
 
 /// Оверрайд состава дока из активной сцены. `None` = дефолт режима.
-// T165 consumer — suppress until wired.
-#[allow(dead_code)]
 pub fn dock_override(cx: &App) -> Option<Vec<String>> {
     let items = current(cx)?.dock;
     if items.is_empty() {
@@ -239,7 +233,7 @@ pub fn dock_override(cx: &App) -> Option<Vec<String>> {
 }
 
 /// Активная вкладка из сцены. `None` = дефолт режима.
-// T165 consumer — suppress until wired.
+// Wired when a consumer applies scene-selected tab on restore (not T165).
 #[allow(dead_code)]
 pub fn active_tab_override(cx: &App) -> Option<String> {
     let tab = current(cx)?.active_tab;

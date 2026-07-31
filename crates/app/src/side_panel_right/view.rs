@@ -43,6 +43,7 @@ use crate::side_panel_right::{
     DEFAULT_CONTENT_WIDTH, HANDLE_WIDTH, RAIL_ONLY_WIDTH, RightPanelResize, SidePanelRightState,
 };
 use crate::state::{self, AppState};
+use crate::{scene, workspace_mode};
 
 use chronos_ui::{Theme, elevation_glow_bar};
 
@@ -288,6 +289,20 @@ impl SidePanelRightView {
 impl Render for SidePanelRightView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sample_network();
+        // Mode/scene composition for the rail (scene override > mode default).
+        let rail_tabs = PanelTab::resolve_for_mode(
+            workspace_mode::current(cx),
+            scene::rail_tabs_override(cx).as_deref(),
+        );
+        // Active tab left the set after a mode switch — land on System, keep
+        // the panel open (§5: must not discard panel state / close on mode change).
+        if !rail_tabs.contains(&self.active_tab) {
+            tracing::info!(
+                was = self.active_tab.label(),
+                "side_panel_right: active tab not in mode set → System"
+            );
+            self.active_tab = PanelTab::System;
+        }
         // T157 smoke: auto-open System tab so the Input consumer is visible.
         if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL").is_some() && !self.smoke_opened {
             self.smoke_opened = true;
@@ -617,6 +632,7 @@ impl Render for SidePanelRightView {
                             });
                         crate::side_panel_right::rail::render_rail(
                             cx,
+                            &rail_tabs,
                             active,
                             on_select,
                             dock_content,

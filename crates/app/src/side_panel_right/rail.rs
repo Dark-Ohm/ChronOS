@@ -1,10 +1,11 @@
 //! Vertical icon-rail — switches the active tab of the IDE panel.
 //!
-//! One `on_hover`-free button per `PanelTab::ALL`; active tab gets an
-//! `accent.primary` bar on its left edge + `interactive.hover` fill.
-//! Design brief: `design.md` §"Shell-IDE правая панель (таб-контейнер)".
+//! One `on_hover`-free button per tab in the **resolved mode set** (not the
+//! full catalog); active tab gets an `accent.primary` bar on its left edge +
+//! `interactive.hover` fill. Design brief: `design.md` §"Shell-IDE правая
+//! панель (таб-контейнер)".
 
-use gpui::{App, Context, Hsla, IntoElement, Window, div, prelude::*, px, svg};
+use gpui::{App, Hsla, IntoElement, Window, div, prelude::*, px, svg};
 
 use chronos_ui::Theme;
 
@@ -26,12 +27,15 @@ pub fn rail_button_bg(is_active: bool, theme: &Theme) -> Hsla {
 
 pub fn render_rail(
     cx: &App,
+    tabs: &[PanelTab],
     active: PanelTab,
     on_select: Rc<dyn Fn(PanelTab, &mut Window, &mut App) + 'static>,
     dock_content: bool,
     on_dock_toggle: Rc<dyn Fn(&mut Window, &mut App) + 'static>,
 ) -> impl IntoElement {
     let theme = Theme::global(cx);
+    // Own the slice so the element tree can hold it across layout.
+    let tabs: Vec<PanelTab> = tabs.to_vec();
     div()
         .id("side-panel-right-rail")
         .flex()
@@ -44,7 +48,7 @@ pub fn render_rail(
         .bg(surfaces::chrome(theme))
         .border_l_1()
         .border_color(theme.border.default)
-        .children(PanelTab::ALL.into_iter().map(|tab| {
+        .children(tabs.into_iter().map(|tab| {
             let is_active = tab == active;
             let on_select = on_select.clone();
             div()
