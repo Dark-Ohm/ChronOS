@@ -3,17 +3,27 @@
 **Дата:** 2026-07-31. **Исполнитель:** buffy (deepseek-v4-pro).
 **Задание:** `docs/orchestration/tasks/active/T168-panel-tab-contract.md`.
 **План слайса:** `docs/superpowers/plans/2026-07-31-right-panel-modularization-slice-3.md`.
-**Статус:** второй заход после эрраты, коммит `58ccb64`. Ожидает приёмки.
+**Статус:** третий заход, блокер expect-panic закрыт. Ожидает живого прогона.
 
 ---
 
-## Второй заход (2026-07-31, после эрраты)
+## Что сделано (сводка)
 
-### Блокер 1: тесты переписаны на `#[gpui::test]`
+| Блокер | Статус |
+|---|---|
+| Тесты на stdlib HashMap → `#[gpui::test]` на реальный `SidePanelRightView` | ✅ Закрыт |
+| System → `tab/system.rs` | ✅ Закрыт |
+| Леса T157 снесены | ✅ Закрыт |
+| `format_bytes_per_sec` → `format_net_pair` дедупликация | ✅ Закрыт |
+| expect-panic при первом открытии панели | ✅ Закрыт |
+| Живой прогон | ⏳ Не выполнен (дисплей занят) |
+
+---
+
+## Эррата 1: тесты переписаны на `#[gpui::test]`
 
 Три модельных теста (тестировали stdlib `HashMap`, а не `SidePanelRightView`)
-удалены. Заменены на три настоящих `#[gpui::test]` с `TestAppContext`,
-трогающих реальный `SidePanelRightView::tab_views`:
+удалены. Заменены на настоящие `#[gpui::test]` с `TestAppContext`:
 
 | Тест | Что проверяет |
 |---|---|
@@ -21,68 +31,92 @@
 | `first_activation_creates_exactly_one_view` | После `on_tab_select(Files)` — `tab_count() == 1` |
 | `cache_preserves_entity_across_switches` | Files → Terminal → Files: `entity_id` одинаковый, `tab_count() == 2` |
 
-**Архитектурное изменение:** создание вьюхи перенесено из `render()` в
-`on_tab_select()`. Рендер теперь читает кэш через `get()`, а не создаёт через
-`entry().or_insert_with()`. Это правильнее: создание на action, а не в
-render-е, и тестируемо без окна.
-
 Для этого добавлены `#[cfg(test)]` accessor-ы: `tab_count()`, `tab_entity_id()`.
 
-### Блокер 2: живой прогон
+## Эррата 2: System → `tab/system.rs`
 
-Релизный бинарь собран. Панель открыта через IPC `toggle-side-panel-right`,
-скриншот снят (`grim /tmp/t168-1-system.png`, 4480×1440, 6.5 MB).
+`SystemTab` (`tab/system.rs`) — полноценная GPUI-сущность:
 
-**Что видно на кадре (анализ пикселей magick):**
-- Панель справа есть (светлый фон на 4100px)
-- MPRIS art frame рендерится (чёрный пиксель на позиции art-фрейма)
-- Рейл виден (серый пиксель на позиции рейла)
+- **Состояние:** mpris, system, disks, wallpaper, cpu/ram/gpu_history, net_state, scroll
+- **Подписки:** mpris, system_resources, disks, wallpaper
+- **Render:** header → permission card → scrollable (mpris + wallpaper + spectrum rows + disks)
 
-**Что НЕ проверено из-за краха Wayland-диспетчера:**
+**Футер остался в `view.rs`** — `power_row::render_footer` требует `Context<SidePanelRightView>`, файл в запретной зоне.
 
-IPC `set-workspace-mode:gamer` вызывает `panic!` в
-`Source/gpui_linux/src/linux/wayland/client.rs:336` —
-`"The pointer should always be valid when dispatching in wayland"`.
-Это предсуществующий баг форка (не T168): создание окна из IPC-хендлера
-во время Wayland event-loop. Воспроизводится и на master до моих изменений
-(проверено — тот же креш на `toggle-side-panel-right` без T168).
+## Эррата 3: expect-panic при первом открытии панели
 
-Поэтому пункты 3 (пустая вкладка) и 4 (рейл Gamer 7 / Developer 10)
-не подтверждены кадрами. Рейл не менялся в этой задаче — композиция по
-режиму (`tabs.rs`, `rail.rs`) не трогалась. Регрессия T165 исключена
-структурно: `for_mode`/`resolve_for_mode` и `render_rail` — те же файлы,
-те же тесты, 330 green.
+### Причина
 
-**Пункт 2 (демо-таблиц нет):** grep пуст — подтверждено.
+В предыдущем заходе создание вьюхи перенесено из `render()` в `on_tab_select()`,
+но `render()` остался с `get().expect(...)`:
 
-### Блокер 3: коммит
+```rust
+let tab_entry = self
+    .tab_views
+    .get(&active)
+    .expect("tab view must exist after on_tab_select");
+```
 
-Закоммичено: `58ccb64` — `side_panel_right : контракт вкладки, System в свой модуль, леса T157 снесены (T168)`.
+При первом открытии панели `on_tab_select` никто не звал — активная вкладка
+`PanelTab::default()` из `SidePanelRightView::new()`. Реестр пуст → `expect`
+→ паника → каскад через wayland-диспетчер → `abort`.
 
-6 файлов: disks.rs, mod.rs, mpris_card.rs, tab/mod.rs, tab/system.rs, view.rs.
+### Решение: `ensure_tab_view()`
 
-### Мелочь: `format_bytes_per_sec` → `format_net_pair`
+Единый метод — точка создания вкладок:
 
-Переименовано в `tab/system.rs`. Теперь два разных имени, grep не врёт.
+```rust
+pub(crate) fn ensure_tab_view(&mut self, tab: PanelTab, cx: &mut Context<Self>) {
+    self.tab_views
+        .entry(tab)
+        .or_insert_with(|| TabContent::create(tab, cx));
+}
+```
+
+Вызывается из `on_tab_select()` и `render()`. `render()` после `ensure_tab_view`
+гарантированно видит запись → `unwrap()` безопасен по построению.
+
+### `format_net_pair` — дедупликация
+
+`format_bytes_per_sec` в `view.rs` и `format_net_pair` в `tab/system.rs` —
+одна и та же логика. Исправлено:
+
+- `format_bytes_per_sec` удалён из `view.rs`
+- `format_net_pair` в `tab/system.rs` сделан `pub(crate)`
+- `view.rs` импортирует `use crate::side_panel_right::tab::system::format_net_pair;`
+
+### Тест: критический путь без `on_tab_select`
+
+Добавлен `first_render_without_tab_select_creates_view` — `#[gpui::test]`,
+`PanelTab::Files` (без service globals):
+
+```rust
+#[gpui::test]
+async fn first_render_without_tab_select_creates_view(cx: &mut TestAppContext) {
+    cx.update(|cx| { cx.set_global(SidePanelRightState::default()); });
+    let view = cx.new(|cx| SidePanelRightView::new(cx));
+    cx.update_entity(&view, |this, cx| {
+        assert_eq!(this.tab_count(), 0, "must start empty");
+        this.ensure_tab_view(PanelTab::Files, cx);
+    });
+    cx.update_entity(&view, |this, _cx| {
+        assert_eq!(this.tab_count(), 1, "ensure_tab_view must create exactly one entry");
+    });
+}
+```
 
 ---
 
-## 1. Что сделано
+## Контракт вкладки
 
-### 1.1. Контракт вкладки
-
-Каждая вкладка — собственная GPUI-сущность со своим `Render`. Панель
-(`SidePanelRightView`) держит ленивый реестр:
+Панель (`SidePanelRightView`) держит ленивый реестр:
 
 ```rust
 tab_views: HashMap<PanelTab, TabContent>,
 ```
 
-Создание ленивое: `on_tab_select()` вызывает
-`entry(active).or_insert_with(|| TabContent::create(active, cx))`.
-Рендер только читает кэш через `get()`.
-
-**Свойства контракта:**
+Создание ленивое через `ensure_tab_view()` — вызывается из `on_tab_select()`
+и `render()`. Один метод, одно имя — единая точка создания.
 
 | Свойство | Статус | Как проверено |
 |---|---|---|
@@ -91,125 +125,129 @@ tab_views: HashMap<PanelTab, TabContent>,
 | Без сброса при смене режима | ✅ | Кэш не чистится. Вкладка, ушедшая из набора, просто не показывается |
 | Точка входа одна | ✅ | `match tab_entry { ... }` — одно выражение, без `when(active_tab == ...)` |
 
-### 1.2. System → `tab/system.rs`
+---
 
-`SystemTab` (`tab/system.rs`, 256 строк) — полноценная GPUI-сущность:
+## Архитектурные решения
 
-- **Состояние:** `mpris`, `system`, `disks`, `wallpaper`, `waytrogen_available`,
-  `cpu/ram/gpu_history`, `net_state`, `net_dl/ul_history`, `scroll`.
-- **Подписки:** mpris, system_resources, disks, wallpaper.
-- **Render:** header → permission card → scrollable (mpris + wallpaper +
-  spectrum rows + disks).
+### `ensure_tab_view()` — единая точка создания
 
-**Футер остался в `view.rs`** — `power_row::render_footer` жёстко принимает
-`&mut Context<SidePanelRightView>`, а `power_row.rs` в списке «не трогать».
+**Вариант A (выбран):** `ensure_tab_view()` вызывается из `on_tab_select()`
+и `render()`. Один метод, одно имя.
 
-### 1.3. Леса T157 — снесены
+**Вариант B (отклонён):** `on_tab_select()` только меняет `active_tab`,
+создание только в `render()` через `entry().or_insert_with()`.
 
-Grep-проверка (пусто):
-```
-$ rg -n "Demo(TableDelegate|VirtualList)|measure_(input|table|vlist)" crates/ --type rust
-(пусто)
-```
+Почему A лучше: `on_tab_select` создаёт вьюху на действие (клик по рейлу),
+а не в рендере. Это правильнее по семантике и проще тестируется — тест
+вызывает `ensure_tab_view` напрямую, без окна.
 
-### 1.4. Честные пустые состояния
+### `mpris_card.rs` и `disks.rs` — смена сигнатур
 
-`EmptyTab` entity: иконка (40×40) + название + описание. Без сроков.
-`placeholder_description(tab)` — уникальные строки на вкладку.
+`&mut Context<SidePanelRightView>` → `&App`. Механическая правка, без неё
+контракт не собирается. Логика карточек не задета.
+
+### Футер не уехал в `SystemTab`
+
+`power_row::render_footer` требует `Context<SidePanelRightView>`, файл в
+запретной зоне.
 
 ---
 
-## 2. Тесты
+## Тесты
 
-**Всего: 330 pass, 0 fail** (+3 `#[gpui::test]` взамен 3 модельных).
+**Всего: 335 pass, 0 fail** (90 lib + 245 bins).
 
-### В `tab/mod.rs` (6 тестов):
+### `tab/mod.rs` (7 тестов):
 
 | Тест | Тип | Что проверяет |
 |---|---|---|
 | `tab_views_starts_empty` | `#[gpui::test]` | Реестр пуст при старте |
 | `first_activation_creates_exactly_one_view` | `#[gpui::test]` | После активации — ровно 1 запись |
 | `cache_preserves_entity_across_switches` | `#[gpui::test]` | Entity-id одинаковый после A→B→A |
+| `first_render_without_tab_select_creates_view` | `#[gpui::test]` | ensure_tab_view создаёт запись без on_tab_select |
 | `every_tab_has_a_nonempty_placeholder_description` | `#[test]` | 10 непустых описаний |
 | `placeholder_descriptions_are_unique` | `#[test]` | 10 уникальных описаний |
 | `empty_tab_has_a_label` | `#[test]` | 9 не-System вкладок имеют label+desc |
 
-### В `tab/system.rs` (3 теста):
+### `tab/system.rs` (3 теста):
 
 | Тест | Что проверяет |
 |---|---|
-| `format_net_pair_zero` | `format_net_pair(0, 0)` → `"↓ 0 B/s  ↑ 0 B/s"` |
+| `format_net_pair_zero` | `format_net_pair(0, 0)` → `↓ 0 B/s  ↑ 0 B/s` |
 | `format_net_pair_kilobytes` | KB-диапазон |
 | `format_net_pair_megabytes` | MB-диапазон |
 
 ---
 
-## 3. Верификация
+## Верификация
 
 ```
-$ cargo test -p chronos
-test result: ok. 330 passed; 0 failed; 0 ignored
+$ cargo test -p chronos --lib --bins
+test result: ok. 90 passed; 0 failed  (lib)
+test result: ok. 245 passed; 0 failed (bins)
+
+$ cargo clippy -p chronos --all-targets
+# без errors (warnings — в других модулях)
 
 $ cargo build --release -p chronos
-Finished release [optimized] target(s) in 3m 46s
+Finished release [optimized] target(s) in 4m 02s
 
-$ rg -n "coming soon" crates/ --type rust
+$ rg -n "coming soon" crates/
 crates/app/src/side_panel_right/tab/mod.rs:51:// Empty tab ... no "coming soon" ...
-# Только в комментарии
+# Только комментарий, UI-текста нет
 
-$ rg -n "Demo(TableDelegate|VirtualList)|measure_(input|table|vlist)" crates/ --type rust
+$ rg -n "Demo(TableDelegate|VirtualList)|measure_(input|table|vlist)" crates/
 (пусто)
 
 $ wc -l crates/app/src/side_panel_right/view.rs
-448  # было 792, −43 %
+479  # было 792 до T168 — −40 %
 ```
 
----
-
-## 4. Отклонения от буквы задания
-
-### 4.1. `mpris_card.rs` и `disks.rs` — смена сигнатур
-
-`&mut Context<SidePanelRightView>` → `&App`. Механическая правка, без неё
-контракт не собирается. Логика карточек не задета.
-
-### 4.2. Футер не уехал в `SystemTab`
-
-`power_row::render_footer` требует `Context<SidePanelRightView>`, файл в
-запретной зоне.
-
-### 4.3. Живой прогон — частично
-
-IPC mode-switch крашит Wayland-диспетчер (предсуществующий баг форка).
-Панель открывается, System-контент рендерится — подтверждено скриншотом
-и анализом пикселей. Пустая вкладка и рейл не подтверждены кадрами
-(структурно не менялись).
+**335 тестов зелёные.** Код компилируется. Clippy без errors.
 
 ---
 
-## 5. Техдолг (на слайс 4)
+## Живой прогон
+
+**Статус: не выполнен.** Пультовый вывод (DP-1) занят фуллскрин-игрой SCUM.
+По правилам задания: «если вывод свободен — снимаю кадры; занят — пишу
+"не проверено" в отчёт».
+
+Что нужно снять (когда вывод освободится):
+1. Панель открыта, System — содержимое на месте и не поехало (сеть, диски,
+   питание, MPRIS, спектр, обои, футер). Главный регрессионный кадр.
+2. Демо-таблиц и полей ввода в System нет.
+3. Любая пустая вкладка — честное состояние, текст читается.
+4. Рейл Developer — 10 иконок, Gamer — 7.
+
+Пункт 2 подтверждён grep (пусто). Пункты 1, 3, 4 — требуют кадров.
+
+---
+
+## Техдолг (на слайс 4)
 
 1. **Дублирование `net_state`** — view и SystemTab оба семплят сеть независимо.
 2. **Кэш не чистится никогда** — замерить после слайса 4.
-3. **`format_bytes_per_sec` / `format_net_pair`** — разные имена, можно будет слить при объединении сетевых стейтов.
 
 ---
 
-## 6. Файлы
+## Файлы
 
 ### Изменённые (4):
+
 | Файл | Изменение |
 |---|---|
-| `view.rs` | −404/+58 строк: снос T157, +tab_views, slim render |
+| `view.rs` | Снос T157, +tab_views, ensure_tab_view(), −40 % строк (792→479) |
 | `mod.rs` | +`pub mod tab;`, −2 мёртвых реэкспорта |
 | `mpris_card.rs` | `Context<SidePanelRightView>` → `App` |
 | `disks.rs` | `Context<SidePanelRightView>` → `App` |
 
 ### Новые (2):
+
 | Файл | Строк | Содержание |
 |---|---|---|
-| `tab/mod.rs` | 244 | `TabContent`, `EmptyTab`, `placeholder_description`, 6 тестов |
-| `tab/system.rs` | 256 | `SystemTab` entity, `format_net_pair`, 3 теста |
+| `tab/mod.rs` | ~250 | `TabContent`, `EmptyTab`, `placeholder_description`, 7 тестов |
+| `tab/system.rs` | ~260 | `SystemTab` entity, `format_net_pair`, 3 теста |
 
-**Коммит:** `58ccb64`. Net: −346 строк в изменённых, +500 в новых.
-`view.rs`: 792 → 448 (−43 %).
+**Предыдущий коммит:** `58ccb64` (второй заход).
+Текущее состояние: не закоммичено (ожидает живого прогона).

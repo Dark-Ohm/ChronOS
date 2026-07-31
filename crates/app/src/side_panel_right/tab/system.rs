@@ -219,7 +219,7 @@ impl Render for SystemTab {
     }
 }
 
-fn format_net_pair(dl: f64, ul: f64) -> String {
+pub(crate) fn format_net_pair(dl: f64, ul: f64) -> String {
     fn one(bps: f64) -> String {
         if bps >= 1_000_000.0 {
             format!("{:.1} MB/s", bps / 1_000_000.0)

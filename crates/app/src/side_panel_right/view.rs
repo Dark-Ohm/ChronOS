@@ -25,6 +25,7 @@ use crate::side_panel_right::power_row::{
 };
 use crate::side_panel_right::surfaces;
 use crate::side_panel_right::tab::TabContent;
+use crate::side_panel_right::tab::system::format_net_pair;
 use crate::side_panel_right::tabs::PanelTab;
 use crate::side_panel_right::{
     HANDLE_WIDTH, RAIL_ONLY_WIDTH, RightPanelResize, SidePanelRightState,
@@ -179,11 +180,9 @@ impl SidePanelRightView {
 
     pub(crate) fn on_tab_select(&mut self, tab: PanelTab, cx: &mut Context<Self>) {
         self.active_tab = Self::next_active_tab(self.active_tab, tab);
-        // Lazy-create the tab view on first activation (not in render —
-        // render may run many times per frame and must stay pure).
-        self.tab_views
-            .entry(self.active_tab)
-            .or_insert_with(|| TabContent::create(self.active_tab, cx));
+        // Lazy-create the tab view on first activation. Also called from
+        // render() for the very-first-paint case. T168 errata 3.
+        self.ensure_tab_view(self.active_tab, cx);
         // Opening a tab from rail-only pulls content out (overlay).
         {
             let state = cx.global_mut::<SidePanelRightState>();
@@ -200,6 +199,22 @@ impl SidePanelRightView {
         // had advanced last_resized_width without a real set_size.
         self.last_resized_width = f32::NAN;
         cx.notify();
+    }
+
+    /// Lazily create the tab view if not already cached. Called from both
+    /// `on_tab_select` and `render()` — the single source of creation.
+    ///
+    /// Returns the cached handle so callers never need to look it up again
+    /// (and never need an `unwrap` on a key that was just inserted).
+    pub(crate) fn ensure_tab_view(
+        &mut self,
+        tab: PanelTab,
+        cx: &mut Context<Self>,
+    ) -> TabContent {
+        self.tab_views
+            .entry(tab)
+            .or_insert_with(|| TabContent::create(tab, cx))
+            .clone()
     }
 }
 
@@ -221,14 +236,12 @@ impl Render for SidePanelRightView {
             self.active_tab = PanelTab::System;
             // System may not have been visited yet — ensure the entry exists
             // before the render path reads it via get().
-            self.tab_views
-                .entry(PanelTab::System)
-                .or_insert_with(|| TabContent::create(PanelTab::System, cx));
+            self.ensure_tab_view(PanelTab::System, cx);
         }
         let power_arm = self.power_arm;
 
-        let dl = format_bytes_per_sec(self.net_state.cached_dl);
-        let ul = format_bytes_per_sec(self.net_state.cached_ul);
+        let dl = format_net_pair(self.net_state.cached_dl, 0.0);
+        let ul = format_net_pair(0.0, self.net_state.cached_ul);
         let net_summary = format!("↓ {dl}  ↑ {ul}");
 
         // --- Exclusive zone & width sync (mirror T126 left panel) ---
@@ -286,12 +299,11 @@ impl Render for SidePanelRightView {
             this.start_resize(f32::from(ev.position.x), cx);
         });
 
-        // Lazy tab view — already created by on_tab_select, just look up.
+        // Lazy tab view — created on first paint, cached thereafter.
+        // ensure_tab_view() avoids expect-panic on the very first render
+        // (before any on_tab_select has fired). T168 errata 3.
         let active = self.active_tab;
-        let tab_entry = self
-            .tab_views
-            .get(&active)
-            .expect("tab view must exist after on_tab_select");
+        let tab_entry = self.ensure_tab_view(active, cx);
 
         // OUTER: sole window-level `on_hover` (debounce). No transition_on_hover.
         // Layout: [handle | content? | rail] — rail flush right; handle is inner edge.
@@ -422,15 +434,7 @@ impl Render for SidePanelRightView {
     }
 }
 
-fn format_bytes_per_sec(bps: f64) -> String {
-    if bps >= 1_000_000.0 {
-        format!("{:.1} MB/s", bps / 1_000_000.0)
-    } else if bps >= 1_000.0 {
-        format!("{:.0} KB/s", bps / 1_000.0)
-    } else {
-        format!("{bps:.0} B/s")
-    }
-}
+
 
 #[cfg(test)]
 impl SidePanelRightView {

@@ -143,6 +143,27 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn first_render_without_tab_select_creates_view(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            cx.set_global(SidePanelRightState::default());
+        });
+        let view = cx.new(|cx| SidePanelRightView::new(cx));
+        // No on_tab_select — simulate the very first render path.
+        // Use Files (not System) to avoid requiring service globals.
+        cx.update_entity(&view, |this, cx| {
+            assert_eq!(this.tab_count(), 0, "must start empty");
+            this.ensure_tab_view(PanelTab::Files, cx);
+        });
+        cx.update_entity(&view, |this, _cx| {
+            assert_eq!(
+                this.tab_count(),
+                1,
+                "ensure_tab_view must create exactly one entry on first call"
+            );
+        });
+    }
+
+    #[gpui::test]
     async fn first_activation_creates_exactly_one_view(cx: &mut TestAppContext) {
         cx.update(|cx| {
             cx.set_global(SidePanelRightState::default());
