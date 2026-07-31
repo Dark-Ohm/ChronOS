@@ -29,6 +29,13 @@ fn icon_cache() -> &'static Mutex<HashMap<String, Option<PathBuf>>> {
     ICON_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Pins we already warned about this process (render is every frame — no flood).
+static SKIP_WARNED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+fn skip_warned() -> &'static Mutex<HashSet<String>> {
+    SKIP_WARNED.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
 const ICON_PX: f32 = 18.0;
 
 pub struct DockWidget;
@@ -145,28 +152,77 @@ impl BarWidget for DockWidget {
     }
 }
 
-/// Register the dock widget with the global bar registry.
+/// Install dock globals once and load `dock.toml` into the in-memory cache.
+///
+/// Called from [`super::register_builtin`] at bar init. Idempotent: repeated
+/// calls do not replace an existing [`DockMenuState`] / [`DockConfigSignal`]
+/// (layout reloads must not wipe an open context menu).
+///
+/// Widget instances themselves are owned by [`super::apply_layout`] (T134) —
+/// this function does **not** register `DockWidget` into `BarWidgetRegistry`.
 pub fn register(cx: &mut App) {
-    // Init dock globals (context menu + config change signal).
-    cx.set_global(crate::dock::context_menu::DockMenuState::default());
-    cx.set_global(crate::dock::signal::DockConfigSignal::default());
-
-    // Load config cache from disk.
+    if !cx.has_global::<crate::dock::context_menu::DockMenuState>() {
+        cx.set_global(crate::dock::context_menu::DockMenuState::default());
+    }
+    if !cx.has_global::<crate::dock::signal::DockConfigSignal>() {
+        cx.set_global(crate::dock::signal::DockConfigSignal::default());
+    }
     config::reload_cache();
-
-    cx.global_mut::<chronos_luau::bar::BarWidgetRegistry>()
-        .register(Box::new(DockWidget));
 }
 
 // ── Icon resolution (ported from dock/view.rs) ──
 
+/// Why a pinned id was dropped from the dock strip (testable, no log capture).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PinSkipReason {
+    /// No `.desktop` entry with this basename among scanned applications.
+    NoAppEntry,
+}
+
+impl PinSkipReason {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::NoAppEntry => "no AppEntry (no matching .desktop basename)",
+        }
+    }
+}
+
+/// Resolve one pin against the applications catalog.
+///
+/// `Ok((entry, icon_path))` — show it (icon may still be `None` → letter glyph).
+/// `Err(reason)` — drop it; caller must log.
+fn resolve_pin(
+    pin_id: &str,
+    entries: &[AppEntry],
+) -> Result<(AppEntry, Option<PathBuf>), PinSkipReason> {
+    let entry = entries
+        .iter()
+        .find(|e| e.id == pin_id)
+        .ok_or(PinSkipReason::NoAppEntry)?;
+    let icon_path = entry.icon.as_deref().and_then(resolve_icon);
+    Ok((entry.clone(), icon_path))
+}
+
 fn build_dock_icons(pinned: &[String], entries: &[AppEntry]) -> Vec<(AppEntry, Option<PathBuf>)> {
     pinned
         .iter()
-        .filter_map(|pin_id| {
-            let entry = entries.iter().find(|e| e.id == *pin_id)?;
-            let icon_path = entry.icon.as_deref().and_then(resolve_icon);
-            Some((entry.clone(), icon_path))
+        .filter_map(|pin_id| match resolve_pin(pin_id, entries) {
+            Ok(pair) => Some(pair),
+            Err(reason) => {
+                // Once per pin_id per process — render runs every frame.
+                let first = skip_warned()
+                    .lock()
+                    .map(|mut s| s.insert(pin_id.clone()))
+                    .unwrap_or(true);
+                if first {
+                    tracing::warn!(
+                        pin = %pin_id,
+                        reason = reason.as_str(),
+                        "dock: skipping pinned app"
+                    );
+                }
+                None
+            }
         })
         .collect()
 }
@@ -366,9 +422,81 @@ mod tests {
                 terminal: false,
             },
         ];
-        let pinned = vec!["kitty".to_string()];
+        // Pin present in catalog stays; pin absent is dropped (and warned).
+        let pinned = vec!["kitty".to_string(), "ghost".to_string()];
         let icons = build_dock_icons(&pinned, &entries);
         assert!(icons.iter().any(|(e, _)| e.id == "kitty"));
+        assert!(!icons.iter().any(|(e, _)| e.id == "ghost"));
         assert!(!icons.iter().any(|(e, _)| e.id == "notpinned"));
+    }
+
+    #[test]
+    fn resolve_pin_reports_no_app_entry() {
+        let entries = vec![AppEntry {
+            id: "kitty".into(),
+            name: "Kitty".into(),
+            exec: "/usr/bin/kitty".into(),
+            icon: Some("kitty".into()),
+            terminal: false,
+        }];
+        assert_eq!(
+            resolve_pin("firefox", &entries).unwrap_err(),
+            PinSkipReason::NoAppEntry
+        );
+        assert!(resolve_pin("kitty", &entries).is_ok());
+    }
+
+    #[test]
+    fn resolve_pin_allows_missing_icon() {
+        let entries = vec![AppEntry {
+            id: "thunar".into(),
+            name: "Thunar".into(),
+            exec: "thunar".into(),
+            icon: None,
+            terminal: false,
+        }];
+        let (entry, icon) = resolve_pin("thunar", &entries).expect("entry exists");
+        assert_eq!(entry.id, "thunar");
+        assert!(icon.is_none());
+    }
+
+    /// Globals install once; `apply_layout` rebuilds the registry without
+    /// wiping `DockMenuState` (regression for the T166/T170 panic path).
+    #[gpui::test]
+    fn dock_globals_survive_apply_layout(cx: &mut gpui::TestAppContext) {
+        use chronos_luau::bar::BarWidgetRegistry;
+        use crate::bar::layout_config::BarLayoutConfig;
+        use crate::bar::widgets;
+        use crate::dock::context_menu::DockMenuState;
+        use crate::dock::signal::DockConfigSignal;
+
+        cx.update(|cx| {
+            cx.set_global(BarWidgetRegistry::default());
+            widgets::dock::register(cx);
+            assert!(cx.has_global::<DockMenuState>());
+            assert!(cx.has_global::<DockConfigSignal>());
+
+            // Stamp entry_id without opening a window (no Theme/Wayland needed).
+            cx.global_mut::<DockMenuState>()
+                .set_entry_id_for_test(Some("marker".into()));
+            assert_eq!(cx.global::<DockMenuState>().entry_id(), Some("marker"));
+
+            let cfg = BarLayoutConfig::default();
+            widgets::apply_layout(cx, &cfg);
+            assert!(
+                cx.has_global::<DockMenuState>(),
+                "apply_layout must not remove DockMenuState"
+            );
+            assert_eq!(
+                cx.global::<DockMenuState>().entry_id(),
+                Some("marker"),
+                "apply_layout must not re-set DockMenuState"
+            );
+            assert!(cx.has_global::<DockConfigSignal>());
+
+            // Second register is idempotent (does not wipe marker).
+            widgets::dock::register(cx);
+            assert_eq!(cx.global::<DockMenuState>().entry_id(), Some("marker"));
+        });
     }
 }

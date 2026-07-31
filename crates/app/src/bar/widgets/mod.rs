@@ -92,5 +92,9 @@ pub fn apply_layout(cx: &mut App, cfg: &BarLayoutConfig) {
 pub fn register_builtin(cx: &mut App) {
     let cfg = BarLayoutConfig::load().sanitized();
     super::layout_config::update_cache(cfg.clone());
+    // Dock globals (menu state + config signal + disk cache) install once here.
+    // `apply_layout` rebuilds the widget registry on every bar.toml change and
+    // must not re-set those globals (would wipe an open context menu).
+    dock::register(cx);
     apply_layout(cx, &cfg);
 }

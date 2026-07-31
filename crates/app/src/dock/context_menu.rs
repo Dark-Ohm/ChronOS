@@ -39,6 +39,12 @@ impl DockMenuState {
     pub fn entry_id(&self) -> Option<&str> {
         self.entry_id.as_deref()
     }
+
+    /// Test-only: stamp `entry_id` without opening a window (avoids Theme/Wayland).
+    #[cfg(test)]
+    pub fn set_entry_id_for_test(&mut self, id: Option<String>) {
+        self.entry_id = id;
+    }
 }
 
 pub struct DockMenuView;
