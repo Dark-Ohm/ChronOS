@@ -8,9 +8,20 @@
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активные задания** — брать только из `docs/orchestration/tasks/active/`
-(верхний уровень). Что лежит в `active/check/` — на приёмке у архитектора,
-что в `active/pause/` — заблокировано; ни то, ни другое не разбирать.
+**Активные задания** (слайс 3 спеки Shell-IDE, план —
+`docs/superpowers/plans/2026-07-31-right-panel-modularization-slice-3.md`):
+
+- `docs/orchestration/tasks/active/T168-panel-tab-contract.md` — контракт
+  вкладки правой панели, System в свой модуль, **снос лесов T157**
+  (демо-таблица и поле ввода до сих пор рисуются в живой панели). Идёт
+  первой и одна.
+- `docs/orchestration/tasks/active/T169-rail-fourteen-tabs.md` —
+  **ЗАБЛОКИРОВАНА** до приёмки T168: рейл до четырнадцати вкладок по §4.1,
+  плюс четыре новых `rail-*.svg` (их в дереве нет).
+- `docs/orchestration/tasks/active/T170-dock-globals-never-installed.md` —
+  **параллельно**, зона `dock/**` + `bar/widgets/`, с правой панелью не
+  пересекается. `bar::widgets::dock::register` мёртвая, глобалы дока не
+  ставятся никогда, контекстное меню роняет шелл всегда.
 
 
 **Активное задание:** нет (архитектор назначит).
