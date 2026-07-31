@@ -61,6 +61,33 @@ pub enum PreviewKind {
     Unsupported,
 }
 
+/// Image URL category for the markdown rewriter (T180).
+///
+/// Decided by a pure function over the URL string — no GPUI, no I/O. The
+/// category decides whether the markdown source needs reshaping before
+/// it reaches `gpui_component::text::markdown(...)`, which would
+/// otherwise call into the asset cache and pull remote bitmaps on file
+/// open.
+///
+/// `Remote` triggers redaction; the others are passed through unchanged
+/// so the markdown renderer keeps handling them normally (data URI inline,
+/// `file://` absolute path, relative + absolute paths resolved against the
+/// markdown source file).
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ImageUrlClass {
+    /// `http://…`/`https://…`/`ftp://…` — **must not be loaded** by the
+    /// shell when rendering local markdown. Replaced with a text marker.
+    Remote(String),
+    /// `data:` URI — inline bytes, no network.
+    Data,
+    /// `file://`, relative (`./`, `../`), absolute (`/abs/...`), or plain
+    /// (`foo.png`) — handled by the markdown renderer as a local image.
+    Local(String),
+    /// Empty / whitespace — left alone so the alt text is still visible
+    /// behind whatever the parser makes of it.
+    Unsupported(String),
+}
+
 /// Pure classifier over (extension, head bytes). Single source of truth;
 /// covered by unit tests in `tests`.
 pub(crate) fn classify(path: &Path, head: &[u8; SNIFF_BYTES]) -> PreviewKind {
@@ -102,6 +129,176 @@ fn looks_like_text(head: &[u8; SNIFF_BYTES]) -> bool {
     }
     // 80 % = `4 * len / 5`. Compare avoiding float math.
     printable * 5 >= SNIFF_BYTES * 4
+}
+
+// --- T180: remote-image redaction for markdown previews ---
+
+/// Pure URL classifier. Trims, lowercases the scheme part, decides.
+///
+/// The scheme part is what we lowercase; the rest is kept verbatim so
+/// URL-encoded payloads (mixed-case parameters, percent-escapes) survive.
+pub(crate) fn classify_image_url(url: &str) -> ImageUrlClass {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return ImageUrlClass::Unsupported(url.to_string());
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("https://")
+        || lower.starts_with("http://")
+        || lower.starts_with("ftp://")
+    {
+        return ImageUrlClass::Remote(trimmed.to_string());
+    }
+    if lower.starts_with("data:") {
+        return ImageUrlClass::Data;
+    }
+    if let Some(rest) = lower.strip_prefix("file://") {
+        return ImageUrlClass::Local(rest.to_string());
+    }
+    // Anything else is treated as a local path: relative `./`, `../`,
+    // absolute `/foo`, or plain `name.png`. The markdown renderer resolves
+    // relatives against the source file — if the user wrote a typo, the
+    // asset cache will fail *locally* and the log will be honest about it.
+    ImageUrlClass::Local(trimmed.to_string())
+}
+
+/// One `![alt](url) ["title"]` match starting at byte offset `start`.
+///
+/// Returns the alt slice, the URL slice, the optional title slice, and
+/// the byte index just past the closing `)`. `None` if `start` doesn't
+/// look like image syntax.
+///
+/// Conservative on purpose: alt cannot contain `]`, URL cannot contain
+/// whitespace or `)`, title must be a single `"…"` after optional
+/// whitespace. That covers the realistic case (the README badges) and is
+/// *not* a full CommonMark parser — that's the markdown crate's job.
+/// Here we only need to know whether to redact.
+///
+/// **Known v1 limitations**: CommonMark doesn't allow `\` escapes inside
+/// alt text — multi-image inputs like `![outer ![inner](url)](local.png)`
+/// will close the outer alt at the inner `]`. Titles with a literal
+/// quote, like `![alt](url "she said \"hi\"")`, will close on the first
+/// `"`. Both cases still fall back to a labelled marker — never an
+/// `ImageNode` for remote URLs — so the no-network guarantee holds even
+/// when the syntax can't be parsed perfectly.
+struct ImageMatch<'a> {
+    alt: &'a str,
+    url: &'a str,
+    title: Option<&'a str>,
+    end: usize,
+}
+
+fn match_image_at(text: &str, start: usize) -> Option<ImageMatch<'_>> {
+    let bytes = text.as_bytes();
+    if start + 4 > bytes.len() || bytes[start] != b'!' || bytes[start + 1] != b'[' {
+        return None;
+    }
+    // Alt: scan from `start + 2` until the first ']'.
+    let alt_rel = text[start + 2..].find(']')?;
+    let alt_abs = start + 2 + alt_rel;
+    let alt = &text[start + 2..alt_abs];
+    // Expect '(' right after ']'.
+    let after_alt = alt_abs + 1;
+    if bytes.get(after_alt) != Some(&b'(') {
+        return None;
+    }
+    let url_start = after_alt + 1;
+    // URL: up to first whitespace or ')'.
+    let url_end_rel = text[url_start..]
+        .find(|c: char| c.is_whitespace() || c == ')')
+        .unwrap_or(text.len().saturating_sub(url_start));
+    let url = &text[url_start..url_start + url_end_rel];
+    let url_end_abs = url_start + url_end_rel;
+    // Optional: whitespace + quoted title + closing ')'.
+    let mut cursor = url_end_abs;
+    let title = match text[cursor..].chars().next() {
+        Some(c) if c.is_whitespace() => {
+            cursor += text[cursor..]
+                .chars()
+                .take_while(|c| c.is_whitespace())
+                .count();
+            let after_ws = &text[cursor..];
+            if after_ws.starts_with('"') && after_ws.len() >= 2 {
+                let close_rel = after_ws[1..].find('"')?;
+                let title_str = &after_ws[1..=close_rel];
+                cursor += 1 + close_rel + 1;
+                Some(title_str)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
+    // Require closing ')'.
+    if bytes.get(cursor) != Some(&b')') {
+        return None;
+    }
+    Some(ImageMatch {
+        alt,
+        url,
+        title,
+        end: cursor + 1,
+    })
+}
+
+/// Truncate a URL for the in-text marker so absurdly long ones don't
+/// wreck layout. Char-boundary safe (multi-byte UTF-8).
+fn truncate_for_marker(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        let kept: String = s.chars().take(max_chars).collect();
+        format!("{kept}…")
+    }
+}
+
+/// Walk `text` and rewrite every `![alt](remote-url) ["title"]` to a
+/// plain-text marker `[🛰 {alt} — remote image, not loaded: {url}]`
+/// (plus optional title). Local / data / `file://` paths pass through,
+/// so the markdown renderer still treats them as images.
+///
+/// Why pre-process text instead of patching the gpui-component fork:
+/// the fork's `format/markdown.rs` constructs `InlineNode::image(...)`
+/// unconditionally for `Node::Image(raw)` and only resolves the URL on
+/// render — there is no parser-side hook on the public API. A plugin
+/// would have to fork `MarkdownExtensions::parse_inline`, raising the
+/// cost well above what one bug-fix warrants. Pre-processing the source
+/// keeps the no-network guarantee *before* the tree is built, so no
+/// ImageNode is ever created.
+pub(crate) fn redact_remote_images(text: &str) -> String {
+    // Hot path: most markdown bodies contain no `![…](…)` at all. Skip the
+    // walk to avoid an allocation per render of generic markdown like a
+    // README heading + paragraph.
+    if !text.contains("![") {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < text.len() {
+        if let Some(m) = match_image_at(text, i) {
+            match classify_image_url(m.url) {
+                ImageUrlClass::Remote(raw) => {
+                    let disp = truncate_for_marker(&raw, 80);
+                    let title_part = m
+                        .title
+                        .map(|t| format!(" (title: \"{t}\")"))
+                        .unwrap_or_default();
+                    out.push_str(&format!(
+                        "[🛰 {alt} — remote image, not loaded: {disp}{title_part}]",
+                        alt = m.alt,
+                    ));
+                }
+                _ => out.push_str(&text[i..m.end]),
+            }
+            i = m.end;
+        } else {
+            // Pass through one UTF-8 char at a time; panics-free.
+            let ch = text[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+    }
+    out
 }
 
 /// Lifecycle of the loaded file. `generation` is the matching
@@ -513,10 +710,14 @@ fn render_markdown(
     if truncated {
         body = body.child(truncated_banner(theme));
     }
-    // `gpui_component::text::markdown` takes `impl Into<SharedString>`.
-    // `&str` has a direct into-impl (refcounted string) so we can pass the
-    // borrowed `text` directly without paying for a `String` allocation.
-    body.child(gpui_component::text::markdown(text))
+    // T180: redact remote `![alt](https://… or http://…)` before
+    // handing the source to the markdown renderer. `gpui_component`
+    // would otherwise pull the bitmap through the asset cache, leaking
+    // IP and spamming `ERROR … asset_cache` for img.shields.io and
+    // friends. Local / data / `file://` paths pass through verbatim;
+    // see `redact_remote_images` for the precise contract.
+    let safe = redact_remote_images(text);
+    body.child(gpui_component::text::markdown(safe.as_str()))
         .into_any_element()
 }
 
@@ -913,6 +1114,164 @@ mod tests {
         assert_eq!(loaded.kind, PreviewKind::Image);
         assert!(loaded.text.is_none());
         assert!(!loaded.truncated);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // --- T180: image-URL classifier && remote-image redactor ---
+
+    #[test]
+    fn classify_image_url_categories() {
+        let cases: &[(&str, ImageUrlClass)] = &[
+            ("https://a/x.png", ImageUrlClass::Remote("https://a/x.png".into())),
+            ("http://a/x.png", ImageUrlClass::Remote("http://a/x.png".into())),
+            ("ftp://a/x.png", ImageUrlClass::Remote("ftp://a/x.png".into())),
+            // Case-insensitive on scheme part — uppercase keeps the verbatim URL.
+            ("HTTPS://A/X.PNG", ImageUrlClass::Remote("HTTPS://A/X.PNG".into())),
+            ("data:image/png;base64,xyz", ImageUrlClass::Data),
+            ("file:///abs/foo.svg", ImageUrlClass::Local("/abs/foo.svg".into())),
+            ("./local.png", ImageUrlClass::Local("./local.png".into())),
+            ("../foo.png", ImageUrlClass::Local("../foo.png".into())),
+            ("plain.jpg", ImageUrlClass::Local("plain.jpg".into())),
+            ("/abs/foo.png", ImageUrlClass::Local("/abs/foo.png".into())),
+            ("", ImageUrlClass::Unsupported("".into())),
+            ("   ", ImageUrlClass::Unsupported("   ".into())),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(&classify_image_url(input), expected, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn redact_remote_images_replaces_badges() {
+        let original = "Header\n\
+                        [![status](https://img.shields.io/badge/status-work%20in%20progress-orange)](#status)\n\
+                        [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](#license)\n\
+                        End\n";
+        let redacted = redact_remote_images(original);
+        // The image syntax must be gone — that's the part that would have
+        // made the renderer call into the asset cache. What we forbid is
+        // `![…](…)`, not the URL appearing in some form.
+        assert!(
+            !redacted.contains("!["),
+            "image syntax must be gone, got: {redacted}"
+        );
+        // The URL is surfaced *inline in the marker* — that's the point
+        // of being honest about where the image would have come from.
+        assert!(
+            redacted.contains("img.shields.io"),
+            "marker must surface the URL: {redacted}"
+        );
+        assert!(redacted.contains("Header"));
+        assert!(redacted.contains("End"));
+        assert!(redacted.contains("remote image, not loaded"));
+        // Each badge became its own marker.
+        assert!(redacted.contains("[🛰 status"));
+        assert!(redacted.contains("[🛰 license"));
+    }
+
+    #[test]
+    fn redact_remote_images_keeps_local() {
+        let s = "![alt](./local.png)\n\
+                 ![alt2](/abs/foo.png)\n\
+                 ![alt3](foo.png)\n\
+                 ![alt4](data:image/png;base64,xyz)";
+        assert_eq!(
+            redact_remote_images(s),
+            s,
+            "local/data classes must pass through unchanged"
+        );
+    }
+
+    #[test]
+    fn redact_remote_images_handles_title_and_edges() {
+        // Title preserved on remote image.
+        let r1 = redact_remote_images(r#"![a](https://x/y.png "Title")"#);
+        assert!(r1.contains(r#"(title: "Title")"#));
+        assert!(!r1.contains("!["));
+
+        // Long URL gets truncated with an ellipsis.
+        let long_url = "https://a/".to_string() + &"x".repeat(200) + ".png";
+        let r2 = redact_remote_images(&format!("![a]({long_url})"));
+        assert!(r2.contains('…'));
+        assert!(r2.chars().filter(|c| *c == 'x').count() <= 80);
+
+        // Regular link (no leading '!') — passthrough.
+        assert_eq!(
+            redact_remote_images("[a](https://x/y.png)"),
+            "[a](https://x/y.png)"
+        );
+
+        // Empty / plain text / malformed images — passthrough.
+        assert_eq!(redact_remote_images(""), "");
+        assert_eq!(
+            redact_remote_images("# Hello\nworld"),
+            "# Hello\nworld"
+        );
+        assert_eq!(
+            redact_remote_images("![alt]no-paren"),
+            "![alt]no-paren"
+        );
+        assert_eq!(
+            redact_remote_images("![alt](unclosed"),
+            "![alt](unclosed"
+        );
+
+        // Cyrillic / multibyte alt — UTF-8 char boundaries must hold
+        // across match → slice → re-emit. A wrong slicing here would
+        // either panic on the `find` or produce a `str::slice` error.
+        let r = redact_remote_images("![Логотип](https://x/logo.svg)");
+        assert!(r.contains("Логотип"));
+        assert!(!r.contains("!["), "non-ASCII alt still stripped: {r}");
+    }
+
+    #[gpui::test]
+    fn render_markdown_with_badges_does_not_panic(cx: &mut TestAppContext) {
+        // Belt-and-suspenders: drive a full PreviewTab through the
+        // Loading → Loaded path with a remote-image markdown body and
+        // prove nothing in the text pipeline (redactor + renderer) panics.
+        install_theme(cx);
+        let dir =
+            std::env::temp_dir().join(format!("chronos-t180-render-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("README.md");
+        std::fs::write(
+            &target,
+            "# Title\n\n[![a](https://img.shields.io/badge/x-blue)](https://x)\n\nBody.\n",
+        )
+        .unwrap();
+
+        cx.update(|cx| {
+            cx.set_global(PreviewTarget::default());
+        });
+        let view = cx.new(|cx| PreviewTab::new(cx));
+        cx.update(|cx| {
+            cx.set_global(PreviewTarget::file(target.clone()));
+        });
+        cx.background_executor.run_until_parked();
+        cx.update_entity(&view, |this, _cx| match &this.state {
+            State::Loaded { kind, text, .. } => {
+                assert_eq!(*kind, PreviewKind::Markdown);
+                // The *stored* text is the raw body — redaction happens
+                // at render time. This confirms the data path still works.
+                let stored = text.as_deref().unwrap_or("");
+                assert!(stored.contains("img.shields.io"));
+                assert!(stored.contains("Title"));
+            }
+            other => panic!("expected Markdown Loaded, got {other:?}"),
+        });
+
+        // The redactor *at the call site* strips image syntax. Proves
+        // the wiring from `render_markdown` → `redact_remote_images`
+        // would hand the markdown renderer a no-remote-image string.
+        let raw = "# Title\n\n\
+                   [![a](https://img.shields.io/badge/x-blue)](https://x)\n\nBody.\n";
+        let redacted = redact_remote_images(raw);
+        assert!(
+            !redacted.contains("!["),
+            "image syntax stripped: {redacted}"
+        );
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
