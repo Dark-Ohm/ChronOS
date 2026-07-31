@@ -12,7 +12,13 @@
 `docs/superpowers/plans/2026-07-31-right-panel-modularization-slice-3.md`):
 
 - `docs/orchestration/tasks/active/T169-rail-fourteen-tabs.md` —
-  **РАЗБЛОКИРОВАНА**, T168 принята. Рейл до четырнадцати вкладок по §4.1,
+  **ЭРРАТА, первый заход не принят.** Читать раздел в конце файла.
+  Блокер один: `rail-preview.svg` через `mix-blend-mode`, который наш
+  рендерер игнорирует. Остальное сделано хорошо.
+- `docs/orchestration/tasks/active/T172-icons-blend-mode-broken.md` —
+  **параллельно**, зона только `assets/icons/*.svg`, ни строки Rust.
+  `rail-terminal.svg` и `rail-binds.svg` уже сегодня рисуются голыми
+  прямоугольниками. Проверяется отрисовкой SVG, живой шелл не нужен. Рейл до четырнадцати вкладок по §4.1,
   плюс четыре новых `rail-*.svg` (их в дереве нет — проверено).
   Контракт вкладки готов: `TabContent`, `ensure_tab_view()`, честное пустое
   состояние. Новые вкладки садятся на него, `view.rs` трогать не нужно.
