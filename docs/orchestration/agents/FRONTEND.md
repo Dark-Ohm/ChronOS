@@ -8,14 +8,18 @@
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активные задания** (слайс 3 спеки Shell-IDE, план —
-`docs/superpowers/plans/2026-07-31-right-panel-modularization-slice-3.md`):
+**Активные задания** (слайс 4 спеки Shell-IDE, план —
+`docs/superpowers/plans/2026-07-31-developer-workbench-slice-4.md`):
 
-- `docs/orchestration/tasks/active/T172-icons-blend-mode-broken.md` —
-  **отчёт сдан** (`report/T172-icons-blend-mode-broken-report.md`), ждут приёмки.
+- `docs/orchestration/tasks/active/T174-width-follows-auto-tab-switch.md` —
+  регрессия из смока T173: при автоматической смене вкладки на System ширина
+  панели залипает на прежней. Точечно, зона `view.rs`.
+- `docs/orchestration/tasks/active/T176-files-tab.md` — вкладка Files.
+  **Разведка уже сделана**, читать `report-log/T175-chronos-fm-port-recon-report.md`
+  прежде, чем открывать Chronos-FM: переносится слой FS (~320 строк), вьюха
+  пишется своя под 440 px. UI проводника не тащить — его таблица ~928 px.
 
-T168 закрыта — принята с тремя эрратами (`58ccb64` + `ae558fb`); живой прогон
-закрыл архитектор сам, когда освободился пультовый вывод.
+Зоны T174 и T176 не пересекаются, можно параллельно.
 
 T171 закрыта — принята с первого захода (`4edd8cf`). Ширина панели стала
 свойством вкладки; живой прогон закрыл архитектор — System 400, Editor 560,
