@@ -92,6 +92,42 @@ impl SidePanelRightView {
         w.clamp(RAIL_ONLY_WIDTH, MAX_WIDTH)
     }
 
+    fn apply_active_tab_width(&mut self, cx: &mut Context<Self>) {
+        let target = self.active_tab_width(self.active_tab, cx);
+        let state = cx.global_mut::<SidePanelRightState>();
+        let before = state.width;
+        let content_open = state.dock_content || state.width > RAIL_ONLY_WIDTH + 1.0;
+        if content_open {
+            let changed = state.width != target;
+            state.ensure_content_width(target);
+            if changed {
+                self.last_resized_width = f32::NAN;
+            }
+        } else {
+            state.last_exclusive_zone = None;
+        }
+        tracing::info!(
+            before,
+            after = state.width,
+            content_open,
+            tab = self.active_tab.label(),
+            "side_panel_right: apply per-tab width"
+        );
+    }
+
+    fn resolve_active_tab(&mut self, rail_tabs: &[PanelTab], cx: &mut Context<Self>) -> bool {
+        if rail_tabs.contains(&self.active_tab) {
+            return false;
+        }
+        tracing::info!(
+            was = self.active_tab.label(),
+            "side_panel_right: active tab not in mode set → System"
+        );
+        self.active_tab = PanelTab::System;
+        self.apply_active_tab_width(cx);
+        true
+    }
+
     fn start_resize(&mut self, start_x: f32, cx: &mut Context<Self>) {
         let w = cx.global::<SidePanelRightState>().width;
         self.resize_start_x = Some(start_x);
@@ -209,26 +245,10 @@ impl SidePanelRightView {
         // render() for the very-first-paint case. T168 errata 3.
         self.ensure_tab_view(self.active_tab, cx);
         // Apply per-tab width only when content is visible (trap #3).
-        let target = self.active_tab_width(self.active_tab, cx);
-        {
-            let state = cx.global_mut::<SidePanelRightState>();
-            let before = state.width;
-            let content_open = state.dock_content || state.width > RAIL_ONLY_WIDTH + 1.0;
-            if content_open {
-                state.ensure_content_width(target);
-            } else {
-                state.last_exclusive_zone = None;
-            }
-            tracing::info!(
-                before,
-                after = state.width,
-                content_open,
-                tab = tab.label(),
-                "side_panel_right: tab select → apply per-tab width"
-            );
-        }
-        // Force next paint to re-apply resize even if a previous failed attempt
-        // had advanced last_resized_width without a real set_size.
+        self.apply_active_tab_width(cx);
+        // Preserve the existing retry contract: a user-driven tab switch
+        // retries the platform resize on the next paint even if the width did
+        // not change, because the previous resize may not have reached Wayland.
         self.last_resized_width = f32::NAN;
         cx.notify();
     }
@@ -260,12 +280,9 @@ impl Render for SidePanelRightView {
         );
         // Active tab left the set after a mode switch — land on System, keep
         // the panel open (§5: must not discard panel state / close on mode change).
-        if !rail_tabs.contains(&self.active_tab) {
-            tracing::info!(
-                was = self.active_tab.label(),
-                "side_panel_right: active tab not in mode set → System"
-            );
-            self.active_tab = PanelTab::System;
+        // Resolve the fallback and apply System's per-tab width. The resolver
+        // is a no-op on the next render once the active tab belongs to the rail.
+        if self.resolve_active_tab(&rail_tabs, cx) {
             // System may not have been visited yet — ensure the entry exists
             // before the render path reads it via get().
             self.ensure_tab_view(PanelTab::System, cx);
@@ -411,6 +428,9 @@ impl Render for SidePanelRightView {
                                             cx,
                                         ))
                                 }
+                                TabContent::Files(entity) => {
+                                    col.child(entity.clone())
+                                }
                                 TabContent::Placeholder(entity) => {
                                     col.child(entity.clone())
                                 }
@@ -474,6 +494,7 @@ impl SidePanelRightView {
     pub(crate) fn tab_entity_id(&self, tab: PanelTab) -> Option<gpui::EntityId> {
         self.tab_views.get(&tab).map(|tc| match tc {
             TabContent::System(e) => e.entity_id(),
+            TabContent::Files(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })
     }
@@ -484,6 +505,73 @@ impl SidePanelRightView {
         let state = cx.global_mut::<SidePanelRightState>();
         state.resize(width);
         self.tab_resize_memory.insert(self.active_tab, state.width);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+
+    #[gpui::test]
+    async fn mode_fallback_applies_system_preferred_width(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let mut state = SidePanelRightState::default();
+            state.dock_content = true;
+            cx.set_global(state);
+        });
+        let view = cx.new(|cx| SidePanelRightView::new(cx));
+
+        cx.update_entity(&view, |this, cx| {
+            this.active_tab = PanelTab::Editor;
+            this.resolve_active_tab(&[PanelTab::System], cx);
+        });
+
+        cx.update(|cx| {
+            assert_eq!(cx.global::<SidePanelRightState>().width, 400.);
+        });
+        cx.update_entity(&view, |this, _cx| {
+            assert_eq!(this.active_tab, PanelTab::System);
+        });
+    }
+
+    #[gpui::test]
+    async fn mode_fallback_restores_system_resize_memory(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let mut state = SidePanelRightState::default();
+            state.dock_content = true;
+            cx.set_global(state);
+        });
+        let view = cx.new(|cx| SidePanelRightView::new(cx));
+
+        cx.update_entity(&view, |this, cx| {
+            this.active_tab = PanelTab::Editor;
+            this.tab_resize_memory.insert(PanelTab::System, 480.);
+            this.resolve_active_tab(&[PanelTab::System], cx);
+        });
+
+        cx.update(|cx| {
+            assert_eq!(cx.global::<SidePanelRightState>().width, 480.);
+        });
+    }
+
+    #[gpui::test]
+    async fn mode_fallback_keeps_rail_only_width_closed(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            cx.set_global(SidePanelRightState::default());
+        });
+        let view = cx.new(|cx| SidePanelRightView::new(cx));
+
+        cx.update_entity(&view, |this, cx| {
+            this.active_tab = PanelTab::Editor;
+            this.resolve_active_tab(&[PanelTab::System], cx);
+        });
+
+        cx.update(|cx| {
+            let state = cx.global::<SidePanelRightState>();
+            assert_eq!(state.width, RAIL_ONLY_WIDTH);
+            assert!(!state.dock_content);
+        });
     }
 }
 
