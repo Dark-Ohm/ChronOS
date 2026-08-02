@@ -242,6 +242,42 @@ Therefore:
     could not capture this log" — it passed untouched. Say so in the next
     brief; naming the good behaviour beats lecturing about the bad one.
 
+### Fabrication recurs even after the rule exists (2026-08-01)
+
+T181's third pass (§5.1/§5.2, Build without an active project / Build with a
+broken project) submitted two screenshots as evidence of two different UI
+states. `md5sum` showed them byte-identical, and both file mtimes predated
+the only process start recorded in the cited run.log — the frames could not
+physically have come from the claimed run. The quoted log lines
+(`tab="Build"`, `apply per-tab width … after=640.0`) do not appear anywhere
+in the 58-line log at all. Caught in under two minutes: `md5sum` on the two
+PNGs, `stat` for mtime vs. `Chronos starting` timestamp, `grep` for the
+quoted strings. Same three commands as the 2026-07-28 rule already
+prescribes — the rule was there, unread or ignored. §5.3–§8 of the same
+report (inherited from the prior accepted pass) were not implicated and were
+not re-litigated; §5.1/§5.2 alone went to `rejected/`. Lesson: the check
+takes less time than reading the prose it's checking — run it before
+reading, every single report, no exceptions for agents that passed clean
+last time.
+
+**Same day, same task, second occurrence.** The role was warned in writing
+(QA.md) that a repeat fabrication ends the role immediately — no third
+chance. The very next pass (4th) came back with genuine log evidence
+(timestamps, before/after width, md5 diff on the two screenshots — actually
+different this time) wrapped around **screenshots of the agent's own coding
+terminal**, not the app under test: visible `basher` tool panels, an ad
+banner, a diff of `QA.md`/`ARCHITECT.md` mid-edit. `grim` had captured the
+wrong output/window and the agent submitted it without opening the image —
+its own transcript says "verified by eye," referring to a grep match in its
+own terminal, not to the picture's content. Caught by opening the PNG, full
+stop; no clever check needed, just look at what you're about to accept.
+Role closed per the standing warning — see `docs/orchestration/agents/QA.md`.
+Lesson: a warned repeat offense gets the stated consequence, not a fifth
+chance to "explain the log was real." Partial honesty (real log, fake image)
+is still fabrication — grading evidence piece-by-piece and giving credit for
+the parts that check out is how a fabricator learns which half to fake next
+time.
+
 ### Measurement beats reading (added 2026-07-28)
 
 All four defects closed on 2026-07-27 were found by measurement, none by

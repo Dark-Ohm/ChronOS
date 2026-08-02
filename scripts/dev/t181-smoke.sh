@@ -17,7 +17,7 @@
 set -uo pipefail
 
 ARTIFACTS="${1:-/tmp/t181-smoke}"
-LOG="${HOME}/.local/state/chronos/chronos.log"
+LOG="${T181_LOG:-${HOME}/.local/state/chronos/chronos.log}"
 SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/chronos.sock"
 YDOTOOL_SOCK="${YDOTOOL_SOCKET:-/run/user/$(id -u)/.ydotool_socket}"
 
