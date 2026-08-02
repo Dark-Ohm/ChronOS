@@ -34,10 +34,10 @@
 | T186 | GLM 5.2 | `102fef4` | rail 17/10, 29/29, grim N/V |
 | T187 | DeepSeek V4 Pro | `7a99116`+`af66b58` | is_game+games.toml |
 
-**Слайс 5 код-волна (T185–T188, T190) — принята 2026-08-02.**
-T188 `f3985ab` Library; T190 gaming wire (коммит arch). Live grim/hyprctl — N/V.
-T189 Scenes / T191 QA — pause. **Product cut обсуждается** (Agent Shell DE vs gamer/IDE sprawl).
-План: `docs/superpowers/plans/2026-08-02-gamer-hub-slice-5.md`.
+**Слайс 5 код принят; product cut зафиксирован 2026-08-02:**
+`docs/PRODUCT.md` — **канон scope** (Agent Shell DE). T189 Scenes — **KILL**.
+Library KEEP. Preview→Editor+edit; follow-agent; hide LSP/MCP; Editor settings→System.
+Hypr binds после shippable hyprland dotfiles. active/ пуст — ждать фазы PRODUCT.
 
 **Четыре живые вкладки и три движка в `crates/services/` без единого
 GPUI-типа:** `files/` (порт из Chronos-FM), `terminal/` (вынесен из спайка

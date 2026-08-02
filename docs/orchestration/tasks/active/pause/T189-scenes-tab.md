@@ -1,3 +1,4 @@
+**KILL product path 2026-08-02** — scenes UI not needed. See docs/PRODUCT.md.
 # T189 — вкладка Scenes (activate / create / delete)
 
 **Статус:** BLOCKED — после **T185 + T186 + T188** (create-from-library).
