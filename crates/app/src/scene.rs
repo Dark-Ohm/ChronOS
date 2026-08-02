@@ -89,6 +89,19 @@ pub struct Scene {
     /// Оверрайд состава дока. Пусто = дефолт режима.
     #[serde(default)]
     pub dock: Vec<String>,
+    /// `"hub"` | `"game"`. Пусто → трактовать как hub, если `app` пуст,
+    /// иначе game (слайс 5, T185).
+    #[serde(default)]
+    pub kind: String,
+    /// Desktop id / launch key сцены-игры. Пуст у hub; у game обязателен
+    /// для launch (T187), иначе launch = unavailable.
+    #[serde(default)]
+    pub app: String,
+    /// `true` — единственный путь, где активация сцены зовёт
+    /// `GamingModeState::apply` (T189, не здесь). `false` по умолчанию:
+    /// Gamer ≠ GamingModeState (спека §5).
+    #[serde(default)]
+    pub apply_gaming_profile: bool,
     /// Захват неизвестных полей сцены (forward-compat, например [scene.windows]).
     #[serde(flatten)]
     pub extra: HashMap<String, toml::Value>,
@@ -132,9 +145,9 @@ pub fn load_config() -> ScenesConfig {
 }
 
 /// Запись конфига на диск. Вызывается ТОЛЬКО когда пользователь реально
-/// сменил активную сцену (будущий SceneManager), а не при каждом `set`.
-// Currently unused — scene manager (slice 3/4) will call this.
-#[allow(dead_code)]
+/// сменил активную сцену (`activate`) или при seed builtin hub на первом
+/// старте — не при каждом `restore_for_mode` (T164: битый/старый файл не
+/// затираем молча, эти пути пишут только осмысленные изменения).
 fn save_config(cfg: &ScenesConfig) {
     let path = config_path();
     if let Some(parent) = path.parent()
@@ -278,10 +291,116 @@ pub fn restore_for_mode(cx: &mut App, mode: WorkspaceMode) {
     cx.global_mut::<SceneState>().active = restored;
 }
 
+// ── Activate (user path) ────────────────────────────────────────────────────
+
+/// Почему активация сцены не удалась.
+// Wired by the Scenes tab UI (T188) — no consumer yet in this slice.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActivateError {
+    /// Нет сцены с таким id (после фильтрации невалидных).
+    NotFound,
+    /// Сцена есть, но её `mode` не парсится в `WorkspaceMode`.
+    InvalidMode,
+}
+
+/// Чистое ядро `activate`: по id ищет сцену (среди валидных) и возвращает
+/// новый конфиг с обновлённым `[last]` + саму найденную сцену. Не трогает
+/// диск и глобальное состояние — тестируется без `cx`.
+// Wired by `activate` below and the Scenes tab UI (T188) — no non-test
+// consumer of the standalone fn yet in this slice.
+#[allow(dead_code)]
+pub fn activate_in_config(
+    cfg: &ScenesConfig,
+    id: &str,
+) -> Result<(ScenesConfig, Scene), ActivateError> {
+    let mut for_resolve = cfg.clone();
+    for_resolve.scene = filter_valid(cfg.scene.clone());
+    let scene = find_by_id(&for_resolve, id)
+        .cloned()
+        .ok_or(ActivateError::NotFound)?;
+    let mode = WorkspaceMode::parse(&scene.mode).ok_or(ActivateError::InvalidMode)?;
+
+    let mut new_cfg = cfg.clone();
+    new_cfg.last.insert(mode_label(mode).to_string(), id.to_string());
+    Ok((new_cfg, scene))
+}
+
+/// Явная активация сцены пользователем: клик Library/Scenes, IPC.
+/// **Единственный** путь (кроме seed), который пишет `scenes.toml` на диск.
+/// Не зовёт `GamingModeState` (T190) и не зовёт `workspace_mode::set` —
+/// активация сцены ≠ смена режима.
+// Wired by the Scenes tab UI (T188) — no consumer yet in this slice.
+#[allow(dead_code)]
+pub fn activate(cx: &mut App, id: &str) -> Result<(), ActivateError> {
+    let cfg = cx.global::<SceneState>().config.clone();
+    let (new_cfg, scene) = activate_in_config(&cfg, id)?;
+
+    save_config(&new_cfg);
+
+    tracing::info!(scene = %id, mode = %scene.mode, "scene: activated");
+
+    let state = cx.global_mut::<SceneState>();
+    state.active = Some(scene);
+    state.config = new_cfg;
+    Ok(())
+}
+
+// ── Seed builtin hub ────────────────────────────────────────────────────────
+
+/// Rail tabs дефолтной hub-сцены (T186 добавит соответствующие `PanelTab`
+/// варианты; до merge T186 неизвестные id молча скипаются в
+/// `PanelTab::resolve_for_mode`, это ожидаемо и безопасно).
+const HUB_RAIL_TABS: &[&str] = &[
+    "system",
+    "library",
+    "scenes",
+    "captures",
+    "acp_settings",
+    "mcp_settings",
+    "lsp_settings",
+    "api_providers",
+    "editor_settings",
+    "hyprland_binds",
+];
+
+const HUB_DOCK: &[&str] = &["steam", "discord", "firefox", "kitty"];
+
+/// Если в конфиге нет валидной gamer-сцены с `id == "hub"` — добавляет её в
+/// память (не стирая чужие сцены) и, если ключа не было, выставляет
+/// `last["gamer"] = "hub"`. Возвращает `true`, если конфиг изменился (вызов
+/// обязан затем сохранить его на диск).
+pub fn ensure_builtin_hub(cfg: &mut ScenesConfig) -> bool {
+    let has_hub = cfg
+        .scene
+        .iter()
+        .any(|s| s.id == "hub" && WorkspaceMode::parse(&s.mode) == Some(WorkspaceMode::Gamer));
+    if has_hub {
+        return false;
+    }
+
+    cfg.scene.push(Scene {
+        id: "hub".to_string(),
+        name: "Game Hub".to_string(),
+        mode: "gamer".to_string(),
+        kind: "hub".to_string(),
+        rail_tabs: HUB_RAIL_TABS.iter().map(|s| (*s).to_string()).collect(),
+        active_tab: "library".to_string(),
+        dock: HUB_DOCK.iter().map(|s| (*s).to_string()).collect(),
+        ..Default::default()
+    });
+    cfg.last.entry("gamer".to_string()).or_insert_with(|| "hub".to_string());
+    true
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────
 
 pub fn init(cx: &mut App) {
-    let cfg = load_config();
+    let mut cfg = load_config();
+    if ensure_builtin_hub(&mut cfg) {
+        tracing::info!("scene: seeded builtin hub scene");
+        save_config(&cfg);
+    }
     let version = cfg.version;
     let scene_count = cfg.scene.len();
 
@@ -459,6 +578,9 @@ mod tests {
                 rail_tabs: vec!["system".into(), "files".into()],
                 active_tab: "files".into(),
                 dock: vec!["kitty".into()],
+                kind: String::new(),
+                app: String::new(),
+                apply_gaming_profile: false,
                 extra: scene_extra,
             }],
             extra: HashMap::new(),
@@ -515,5 +637,171 @@ mod tests {
         assert!(scene.rail_tabs.is_empty(), "rail_tabs пуст → override = None");
         assert!(scene.active_tab.is_empty(), "active_tab пуст → override = None");
         assert!(scene.dock.is_empty(), "dock пуст → override = None");
+    }
+
+    // 10. T185: новые поля Scene — round-trip через TOML, дефолты пустые.
+    #[test]
+    fn per_game_fields_default_and_roundtrip() {
+        let input = r#"
+            [[scene]]
+            id = "minimal"
+            name = "Minimal"
+            mode = "developer"
+        "#;
+        let cfg = parse_config(input).expect("разбор без новых полей");
+        let scene = &cfg.scene[0];
+        assert_eq!(scene.kind, "", "kind по умолчанию пуст");
+        assert_eq!(scene.app, "", "app по умолчанию пуст");
+        assert!(!scene.apply_gaming_profile, "apply_gaming_profile по умолчанию false");
+
+        let full = Scene {
+            id: "game-steam-730".into(),
+            name: "Counter-Strike 2".into(),
+            mode: "gamer".into(),
+            kind: "game".into(),
+            app: "steam_app_730".into(),
+            apply_gaming_profile: true,
+            ..Default::default()
+        };
+        let text = toml::to_string_pretty(&full).expect("сериализация с новыми полями");
+        let parsed: Scene = toml::from_str(&text).expect("десериализация с новыми полями");
+        assert_eq!(parsed, full, "round-trip новых полей потерял данные");
+    }
+
+    // 11. T185: activate_in_config находит сцену, обновляет [last], не трогает
+    // прочие сцены/поля конфига.
+    #[test]
+    fn activate_in_config_updates_last_for_mode() {
+        let mut cfg = cfg_with_scenes(vec![
+            Scene {
+                id: "chronos".into(),
+                name: "ChronOS".into(),
+                mode: "developer".into(),
+                ..Default::default()
+            },
+            Scene {
+                id: "cs2".into(),
+                name: "Counter-Strike 2".into(),
+                mode: "gamer".into(),
+                kind: "game".into(),
+                app: "steam_app_730".into(),
+                ..Default::default()
+            },
+        ]);
+        cfg.last.insert("developer".into(), "chronos".into());
+
+        let (new_cfg, scene) = activate_in_config(&cfg, "cs2").expect("cs2 должна активироваться");
+        assert_eq!(scene.id, "cs2");
+        assert_eq!(new_cfg.last.get("gamer"), Some(&"cs2".to_string()));
+        // Не должна тронуть developer-запись.
+        assert_eq!(new_cfg.last.get("developer"), Some(&"chronos".to_string()));
+        // Список сцен не потерян/не задвоен.
+        assert_eq!(new_cfg.scene.len(), 2);
+    }
+
+    // 12. T185: activate_in_config на несуществующий id → NotFound, конфиг не создан.
+    #[test]
+    fn activate_in_config_missing_id_is_not_found() {
+        let cfg = cfg_with_scenes(vec![]);
+        let result = activate_in_config(&cfg, "nope");
+        assert_eq!(result.err(), Some(ActivateError::NotFound));
+    }
+
+    // 13. T185: activate_in_config игнорирует невалидный mode на диске (не паникует).
+    #[test]
+    fn activate_in_config_invalid_mode_scene_is_not_found() {
+        // Сцена с невалидным mode отфильтровывается filter_valid перед
+        // поиском — activate на неё видит NotFound, не InvalidMode.
+        let cfg = cfg_with_scenes(vec![Scene {
+            id: "broken".into(),
+            name: "Broken".into(),
+            mode: "not_a_mode".into(),
+            ..Default::default()
+        }]);
+        let result = activate_in_config(&cfg, "broken");
+        assert_eq!(result.err(), Some(ActivateError::NotFound));
+    }
+
+    // 14. T185: ensure_builtin_hub добавляет hub при пустом конфиге и
+    // выставляет last.gamer.
+    #[test]
+    fn ensure_builtin_hub_seeds_when_missing() {
+        let mut cfg = ScenesConfig::default();
+        let changed = ensure_builtin_hub(&mut cfg);
+        assert!(changed, "пустой конфиг должен получить seed hub");
+        assert_eq!(cfg.scene.len(), 1);
+        let hub = &cfg.scene[0];
+        assert_eq!(hub.id, "hub");
+        assert_eq!(hub.mode, "gamer");
+        assert_eq!(hub.kind, "hub");
+        assert_eq!(hub.active_tab, "library");
+        assert!(hub.rail_tabs.contains(&"library".to_string()));
+        assert!(hub.dock.contains(&"steam".to_string()));
+        assert_eq!(cfg.last.get("gamer"), Some(&"hub".to_string()));
+    }
+
+    // 15. T185: ensure_builtin_hub не трогает чужие сцены и не задваивает hub.
+    #[test]
+    fn ensure_builtin_hub_preserves_existing_scenes_and_is_idempotent() {
+        let mut cfg = cfg_with_scenes(vec![Scene {
+            id: "chronos".into(),
+            name: "ChronOS".into(),
+            mode: "developer".into(),
+            ..Default::default()
+        }]);
+        let changed = ensure_builtin_hub(&mut cfg);
+        assert!(changed);
+        assert_eq!(cfg.scene.len(), 2, "developer-сцена сохранена, hub добавлен");
+        assert!(cfg.scene.iter().any(|s| s.id == "chronos"));
+
+        // Повторный вызов — hub уже есть, ничего не меняется.
+        let changed_again = ensure_builtin_hub(&mut cfg);
+        assert!(!changed_again, "hub уже есть — повторный seed не нужен");
+        assert_eq!(cfg.scene.len(), 2, "hub не задвоен");
+    }
+
+    // 16. T185: ensure_builtin_hub не перезаписывает существующий last.gamer,
+    // если он уже указывает на другую (не hub) сцену.
+    #[test]
+    fn ensure_builtin_hub_does_not_override_existing_last_gamer() {
+        let mut cfg = cfg_with_scenes(vec![Scene {
+            id: "cs2".into(),
+            name: "Counter-Strike 2".into(),
+            mode: "gamer".into(),
+            kind: "game".into(),
+            ..Default::default()
+        }]);
+        cfg.last.insert("gamer".into(), "cs2".into());
+
+        ensure_builtin_hub(&mut cfg);
+        assert_eq!(
+            cfg.last.get("gamer"),
+            Some(&"cs2".to_string()),
+            "seed не должен затирать существующий last.gamer"
+        );
+        assert!(cfg.scene.iter().any(|s| s.id == "hub"));
+    }
+
+    // 17. T185: restore_for_mode остаётся read-only на диске — регрессия T164
+    // контракта после появления activate/save_config.
+    #[test]
+    fn restore_for_mode_contract_stays_read_only_by_construction() {
+        // restore_for_mode принимает только &mut App (глобальное состояние в
+        // памяти) и нигде в теле не зовёт save_config — это гарантия по
+        // конструкции функции (см. её тело выше), а не по этому тесту:
+        // модуль не даёт restore_for_mode доступа к записи, потому что она
+        // не принимает ScenesConfig на запись и работает только с cx.global.
+        // Здесь фиксируем словами инвариант, который ловят live-смоки (T190).
+        let cfg = cfg_with_scenes(vec![Scene {
+            id: "hub".into(),
+            name: "Game Hub".into(),
+            mode: "gamer".into(),
+            ..Default::default()
+        }]);
+        // resolve_last (чистая часть restore_for_mode) — тоже без записи.
+        let mut cfg = cfg;
+        cfg.last.insert("gamer".into(), "hub".into());
+        let resolved = resolve_last(&cfg, WorkspaceMode::Gamer);
+        assert_eq!(resolved.map(|s| s.id), Some("hub".to_string()));
     }
 }
