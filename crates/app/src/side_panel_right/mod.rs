@@ -35,9 +35,12 @@ use gpui_component::Root;
 use crate::side_panel_right::view::SidePanelRightView;
 
 // Width constants — mirror left panel's SIDEBAR_COLLAPSED_WIDTH / HANDLE_WIDTH pattern.
-pub(crate) const RAIL_WIDTH: f32 = 44.;
-pub(crate) const HANDLE_WIDTH: f32 = 10.;
-pub(crate) const RAIL_ONLY_WIDTH: f32 = RAIL_WIDTH + HANDLE_WIDTH; // 54
+// T204: both rails unified at 36 (left == right); ghost handles at 4.
+// Left SIDEBAR_COLLAPSED_WIDTH/SIDEBAR_HANDLE_WIDTH must stay equal — see the
+// `rails_and_handles_match_left_panel` test below.
+pub(crate) const RAIL_WIDTH: f32 = 36.;
+pub(crate) const HANDLE_WIDTH: f32 = 4.;
+pub(crate) const RAIL_ONLY_WIDTH: f32 = RAIL_WIDTH + HANDLE_WIDTH; // 40
 /// Default full-content width when docked or user-resized.
 pub(crate) const DEFAULT_CONTENT_WIDTH: f32 = 560.;
 pub(crate) const MAX_WIDTH: f32 = 960.;
@@ -343,7 +346,7 @@ mod tests {
 
     #[test]
     fn rail_only_default_width() {
-        assert_eq!(RAIL_ONLY_WIDTH, 54.0);
+        assert_eq!(RAIL_ONLY_WIDTH, 40.0);
     }
 
     #[test]

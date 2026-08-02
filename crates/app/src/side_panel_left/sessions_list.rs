@@ -78,7 +78,8 @@ pub const SIDEBAR_COLLAPSED_WIDTH: f32 = 36.;
 pub const SIDEBAR_EXPANDED_WIDTH: f32 = 200.;
 
 /// Width of the resize-handle grab strip (must match `HANDLE_WIDTH` in panel.rs).
-pub const SIDEBAR_HANDLE_WIDTH: f32 = 10.;
+/// T204: ghost handle — 4px, transparent grab strip.
+pub const SIDEBAR_HANDLE_WIDTH: f32 = 4.;
 
 /// Minimum window width = collapsed sidebar + resize handle.
 pub const SIDEBAR_MIN_WIDTH: f32 = SIDEBAR_COLLAPSED_WIDTH + SIDEBAR_HANDLE_WIDTH;

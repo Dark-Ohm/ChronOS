@@ -387,24 +387,24 @@ pub fn render_panel(
                         .child(clipped_content),
                 )
                 .child(
+                    // T204 ghost handle: 4px transparent grab strip — no chrome
+                    // fill, no fat center stripe. A single 1px hairline on the
+                    // inner edge marks the thread column's boundary; pointer +
+                    // resize semantics unchanged (drag still works).
                     div()
                         .id("resize-handle")
                         .flex_none()
                         .w(px(SIDEBAR_HANDLE_WIDTH))
                         .h_full()
                         .cursor_col_resize()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .bg(theme.bg.tertiary)
+                        .bg(gpui::transparent_black())
                         .border_l_1()
                         .border_color(theme.border.subtle)
                         .on_mouse_down(gpui::MouseButton::Left, resize_mouse_handler)
                         .on_drag(super::LeftPanelResize, |_, _, _, cx| {
                             cx.new(|_| gpui::EmptyView)
                         })
-                        .on_drag_move(resize_drag_handler)
-                        .child(div().w(px(1.)).h_full().bg(theme.text.disabled)),
+                        .on_drag_move(resize_drag_handler),
                 )
                 .with_animation(
                     "side-panel-left-enter",

@@ -14,8 +14,10 @@ use crate::side_panel_right::tabs::PanelTab;
 
 use std::rc::Rc;
 
-pub(crate) const RAIL_WIDTH: f32 = 44.;
-const BUTTON_SIZE: f32 = 36.;
+// T204: single source of truth for rail width lives in `side_panel_right::mod`
+// (`RAIL_WIDTH = 36`). Re-export so this module can never drift from it.
+pub(crate) use super::RAIL_WIDTH;
+const BUTTON_SIZE: f32 = 28.;
 
 pub fn rail_button_bg(is_active: bool, theme: &Theme) -> Hsla {
     if is_active {
@@ -64,7 +66,7 @@ pub fn render_rail(
                 .child(
                     svg()
                         .path(tab.icon_path())
-                        .size(px(20.))
+                        .size(px(18.))
                         .text_color(if is_active {
                             theme.text.primary
                         } else {
@@ -72,10 +74,13 @@ pub fn render_rail(
                         }),
                 )
                 .when(is_active, |el| {
+                    // Button is 28 within the 36 rail → 4px inset each side;
+                    // indicator sits flush against the rail's screen-ward edge
+                    // (`left(-4)` from the button = rail x=0), not clipped out.
                     el.child(
                         div()
                             .absolute()
-                            .left(px(-8.))
+                            .left(px(-4.))
                             .top(px(BUTTON_SIZE / 2. - 10.))
                             .w(px(3.))
                             .h(px(20.))

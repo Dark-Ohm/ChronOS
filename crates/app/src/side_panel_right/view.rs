@@ -393,22 +393,20 @@ impl Render for SidePanelRightView {
                 }
             })
             .child(
+                // T204 ghost handle: 4px transparent grab strip — no chrome
+                // fill, no fat center stripe. The 1px content-edge hairline is
+                // `side-panel-body`'s own `border_l_1`; the pointer + resize
+                // semantics are unchanged (drag still works).
                 div()
                     .id("side-panel-right-resize-handle")
                     .flex_none()
                     .w(px(HANDLE_WIDTH))
                     .h_full()
                     .cursor_col_resize()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .bg(surfaces::chrome(&theme))
-                    .border_r_1()
-                    .border_color(theme.border.subtle)
+                    .bg(gpui::transparent_black())
                     .on_mouse_down(gpui::MouseButton::Left, resize_mouse_handler)
                     .on_drag(RightPanelResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
-                    .on_drag_move(resize_drag_handler)
-                    .child(div().w(px(1.)).h_full().bg(theme.text.disabled)),
+                    .on_drag_move(resize_drag_handler),
             )
             .child(
                 div()
