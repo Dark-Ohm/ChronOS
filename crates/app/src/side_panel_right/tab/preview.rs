@@ -73,6 +73,7 @@ pub enum PreviewKind {
 /// so the markdown renderer keeps handling them normally (data URI inline,
 /// `file://` absolute path, relative + absolute paths resolved against the
 /// markdown source file).
+#[cfg(any(test, feature = "markdown"))]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ImageUrlClass {
     /// `http://…`/`https://…`/`ftp://…` — **must not be loaded** by the
@@ -137,6 +138,7 @@ fn looks_like_text(head: &[u8; SNIFF_BYTES]) -> bool {
 ///
 /// The scheme part is what we lowercase; the rest is kept verbatim so
 /// URL-encoded payloads (mixed-case parameters, percent-escapes) survive.
+#[cfg(any(test, feature = "markdown"))]
 pub(crate) fn classify_image_url(url: &str) -> ImageUrlClass {
     let trimmed = url.trim();
     if trimmed.is_empty() {
@@ -181,6 +183,7 @@ pub(crate) fn classify_image_url(url: &str) -> ImageUrlClass {
 /// `"`. Both cases still fall back to a labelled marker — never an
 /// `ImageNode` for remote URLs — so the no-network guarantee holds even
 /// when the syntax can't be parsed perfectly.
+#[cfg(any(test, feature = "markdown"))]
 struct ImageMatch<'a> {
     alt: &'a str,
     url: &'a str,
@@ -188,6 +191,7 @@ struct ImageMatch<'a> {
     end: usize,
 }
 
+#[cfg(any(test, feature = "markdown"))]
 fn match_image_at(text: &str, start: usize) -> Option<ImageMatch<'_>> {
     let bytes = text.as_bytes();
     if start + 4 > bytes.len() || bytes[start] != b'!' || bytes[start + 1] != b'[' {
@@ -243,6 +247,7 @@ fn match_image_at(text: &str, start: usize) -> Option<ImageMatch<'_>> {
 
 /// Truncate a URL for the in-text marker so absurdly long ones don't
 /// wreck layout. Char-boundary safe (multi-byte UTF-8).
+#[cfg(any(test, feature = "markdown"))]
 fn truncate_for_marker(s: &str, max_chars: usize) -> String {
     if s.chars().count() <= max_chars {
         s.to_string()
@@ -265,6 +270,7 @@ fn truncate_for_marker(s: &str, max_chars: usize) -> String {
 /// cost well above what one bug-fix warrants. Pre-processing the source
 /// keeps the no-network guarantee *before* the tree is built, so no
 /// ImageNode is ever created.
+#[cfg(any(test, feature = "markdown"))]
 pub(crate) fn redact_remote_images(text: &str) -> String {
     // Hot path: most markdown bodies contain no `![…](…)` at all. Skip the
     // walk to avoid an allocation per render of generic markdown like a
@@ -609,7 +615,10 @@ fn render_loaded(
 
     let body: AnyElement = match kind {
         PreviewKind::Image => render_image(path, size_bytes, theme),
+        #[cfg(feature = "markdown")]
         PreviewKind::Markdown => render_markdown(text.unwrap_or(""), truncated, theme, scroll),
+        #[cfg(not(feature = "markdown"))]
+        PreviewKind::Markdown => render_text(text.unwrap_or(""), truncated, theme, scroll),
         PreviewKind::Text => render_text(text.unwrap_or(""), truncated, theme, scroll),
         PreviewKind::WebPreview => render_web_unavailable(path, theme),
         PreviewKind::Unsupported => render_unsupported(path, size_bytes, theme),
@@ -690,6 +699,7 @@ fn render_image(path: &Path, size_bytes: u64, theme: &Theme) -> AnyElement {
         .into_any_element()
 }
 
+#[cfg(feature = "markdown")]
 fn render_markdown(
     text: &str,
     truncated: bool,
