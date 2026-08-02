@@ -77,6 +77,9 @@ fn main() {
         subscriber.start(cx);
         theme_config::init(cx);
         gpui_component::init(cx);
+        // gpui_component::init overwrote the component Theme mode with Light
+        // default — resync it to the active shell theme (T205 editor gutter).
+        theme_config::sync_gpui_component_theme(cx);
         edit_mode::init(cx);
         workspace_mode::init(cx);
         scene::init(cx);

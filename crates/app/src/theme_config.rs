@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use chronos_ui::Theme;
 use gpui::{App, BorrowAppContext};
+use gpui_component::theme::ThemeMode;
 use inotify::{EventMask, Inotify, WatchMask};
 use serde::{Deserialize, Serialize};
 
@@ -97,6 +98,26 @@ pub fn resolve_active_theme() -> Theme {
 
 /// Set active `Theme` global + schedule all windows to repaint via
 /// `cx.refresh_windows()`. Idempotent — safe to call on every reload.
+/// Keep gpui-component's own `Theme` mode in lockstep with the active
+/// `chronos_ui::Theme` (T205). gpui-component renders the editor gutter /
+/// input internals from ITS global theme — if it stayed on the Light default
+/// (`gpui_component::init`), CodeEditor gutter numbers (`muted_foreground`)
+/// and internal fills would be light even in dark shell. We don't map tokens
+/// 1:1 (that's a separate concern); syncing mode gives a dark/light theme
+/// whose neutrals sit visually with the shell. Safe before `Theme` global
+/// exists (`Theme::change` set-globals defensively).
+///
+/// `pub` because `main.rs` re-syncs AFTER `gpui_component::init` — that init
+/// overwrites the mode with Light default, so theme_config::init (earlier)
+/// alone would leave a dark shell with a light gutter until first hot-reload.
+pub fn sync_gpui_component_theme(cx: &mut App) {
+    let dark = !Theme::global(cx).is_light;
+    let mode = if dark { ThemeMode::Dark } else { ThemeMode::Light };
+    gpui_component::theme::Theme::change(mode, None, cx);
+}
+
+/// Set active `Theme` global + schedule all windows to repaint via
+/// `cx.refresh_windows()`. Idempotent — safe to call on every reload.
 pub fn apply(cx: &mut App) {
     let theme = resolve_active_theme();
     // `Theme::set` = `*global_mut = …` и паникует, если глобал ещё не
@@ -104,6 +125,7 @@ pub fn apply(cx: &mut App) {
     // этим модулем) — первый apply должен `set_global`, не mutate.
     // Повторные hot-reload тоже ок: set_global просто заменяет.
     cx.set_global(theme);
+    sync_gpui_component_theme(cx);
     cx.refresh_windows();
 }
 
@@ -127,6 +149,7 @@ pub fn toggle(cx: &mut App) {
         "theme: toggled"
     );
     cx.set_global(theme);
+    sync_gpui_component_theme(cx);
     cx.refresh_windows();
 }
 

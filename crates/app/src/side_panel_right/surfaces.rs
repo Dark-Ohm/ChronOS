@@ -49,6 +49,17 @@ pub fn content(theme: &Theme) -> Hsla {
     }
 }
 
+/// Editor buffer surface (Edit mode) — T205. Dark: `bg.primary` (same as
+/// panel body, so the buffer reads as a seamless sheet, not A4 white);
+/// Light: `bg.secondary` (soft paper, not glare-white pageBg).
+pub fn editor(theme: &Theme) -> Hsla {
+    if theme.is_light {
+        theme.bg.secondary
+    } else {
+        theme.bg.primary
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -61,6 +72,8 @@ mod tests {
         assert_eq!(chrome(&t), t.bg.tertiary);
         assert_eq!(card(&t), t.bg.primary);
         assert_eq!(content(&t), t.bg.primary);
+        // T205: editor buffer follows panel body in dark (seamless sheet).
+        assert_eq!(editor(&t), t.bg.primary);
     }
 
     #[test]
@@ -70,5 +83,7 @@ mod tests {
         assert_eq!(chrome(&t), t.bg.primary);
         assert_eq!(card(&t), t.bg.secondary);
         assert_eq!(content(&t), t.bg.primary);
+        // T205: light editor is soft paper (bg.secondary), not glare pageBg.
+        assert_eq!(editor(&t), t.bg.secondary);
     }
 }

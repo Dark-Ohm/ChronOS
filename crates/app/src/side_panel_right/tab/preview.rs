@@ -774,8 +774,21 @@ impl PreviewTab {
             .flex_1()
             .min_h(px(0.))
             .p(px(10.))
+            .bg(crate::side_panel_right::surfaces::editor(theme))
             .when_some(self.editor.clone(), |el, editor| {
-                el.child(Input::new(&editor).bordered(false).h_full().focus_bordered(false))
+                // T205: explicit themed surface on the Input itself — gpui-component
+                // default (Light) fill was the "white projector" on dark shell.
+                // Styled() applies after Input's own `appearance` bg, so these win.
+                el.child(
+                    Input::new(&editor)
+                        .bordered(false)
+                        .h_full()
+                        .focus_bordered(false)
+                        .bg(crate::side_panel_right::surfaces::editor(theme))
+                        .text_color(theme.text.primary)
+                        .font_family(theme.font_mono)
+                        .text_size(px(13.)),
+                )
             });
 
         div()
@@ -1020,7 +1033,13 @@ impl Render for PreviewTab {
             && self.editor_generation != Some(*generation)
         {
             if self.editor.is_none() {
-                let editor = cx.new(|cx| InputState::new(window, cx).multi_line(true));
+                // T205: CodeEditor mode — built-in line-number gutter with
+                // scroll synced to the buffer (one element), mono family, and
+                // `highlighter` left None so no syntax highlight (spec non-goal).
+                // Buffer bg/text/font are themed on the `Input` element itself
+                // in `render_editor_input_body`.
+                let editor =
+                    cx.new(|cx| InputState::new(window, cx).code_editor("plaintext"));
                 let subscription = cx.subscribe(
                     &editor,
                     |this: &mut Self, _editor, event: &InputEvent, cx| {
