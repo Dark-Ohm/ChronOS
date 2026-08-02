@@ -9,6 +9,7 @@
 
 pub(crate) mod build;
 pub(crate) mod files;
+pub(crate) mod library;
 pub(crate) mod preview;
 pub(crate) mod system;
 pub(crate) mod terminal;
@@ -20,6 +21,7 @@ use crate::side_panel_right::tabs::PanelTab;
 
 use build::BuildTab;
 use files::FilesTab;
+use library::LibraryTab;
 use preview::PreviewTab;
 use system::SystemTab;
 use terminal::TerminalTab;
@@ -38,6 +40,7 @@ pub(crate) enum TabContent {
     Terminal(gpui::Entity<TerminalTab>),
     Build(gpui::Entity<BuildTab>),
     Preview(gpui::Entity<PreviewTab>),
+    Library(gpui::Entity<LibraryTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
 
@@ -62,11 +65,11 @@ impl TabContent {
             // Preview: `PreviewTab::new` only subscribes to PreviewTarget; no
             // I/O happens until the user actually clicks a file in Files.
             PanelTab::Preview => TabContent::Preview(cx.new(|cx| PreviewTab::new(cx))),
-            // Gamer at-rest hub (§4.2): placeholder until T188 (Library) /
-            // T189 (Scenes) land real entities. Captures stays placeholder —
-            // no capture backend exists this slice (§13 honest empty state).
-            PanelTab::Library
-            | PanelTab::Scenes
+            // Gamer at-rest hub (§4.2): Library is a real entity (T188) that
+            // lists/launches detected games. Scenes/Captures stay placeholder
+            // until T189 / a capture backend (slice 6, §13 honest empty).
+            PanelTab::Library => TabContent::Library(cx.new(|cx| LibraryTab::new(cx))),
+            PanelTab::Scenes
             | PanelTab::Captures => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
             _ => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
         }

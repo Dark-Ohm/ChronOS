@@ -444,6 +444,10 @@ impl Render for SidePanelRightView {
                                 TabContent::Preview(entity) => {
                                     col.child(entity.clone())
                                 }
+                                // T188: Library is a real entity (Gamer hub).
+                                TabContent::Library(entity) => {
+                                    col.child(entity.clone())
+                                }
                                 TabContent::Placeholder(entity) => {
                                     col.child(entity.clone())
                                 }
@@ -514,6 +518,8 @@ impl SidePanelRightView {
             // set by T176 (Files) and T177 (Terminal). View body itself stays
             // outside T179's zone — this is a one-line structural match.
             TabContent::Preview(e) => e.entity_id(),
+            // T188: Library is a real entity (Gamer hub).
+            TabContent::Library(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })
     }
