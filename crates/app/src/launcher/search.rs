@@ -62,6 +62,7 @@ mod tests {
                 exec: "/usr/bin/firefox".into(),
                 icon: None,
                 terminal: false,
+                categories: vec![],
             },
             AppEntry {
                 id: "thunderbird".into(),
@@ -69,6 +70,7 @@ mod tests {
                 exec: "/usr/bin/thunderbird".into(),
                 icon: None,
                 terminal: false,
+                categories: vec![],
             },
             AppEntry {
                 id: "files".into(),
@@ -76,6 +78,7 @@ mod tests {
                 exec: "/usr/bin/nautilus".into(),
                 icon: None,
                 terminal: false,
+                categories: vec![],
             },
         ]
     }

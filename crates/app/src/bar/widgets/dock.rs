@@ -413,6 +413,7 @@ mod tests {
                 exec: "/usr/bin/kitty".into(),
                 icon: Some("kitty".into()),
                 terminal: false,
+                categories: vec![],
             },
             AppEntry {
                 id: "notpinned".into(),
@@ -420,6 +421,7 @@ mod tests {
                 exec: "/usr/bin/notpinned".into(),
                 icon: None,
                 terminal: false,
+                categories: vec![],
             },
         ];
         // Pin present in catalog stays; pin absent is dropped (and warned).
@@ -438,6 +440,7 @@ mod tests {
             exec: "/usr/bin/kitty".into(),
             icon: Some("kitty".into()),
             terminal: false,
+            categories: vec![],
         }];
         assert_eq!(
             resolve_pin("firefox", &entries).unwrap_err(),
@@ -454,6 +457,7 @@ mod tests {
             exec: "thunar".into(),
             icon: None,
             terminal: false,
+            categories: vec![],
         }];
         let (entry, icon) = resolve_pin("thunar", &entries).expect("entry exists");
         assert_eq!(entry.id, "thunar");

@@ -3,6 +3,7 @@ mod bar;
 mod desktop_terminal;
 mod dock;
 mod edit_mode;
+mod games_config;
 mod workspace_mode;
 mod scene;
 mod ipc;
