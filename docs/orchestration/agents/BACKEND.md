@@ -8,9 +8,9 @@ UI не твой (это FRONTEND).
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активных заданий нет** (волна 1 backend закрыта).
-**Закрыто:** T185 `0749d33` (Sonnet 5); T187 `7a99116`+`af66b58` (DeepSeek).
-T190 (gaming profile) — `active/pause/`.
+**Активное:** `tasks/active/T190-scene-gaming-profile-wire.md` — **DeepSeek V4 Pro**
+(apply_gaming_profile ↔ GamingModeState на `scene::activate`).
+**Закрыто:** T185, T187. Параллельно T188 (FRONTEND) — не трогай `tab/**`.
 
 **Зона в этой задаче — `crates/app/**`, а не `crates/services/**`.**
 Это осознанное отступление от таблицы ролей, как было в T160: состояние и

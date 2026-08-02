@@ -34,8 +34,11 @@
 | T186 | GLM 5.2 | `102fef4` | rail 17/10, 29/29, grim N/V |
 | T187 | DeepSeek V4 Pro | `7a99116`+`af66b58` | is_game+games.toml |
 
-**В поле:** T188 Library UI (`active/T188-library-tab.md`).
-T189–T191 — pause. План: `docs/superpowers/plans/2026-08-02-gamer-hub-slice-5.md`.
+**В поле (параллельно):**
+- T188 Library UI — GLM 5.2 — `active/T188-library-tab.md`
+- T190 gaming profile wire — **DeepSeek V4 Pro** — `active/T190-scene-gaming-profile-wire.md`
+
+T189 Scenes / T191 QA — pause. План: `docs/superpowers/plans/2026-08-02-gamer-hub-slice-5.md`.
 
 **Четыре живые вкладки и три движка в `crates/services/` без единого
 GPUI-типа:** `files/` (порт из Chronos-FM), `terminal/` (вынесен из спайка
