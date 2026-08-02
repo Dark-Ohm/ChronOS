@@ -8,9 +8,8 @@
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активные (PRODUCT wave, параллельно):**
-- `tasks/active/T192-rail-product-cut.md` — default rail (GLM / Grok)
-- `tasks/active/T193-hyprland-binds-readonly.md` — binds RO (Grok 4.5 / GLM)
+**Активное:** `tasks/active/T193-hyprland-binds-readonly.md` — binds RO (Grok 4.5 / GLM).
+T192 **принята** (`6660d2f`).
 
 **Pause:** T194 Editor+edit · T195 agent follow · T196 system+ACP.
 **Kill:** T189 Scenes. **Канон:** `docs/PRODUCT.md`.

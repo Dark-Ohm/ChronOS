@@ -39,7 +39,7 @@ Hypr live config **модульный:** `~/.config/hypr/modules/` + thin `hyprl
 
 | ID | что | статус |
 |---|---|---|
-| T192 | rail product cut | **active** |
+| T192 | rail product cut | **done** `6660d2f` |
 | T193 | hypr binds RO | **active** (∥ T192) |
 | T194 | Preview→Editor+edit | pause |
 | T195 | agent follow + right activity | pause |
