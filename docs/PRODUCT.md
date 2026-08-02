@@ -39,6 +39,43 @@ workspace density modes (Developer/Gamer = **плотность chrome**, не �
   не R&D.
 - ACP settings: **добавление / удаление ACP-агентов** (не « entие LSP»).
 
+### Live desktop customization (свойство шелла, не «опция»)
+
+Пользователь **говорит** агенту, как должен выглядеть chrome; агент **меняет
+конфиг**; шелл **применяет без обрыва сессии**; пользователь **видит
+результат в реальном времени**.
+
+Пример (должен быть нормальным, не демо-хаком):
+
+> «Сделай топ-бар снизу, шире, такого-то цвета, не на всю ширину, floating с
+> тенью и скруглением; включи эти виджеты, этот убери.»
+
+**Контракт:**
+
+1. **Config-as-API** — единственный безопасный путь: файлы
+   `~/.config/chronos/*` (+ hypr modules для compositor). Агент пишет
+   структурированный конфиг (tools), не «перекомпилируй бинарь».
+2. **Hot apply, no session kill** — смена layout/theme/widgets **не** рвёт
+   Wayland-сессию и **не** обязана `pkill chronos`. Процесс шелла остаётся;
+   surfaces пересобираются. Уже есть задел: `bar.toml` + inotify (T134),
+   `theme.toml` hot-reload.
+3. **Real-time visibility** — каждый apply виден сразу (debounce ок,
+   ~100–300 ms). Follow (T195) показывает, какой файл тронули.
+4. **Declarative chrome** — bar position (top/bottom), width (full / fraction /
+   content), floating, margin, radius, shadow, color/tokens, widget lists
+   (left/center/right) — **поля конфига**, не хардкод в `bar/mod.rs`.
+5. **Agent tools** (не UI-кнопки «магия»):
+   - `list_bar_widgets` / `get_bar_config` / `set_bar_config` (patch merge)
+   - `set_theme` / patch `theme.toml`
+   - optional hypr module edit + `hyprctl reload` **только** для compositor;
+     шелл-chrome — без reload Hyprland где возможно
+6. **Rollback** — ошибка apply → предыдущий конфиг или явный «undo last»
+   (файл `.bak` / generation); UI/agent сообщает failure честно (§13).
+
+**Не путать с:**
+- dev hot-reload **Rust-кода** (dylib) — другое, для разработчиков;
+- «перезапусти шелл» как default UX — только emergency, не happy path.
+
 ### Правая панель — workbench (минимум)
 
 | Вкладка | Роль |
