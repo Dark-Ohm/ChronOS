@@ -381,11 +381,19 @@ mod tests {
 
     #[test]
     fn drag_left_grows_right_anchored_width() {
-        // new_width = start_w - (current_x - start_x); x decreases → width grows
-        let start_w = 200.0_f32;
-        let start_x = 100.0_f32;
-        let current_x = 80.0_f32; // moved left 20px
-        let new_w = (start_w - (current_x - start_x)).clamp(RAIL_ONLY_WIDTH, MAX_WIDTH);
+        // Screen-space stick: width = right_edge_abs - pointer_abs.
+        // Right-anchored: pointer left (smaller abs x) → wider panel.
+        let right_edge_abs = 1920.0_f32;
+        let pointer_abs = 1700.0_f32; // 220px from right
+        let new_w = (right_edge_abs - pointer_abs).clamp(RAIL_ONLY_WIDTH, MAX_WIDTH);
         assert_eq!(new_w, 220.0);
+        // After a width change the window origin moves left; local x alone
+        // would drift — absolute pointer must stay the source of truth.
+        let origin_after = right_edge_abs - 220.0;
+        let local_x_still_at_left_edge = 0.0_f32;
+        let pointer_abs_after = origin_after + local_x_still_at_left_edge;
+        assert!((pointer_abs_after - pointer_abs).abs() < 0.01);
+        let sticky = (right_edge_abs - pointer_abs_after).clamp(RAIL_ONLY_WIDTH, MAX_WIDTH);
+        assert_eq!(sticky, 220.0);
     }
 }
