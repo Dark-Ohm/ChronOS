@@ -448,6 +448,10 @@ impl Render for SidePanelRightView {
                                 TabContent::Library(entity) => {
                                     col.child(entity.clone())
                                 }
+                                // T193: Hyprland binds (read-only list).
+                                TabContent::HyprBinds(entity) => {
+                                    col.child(entity.clone())
+                                }
                                 TabContent::Placeholder(entity) => {
                                     col.child(entity.clone())
                                 }
@@ -520,6 +524,8 @@ impl SidePanelRightView {
             TabContent::Preview(e) => e.entity_id(),
             // T188: Library is a real entity (Gamer hub).
             TabContent::Library(e) => e.entity_id(),
+            // T193: Hyprland binds (read-only list).
+            TabContent::HyprBinds(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })
     }
