@@ -1,6 +1,8 @@
 # T185 — scene: per-game fields + activate + seed hub
 
-**Статус:** active. **Роль:** BACKEND. **Модель: Sonnet 5.**
+**Статус: ЗАКРЫТА 2026-08-02 — ПРИНЯТА** (архитектор). **Модель: Sonnet 5.**
+Отчёт: `report-log/T185-scene-per-game-activate-report.md`.
+Коммит: `0749d33` — только `scene.rs`. Тесты scene:: **17/17** (перепрогнал).
 **Правила:** `docs/orchestration/agents/RULES.md`.
 **План:** `docs/superpowers/plans/2026-08-02-gamer-hub-slice-5.md` (A, утверждён).
 **Разведка:** `docs/orchestration/tasks/report-log/T184-gamer-hub-recon-report.md`

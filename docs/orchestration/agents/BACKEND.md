@@ -8,8 +8,9 @@ UI не твой (это FRONTEND).
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активное:** `tasks/active/T185-scene-per-game-activate.md` (Sonnet 5) — если ещё в поле.
-**Закрыто:** T187 **принята** (`7a99116` + `af66b58`). T190 — pause/.
+**Активных заданий нет** (волна 1 backend закрыта).
+**Закрыто:** T185 `0749d33` (Sonnet 5); T187 `7a99116`+`af66b58` (DeepSeek).
+T190 (gaming profile) — `active/pause/`.
 
 **Зона в этой задаче — `crates/app/**`, а не `crates/services/**`.**
 Это осознанное отступление от таблицы ролей, как было в T160: состояние и
