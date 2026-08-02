@@ -77,6 +77,17 @@ pub fn render_panel(
     let thread_new_chat_handler = cx.listener(|this, _, _, cx| {
         this.create_new_session(cx);
     });
+    // T195: Follow toggle — built before composer/chat to avoid RPIT capture.
+    let thread_follow_handler = cx.listener(|this, _, _, cx| {
+        this.follow_enabled = !this.follow_enabled;
+        cx.update_global::<crate::agent_follow::AgentFollowState, _>(|state, _| {
+            state.enabled = this.follow_enabled;
+            if !this.follow_enabled {
+                state.last_tool = None;
+            }
+        });
+        cx.notify();
+    });
 
     // Build agent dropdown with click handlers — must be built BEFORE
     // chat/composer because those call cx.listener() internally and
@@ -219,6 +230,26 @@ pub fn render_panel(
                         .cursor_pointer()
                         .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.primary))
                         .child("☰"),
+                )
+                .child(
+                    div()
+                        .id("thread-follow")
+                        .w(px(20.))
+                        .h(px(20.))
+                        .rounded(px(5.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(12.))
+                        .text_color(if panel.follow_enabled {
+                            theme.accent.primary
+                        } else {
+                            theme.text.muted
+                        })
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.primary))
+                        .on_click(thread_follow_handler)
+                        .child("👁"),
                 )
                 .child(
                     div()

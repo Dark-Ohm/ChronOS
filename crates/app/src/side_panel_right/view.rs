@@ -18,6 +18,7 @@ use gpui::{
     Window, div, prelude::*, px,
 };
 
+use crate::agent_follow::AgentFollowState;
 use crate::motion;
 use crate::side_panel_right::power_row::{
     ARM_TIMEOUT, ArmState, PowerAction, is_confirming_click, on_click as arm_on_click, on_timeout,
@@ -66,6 +67,9 @@ pub struct SidePanelRightView {
     /// the `observe_global` subscription; dropping it would silently stop
     /// the switch.
     _preview_target_subscription: gpui::Subscription,
+    /// T195: observes `AgentFollowState` — reserved for activity strip UI.
+    #[allow(dead_code)]
+    _follow_subscription: gpui::Subscription,
 }
 
 impl SidePanelRightView {
@@ -75,6 +79,9 @@ impl SidePanelRightView {
         // `cx.observe_global` requires the global to already exist.
         if !cx.has_global::<PreviewTarget>() {
             cx.set_global(PreviewTarget::default());
+        }
+        if !cx.has_global::<AgentFollowState>() {
+            cx.set_global(AgentFollowState::default());
         }
         let preview_target_subscription = cx.observe_global::<PreviewTarget>(|this, cx| {
             // A file was opened (path went from None to Some, or a new file
@@ -100,6 +107,7 @@ impl SidePanelRightView {
             tab_views: HashMap::new(),
             tab_resize_memory: HashMap::new(),
             _preview_target_subscription: preview_target_subscription,
+            _follow_subscription: cx.observe_global::<AgentFollowState>(|_, cx| cx.notify()),
         }
     }
 

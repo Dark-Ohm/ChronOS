@@ -117,6 +117,9 @@ pub struct SidePanelLeft {
     thread_menu_open: Option<String>,
     /// Whether the sidebar search field is focused (routes keyboard input).
     search_focused: bool,
+    /// T195: Follow mode — when ON, agent tool calls push activity to the
+    /// right panel's activity strip and auto-open files in Editor.
+    follow_enabled: bool,
     /// When set, shows an inline rename input for this thread.
     rename_thread_id: Option<String>,
     /// Current text in the inline rename input.
@@ -420,6 +423,7 @@ impl SidePanelLeft {
             thread_loading: false,
             thread_menu_open: None,
             search_focused: false,
+            follow_enabled: false,
             rename_thread_id: None,
             rename_input: String::new(),
             available_modes: Vec::new(),
@@ -678,6 +682,26 @@ impl SidePanelLeft {
                                                 this.chat.scroll_to_bottom();
                                             }
                                             StreamingEvent::ToolCall { id, name, status, args, result } => {
+                                                // T195: push tool call to Follow state (right panel activity)
+                                                if this.follow_enabled {
+                                                    let ft = crate::agent_follow::ToolCallPreview {
+                                                        id: id.clone(),
+                                                        name: name.clone(),
+                                                        status: status.clone(),
+                                                        args: args.clone(),
+                                                        result: result.clone(),
+                                                    };
+                                                    cx.update_global::<crate::agent_follow::AgentFollowState, _>(|state, _| {
+                                                        state.push_tool(ft.clone());
+                                                    });
+                                                    if let Some(path_str) = crate::agent_follow::AgentFollowState::extract_file_path(&ft) {
+                                                        cx.set_global(crate::side_panel_right::preview_target::PreviewTarget {
+                                                            path: Some(std::path::PathBuf::from(path_str)),
+                                                            generation: 1,
+                                                            intent: crate::side_panel_right::preview_target::PreviewIntent::View,
+                                                        });
+                                                    }
+                                                }
                                                 if let Some(last_msg) = this.chat.messages.last_mut() {
                                                     if last_msg.role == chat_view::MessageRole::Agent {
                                                         let found = last_msg.segments.iter_mut().rev().find_map(|s| {

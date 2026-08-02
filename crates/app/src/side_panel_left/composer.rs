@@ -1199,6 +1199,26 @@ impl SidePanelLeft {
                                             args,
                                             result,
                                         } => {
+                                            // T195: push tool call to Follow state
+                                            if this.follow_enabled {
+                                                let ft = crate::agent_follow::ToolCallPreview {
+                                                    id: id.clone(),
+                                                    name: name.clone(),
+                                                    status: status.clone(),
+                                                    args: args.clone(),
+                                                    result: result.clone(),
+                                                };
+                                                cx.update_global::<crate::agent_follow::AgentFollowState, _>(|state, _| {
+                                                    state.push_tool(ft.clone());
+                                                });
+                                                if let Some(path_str) = crate::agent_follow::AgentFollowState::extract_file_path(&ft) {
+                                                    cx.set_global(crate::side_panel_right::preview_target::PreviewTarget {
+                                                        path: Some(std::path::PathBuf::from(path_str)),
+                                                        generation: 1,
+                                                        intent: crate::side_panel_right::preview_target::PreviewIntent::View,
+                                                    });
+                                                }
+                                            }
                                             if let Some(last_msg) = this.chat.messages.last_mut() {
                                                 if last_msg.role == MessageRole::Agent {
                                                     // D1: merge by stable tool-call id, not by

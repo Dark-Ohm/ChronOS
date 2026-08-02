@@ -1,3 +1,4 @@
+mod agent_follow;
 mod assets;
 mod bar;
 pub mod bar_settings;
