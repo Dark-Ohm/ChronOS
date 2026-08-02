@@ -1,6 +1,8 @@
 # T186 — Gamer rail: Library / Scenes / Captures + иконки
 
-**Статус:** active. **Роль:** FRONTEND. **Модель: GLM 5.2.**
+**Статус: ЗАКРЫТА 2026-08-02 — ПРИНЯТА** (архитектор). **Модель: GLM 5.2.**
+Отчёт: `report-log/T186-gamer-rail-tabs-report.md`.
+Коммит: `102fef4`. tabs:: **29/29** (перепрогнал). Live grim — NOT VERIFIED (честно).
 **Правила:** `docs/orchestration/agents/RULES.md`.
 **План:** `docs/superpowers/plans/2026-08-02-gamer-hub-slice-5.md` §2.5.
 **T184:** `report-log/T184-gamer-hub-recon-report.md` §6.

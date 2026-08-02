@@ -1,7 +1,8 @@
 # T188 — вкладка Library (Gamer hub)
 
-**Статус:** BLOCKED — стартовать **после приёмки T185+T186+T187**.
-**Роль:** FRONTEND.
+**Статус:** active (волна 1 закрыта: T185/T186/T187 приняты).
+**Роль:** FRONTEND. **Модель: GLM 5.2** (или Mimo 2.5 — запас).
+**Правила:** `docs/orchestration/agents/RULES.md`.
 
 **Зависит от:** T186 (PanelTab::Library), T187 (`is_game_entry`, games.toml),
 T185 не обязателен для list/launch, но pin→scene create — T189.
@@ -26,4 +27,17 @@ T185 не обязателен для list/launch, но pin→scene create — T
 
 **Отчёт:** `report/T188-library-tab-report.md`.
 
-Архитектор снимет BLOCKED и перенесёт в `active/` после волны 1.
+**Отчёт только** `report/T188-library-tab-report.md`. Не `done/`, не «принята».
+
+## Зависимости (готовы)
+
+- `PanelTab::Library` + width 480 — T186 `102fef4`
+- `chronos_services::applications::is_game_entry` — T187 `7a99116`
+- `crate::games_config::GamesConfig` — T187 `af66b58`
+- launch: `crate::launcher::launch::launch` (dock уже образец)
+- Applications: `AppState` / subscriber — как launcher читает entries
+
+## Живой смок (обязателен насколько возможно)
+
+Gamer mode → rail Library → expand content → список CS2/PUBG/SCUM, **не**
+steam client. Launch + pin. Кадр grim. Нет compositor — `НЕ ПРОВЕРЕНО`.

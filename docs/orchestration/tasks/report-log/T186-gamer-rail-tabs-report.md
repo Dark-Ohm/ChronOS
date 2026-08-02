@@ -1,5 +1,9 @@
 # T186 report — Gamer rail: Library / Scenes / Captures + иконки
 
+> **ПРИНЯТА 2026-08-02 архитектором.** `102fef4`; tabs:: 29/29; icons in
+> assets.rs; Developer 14 / Gamer 10; live grim — NOT VERIFIED (ok for code
+> gate, T191 P1/P8).
+
 **Роль:** FRONTEND. **Зона:** `side_panel_right/tabs.rs`, `side_panel_right/tab/mod.rs`
 (только новые `TabContent` arm'ы → Placeholder), `assets.rs`, три новых SVG.
 

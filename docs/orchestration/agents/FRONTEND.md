@@ -8,9 +8,9 @@
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активное задание:** `tasks/active/T186-gamer-rail-tabs.md` (рейл + иконки) — **GLM 5.2**.
-Параллельно идут T185/T187 (BACKEND) — **не трогай** `scene.rs` / applications.
-T188/T189 (Library/Scenes UI) — `active/pause/`, BLOCKED до приёмки волны 1.
+**Активное задание:** `tasks/active/T188-library-tab.md` — **GLM 5.2**
+(Library UI). T186 **принята** (`102fef4`). T189 Scenes — pause до T188.
+Волна 1 (T185–T187) закрыта.
 
 **Урок T179/T180, стоил двух приёмок:** доказывать надо тот путь, который
 порождает проблему. В T180 отчёт предъявлял «ноль сетевых запросов после
