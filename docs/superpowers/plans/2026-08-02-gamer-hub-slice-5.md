@@ -11,7 +11,7 @@
 - слайс 4 — Developer workbench (Files/Terminal/Build/Preview) — **не трогаем**;
 - `GamingModeState` (`system_popup/gaming_mode.rs`) — apply/revert через `hyprctl eval` + power profile, **отдельный слой от workspace mode** (§5).
 
-**Объём утверждает этот план (вариант A — hub + scenes, без Deck).**
+**Объём: вариант A — hub + scenes + Captures empty + T189 profile wire. УТВЕРЖДЁН пользователем 2026-08-02.**
 
 ---
 
@@ -384,14 +384,10 @@ adapters, capture/audio, gamepad service — entry condition §4.2.
 
 ## 12. Утверждение
 
-**Статус плана:** черновик архитектора, 2026-08-02. Ждёт «утверждаю» /
-правок по объёму (урезать Captures? убрать T189 в слайс 6?).
+**Статус плана: УТВЕРЖДЁН 2026-08-02, вариант A** (полный: hub + scenes +
+Captures empty + T189 profile wire). Пользователь: «А».
 
-Варианты урезания, если скажешь «ещё тоньше»:
-
-- **A′ (рекомендую при сомнении):** без T189 (profile wire) — только store
-  flag; apply остаётся manual System popup;
-- **A″:** без Captures tab (только Library+Scenes) — меньше enum churn;
-- **A (полный этот документ):** hub + scenes + flag wire + Captures empty.
+Первая задача в поле: **T184** RECON —
+`docs/orchestration/tasks/active/T184-gamer-hub-recon.md`.
 
 Архитектор. 2026-08-02.

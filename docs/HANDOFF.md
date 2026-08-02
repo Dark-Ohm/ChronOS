@@ -26,9 +26,11 @@
 - **слайс 4** (рабочий стол разработчика): T175–T183 — **закрыт**
   (T181 residual в TBD). В поле **нет** активной T181.
 
-**Слайс 5 — черновик плана 2026-08-02** (ждёт утверждения):
+**Слайс 5 — план УТВЕРЖДЁН 2026-08-02 (вариант A):**
 `docs/superpowers/plans/2026-08-02-gamer-hub-slice-5.md`.
-Hub + per-game scenes; Game Deck → слайс 6. Очередь T184…T190.
+Hub + per-game scenes + Captures empty + T189; Game Deck → слайс 6.
+**В поле:** T184 RECON — `tasks/active/T184-gamer-hub-recon.md`.
+Очередь T185…T190 после приёмки T184.
 
 **Четыре живые вкладки и три движка в `crates/services/` без единого
 GPUI-типа:** `files/` (порт из Chronos-FM), `terminal/` (вынесен из спайка
