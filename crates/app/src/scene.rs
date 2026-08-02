@@ -41,6 +41,7 @@ use std::path::PathBuf;
 use gpui::{App, Global};
 use serde::{Deserialize, Serialize};
 
+use crate::system_popup::gaming_mode::{self, GamingModeState};
 use crate::workspace_mode::{self, WorkspaceMode};
 
 const CONFIG_BASENAME: &str = "scenes.toml";
@@ -291,6 +292,34 @@ pub fn restore_for_mode(cx: &mut App, mode: WorkspaceMode) {
     cx.global_mut::<SceneState>().active = restored;
 }
 
+// ── Gaming profile transition (T190) ──────────────────────────────────────
+
+/// Решение о gaming profile при активации сцены.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GamingTransition {
+    Apply,
+    Revert,
+    None,
+}
+
+/// Чистая функция: какое действие с gaming profile нужно выполнить при
+/// активации сцены. Не трогает глобальное состояние — тестируется без `cx`.
+///
+/// Правила:
+/// - `next_flag && !currently_active` → Apply
+/// - `!next_flag && prev_flag && currently_active` → Revert (только scene-driven OFF)
+/// - иначе None (в т.ч. ручной toggle не сбивается: если prev_flag=false,
+///   а профиль активен — пользователь включил его руками, сцена без флага не гасит)
+fn gaming_transition(prev_flag: bool, next_flag: bool, currently_active: bool) -> GamingTransition {
+    if next_flag && !currently_active {
+        GamingTransition::Apply
+    } else if !next_flag && prev_flag && currently_active {
+        GamingTransition::Revert
+    } else {
+        GamingTransition::None
+    }
+}
+
 // ── Activate (user path) ────────────────────────────────────────────────────
 
 /// Почему активация сцены не удалась.
@@ -328,21 +357,54 @@ pub fn activate_in_config(
 
 /// Явная активация сцены пользователем: клик Library/Scenes, IPC.
 /// **Единственный** путь (кроме seed), который пишет `scenes.toml` на диск.
-/// Не зовёт `GamingModeState` (T190) и не зовёт `workspace_mode::set` —
-/// активация сцены ≠ смена режима.
+/// Не зовёт `workspace_mode::set` — активация сцены ≠ смена режима.
+///
+/// Если сцена имеет `apply_gaming_profile = true` и профиль ещё не активен —
+/// зовёт `gaming_mode::apply`. При уходе со scene-driven профиля (предыдущая
+/// сцена просила профиль, новая — нет) зовёт `gaming_mode::revert`.
+/// Ручной toggle из System popup не сбивается: revert только если предыдущая
+/// сцена сама включала профиль.
 // Wired by the Scenes tab UI (T188) — no consumer yet in this slice.
 #[allow(dead_code)]
 pub fn activate(cx: &mut App, id: &str) -> Result<(), ActivateError> {
     let cfg = cx.global::<SceneState>().config.clone();
     let (new_cfg, scene) = activate_in_config(&cfg, id)?;
 
+    // Захватываем prev_flag и поля scene ДО обновления state.active.
+    let prev_flag = cx
+        .global::<SceneState>()
+        .active
+        .as_ref()
+        .map(|s| s.apply_gaming_profile)
+        .unwrap_or(false);
+    let next_flag = scene.apply_gaming_profile;
+    let scene_mode = scene.mode.clone();
+
     save_config(&new_cfg);
 
-    tracing::info!(scene = %id, mode = %scene.mode, "scene: activated");
+    // scoped — освобождает &mut cx для is_active/apply/revert ниже.
+    {
+        let state = cx.global_mut::<SceneState>();
+        state.active = Some(scene);
+        state.config = new_cfg;
+    }
 
-    let state = cx.global_mut::<SceneState>();
-    state.active = Some(scene);
-    state.config = new_cfg;
+    // Gaming profile transition — после обновления state (prev_flag уже
+    // захвачен), но на новом активном состоянии.
+    let transition = gaming_transition(prev_flag, next_flag, GamingModeState::is_active(cx));
+    match transition {
+        GamingTransition::Apply => gaming_mode::apply(cx),
+        GamingTransition::Revert => gaming_mode::revert(cx),
+        GamingTransition::None => {}
+    }
+    tracing::info!(
+        scene = %id,
+        apply_gaming_profile = next_flag,
+        ?transition,
+        "scene: gaming profile"
+    );
+
+    tracing::info!(scene = %id, mode = %scene_mode, "scene: activated");
     Ok(())
 }
 
@@ -803,5 +865,66 @@ mod tests {
         cfg.last.insert("gamer".into(), "hub".into());
         let resolved = resolve_last(&cfg, WorkspaceMode::Gamer);
         assert_eq!(resolved.map(|s| s.id), Some("hub".to_string()));
+    }
+
+    // ── T190: gaming_transition tests ───────────────────────────────────
+
+    // 18. hub (false) → game (true), profile off → Apply.
+    #[test]
+    fn gaming_transition_hub_false_to_game_true_when_off() {
+        assert_eq!(
+            gaming_transition(false, true, false),
+            GamingTransition::Apply
+        );
+    }
+
+    // 19. game (true) → hub (false), profile on → Revert.
+    #[test]
+    fn gaming_transition_game_true_to_hub_false_when_on() {
+        assert_eq!(
+            gaming_transition(true, false, true),
+            GamingTransition::Revert
+        );
+    }
+
+    // 20. hub → hub / game false → game false → None.
+    #[test]
+    fn gaming_transition_no_change_is_none() {
+        assert_eq!(gaming_transition(false, false, false), GamingTransition::None);
+        assert_eq!(gaming_transition(false, false, true), GamingTransition::None);
+        assert_eq!(gaming_transition(true, true, true), GamingTransition::None);
+    }
+
+    // 21. Ручной toggle (System popup) — prev_flag=false, профиль активен,
+    // активируем hub false → НЕ revert.
+    #[test]
+    fn gaming_transition_manual_toggle_not_reverted_by_scene_without_flag() {
+        // prev_flag=false (hub не просил профиль), next_flag=false (hub),
+        // но currently_active=true (пользователь включил руками).
+        assert_eq!(
+            gaming_transition(false, false, true),
+            GamingTransition::None,
+            "ручной toggle не должен сбиваться сценой без флага"
+        );
+    }
+
+    // 22. next_flag=true, но профиль уже активен (включён вручную) → None
+    // (не задваиваем apply).
+    #[test]
+    fn gaming_transition_already_active_does_not_reapply() {
+        assert_eq!(
+            gaming_transition(false, true, true),
+            GamingTransition::None
+        );
+    }
+
+    // 23. Предыдущая сцена просила профиль, но кто-то уже выключил (edge).
+    // prev_flag=true, next_flag=true, currently_active=false → Apply.
+    #[test]
+    fn gaming_transition_reapply_when_manually_reverted() {
+        assert_eq!(
+            gaming_transition(true, true, false),
+            GamingTransition::Apply
+        );
     }
 }

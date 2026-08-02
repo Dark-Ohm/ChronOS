@@ -94,7 +94,7 @@ pub fn toggle(cx: &mut App) {
     }
 }
 
-fn apply(cx: &mut App) {
+pub(crate) fn apply(cx: &mut App) {
     info!("gaming mode: apply() entered");
     let upower = AppState::upower(cx).clone();
     let previous_profile = upower.get().power_profile;
@@ -122,7 +122,7 @@ fn apply(cx: &mut App) {
     .detach();
 }
 
-fn revert(cx: &mut App) {
+pub(crate) fn revert(cx: &mut App) {
     info!("gaming mode: revert() entered");
     let upower = AppState::upower(cx).clone();
     let restore_profile = cx

@@ -8,5 +8,6 @@ pub mod notifications;
 pub mod scene;
 pub mod side_panel_right;
 pub mod state;
+pub mod system_popup;
 pub mod wallpaper_ctl;
 pub mod workspace_mode;
