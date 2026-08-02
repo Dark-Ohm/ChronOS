@@ -1,5 +1,6 @@
 mod assets;
 mod bar;
+pub mod bar_settings;
 mod desktop_terminal;
 mod dock;
 mod edit_mode;

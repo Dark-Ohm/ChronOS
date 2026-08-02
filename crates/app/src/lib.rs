@@ -1,5 +1,6 @@
 //! Chronos app library - public API for examples and tests.
 
+pub mod bar_settings;
 pub mod games_config;
 pub mod launcher;
 pub mod monitor;

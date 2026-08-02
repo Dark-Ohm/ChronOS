@@ -7,6 +7,7 @@
 //! Empty tabs render a common honest-empty-state component that describes
 //! what will be there without promising a delivery date (§13).
 
+pub(crate) mod bar_settings;
 pub(crate) mod build;
 pub(crate) mod files;
 pub(crate) mod hypr_binds;
@@ -20,6 +21,7 @@ use gpui::{FontWeight, IntoElement, Render, Window, Context, div, prelude::*, px
 use chronos_ui::Theme;
 use crate::side_panel_right::tabs::PanelTab;
 
+use bar_settings::BarSettingsTab;
 use build::BuildTab;
 use files::FilesTab;
 use hypr_binds::HyprBindsTab;
@@ -44,6 +46,8 @@ pub(crate) enum TabContent {
     Preview(gpui::Entity<PreviewTab>),
     Library(gpui::Entity<LibraryTab>),
     HyprBinds(gpui::Entity<HyprBindsTab>),
+    // T202: System settings «Bar» page — appearance presets + controls.
+    BarSettings(gpui::Entity<BarSettingsTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
 
@@ -75,6 +79,10 @@ impl TabContent {
             // Hyprland binds: read-only keybind list (T193). Loads from the
             // modular Lua config lazily on first activation.
             PanelTab::HyprlandBinds => TabContent::HyprBinds(cx.new(|cx| HyprBindsTab::new(cx))),
+            // T202: System settings («System settings» label) hosts the Bar
+            // page — appearance presets + live controls. Reads bar.toml on
+            // first activation, writes through the watcher (T134).
+            PanelTab::EditorSettings => TabContent::BarSettings(cx.new(|cx| BarSettingsTab::new(cx))),
             PanelTab::Scenes
             | PanelTab::Captures => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
             _ => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
