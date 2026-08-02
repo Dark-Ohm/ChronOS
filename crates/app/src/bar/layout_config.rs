@@ -132,11 +132,8 @@ pub fn cached() -> BarLayoutConfig {
 }
 
 /// Cached appearance, sanitized. Refreshed whenever `apply()`/`move_widget`
-/// update the layout cache (same cache object). T200 reads this on hot-reload.
-///
-/// `allow(dead_code)`: schema-only task (T199) — the consumer is T200
-/// (window apply), which lands next and calls this from the hot-reload path.
-#[allow(dead_code)]
+/// update the layout cache (same cache object). Bar chrome + side panels
+/// read this for live height/radius/elevation (T200).
 pub fn cached_appearance() -> BarAppearance {
     cached().appearance.sanitized()
 }
@@ -432,6 +429,8 @@ pub fn apply(cx: &mut App) {
     update_cache(cfg.clone());
     super::widgets::apply_layout(cx, &cfg);
     reregister_plugin_widgets(cx);
+    // Live geometry (height/exclusive) — no window reopen (T200).
+    super::apply_appearance(cx);
     cx.refresh_windows();
     tracing::info!(
         left = cfg.left.len(),

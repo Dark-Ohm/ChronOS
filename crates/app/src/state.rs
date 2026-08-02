@@ -1,5 +1,7 @@
 //! Application-wide runtime state stored as a GPUI global.
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use futures_signals::signal::{Signal, SignalExt};
 use futures_util::stream::StreamExt;
 use gpui::{App, Context, Global};
@@ -101,6 +103,28 @@ impl AppState {
     }
 }
 
+/// Applied bar height in px, exposed to lib-visible consumers (T200).
+///
+/// The bar module is bin-only (`mod bar;` in `main.rs`); side panels (lib)
+/// need the live `[appearance] height` for their top gap without reaching
+/// into `crate::bar`. The bar writes here on every appearance apply (hot-
+/// reload) and at startup; the default mirrors the historical `BAR_HEIGHT`.
+const LIVE_BAR_HEIGHT_BITS: u32 = chronos_luau::bar::BAR_HEIGHT.to_bits();
+
+static LIVE_BAR_HEIGHT: AtomicU32 = AtomicU32::new(LIVE_BAR_HEIGHT_BITS);
+
+/// Current applied bar height in px (configured `[appearance] height` or
+/// the code default).
+pub fn bar_height_px() -> f32 {
+    f32::from_bits(LIVE_BAR_HEIGHT.load(Ordering::Relaxed))
+}
+
+/// Record the applied bar height (called by `bar::apply_appearance` and
+/// `bar::init`).
+pub fn set_bar_height_px(height: f32) {
+    LIVE_BAR_HEIGHT.store(height.to_bits(), Ordering::Relaxed);
+}
+
 /// Watch a signal and apply updates to component state.
 ///
 /// `S: Signal<Item = T> + Unpin + 'static` — satisfied by the `impl Signal + Unpin`
@@ -186,5 +210,17 @@ mod tests {
         let _ = std::any::type_name::<NetworkSubscriber>();
         let _ = std::any::type_name::<UPowerSubscriber>();
         assert!(true);
+    }
+
+    /// Live bar height (T200) defaults to the code `BAR_HEIGHT` and round-
+    /// trips through the AtomicU32 (f32 bits) store.
+    #[test]
+    fn bar_height_defaults_and_round_trips() {
+        assert_eq!(bar_height_px(), chronos_luau::bar::BAR_HEIGHT);
+        set_bar_height_px(42.5);
+        assert_eq!(bar_height_px(), 42.5);
+        // Restore for other tests (process-wide static).
+        set_bar_height_px(chronos_luau::bar::BAR_HEIGHT);
+        assert_eq!(bar_height_px(), chronos_luau::bar::BAR_HEIGHT);
     }
 }

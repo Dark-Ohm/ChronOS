@@ -344,7 +344,7 @@ impl Render for SidePanelRightView {
                 .or_else(|| window.display(cx).map(|d| f32::from(d.bounds().size.height)))
                 .unwrap_or(1080.);
             let panel_h =
-                (display_h - crate::side_panel_right::PANEL_EDGE_GAP).max(100.);
+                (display_h - crate::side_panel_right::panel_edge_gap()).max(100.);
             window.resize(gpui::Size::new(px(panel_width), px(panel_h)));
             self.last_resized_width = panel_width;
             tracing::debug!(

@@ -7,15 +7,12 @@
 //! in the spec's open question §8.1 and rejected here as unnecessary
 //! complexity once GPUI's own hover event was confirmed sufficient).
 
-use chronos_luau::bar::BAR_HEIGHT;
 use gpui::{
     App, Bounds, DisplayId, IntoElement, Render, Size, Window, WindowBackgroundAppearance,
     WindowBounds, WindowKind, WindowOptions, div, layer_shell::*, point, prelude::*, px,
 };
 
 const STRIP_WIDTH: f32 = 4.;
-/// Match panel vertical inset (`mod.rs` PANEL_EDGE_GAP).
-const STRIP_EDGE_GAP: f32 = BAR_HEIGHT;
 
 struct HoverStripView {}
 
@@ -46,7 +43,8 @@ fn strip_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOption
         .map(|d| f32::from(d.bounds().size.height))
         .unwrap_or(1080.);
     // Top gap only (under bar); reach display bottom like the panel.
-    let strip_h = (display_h - STRIP_EDGE_GAP).max(100.);
+    // Live bar height (T200) — same inset as `mod.rs` panel_edge_gap().
+    let strip_h = (display_h - super::panel_edge_gap()).max(100.);
     WindowOptions {
         display_id,
         titlebar: None,

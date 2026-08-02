@@ -26,7 +26,6 @@ pub mod view;
 mod wallpaper_card;
 
 
-use chronos_luau::bar::BAR_HEIGHT;
 use gpui::{
     App, Bounds, DisplayId, Global, Size, Window, WindowBackgroundAppearance, WindowBounds,
     WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
@@ -49,7 +48,14 @@ pub struct RightPanelResize;
 /// Top air under the bar. Height = display − this gap reaches the bottom
 /// bezel (see `b120a3d`). Do **not** use TOP|BOTTOM stretch + dual margins
 /// on Hyprland Overlay — exclusive zone + stretch skews the gaps.
-pub(crate) const PANEL_EDGE_GAP: f32 = BAR_HEIGHT;
+///
+/// **Live since T200:** follows the configured bar height so the panel never
+/// overlaps the bar when `bar.toml [appearance] height` changes. Geometry is
+/// fixed at open — an already-open panel keeps its size until reopened
+/// (residual, documented).
+pub(crate) fn panel_edge_gap() -> f32 {
+    crate::state::bar_height_px()
+}
 
 pub struct SidePanelRightState {
     handle: Option<WindowHandle<Root>>,
@@ -143,7 +149,7 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     // Only the top gap: bar exclusive zone pushes the TOP-anchored overlay to
     // y=BAR_HEIGHT; height = display − that one gap makes the panel reach the
     // display bottom (no bottom void).
-    let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
+    let panel_h = (display_h - panel_edge_gap()).max(100.);
     let current_width = cx.global::<SidePanelRightState>().width;
     WindowOptions {
         display_id,

@@ -22,7 +22,6 @@ pub fn is_rtl_text(text: &str) -> bool {
 
 pub use state::{PanelState, SidePanelLeftState};
 
-use chronos_luau::bar::BAR_HEIGHT;
 use chronos_services::hermes_acp::{
     AgentDescriptor, HermesClient, StreamingEvent, known_agents, load_shared_env,
 };
@@ -38,7 +37,11 @@ use std::ops::Range;
 
 pub struct LeftPanelResize;
 
-const PANEL_EDGE_GAP: f32 = BAR_HEIGHT;
+/// Top air under the bar — live bar height (T200). Same contract as the
+/// right panel's `panel_edge_gap()`; open-time geometry only.
+fn panel_edge_gap() -> f32 {
+    crate::state::bar_height_px()
+}
 
 #[derive(Default)]
 pub struct SidePanelLeftState_ {
@@ -60,7 +63,7 @@ fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
 
 fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     let display_h = display_height(display_id, cx);
-    let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
+    let panel_h = (display_h - panel_edge_gap()).max(100.);
     // Super+A opens wide enough for chat column (not rail-only strip).
     let open_w = state::SidePanelLeftState::DEFAULT_CHAT_WIDTH;
     WindowOptions {
@@ -169,7 +172,7 @@ impl Render for SidePanelLeft {
         if self.last_resized_width != Some(self.state.width) {
             let display_id = crate::monitor::pult_display_id_or_primary(cx);
             let display_h = display_height(display_id, cx);
-            let panel_h = (display_h - PANEL_EDGE_GAP).max(100.);
+            let panel_h = (display_h - panel_edge_gap()).max(100.);
             self.state.height = panel_h;
             window.resize(Size::new(px(self.state.width), px(panel_h)));
             self.last_resized_width = Some(self.state.width);
