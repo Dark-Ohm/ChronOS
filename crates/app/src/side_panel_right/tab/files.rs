@@ -10,9 +10,12 @@ use chronos_services::files::{
 };
 use chronos_ui::Theme;
 use gpui::{
-    Context, FontWeight, InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::*, px, svg,
+    AnyElement, Context, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::*, px,
+    svg,
 };
+
+use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
 
 /// Load lifecycle for honest empty / error / truncated states (§13).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,32 +125,47 @@ impl FilesTab {
         }
     }
 
-    fn open_entry(&mut self, entry: &FileEntryDto, cx: &mut Context<Self>) {
+    /// Open a file with the given intent (View or Edit — T194c). Dirs
+    /// ignore `intent` and just navigate.
+    fn open_entry(&mut self, entry: &FileEntryDto, intent: PreviewIntent, cx: &mut Context<Self>) {
         if entry.kind == "dir" {
             self.navigate_to(PathBuf::from(&entry.path), cx);
             return;
         }
-        // File click → push the path into the shared PreviewTarget. The
-        // Editor (former Preview) tab observes the global and starts
+        // File click → push the path (+ intent) into the shared
+        // PreviewTarget. The Editor tab observes the global and starts
         // reading in the background. `SidePanelRightView` observes the same
         // global and switches the active tab to Editor (T194) — this
         // function stays tab-agnostic on purpose so a future agent-follow
         // path (T195) can set the same global and get the same switch for
         // free, without knowing about `files.rs` at all.
         let (path, next_generation) = {
-            let t = cx
-                .global::<crate::side_panel_right::preview_target::PreviewTarget>();
+            let t = cx.global::<PreviewTarget>();
             let same_path = t.path.as_deref() == Some(std::path::Path::new(&entry.path));
-            if same_path && t.generation > 0 {
+            let same_intent = t.intent == intent;
+            if same_path && same_intent && t.generation > 0 {
                 return;
             }
             (PathBuf::from(&entry.path), t.generation.wrapping_add(1))
         };
-        cx.set_global(crate::side_panel_right::preview_target::PreviewTarget {
+        cx.set_global(PreviewTarget {
             path: Some(path),
             generation: next_generation,
+            intent,
         });
     }
+}
+
+/// Cheap extension check — same list as `preview::classify`'s Markdown
+/// branch. Files uses this to decide whether a row gets the View/Edit
+/// button pair (T194c) instead of a single click-to-view row.
+pub(crate) fn is_markdown_name(name: &str) -> bool {
+    let ext = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    matches!(ext.as_str(), "md" | "markdown" | "mdown")
 }
 
 impl Render for FilesTab {
@@ -277,81 +295,150 @@ impl Render for FilesTab {
             let entry = entry.clone();
             let is_dir = entry.kind == "dir";
             let name = entry.name.clone();
+            let is_md = !is_dir && is_markdown_name(&name);
             let size_label = if is_dir {
                 String::new()
             } else {
                 human_bytes(entry.size)
             };
 
-            let row = div()
-                .id(SharedString::from(format!("files-row-{ix}")))
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .px(px(8.))
-                .py(px(5.))
-                .rounded_md()
-                .cursor_pointer()
-                .hover(|s| s.bg(theme.interactive.hover))
-                .on_click(cx.listener({
-                    let entry = entry.clone();
-                    move |this, _ev, _w, cx| {
-                        // Single click navigates into directories (narrow panel).
-                        this.open_entry(&entry, cx);
-                    }
-                }))
-                .child(if is_dir {
-                    svg()
-                        .path("icons/folder.svg")
-                        .size(px(14.))
-                        .text_color(theme.accent.primary)
-                        .into_any_element()
-                } else {
-                    div()
-                        .w(px(14.))
-                        .h(px(14.))
-                        .rounded_sm()
-                        .bg(theme.bg.elevated)
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            div()
-                                .text_size(px(9.))
-                                .text_color(theme.text.muted)
-                                .child(
-                                    name.chars()
-                                        .next()
-                                        .unwrap_or('?')
-                                        .to_uppercase()
-                                        .to_string(),
-                                ),
-                        )
-                        .into_any_element()
-                })
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.))
-                        .text_size(px(12.))
-                        .text_color(theme.text.primary)
-                        .font_weight(if is_dir {
-                            FontWeight::SEMIBOLD
-                        } else {
-                            FontWeight::NORMAL
-                        })
-                        .whitespace_nowrap()
-                        .overflow_hidden()
-                        .text_ellipsis()
-                        .child(name),
-                )
-                .child(
-                    div()
-                        .text_size(px(10.))
-                        .text_color(theme.text.muted)
-                        .font_family(theme.font_mono)
-                        .child(size_label),
-                );
+            let icon: AnyElement = if is_dir {
+                svg()
+                    .path("icons/folder.svg")
+                    .size(px(14.))
+                    .text_color(theme.accent.primary)
+                    .into_any_element()
+            } else {
+                div()
+                    .w(px(14.))
+                    .h(px(14.))
+                    .rounded_sm()
+                    .bg(theme.bg.elevated)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        div()
+                            .text_size(px(9.))
+                            .text_color(theme.text.muted)
+                            .child(
+                                name.chars()
+                                    .next()
+                                    .unwrap_or('?')
+                                    .to_uppercase()
+                                    .to_string(),
+                            ),
+                    )
+                    .into_any_element()
+            };
+            let name_text = div()
+                .flex_1()
+                .min_w(px(0.))
+                .text_size(px(12.))
+                .text_color(theme.text.primary)
+                .font_weight(if is_dir { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+                .whitespace_nowrap()
+                .overflow_hidden()
+                .text_ellipsis()
+                .child(name);
+            let size_text = div()
+                .text_size(px(10.))
+                .text_color(theme.text.muted)
+                .font_family(theme.font_mono)
+                .child(size_label);
+
+            let row = if is_md {
+                // Markdown-like: no whole-row click. Icon+name is its own
+                // clickable region (View intent — "click name/icon =
+                // Preview"); View/Edit buttons sit beside it as siblings,
+                // never nested inside a click target, so there is nothing
+                // to stop-propagate (T194c UX).
+                let icon_and_name = div()
+                    .id(SharedString::from(format!("files-open-{ix}")))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .flex_1()
+                    .min_w(px(0.))
+                    .cursor_pointer()
+                    .on_click(cx.listener({
+                        let entry = entry.clone();
+                        move |this, _ev, _w, cx| {
+                            this.open_entry(&entry, PreviewIntent::View, cx);
+                        }
+                    }))
+                    .child(icon)
+                    .child(name_text);
+
+                let view_btn = div()
+                    .id(SharedString::from(format!("files-view-{ix}")))
+                    .px(px(6.))
+                    .py(px(2.))
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme.interactive.hover))
+                    .text_size(px(10.))
+                    .text_color(theme.text.muted)
+                    .on_click(cx.listener({
+                        let entry = entry.clone();
+                        move |this, _ev, _w, cx| {
+                            this.open_entry(&entry, PreviewIntent::View, cx);
+                        }
+                    }))
+                    .child("View");
+                let edit_btn = div()
+                    .id(SharedString::from(format!("files-edit-{ix}")))
+                    .px(px(6.))
+                    .py(px(2.))
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme.interactive.hover))
+                    .text_size(px(10.))
+                    .text_color(theme.accent.primary)
+                    .on_click(cx.listener({
+                        let entry = entry.clone();
+                        move |this, _ev, _w, cx| {
+                            this.open_entry(&entry, PreviewIntent::Edit, cx);
+                        }
+                    }))
+                    .child("Edit");
+
+                div()
+                    .id(SharedString::from(format!("files-row-{ix}")))
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .px(px(8.))
+                    .py(px(5.))
+                    .rounded_md()
+                    .hover(|s| s.bg(theme.interactive.hover))
+                    .child(icon_and_name)
+                    .child(size_text)
+                    .child(div().flex().items_center().gap(px(2.)).child(view_btn).child(edit_btn))
+            } else {
+                // Everything else: single click on the whole row. Dirs
+                // navigate; files open with View intent (unchanged
+                // behavior from before T194c).
+                div()
+                    .id(SharedString::from(format!("files-row-{ix}")))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .px(px(8.))
+                    .py(px(5.))
+                    .rounded_md()
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme.interactive.hover))
+                    .on_click(cx.listener({
+                        let entry = entry.clone();
+                        move |this, _ev, _w, cx| {
+                            this.open_entry(&entry, PreviewIntent::View, cx);
+                        }
+                    }))
+                    .child(icon)
+                    .child(name_text)
+                    .child(size_text)
+            };
 
             list = list.child(row);
         }
@@ -396,6 +483,22 @@ mod tests {
         assert_eq!(human_bytes(0), "0B");
         assert_eq!(human_bytes(512), "512B");
         assert_eq!(human_bytes(2048), "2.0K");
+    }
+
+    // --- T194c: markdown-like name detection (same list as preview::classify) ---
+
+    #[test]
+    fn is_markdown_name_matches_known_extensions() {
+        for name in ["README.md", "notes.markdown", "x.mdown", "README.MD", "a.Markdown"] {
+            assert!(is_markdown_name(name), "{name:?} should be markdown-like");
+        }
+    }
+
+    #[test]
+    fn is_markdown_name_rejects_everything_else() {
+        for name in ["foo.rs", "main.py", "README", "archive.tar.md.bak", "noext"] {
+            assert!(!is_markdown_name(name), "{name:?} should not be markdown-like");
+        }
     }
 
     #[gpui::test]

@@ -23,12 +23,24 @@ use gpui::{
 };
 use gpui_component::input::{Input, InputEvent, InputState};
 
-use crate::side_panel_right::preview_target::PreviewTarget;
+use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
 use crate::side_panel_right::tab::terminal::TerminalTab;
 
 /// Drag marker for the drawer's resize handle — own type so it never
 /// cross-fires with `RightPanelResize` (the panel's own horizontal drag).
 struct EditorTerminalResize;
+
+/// Local render mode (T194c). Mirrors `PreviewIntent` but lives on the tab
+/// so a same-file mode switch (the header's Preview/Edit toggle) doesn't
+/// need a global round-trip. `View` is the default and the only mode for
+/// anything that isn't markdown-like — `Edit` is a Markdown-only, opt-in
+/// surface, never the forced default (kill regression from T194).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum ViewMode {
+    #[default]
+    View,
+    Edit,
+}
 
 /// First-open default height.
 const DRAWER_DEFAULT_H: f32 = 200.;
@@ -374,6 +386,16 @@ impl State {
 pub struct PreviewTab {
     state: State,
     scroll: ScrollHandle,
+    /// View (rendered/scrolled) vs Edit (raw InputState buffer) — T194c.
+    /// Only meaningful when `state` is `Loaded`; `Edit` only ever applies
+    /// when `is_editable(kind, truncated)` — everything else stays View.
+    view_mode: ViewMode,
+    /// Intent captured from `PreviewTarget` at the moment a **new** load
+    /// was kicked off — applied once that load settles (the global may
+    /// have moved on by the time the background read completes, so we use
+    /// the value that was current when this generation was requested, not
+    /// whatever the global holds when the read finishes).
+    pending_intent: PreviewIntent,
     /// Holds the `observe_global` subscription. Dropping it removes the
     /// listener. `new` returns immediately after subscribing.
     _target_subscription: gpui::Subscription,
@@ -432,6 +454,8 @@ impl PreviewTab {
             state: State::Empty,
             scroll: ScrollHandle::new(),
             _target_subscription: subscription,
+            view_mode: ViewMode::View,
+            pending_intent: PreviewIntent::View,
             editor: None,
             _editor_subscription: None,
             editor_generation: None,
@@ -503,6 +527,46 @@ impl PreviewTab {
         .detach();
     }
 
+    /// Attempt to switch to `mode`. Blocks Edit → View while `dirty`
+    /// instead of silently discarding the buffer — flashes a muted hint
+    /// through the same `save_result` slot the Save button's failure
+    /// banner already uses (T194c acceptance: "no silent dirty loss").
+    /// Switching **into** Edit is never blocked. Returns whether the
+    /// switch actually happened.
+    fn try_set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) -> bool {
+        if mode == ViewMode::View && self.view_mode == ViewMode::Edit && self.dirty {
+            self.save_result =
+                Some((false, "Save or discard before switching to Preview".to_string()));
+            cx.notify();
+            return false;
+        }
+        self.view_mode = mode;
+        cx.notify();
+        true
+    }
+
+    /// Resolve `intent` against the just-(re)confirmed `kind`/`truncated`
+    /// and apply it as the view mode. `Edit` on a non-editable kind (or a
+    /// truncated file) is honored as `View` with a log line — never a
+    /// silent no-op, never a crash. Used both for a fresh load settling
+    /// and for the same-path fast path in `on_target_changed`.
+    fn apply_intent(&mut self, intent: PreviewIntent, kind: PreviewKind, truncated: bool) {
+        let can_edit = is_editable(kind, truncated);
+        let target = match intent {
+            PreviewIntent::Edit if can_edit => ViewMode::Edit,
+            PreviewIntent::Edit => {
+                tracing::warn!(
+                    ?kind,
+                    truncated,
+                    "side_panel_right editor: Edit intent on non-editable kind, forcing View"
+                );
+                ViewMode::View
+            }
+            PreviewIntent::View => ViewMode::View,
+        };
+        self.view_mode = target;
+    }
+
     /// Toggle the terminal drawer open/closed. Lazily spawns the shared
     /// `TerminalTab` engine (and its PTY) on the *first* open only — later
     /// toggles just flip visibility, reusing the same session (T194b UX
@@ -535,17 +599,86 @@ impl PreviewTab {
         cx.notify();
     }
 
+    /// Shared chrome above the content area — present in every state, both
+    /// view modes (T194c "residual": the Terminal toggle must stay
+    /// reachable in View, not only inside the editor body). Shows the
+    /// Preview/Edit segmented toggle only when `can_edit` (markdown-like,
+    /// not truncated) — every other kind gets no mode pair, view only.
+    fn render_chrome_bar(&mut self, can_edit: bool, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let view_mode = self.view_mode;
+        let drawer_open = self.drawer_open;
+
+        let mut left = div().flex().items_center().gap(px(4.));
+        if can_edit {
+            let preview_active = view_mode == ViewMode::View;
+            left = left
+                .child(
+                    div()
+                        .id("editor-mode-preview")
+                        .px(px(8.))
+                        .py(px(3.))
+                        .rounded_sm()
+                        .cursor_pointer()
+                        .bg(if preview_active { theme.accent.primary } else { theme.border.subtle })
+                        .text_color(if preview_active { theme.text.primary } else { theme.text.muted })
+                        .text_size(px(10.5))
+                        .on_click(cx.listener(|this, _e, _w, cx| {
+                            this.try_set_view_mode(ViewMode::View, cx);
+                        }))
+                        .child("Preview"),
+                )
+                .child(
+                    div()
+                        .id("editor-mode-edit")
+                        .px(px(8.))
+                        .py(px(3.))
+                        .rounded_sm()
+                        .cursor_pointer()
+                        .bg(if !preview_active { theme.accent.primary } else { theme.border.subtle })
+                        .text_color(if !preview_active { theme.text.primary } else { theme.text.muted })
+                        .text_size(px(10.5))
+                        .on_click(cx.listener(|this, _e, _w, cx| {
+                            this.try_set_view_mode(ViewMode::Edit, cx);
+                        }))
+                        .child("Edit"),
+                );
+        }
+
+        div()
+            .id("editor-chrome-bar")
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap(px(8.))
+            .px(px(12.))
+            .py(px(6.))
+            .border_b_1()
+            .border_color(theme.border.subtle)
+            .child(left)
+            .child(
+                div()
+                    .id("editor-terminal-toggle")
+                    .px(px(10.))
+                    .py(px(4.))
+                    .rounded_md()
+                    .cursor_pointer()
+                    .bg(if drawer_open { theme.interactive.hover } else { theme.border.subtle })
+                    .text_color(theme.text.primary)
+                    .text_size(px(11.))
+                    .on_click(cx.listener(|this, _e, _w, cx| {
+                        this.toggle_drawer(cx);
+                    }))
+                    .child(if drawer_open { "Terminal ▾" } else { "Terminal ▸" }),
+            )
+            .into_any_element()
+    }
+
     /// Editable body: header (path + dirty indicator + Save button) over a
     /// multi-line `Input`. Bypasses `render_loaded`'s free-function match —
     /// building the Save button needs `cx.listener`, which only exists on a
-    /// live `Context<Self>`.
-    fn render_editor_body(
-        &mut self,
-        path: &Path,
-        theme: &Theme,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    /// live `Context<Self>`. Mode toggle and Terminal toggle live in the
+    /// shared `render_chrome_bar` above this, not here (T194c hoist).
+    fn render_editor_input_body(&mut self, path: &Path, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         // `self.editor` is guaranteed `Some` here: `Render::render` creates
         // it (and syncs the loaded content) in the sync block that runs
         // before this is ever called.
@@ -566,94 +699,64 @@ impl PreviewTab {
             .filter(|(ok, _)| !ok)
             .map(|(_, message)| message);
 
-        let mut status_line = div().flex().items_center().gap(px(6.)).child(
-            div()
-                .text_size(px(13.))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(theme.text.primary)
-                .child("Editor"),
-        );
-        if dirty {
-            status_line = status_line.child(
-                div()
-                    .text_size(px(11.))
-                    .text_color(theme.status.warning)
-                    .child("• unsaved"),
-            );
-        }
-
         let mut left_col = div()
             .flex()
             .flex_col()
             .gap(px(2.))
             .min_w(px(0.))
-            .child(status_line)
             .child(
-                div()
-                    .text_size(px(11.))
-                    .font_family(theme.font_mono)
-                    .text_color(theme.text.muted)
-                    .whitespace_nowrap()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .child(path_label),
+                div().flex().items_center().gap(px(6.)).child(
+                    div()
+                        .text_size(px(11.))
+                        .font_family(theme.font_mono)
+                        .text_color(theme.text.muted)
+                        .whitespace_nowrap()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .child(path_label),
+                ).when(dirty, |el| {
+                    el.child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme.status.warning)
+                            .child("• unsaved"),
+                    )
+                }),
             );
         if let Some(message) = failure {
             left_col = left_col.child(
                 div()
                     .text_size(px(11.))
                     .text_color(theme.status.error)
-                    .child(format!("Save failed: {message}")),
+                    .child(message),
             );
         }
 
-        let drawer_open = self.drawer_open;
         let header = div()
-            .id("editor-header")
+            .id("editor-input-header")
             .flex()
             .items_center()
             .justify_between()
             .gap(px(8.))
             .px(px(12.))
-            .py(px(10.))
+            .py(px(8.))
             .border_b_1()
             .border_color(theme.border.subtle)
             .child(left_col)
             .child(
                 div()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .child(
-                        div()
-                            .id("editor-terminal-toggle")
-                            .px(px(10.))
-                            .py(px(4.))
-                            .rounded_md()
-                            .cursor_pointer()
-                            .bg(if drawer_open { theme.interactive.hover } else { theme.border.subtle })
-                            .text_color(theme.text.primary)
-                            .text_size(px(11.))
-                            .on_click(cx.listener(|this, _e, _window, cx| {
-                                this.toggle_drawer(cx);
-                            }))
-                            .child(if drawer_open { "Terminal ▾" } else { "Terminal ▸" }),
-                    )
-                    .child(
-                        div()
-                            .id("editor-save")
-                            .px(px(10.))
-                            .py(px(4.))
-                            .rounded_md()
-                            .cursor_pointer()
-                            .bg(if can_save { theme.accent.primary } else { theme.border.subtle })
-                            .text_color(if can_save { theme.text.primary } else { theme.text.muted })
-                            .text_size(px(11.))
-                            .when(can_save, |el| {
-                                el.on_click(cx.listener(|this, _e, _w, cx| this.save(cx)))
-                            })
-                            .child(save_label),
-                    ),
+                    .id("editor-save")
+                    .px(px(10.))
+                    .py(px(4.))
+                    .rounded_md()
+                    .cursor_pointer()
+                    .bg(if can_save { theme.accent.primary } else { theme.border.subtle })
+                    .text_color(if can_save { theme.text.primary } else { theme.text.muted })
+                    .text_size(px(11.))
+                    .when(can_save, |el| {
+                        el.on_click(cx.listener(|this, _e, _w, cx| this.save(cx)))
+                    })
+                    .child(save_label),
             );
 
         let body = div()
@@ -665,75 +768,112 @@ impl PreviewTab {
                 el.child(Input::new(&editor).bordered(false).h_full().focus_bordered(false))
             });
 
-        let mut column = div().size_full().flex().flex_col().child(header).child(body);
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(header)
+            .child(body)
+            .into_any_element()
+    }
 
-        if drawer_open {
-            let max_h = (window.bounds().size.height.as_f32() * DRAWER_MAX_FRACTION).max(DRAWER_MIN_H);
-            // Clamp on every render too, not just at drag time — a window
-            // resize (or a drawer height carried over from a bigger window)
-            // must not leave the drawer taller than the current 50% ceiling.
-            if self.drawer_height > max_h {
-                self.drawer_height = max_h;
-            }
-            let drawer_height = self.drawer_height.max(DRAWER_MIN_H);
+    /// Drawer resize handle + terminal body, appended to the outer column
+    /// when `drawer_open` (T194c hoist — was previously nested inside the
+    /// Edit-only body, so it vanished in View mode; now it's a sibling of
+    /// the content area regardless of mode).
+    fn render_drawer_extras(
+        &mut self,
+        theme: &Theme,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> (AnyElement, AnyElement) {
+        let max_h = (window.bounds().size.height.as_f32() * DRAWER_MAX_FRACTION).max(DRAWER_MIN_H);
+        // Clamp on every render too, not just at drag time — a window
+        // resize (or a drawer height carried over from a bigger window)
+        // must not leave the drawer taller than the current 50% ceiling.
+        if self.drawer_height > max_h {
+            self.drawer_height = max_h;
+        }
+        let drawer_height = self.drawer_height.max(DRAWER_MIN_H);
 
-            if let Some(terminal) = &self.terminal_drawer {
-                terminal.update(cx, |t, _cx| t.set_available_height(Some(drawer_height)));
-            }
-
-            let resize_drag_handler = cx.listener(
-                |this, ev: &DragMoveEvent<EditorTerminalResize>, window, cx| {
-                    let max_h = window.bounds().size.height.as_f32() * DRAWER_MAX_FRACTION;
-                    this.update_drawer_resize(f32::from(ev.event.position.y), max_h.max(DRAWER_MIN_H), cx);
-                },
-            );
-            let resize_mouse_handler = cx.listener(|this, ev: &MouseDownEvent, _w, cx| {
-                this.start_drawer_resize(f32::from(ev.position.y), cx);
-            });
-
-            let handle = div()
-                .id("editor-terminal-resize-handle")
-                .flex_none()
-                .h(px(6.))
-                .w_full()
-                .cursor_row_resize()
-                .bg(theme.border.subtle)
-                .on_mouse_down(MouseButton::Left, resize_mouse_handler)
-                .on_drag(EditorTerminalResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
-                .on_drag_move(resize_drag_handler);
-
-            let mut drawer_body = div()
-                .id("editor-terminal-drawer")
-                .flex_none()
-                .h(px(drawer_height))
-                .w_full()
-                .overflow_hidden()
-                .border_t_1()
-                .border_color(theme.border.subtle);
-            if let Some(terminal) = &self.terminal_drawer {
-                drawer_body = drawer_body.child(terminal.clone());
-            }
-
-            column = column.child(handle).child(drawer_body);
+        if let Some(terminal) = &self.terminal_drawer {
+            terminal.update(cx, |t, _cx| t.set_available_height(Some(drawer_height)));
         }
 
-        column.into_any_element()
+        let resize_drag_handler = cx.listener(
+            |this, ev: &DragMoveEvent<EditorTerminalResize>, window, cx| {
+                let max_h = window.bounds().size.height.as_f32() * DRAWER_MAX_FRACTION;
+                this.update_drawer_resize(f32::from(ev.event.position.y), max_h.max(DRAWER_MIN_H), cx);
+            },
+        );
+        let resize_mouse_handler = cx.listener(|this, ev: &MouseDownEvent, _w, cx| {
+            this.start_drawer_resize(f32::from(ev.position.y), cx);
+        });
+
+        let handle = div()
+            .id("editor-terminal-resize-handle")
+            .flex_none()
+            .h(px(6.))
+            .w_full()
+            .cursor_row_resize()
+            .bg(theme.border.subtle)
+            .on_mouse_down(MouseButton::Left, resize_mouse_handler)
+            .on_drag(EditorTerminalResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
+            .on_drag_move(resize_drag_handler)
+            .into_any_element();
+
+        let mut drawer_body = div()
+            .id("editor-terminal-drawer")
+            .flex_none()
+            .h(px(drawer_height))
+            .w_full()
+            .overflow_hidden()
+            .border_t_1()
+            .border_color(theme.border.subtle);
+        if let Some(terminal) = &self.terminal_drawer {
+            drawer_body = drawer_body.child(terminal.clone());
+        }
+
+        (handle, drawer_body.into_any_element())
     }
 
     fn on_target_changed(&mut self, cx: &mut Context<Self>) {
-        let (path, generation) = {
+        let (path, generation, intent) = {
             let t = cx.global::<PreviewTarget>();
-            (t.path.clone(), t.generation)
+            (t.path.clone(), t.generation, t.intent)
         };
         let Some(path) = path else {
             self.state = State::Empty;
+            self.view_mode = ViewMode::View;
             cx.notify();
             return;
         };
+
+        // Same path already loaded — switch mode locally, no re-read
+        // (T194c: "same path, intent change only → switch mode without
+        // full re-read if already Loaded with text"). Routed through
+        // `try_set_view_mode` so re-requesting View while the editor is
+        // dirty on this same file is guarded the same way the header
+        // toggle is — no silent buffer loss just because the request came
+        // from Files instead of the tab itself.
+        if let State::Loaded { path: loaded_path, kind, truncated, .. } = &self.state
+            && *loaded_path == path
+        {
+            let (kind, truncated) = (*kind, *truncated);
+            let can_edit = is_editable(kind, truncated);
+            let target = match intent {
+                PreviewIntent::Edit if can_edit => ViewMode::Edit,
+                _ => ViewMode::View,
+            };
+            self.try_set_view_mode(target, cx);
+            return;
+        }
+
         self.state = State::Loading {
             generation,
             path: path.clone(),
         };
+        self.pending_intent = intent;
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -762,6 +902,16 @@ impl PreviewTab {
                         message: err,
                     },
                 };
+                // Apply the intent captured when *this* load was kicked
+                // off — not whatever the global holds now, which may have
+                // moved on while the background read was in flight.
+                match &this.state {
+                    State::Loaded { kind, truncated, .. } => {
+                        let (kind, truncated) = (*kind, *truncated);
+                        this.apply_intent(this.pending_intent, kind, truncated);
+                    }
+                    _ => this.view_mode = ViewMode::View,
+                }
                 cx.notify();
             });
         })
@@ -850,10 +1000,12 @@ impl Render for PreviewTab {
         let state = self.state.clone();
         let scroll = self.scroll.clone();
 
-        // T194: sync freshly loaded editable content into `editor`. Runs
-        // before the match so `render_editor_body` below can assume
-        // `editor` already reflects `state` for this generation.
+        // T194c kill-regression: only sync into `editor` (and only even
+        // *create* it) when the user actually asked to edit. View mode —
+        // the default — never touches InputState, so opening a markdown
+        // file never forces the raw buffer anymore.
         if let State::Loaded { generation, kind, text: Some(text), truncated, .. } = &state
+            && self.view_mode == ViewMode::Edit
             && is_editable(*kind, *truncated)
             && self.editor_generation != Some(*generation)
         {
@@ -881,7 +1033,11 @@ impl Render for PreviewTab {
             self.save_result = None;
         }
 
-        match state {
+        let can_edit =
+            matches!(&state, State::Loaded { kind, truncated, .. } if is_editable(*kind, *truncated));
+        let chrome_bar = self.render_chrome_bar(can_edit, &theme, cx);
+
+        let content: AnyElement = match state {
             State::Empty => render_empty(&theme),
             State::Loading { path, .. } => render_loading(&path, &theme),
             State::Loaded {
@@ -892,14 +1048,28 @@ impl Render for PreviewTab {
                 truncated,
                 ..
             } => {
-                if is_editable(kind, truncated) {
-                    self.render_editor_body(&path, &theme, window, cx)
+                if self.view_mode == ViewMode::Edit && is_editable(kind, truncated) {
+                    self.render_editor_input_body(&path, &theme, cx)
                 } else {
                     render_loaded(&path, kind, size_bytes, text.as_deref(), truncated, &theme, &scroll)
                 }
             }
             State::Error { message, .. } => render_error(&message, &theme),
+        };
+
+        let mut column = div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(chrome_bar)
+            .child(div().flex_1().min_h(px(0.)).child(content));
+
+        if self.drawer_open {
+            let (handle, drawer_body) = self.render_drawer_extras(&theme, window, cx);
+            column = column.child(handle).child(drawer_body);
         }
+
+        column
     }
 }
 
@@ -1423,6 +1593,183 @@ mod tests {
                 assert_eq!(text.as_deref(), Some("# Hello\nworld\n"));
             }
             other => panic!("expected Loaded Markdown, got {other:?}"),
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // --- T194c: view default + md preview/edit modes ---
+
+    fn write_md(dir_tag: &str, body: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("chronos-t194c-{dir_tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("README.md");
+        std::fs::write(&target, body).unwrap();
+        (dir, target)
+    }
+
+    #[gpui::test]
+    fn markdown_loaded_with_view_intent_stays_view_mode(cx: &mut TestAppContext) {
+        // Kill-regression check: opening markdown with the default (View)
+        // intent must NOT force the raw editor body — this was T194's bug.
+        install_theme(cx);
+        cx.update(|cx| cx.set_global(PreviewTarget::default()));
+        let view = cx.new(|cx| PreviewTab::new(cx));
+        let (dir, target) = write_md("view-default", "# Hello\n");
+
+        cx.update(|cx| cx.set_global(PreviewTarget::file(target.clone())));
+        cx.background_executor.run_until_parked();
+
+        cx.update_entity(&view, |this, _cx| {
+            assert_eq!(this.view_mode, ViewMode::View, "default intent must land in View mode");
+            assert!(this.editor.is_none(), "View mode must never create the raw InputState buffer");
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[gpui::test]
+    fn edit_intent_on_markdown_settles_to_edit_mode_with_editor(cx: &mut TestAppContext) {
+        install_theme(cx);
+        cx.update(|cx| cx.set_global(PreviewTarget::default()));
+        let view = cx.new(|cx| PreviewTab::new(cx));
+        let (dir, target) = write_md("edit-intent", "# Hello\n");
+
+        cx.update(|cx| {
+            let mut t = PreviewTarget::file(target.clone());
+            t.intent = PreviewIntent::Edit;
+            cx.set_global(t);
+        });
+        cx.background_executor.run_until_parked();
+
+        cx.update_entity(&view, |this, _cx| {
+            assert_eq!(this.view_mode, ViewMode::Edit, "Edit intent on markdown must settle to Edit mode");
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[gpui::test]
+    fn edit_intent_on_image_forces_view(cx: &mut TestAppContext) {
+        install_theme(cx);
+        cx.update(|cx| cx.set_global(PreviewTarget::default()));
+        let view = cx.new(|cx| PreviewTab::new(cx));
+        let dir = std::env::temp_dir().join(format!("chronos-t194c-img-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("pic.png");
+        std::fs::write(&target, [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]).unwrap();
+
+        cx.update(|cx| {
+            let mut t = PreviewTarget::file(target.clone());
+            t.intent = PreviewIntent::Edit;
+            cx.set_global(t);
+        });
+        cx.background_executor.run_until_parked();
+
+        cx.update_entity(&view, |this, _cx| {
+            assert_eq!(
+                this.view_mode,
+                ViewMode::View,
+                "Edit intent on a non-editable kind (image) must be forced to View, never crash/hang"
+            );
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[gpui::test]
+    fn same_path_intent_switch_does_not_reload(cx: &mut TestAppContext) {
+        install_theme(cx);
+        cx.update(|cx| cx.set_global(PreviewTarget::default()));
+        let view = cx.new(|cx| PreviewTab::new(cx));
+        let (dir, target) = write_md("same-path", "# Hello\n");
+
+        cx.update(|cx| cx.set_global(PreviewTarget::file(target.clone())));
+        cx.background_executor.run_until_parked();
+        cx.update_entity(&view, |this, _cx| assert_eq!(this.view_mode, ViewMode::View));
+
+        // Same path, Edit intent — must switch mode without re-entering
+        // State::Loading (a real re-read would flip state to Loading first).
+        cx.update(|cx| {
+            let mut t = PreviewTarget::file(target.clone());
+            t.generation = 2;
+            t.intent = PreviewIntent::Edit;
+            cx.set_global(t);
+        });
+        cx.update_entity(&view, |this, _cx| {
+            assert_eq!(this.view_mode, ViewMode::Edit, "same-path intent switch must apply immediately");
+            assert!(
+                matches!(this.state, State::Loaded { .. }),
+                "same-path intent switch must not re-enter Loading"
+            );
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[gpui::test]
+    fn edit_to_view_blocked_while_dirty_no_silent_loss(cx: &mut TestAppContext) {
+        install_theme(cx);
+        cx.update(|cx| cx.set_global(PreviewTarget::default()));
+        let view = cx.new(|cx| PreviewTab::new(cx));
+        let (dir, target) = write_md("dirty-guard", "# Hello\n");
+
+        cx.update(|cx| {
+            let mut t = PreviewTarget::file(target.clone());
+            t.intent = PreviewIntent::Edit;
+            cx.set_global(t);
+        });
+        cx.background_executor.run_until_parked();
+        cx.update_entity(&view, |this, cx| {
+            assert_eq!(this.view_mode, ViewMode::Edit);
+            this.dirty = true;
+            let switched = this.try_set_view_mode(ViewMode::View, cx);
+            assert!(!switched, "Edit -> View must be blocked while dirty");
+            assert_eq!(this.view_mode, ViewMode::Edit, "must stay in Edit — no silent buffer loss");
+            assert!(
+                this.save_result.as_ref().is_some_and(|(ok, _)| !ok),
+                "blocked switch must flash a muted hint, not fail silently"
+            );
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[gpui::test]
+    fn edit_to_view_allowed_when_not_dirty(cx: &mut TestAppContext) {
+        install_theme(cx);
+        cx.update(|cx| cx.set_global(PreviewTarget::default()));
+        let view = cx.new(|cx| PreviewTab::new(cx));
+        let (dir, target) = write_md("clean-switch", "# Hello\n");
+
+        cx.update(|cx| {
+            let mut t = PreviewTarget::file(target.clone());
+            t.intent = PreviewIntent::Edit;
+            cx.set_global(t);
+        });
+        cx.background_executor.run_until_parked();
+        cx.update_entity(&view, |this, cx| {
+            assert!(!this.dirty, "fresh load must not be dirty");
+            let switched = this.try_set_view_mode(ViewMode::View, cx);
+            assert!(switched, "clean Edit -> View must succeed");
+            assert_eq!(this.view_mode, ViewMode::View);
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[gpui::test]
+    fn drawer_toggle_works_in_view_mode(cx: &mut TestAppContext) {
+        // T194b residual fixed by the hoist: the terminal drawer must be
+        // reachable even when never entering Edit mode at all.
+        install_theme(cx);
+        cx.update(|cx| cx.set_global(PreviewTarget::default()));
+        let view = cx.new(|cx| PreviewTab::new(cx));
+        let (dir, target) = write_md("drawer-view-mode", "# Hello\n");
+
+        cx.update(|cx| cx.set_global(PreviewTarget::file(target.clone())));
+        cx.background_executor.run_until_parked();
+
+        cx.update_entity(&view, |this, cx| {
+            assert_eq!(this.view_mode, ViewMode::View);
+            this.toggle_drawer(cx);
+            assert!(this.drawer_open, "drawer must open regardless of view_mode");
+            assert!(this.terminal_drawer.is_some());
         });
         let _ = std::fs::remove_dir_all(&dir);
     }

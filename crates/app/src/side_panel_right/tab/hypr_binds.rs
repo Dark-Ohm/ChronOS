@@ -78,6 +78,7 @@ impl HyprBindsTab {
         cx.set_global(PreviewTarget {
             path: Some(path.clone()),
             generation,
+            intent: crate::side_panel_right::preview_target::PreviewIntent::View,
         });
         tracing::debug!("hypr_binds: open {} in Preview", path.display());
     }
