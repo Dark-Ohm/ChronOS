@@ -239,62 +239,46 @@ in both modes (тест `developer_settings_group_matches_gamer_settings_group_o
 
 ---
 
-## 5. Порядок и волны
+## 5. Порядок и волны (обновлено 2026-08-02 после T184)
 
 ```
-волна 0:  T184 RECON (источники игр, id, GamingModeState path)
+волна 0:  T184 RECON — ПРИНЯТА
               ↓
-волна 1:  T185 BACKEND  scene model + activate + seed hub
+волна 1 (ПАРАЛЛЕЛЬНО, зоны не пересекаются):
+          T185 BACKEND  scene.rs — fields + activate + hub seed
+          T186 FRONTEND tabs/assets/icons — Library/Scenes/Captures enum
+          T187 BACKEND  applications + games.toml — categories/is_game/pins
               ↓
-волна 2:  T186 FRONTEND gamer rail tabs + icons + Empty Captures
-          T187 FRONTEND Library tab          ← после T185; || T186 если зоны
-                                              рейл vs tab/content разведены
-          T188 FRONTEND Scenes tab + create/activate/delete
+волна 2 (последовательно, tab/mod.rs):
+          T188 FRONTEND Library UI
+          T189 FRONTEND Scenes UI
               ↓
-волна 3:  T189 BACKEND  apply_gaming_profile wire (только flag=true)
+волна 3:  T190 BACKEND  apply_gaming_profile wire
               ↓
-волна 4:  T190 QA       живой смок слайса 5
+волна 4:  T191 QA       живой смок
 ```
 
-**T186 и T187** могут идти параллельно, если:
+**Почему T187 apps отдельно:** T184 показал Categories + games.toml как
+самостоятельный backend; параллельно scene/rail без драки за файлы.
 
-- T186 трогает `tabs.rs`, `assets.rs`, иконки, `for_mode`, placeholder texts;
-- T187 трогает только `tab/library.rs` + `TabContent` match arm;
-
-`tab/mod.rs` — **один владелец на волну** (либо T186 добавляет Placeholder
-ветки + stub, либо T187 — Library entity; **не оба**). Правило: **T186**
-добавляет enum variants + Captures Empty + wire Placeholder; **T187/T188**
-заменяют Placeholder на живые entity **последовательно** (T187 → T188),
-чтобы не драться за `tab/mod.rs`.
-
-Уточнённый порядок волны 2:
-
-```
-T186 (rail + Captures empty + stubs Library/Scenes as EmptyTab with honest text)
-  → T187 (Library real UI)
-  → T188 (Scenes real UI)
-```
-
-T189 после T188: apply profile при activate — иначе нечем смочить.
-
-Брифы волны 2 пишутся **после** приёмки T184+T185 (урок T169/T166: зона
-по неполным фактам).
+**tab/mod.rs:** T186 stubs Placeholder; T188 затем T189 — по одному arm.
 
 ---
 
 ## 6. Задачи (T-ID)
 
-| ID | Роль | Что | Зависит |
-|---|---|---|---|
-| T184 | RECON | Источники списка игр на машине; Categories в .desktop; Steam/flatpak ids; можно ли launch без Steam API; путь apply/revert GamingModeState; что класть в `games` scene | — |
-| T185 | BACKEND | Поля `Scene` (kind/app/apply_gaming_profile…); `parse`/`serialize`; `activate(id)`; seed builtin `hub`; тесты pure; **не UI** | T184 |
-| T186 | FRONTEND | `PanelTab::{Library,Scenes,Captures}`; `for_mode(Gamer)`; icons + `assets.rs`; Captures = honest empty; Library/Scenes = EmptyTab до T187/T188 | T185 API ids |
-| T187 | FRONTEND | `tab/library.rs` — список игр из applications (+ filter), pin/recent, launch, open→suggest scene | T185, T186 |
-| T188 | FRONTEND | `tab/scenes.rs` — list gamer scenes, activate, create-from-library-app, delete+confirm | T185, T186, T187 (create-from) |
-| T189 | BACKEND | При `activate` сцены с `apply_gaming_profile`: apply/revert `GamingModeState`; observable success/fail; **не** трогать при mode switch | T185, T188 |
-| T190 | QA | Живой смок слайса 5 (см. §8) | всё выше |
+| ID | Роль | Что | Зависит | Где |
+|---|---|---|---|---|
+| T184 | RECON | Источники игр | — | **done** |
+| T185 | BACKEND | scene fields + activate + hub seed | T184 | **active** ||
+| T186 | FRONTEND | rail Library/Scenes/Captures + icons | T184 | **active** ||
+| T187 | BACKEND | categories + is_game + games.toml | T184 | **active** ||
+| T188 | FRONTEND | Library UI | T186, T187 | pause/BLOCKED |
+| T189 | FRONTEND | Scenes UI | T185, T186, T188 | pause/BLOCKED |
+| T190 | BACKEND | apply_gaming_profile wire | T185 | pause/BLOCKED |
+| T191 | QA | смок слайса 5 | всё | pause/BLOCKED |
 
-Следующий свободный T-номер на 2026-08-02: **T184** (T183 закрыта).
+Брифы волны 1 — `tasks/active/T185|T186|T187-*.md`.
 
 ---
 

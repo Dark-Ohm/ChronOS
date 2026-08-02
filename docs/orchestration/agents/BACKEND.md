@@ -8,8 +8,11 @@ UI не твой (это FRONTEND).
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активных заданий нет.** Слайс 4 закрыт 2026-08-02. Дальше — слайс 5
-(план ещё не написан).
+**Активные задания (параллельно, разные зоны):**
+- `tasks/active/T185-scene-per-game-activate.md` — **только** `scene.rs`
+- `tasks/active/T187-games-catalog-and-pins.md` — applications + games.toml
+
+Можно двумя агентами одновременно. T190 (gaming profile) — в pause/.
 
 **Зона в этой задаче — `crates/app/**`, а не `crates/services/**`.**
 Это осознанное отступление от таблицы ролей, как было в T160: состояние и
