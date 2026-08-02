@@ -129,6 +129,16 @@ fn is_editable(kind: PreviewKind, truncated: bool) -> bool {
     matches!(kind, PreviewKind::Text | PreviewKind::Markdown) && !truncated
 }
 
+/// Whether the Preview/Edit dual-mode toggle applies at all (T194c).
+/// Narrower than [`is_editable`]: this task scopes the two-button UI to
+/// **markdown-like** files only — plain `Text` stays view-only for now
+/// (spec: "realistic: plain Text не обязан иметь Edit в этой задаче").
+/// `is_editable` still governs the raw-buffer mechanics once in Edit mode;
+/// this governs whether Edit mode is ever offered in the first place.
+fn can_toggle_edit(kind: PreviewKind, truncated: bool) -> bool {
+    kind == PreviewKind::Markdown && !truncated
+}
+
 /// Pure classifier over (extension, head bytes). Single source of truth;
 /// covered by unit tests in `tests`.
 pub(crate) fn classify(path: &Path, head: &[u8; SNIFF_BYTES]) -> PreviewKind {
@@ -551,7 +561,7 @@ impl PreviewTab {
     /// silent no-op, never a crash. Used both for a fresh load settling
     /// and for the same-path fast path in `on_target_changed`.
     fn apply_intent(&mut self, intent: PreviewIntent, kind: PreviewKind, truncated: bool) {
-        let can_edit = is_editable(kind, truncated);
+        let can_edit = can_toggle_edit(kind, truncated);
         let target = match intent {
             PreviewIntent::Edit if can_edit => ViewMode::Edit,
             PreviewIntent::Edit => {
@@ -860,7 +870,7 @@ impl PreviewTab {
             && *loaded_path == path
         {
             let (kind, truncated) = (*kind, *truncated);
-            let can_edit = is_editable(kind, truncated);
+            let can_edit = can_toggle_edit(kind, truncated);
             let target = match intent {
                 PreviewIntent::Edit if can_edit => ViewMode::Edit,
                 _ => ViewMode::View,
@@ -1033,8 +1043,7 @@ impl Render for PreviewTab {
             self.save_result = None;
         }
 
-        let can_edit =
-            matches!(&state, State::Loaded { kind, truncated, .. } if is_editable(*kind, *truncated));
+        let can_edit = matches!(&state, State::Loaded { kind, truncated, .. } if can_toggle_edit(*kind, *truncated));
         let chrome_bar = self.render_chrome_bar(can_edit, &theme, cx);
 
         let content: AnyElement = match state {
@@ -1643,6 +1652,39 @@ mod tests {
 
         cx.update_entity(&view, |this, _cx| {
             assert_eq!(this.view_mode, ViewMode::Edit, "Edit intent on markdown must settle to Edit mode");
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[gpui::test]
+    fn edit_intent_on_plain_text_also_forces_view(cx: &mut TestAppContext) {
+        // T194c scope: dual-mode is markdown-only. Plain Text is
+        // `is_editable` (mechanics allow it) but NOT `can_toggle_edit` —
+        // Edit intent on a .txt/.log must land in View, same as an image,
+        // not silently succeed into edit mode.
+        install_theme(cx);
+        cx.update(|cx| cx.set_global(PreviewTarget::default()));
+        let view = cx.new(|cx| PreviewTab::new(cx));
+        let dir = std::env::temp_dir().join(format!("chronos-t194c-text-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("notes.txt");
+        std::fs::write(&target, "plain text body\n").unwrap();
+
+        cx.update(|cx| {
+            let mut t = PreviewTarget::file(target.clone());
+            t.intent = PreviewIntent::Edit;
+            cx.set_global(t);
+        });
+        cx.background_executor.run_until_parked();
+
+        cx.update_entity(&view, |this, _cx| {
+            assert_eq!(
+                this.view_mode,
+                ViewMode::View,
+                "Edit intent on plain Text must be forced to View — dual-mode is markdown-only this task"
+            );
+            assert!(this.editor.is_none(), "forced View must never build the raw buffer");
         });
         let _ = std::fs::remove_dir_all(&dir);
     }
