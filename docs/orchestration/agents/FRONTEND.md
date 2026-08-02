@@ -9,8 +9,9 @@
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
 **Активное:** `tasks/active/T194-editor-from-preview.md` — **Sonnet 5**
-(Preview→Editor + text edit/save).
-T192/T193 done. **Pause:** T195 follow · T196 system+ACP · **T197 restore Terminal**.
+(Preview→Editor + edit/save + **Zed-style terminal drawer**).
+**Параллельно RECON:** T198 chrome customization (read-only bar/).
+**Pause:** T195 follow · T196 system+ACP. **T197** rail Terminal — SUPERSEDED.
 **Kill:** T189. **Канон:** `docs/PRODUCT.md`.
 
 **Урок T179/T180, стоил двух приёмок:** доказывать надо тот путь, который

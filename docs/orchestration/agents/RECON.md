@@ -11,9 +11,9 @@
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активных заданий нет.** T184 **принята 2026-08-02** (с эрратой: dock
-launch есть). Отчёт — `tasks/report-log/T184-gamer-hub-recon-report.md`.
-Следующее — ждать T185+ брифа.
+**Активное:** `tasks/active/T198-chrome-customization-recon.md`
+(live customization plan approved). Отчёт → `report/T198-…`.
+T184 закрыта.
 
 **Зона чтения расширена этой задачей:** `../Chronos-FM/crates/**` — это
 проект того же автора, читать можно свободно.

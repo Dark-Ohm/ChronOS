@@ -11,8 +11,16 @@
 - `preview_target.rs` / Files open path
 - `view.rs` arms
 
-**НЕ:** full LSP; multi-buffer IDE; build. **Terminal** был вырезан T192 —
-вернуть в `for_mode` отдельной задачей (не эта); не блокирует Editor.
+**НЕ:** full LSP; multi-buffer IDE; build as rail.
+
+**Terminal (продукт 2026-08-02):** не rail-tab. **Zed-style drawer**
+внутри Editor — вытягивается снизу (toggle), PTY из `chronos_services::terminal`
+/ существующий TerminalTab engine. Scope T194:
+- **Must:** text view+edit+save (core).
+- **Should in same PR or immediate follow T194b:** bottom terminal panel
+  (collapsed by default, drag height, toggle button in editor chrome).
+  If too large — ship edit first, terminal drawer as **T194b** same week,
+  not T197 rail restore.
 
 **Отчёт:** `report/T194-editor-from-preview-report.md`.
 
@@ -24,6 +32,10 @@
 2. Убрать из product path пустой `PanelTab::Editor` (IDE stub).
 3. Preview capabilities (image/md/text/binary reject) **сохранить**; text =
    editable buffer + Save (write file with confirm on fail).
+4. **Terminal drawer (Zed-like):** снизу Editor — свёрнут по умолчанию;
+   toggle (кнопка / shortcut later); drag height; PTY reuse existing
+   terminal service. Референс UX: bottom panel under editor content
+   (не отдельное layer-shell окно, не rail).
 
 ### Scope edit
 

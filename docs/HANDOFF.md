@@ -41,12 +41,15 @@ Hypr live config **модульный:** `~/.config/hypr/modules/` + thin `hyprl
 |---|---|---|
 | T192 | rail product cut | **done** `6660d2f` |
 | T193 | hypr binds RO | **done** `4bce975` |
-| T194 | Preview→Editor+edit | **active** Sonnet 5 |
+| T194 | Editor+edit + **terminal drawer (Zed)** | **active** Sonnet 5 |
 | T195 | agent follow + right activity | pause |
 | T196 | system settings + ACP agents CRUD | pause |
-| T197 | restore Terminal to rail | park (T192 cut mistake) |
+| T197 | Terminal rail restore | **SUPERSEDED** → drawer in T194 |
+| T198 | chrome customization RECON | **active** |
 | T189 | scenes UI | **KILL** |
 | T191 | gamer slice smoke | park |
+
+Customization plan **approved:** `docs/superpowers/plans/2026-08-02-live-customization.md`.
 
 
 **Четыре живые вкладки и три движка в `crates/services/` без единого

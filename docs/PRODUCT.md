@@ -81,8 +81,10 @@ workspace density modes (Developer/Gamer = **плотность chrome**, не �
 | Вкладка | Роль |
 |---|---|
 | **Files** | дерево; клик → открыть в Editor |
-| **Editor** | бывший Preview **+ правка**: смотреть и **редактировать** то, что
-  агент изменил / что открыл пользователь. Не полноценный IDE-editor. |
+| **Editor** | бывший Preview **+ правка** + **встроенный Terminal drawer**
+  (как в Zed: вытягивается снизу вкладки, не отдельный rail-tab).
+  Смотреть/редактировать то, что агент изменил; терминал — под файлом.
+  Не полноценный IDE-editor / multi-root workspace. |
 | **System** | настройки шелла + OS (бывший Editor settings → **System settings**). |
 | **Library** (Gamer) | список игр + launch + pin — **оставить**, dogfood приятный. |
 | **Captures** (optional later) | не «продукт capture pipeline» — **лист папки**
@@ -125,7 +127,8 @@ Live «чем агент занят» в правой панели при follow
 | LSP / MCP settings tabs | **не нужны** сейчас — убрать из default rail / hide |
 | Editor (empty IDE tab) | **убрать**; Preview → **Editor** (view+edit) |
 | Editor settings | → **System settings** |
-| **Terminal** (T192 cut) | **вернуть later** — вырезали зря; отдельный T, не блокер Editor |
+| **Terminal as rail tab** (T192 cut) | **не возвращаем в rail** — живёт **внутри Editor**
+  (Zed-style bottom drawer). T197 переписан. Движок `services/terminal` переиспользовать. |
 | Gamer Library | **KEEP** |
 | apply_gaming_profile / T190 | optional advanced; не blocker DE |
 | T191 gamer QA slice | low priority vs agent+chrome |
