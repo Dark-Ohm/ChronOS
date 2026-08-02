@@ -12,6 +12,8 @@ use gpui::{App, BorrowAppContext};
 use inotify::{EventMask, Inotify, WatchMask};
 use serde::{Deserialize, Serialize};
 
+use super::appearance::BarAppearance;
+
 const CONFIG_BASENAME: &str = "bar.toml";
 const DEBOUNCE_MS: u64 = 300;
 
@@ -34,9 +36,20 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "clock",
 ];
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct BarLayoutConfig {
+    /// Schema version of `bar.toml`. Absent or `1` → v1 (appearance falls
+    /// back to code defaults, even if an `[appearance]` section is present).
+    /// `2` → `appearance` honored (T199). Omitted on save when `None` so v1
+    /// files stay byte-stable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<u32>,
+    /// Bar appearance (geometry/chrome). Defaults mirror the hardcoded chrome
+    /// (T198 table). Omitted on save while default so v1 files stay
+    /// byte-stable (`is_default`).
+    #[serde(default, skip_serializing_if = "BarAppearance::is_default")]
+    pub appearance: BarAppearance,
     pub left: Vec<String>,
     pub center: Vec<String>,
     pub right: Vec<String>,
@@ -51,6 +64,8 @@ impl Default for BarLayoutConfig {
         // Must match pre-T134 `register_builtin` order exactly.
         // `known` stays empty — the default path never needs migration.
         Self {
+            version: None,
+            appearance: BarAppearance::default(),
             left: vec![
                 "dock".into(),
                 "separator".into(),
@@ -73,6 +88,20 @@ impl Default for BarLayoutConfig {
             ],
             known: BTreeSet::new(),
         }
+    }
+}
+
+/// v1 gate: files without `version` or with `version < 2` get default
+/// appearance regardless of any `[appearance]` section (T199 compat).
+///
+/// **Load-time only contract:** `BarLayoutConfig::sanitized()` does NOT
+/// re-apply this gate — programmatic construction must call it explicitly
+/// (or go through `load()`). Real paths (`apply`) always go through `load()`.
+pub fn gated_appearance(version: Option<u32>, appearance: BarAppearance) -> BarAppearance {
+    if version.unwrap_or(1) < 2 {
+        BarAppearance::default()
+    } else {
+        appearance
     }
 }
 
@@ -102,6 +131,19 @@ pub fn cached() -> BarLayoutConfig {
         .clone()
 }
 
+/// Cached appearance, sanitized. Refreshed whenever `apply()`/`move_widget`
+/// update the layout cache (same cache object). T200 reads this on hot-reload.
+///
+/// `allow(dead_code)`: schema-only task (T199) — the consumer is T200
+/// (window apply), which lands next and calls this from the hot-reload path.
+#[allow(dead_code)]
+pub fn cached_appearance() -> BarAppearance {
+    cached().appearance.sanitized()
+}
+
+/// Replace the cache. **Invariant: the stored config must be sanitized**
+/// (`apply()` does `load().sanitized()`); `cached_appearance()` re-sanitizes
+/// defensively on read, so a raw store would only cost repeated warn calls.
 pub fn update_cache(cfg: BarLayoutConfig) {
     *config_cache()
         .lock()
@@ -116,6 +158,9 @@ impl BarLayoutConfig {
         match std::fs::read_to_string(&path) {
             Ok(content) => match toml::from_str::<BarLayoutConfig>(&content) {
                 Ok(mut cfg) => {
+                    // v1 files (no `version` / version < 2): appearance stays
+                    // code defaults even if an `[appearance]` section exists.
+                    cfg.appearance = gated_appearance(cfg.version, cfg.appearance);
                     if cfg.migrate_new_builtins() {
                         // Persist so the migration doesn't loop on every
                         // restart. This is the one exception to the
@@ -334,6 +379,8 @@ impl BarLayoutConfig {
             center: filter(&self.center),
             right: filter(&self.right),
             known: self.known.clone(),
+            version: self.version,
+            appearance: self.appearance.sanitized(),
         }
     }
 
@@ -553,6 +600,7 @@ mod tests {
             center: vec![],
             right: vec!["clock".into()],
             known: BTreeSet::new(),
+            ..Default::default()
         };
         let s = cfg.sanitized();
         assert_eq!(s.left, vec!["dock"]);
@@ -574,6 +622,7 @@ mod tests {
             center: vec!["cava".into()],
             right: vec![],
             known: BTreeSet::new(),
+            ..Default::default()
         };
         assert!(cfg.sanitized().left.is_empty());
     }
@@ -601,6 +650,7 @@ mod tests {
                 "clock".into(),
             ],
             known: BTreeSet::new(),
+            ..Default::default()
         };
         let changed = cfg.migrate_new_builtins();
         // Bootstrap: known populated from current contents, no widget added.
@@ -635,6 +685,7 @@ mod tests {
                 "clock".into(),
             ],
             known,
+            ..Default::default()
         };
 
         assert!(cfg.migrate_new_builtins());
@@ -668,6 +719,7 @@ mod tests {
             center: vec!["cava".into()],
             right: vec!["project".into(), "clock".into()],
             known: BTreeSet::new(),
+            ..Default::default()
         };
 
         // Рестарт 1: bootstrap, виджета ещё нет, но персист запрошен.
@@ -712,6 +764,7 @@ mod tests {
                 "clock".into(),
             ],
             known,
+            ..Default::default()
         };
         cfg.migrate_new_builtins();
         // workspace_mode inserted at index 1 (after "project", before "separator").
@@ -745,6 +798,7 @@ mod tests {
                 "clock".into(),
             ],
             known,
+            ..Default::default()
         };
         cfg.migrate_new_builtins();
         // volume is known → not re-inserted.
@@ -763,6 +817,7 @@ mod tests {
             center: vec![],
             right: vec!["clock".into()],
             known,
+            ..Default::default()
         };
         // Should not panic, no new builtins to add.
         cfg.migrate_new_builtins();
@@ -793,11 +848,113 @@ mod tests {
                 "clock".into(),
             ],
             known,
+            ..Default::default()
         };
         cfg.migrate_new_builtins();
         let after_first = cfg.right.clone();
         cfg.migrate_new_builtins();
         assert_eq!(cfg.right, after_first);
         assert_eq!(cfg.right.iter().filter(|n| *n == "workspace_mode").count(), 1);
+    }
+
+    // -- T199 appearance schema ---------------------------------------------
+
+    #[test]
+    fn v1_file_loads_with_default_appearance() {
+        // Real user shape: flat widgets only, no version, no [appearance].
+        let toml_str = r#"
+            left = ["dock", "separator", "workspaces"]
+            center = ["cava", "mpris"]
+            right = ["clock"]
+        "#;
+        let cfg: BarLayoutConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.version, None);
+        assert_eq!(cfg.appearance, BarAppearance::default());
+        assert_eq!(cfg.left, vec!["dock", "separator", "workspaces"]);
+    }
+
+    #[test]
+    fn version_absent_or_one_gates_appearance_to_defaults() {
+        let explicit = BarAppearance {
+            height: 64.0,
+            ..Default::default()
+        };
+        assert_eq!(gated_appearance(None, explicit), BarAppearance::default());
+        assert_eq!(gated_appearance(Some(1), explicit), BarAppearance::default());
+        // v2 honors the section.
+        assert_eq!(gated_appearance(Some(2), explicit), explicit);
+    }
+
+    #[test]
+    fn v2_file_with_appearance_parses_and_sanitizes() {
+        let toml_str = r#"
+            version = 2
+            left = ["dock"]
+            [appearance]
+            height = 40
+            floating = true
+            exclusive = true
+        "#;
+        let cfg: BarLayoutConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.version, Some(2));
+        assert_eq!(cfg.appearance.height, 40.0);
+        let s = cfg.sanitized();
+        assert!(s.appearance.floating);
+        assert!(!s.appearance.exclusive, "floating must force exclusive off");
+    }
+
+    #[test]
+    fn v2_missing_appearance_section_defaults() {
+        let toml_str = r#"
+            version = 2
+            left = ["dock"]
+        "#;
+        let cfg: BarLayoutConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.version, Some(2));
+        assert_eq!(cfg.appearance, BarAppearance::default());
+    }
+
+    #[test]
+    fn sanitized_passes_appearance_through() {
+        let cfg = BarLayoutConfig {
+            version: Some(2),
+            appearance: BarAppearance {
+                height: 200.0,
+                floating: true,
+                exclusive: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let s = cfg.sanitized();
+        assert_eq!(s.appearance.height, 80.0); // clamped
+        assert!(!s.appearance.exclusive); // floating forces off
+    }
+
+    #[test]
+    fn serialize_roundtrip_v2_with_appearance() {
+        let cfg = BarLayoutConfig {
+            version: Some(2),
+            appearance: BarAppearance {
+                height: 40.0,
+                radius: 12.0,
+                ..Default::default()
+            },
+            left: vec!["dock".into()],
+            right: vec!["clock".into()],
+            ..Default::default()
+        };
+        let s = toml::to_string_pretty(&cfg).unwrap();
+        assert!(s.contains("[appearance]"), "appearance section must be written:\n{s}");
+        let back: BarLayoutConfig = toml::from_str(&s).unwrap();
+        assert_eq!(back, cfg);
+    }
+
+    #[test]
+    fn v1_serialize_omits_version_and_appearance() {
+        let cfg = BarLayoutConfig::default(); // v1 shape
+        let s = toml::to_string_pretty(&cfg).unwrap();
+        assert!(!s.contains("version"), "v1 save must not write version:\n{s}");
+        assert!(!s.contains("appearance"), "v1 save must not write appearance:\n{s}");
     }
 }
