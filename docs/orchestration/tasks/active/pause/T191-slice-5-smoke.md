@@ -1,4 +1,5 @@
 # T191 — QA-смок слайса 5
+**PARK 2026-08-02 — low priority vs Agent Shell DE (docs/PRODUCT.md). Not next.**
 
 **Статус:** BLOCKED — после T185–T190.
 **Роль:** QA (только с разрешения архитектора; роль Buffy закрыта).

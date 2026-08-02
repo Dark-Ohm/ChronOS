@@ -1,3 +1,5 @@
+**KILL 2026-08-02 — product cut: scenes UI not needed. docs/PRODUCT.md**
+
 **KILL product path 2026-08-02** — scenes UI not needed. See docs/PRODUCT.md.
 # T189 — вкладка Scenes (activate / create / delete)
 

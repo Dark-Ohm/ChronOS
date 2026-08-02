@@ -34,10 +34,19 @@
 | T186 | GLM 5.2 | `102fef4` | rail 17/10, 29/29, grim N/V |
 | T187 | DeepSeek V4 Pro | `7a99116`+`af66b58` | is_game+games.toml |
 
-**Слайс 5 код принят; product cut зафиксирован 2026-08-02:**
-`docs/PRODUCT.md` — **канон scope** (Agent Shell DE). T189 Scenes — **KILL**.
-Library KEEP. Preview→Editor+edit; follow-agent; hide LSP/MCP; Editor settings→System.
-Hypr binds после shippable hyprland dotfiles. active/ пуст — ждать фазы PRODUCT.
+**PRODUCT wave в поле (2026-08-02):** канон `docs/PRODUCT.md`.
+Hypr live config **модульный:** `~/.config/hypr/modules/` + thin `hyprland.lua`.
+
+| ID | что | статус |
+|---|---|---|
+| T192 | rail product cut | **active** |
+| T193 | hypr binds RO | **active** (∥ T192) |
+| T194 | Preview→Editor+edit | pause |
+| T195 | agent follow + right activity | pause |
+| T196 | system settings + ACP agents CRUD | pause |
+| T189 | scenes UI | **KILL** |
+| T191 | gamer slice smoke | park |
+
 
 **Четыре живые вкладки и три движка в `crates/services/` без единого
 GPUI-типа:** `files/` (порт из Chronos-FM), `terminal/` (вынесен из спайка

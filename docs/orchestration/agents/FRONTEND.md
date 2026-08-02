@@ -8,8 +8,12 @@
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активных нет.** T188 Library **принята** (`f3985ab`). T186/T188 closed.
-T189 Scenes — `active/pause/` (после product cut — см. HANDOFF).
+**Активные (PRODUCT wave, параллельно):**
+- `tasks/active/T192-rail-product-cut.md` — default rail (GLM / Grok)
+- `tasks/active/T193-hyprland-binds-readonly.md` — binds RO (Grok 4.5 / GLM)
+
+**Pause:** T194 Editor+edit · T195 agent follow · T196 system+ACP.
+**Kill:** T189 Scenes. **Канон:** `docs/PRODUCT.md`.
 
 **Урок T179/T180, стоил двух приёмок:** доказывать надо тот путь, который
 порождает проблему. В T180 отчёт предъявлял «ноль сетевых запросов после
