@@ -28,11 +28,15 @@
 
 **Слайс 5 — план A; T184 принята; волна 1 ×3 параллельно (master):**
 
-| ID | роль | зона |
-|---|---|---|
-| **T185** | BACKEND | `scene.rs` activate+hub |
-| **T186** | FRONTEND | rail Library/Scenes/Captures |
-| **T187** | BACKEND | categories + games.toml |
+| ID | роль | модель | зона |
+|---|---|---|---|
+| **T185** | BACKEND | **Sonnet 5** | `scene.rs` activate+hub |
+| **T186** | FRONTEND | **GLM 5.2** | rail Library/Scenes/Captures |
+| **T187** | BACKEND | **DeepSeek V4 Pro** | categories + games.toml |
+
+**Скамейка не взята:** GPT-5.6 Luna, MiniMax M3, Mimo 2.5 — на волну 1
+не сажаем (дешёвый тир / слабый track на дисковой дисциплине и rail tests).
+Mimo/Luna — запас на T188 UI, если Sonnet/GLM заняты.
 
 T188–T191 — `active/pause/` BLOCKED. План:
 `docs/superpowers/plans/2026-08-02-gamer-hub-slice-5.md`.

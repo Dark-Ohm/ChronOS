@@ -9,8 +9,8 @@ UI не твой (это FRONTEND).
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
 **Активные задания (параллельно, разные зоны):**
-- `tasks/active/T185-scene-per-game-activate.md` — **только** `scene.rs`
-- `tasks/active/T187-games-catalog-and-pins.md` — applications + games.toml
+- `tasks/active/T185-scene-per-game-activate.md` — **только** `scene.rs` — **Sonnet 5**
+- `tasks/active/T187-games-catalog-and-pins.md` — applications + games.toml — **DeepSeek V4 Pro**
 
 Можно двумя агентами одновременно. T190 (gaming profile) — в pause/.
 

@@ -8,7 +8,7 @@
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активное задание:** `tasks/active/T186-gamer-rail-tabs.md` (рейл + иконки).
+**Активное задание:** `tasks/active/T186-gamer-rail-tabs.md` (рейл + иконки) — **GLM 5.2**.
 Параллельно идут T185/T187 (BACKEND) — **не трогай** `scene.rs` / applications.
 T188/T189 (Library/Scenes UI) — `active/pause/`, BLOCKED до приёмки волны 1.
 

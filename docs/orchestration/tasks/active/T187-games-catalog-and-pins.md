@@ -1,6 +1,6 @@
 # T187 — games catalog: Categories + is_game + games.toml
 
-**Статус:** active. **Роль:** BACKEND.
+**Статус:** active. **Роль:** BACKEND. **Модель: DeepSeek V4 Pro.**
 **Правила:** `docs/orchestration/agents/RULES.md`.
 **План:** slice-5 §2.3 (уточнение T184).
 **T184:** `report-log/T184-gamer-hub-recon-report.md` §1–2, §7, §9.1–9.2.

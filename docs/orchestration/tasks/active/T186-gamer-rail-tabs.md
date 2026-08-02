@@ -1,6 +1,6 @@
 # T186 — Gamer rail: Library / Scenes / Captures + иконки
 
-**Статус:** active. **Роль:** FRONTEND.
+**Статус:** active. **Роль:** FRONTEND. **Модель: GLM 5.2.**
 **Правила:** `docs/orchestration/agents/RULES.md`.
 **План:** `docs/superpowers/plans/2026-08-02-gamer-hub-slice-5.md` §2.5.
 **T184:** `report-log/T184-gamer-hub-recon-report.md` §6.
