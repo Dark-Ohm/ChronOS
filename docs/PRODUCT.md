@@ -88,6 +88,7 @@ Live «чем агент занят» в правой панели при follow
 | LSP / MCP settings tabs | **не нужны** сейчас — убрать из default rail / hide |
 | Editor (empty IDE tab) | **убрать**; Preview → **Editor** (view+edit) |
 | Editor settings | → **System settings** |
+| **Terminal** (T192 cut) | **вернуть later** — вырезали зря; отдельный T, не блокер Editor |
 | Gamer Library | **KEEP** |
 | apply_gaming_profile / T190 | optional advanced; не blocker DE |
 | T191 gamer QA slice | low priority vs agent+chrome |

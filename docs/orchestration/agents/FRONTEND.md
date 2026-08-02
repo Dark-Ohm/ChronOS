@@ -8,8 +8,9 @@
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активных нет.** T192 `6660d2f` · T193 `4bce975` приняты.
-**Pause:** T194 Editor+edit · T195 agent follow · T196 system+ACP — ready to unpause T194.
+**Активное:** `tasks/active/T194-editor-from-preview.md` — **Sonnet 5**
+(Preview→Editor + text edit/save).
+T192/T193 done. **Pause:** T195 follow · T196 system+ACP · **T197 restore Terminal**.
 **Kill:** T189. **Канон:** `docs/PRODUCT.md`.
 
 **Урок T179/T180, стоил двух приёмок:** доказывать надо тот путь, который

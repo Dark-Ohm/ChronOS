@@ -1,7 +1,6 @@
 # T194 — Editor = Preview + edit (drop empty Editor tab)
 
-**Статус:** BLOCKED — после **T192** (rail labels/for_mode settled).
-**Роль:** FRONTEND. **Модель: Sonnet 5** (text input / gpui-component cost).
+**Статус:** active (T192 done). **Роль:** FRONTEND. **Модель: Sonnet 5** (text input / gpui-component).
 **Канон:** `docs/PRODUCT.md` — Files + Editor (view+edit), не IDE.
 
 **Зона:**
@@ -12,7 +11,8 @@
 - `preview_target.rs` / Files open path
 - `view.rs` arms
 
-**НЕ:** full LSP; multi-buffer IDE; terminal/build.
+**НЕ:** full LSP; multi-buffer IDE; build. **Terminal** был вырезан T192 —
+вернуть в `for_mode` отдельной задачей (не эта); не блокирует Editor.
 
 **Отчёт:** `report/T194-editor-from-preview-report.md`.
 
