@@ -122,26 +122,36 @@ impl Serialize for BarWidth {
     }
 }
 
-impl<'de> Deserialize<'de> for BarWidth {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let raw = String::deserialize(d)?;
-        match raw.as_str() {
-            "full" => Ok(BarWidth::Full),
-            "hug" => Ok(BarWidth::Hug),
+impl BarWidth {
+    /// Parse the same `"full"|"hug"|"fraction:N"` grammar the TOML
+    /// deserializer uses below. Pulled into its own function (T201) so
+    /// agent-patch merging shares exactly one parser with file I/O instead
+    /// of duplicating the match arms.
+    pub fn parse_str(raw: &str) -> Self {
+        match raw {
+            "full" => BarWidth::Full,
+            "hug" => BarWidth::Hug,
             _ => match raw.strip_prefix("fraction:") {
                 Some(rest) => match rest.parse::<f32>() {
-                    Ok(f) => Ok(BarWidth::Fraction(f)),
+                    Ok(f) => BarWidth::Fraction(f),
                     Err(_) => {
                         tracing::warn!("bar: bad fraction '{raw}', using full");
-                        Ok(BarWidth::Full)
+                        BarWidth::Full
                     }
                 },
                 None => {
                     tracing::warn!("bar: unknown width '{raw}', using full");
-                    Ok(BarWidth::Full)
+                    BarWidth::Full
                 }
             },
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for BarWidth {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(d)?;
+        Ok(Self::parse_str(&raw))
     }
 }
 

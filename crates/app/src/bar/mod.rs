@@ -1,6 +1,7 @@
 // crates/app/src/bar/mod.rs
 pub use chronos_luau::bar::{BAR_HEIGHT, BarSection, BarWidget, BarWidgetRegistry};
 
+pub mod agent_api;
 pub mod appearance;
 pub mod layout_config;
 mod widgets;
