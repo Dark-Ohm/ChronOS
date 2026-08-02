@@ -34,6 +34,7 @@ pub fn render_rail(
     on_select: Rc<dyn Fn(PanelTab, &mut Window, &mut App) + 'static>,
     dock_content: bool,
     on_dock_toggle: Rc<dyn Fn(&mut Window, &mut App) + 'static>,
+    content_open: bool,
 ) -> impl IntoElement {
     let theme = Theme::global(cx);
     // Own the slice so the element tree can hold it across layout.
@@ -48,8 +49,11 @@ pub fn render_rail(
         .w(px(RAIL_WIDTH))
         .h_full()
         .bg(surfaces::chrome(theme))
-        .border_l_1()
-        .border_color(theme.border.default)
+        // Border only when content is visible — no hairline in rail-only
+        // mode (the body div handles the border between handle and content).
+        .when(content_open, |r| {
+            r.border_l_1().border_color(theme.border.default)
+        })
         .children(tabs.into_iter().map(|tab| {
             let is_active = tab == active;
             let on_select = on_select.clone();

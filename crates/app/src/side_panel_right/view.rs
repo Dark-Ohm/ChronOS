@@ -54,11 +54,6 @@ pub struct SidePanelRightView {
     last_exclusive_zone: Option<f32>,
     resize_start_x: Option<f32>,
     resize_start_width: Option<f32>,
-    /// Screen-space X of the panel's **right** edge at drag start. Right-
-    /// anchored windows move their left edge on resize, so window-local
-    /// mouse X drifts under the cursor (classic 1:1 lag / overshoot). Width
-    /// is computed as `right_edge_abs - pointer_abs` each move.
-    resize_right_edge_abs: Option<f32>,
     /// Lazy, cached tab views — one per visited tab. Created on first
     /// activation, retained across switches and mode changes.
     tab_views: HashMap<PanelTab, TabContent>,
@@ -102,7 +97,6 @@ impl SidePanelRightView {
             last_exclusive_zone: None,
             resize_start_x: None,
             resize_start_width: None,
-            resize_right_edge_abs: None,
             tab_views: HashMap::new(),
             tab_resize_memory: HashMap::new(),
             _preview_target_subscription: preview_target_subscription,
@@ -158,17 +152,11 @@ impl SidePanelRightView {
         true
     }
 
-    fn start_resize(&mut self, start_x: f32, window: &Window, cx: &mut Context<Self>) {
+    fn start_resize(&mut self, start_x: f32, cx: &mut Context<Self>) {
         let w = cx.global::<SidePanelRightState>().width;
-        self.resize_start_x = Some(start_x);
-        self.resize_start_width = Some(w);
-        // Freeze the screen-space right edge for this drag. Layer-shell is
-        // TOP|RIGHT-anchored, so that edge must not move while width changes.
-        let origin_x = f32::from(window.bounds().origin.x);
-        self.resize_right_edge_abs = Some(origin_x + w);
-        // Rail-only: first grab on the handle pops content to the active
-        // tab's width (user "pulls the panel out of the bar"). Further
-        // drag adjusts freely.
+        // Rail-only: first grab expands content; further drag uses delta math.
+        // Do **not** recompute width from absolute pointer after expand — that
+        // snaps back to ~rail width while the cursor is still near the right edge.
         if w <= RAIL_ONLY_WIDTH + 1.0 {
             let tab = self.active_tab;
             let target = self.active_tab_width(tab, cx);
@@ -177,10 +165,10 @@ impl SidePanelRightView {
             state.last_exclusive_zone = None;
             self.tab_resize_memory.insert(tab, target);
             self.resize_start_width = Some(target);
-            // Right edge unchanged; re-pin absolute right for the new width.
-            self.resize_right_edge_abs = Some(origin_x + w);
-            // After expand, left edge jumps left — local start_x is stale.
-            // Next moves use abs geometry only.
+            // Right-anchored window grows LEFT — the cursor's local position
+            // inside the now-wider window shifts right by (target - w). Offset
+            // start_x so the next DragMoveEvent's delta math doesn't snap back.
+            self.resize_start_x = Some(start_x + (target - w));
             self.last_resized_width = f32::NAN;
             tracing::info!(
                 width = target,
@@ -188,26 +176,24 @@ impl SidePanelRightView {
                 "side_panel_right: handle grab expanded rail → content"
             );
             cx.notify();
+        } else {
+            self.resize_start_x = Some(start_x);
+            self.resize_start_width = Some(w);
         }
     }
 
-    fn update_resize(&mut self, current_x: f32, window: &Window, cx: &mut Context<Self>) {
-        if self.resize_start_width.is_none() {
-            return;
-        }
-        // Absolute pointer X = window origin + local position. As width
-        // grows, origin.x decreases; local current_x alone would drift.
-        let origin_x = f32::from(window.bounds().origin.x);
-        let pointer_abs = origin_x + current_x;
-        let right_abs = self.resize_right_edge_abs.unwrap_or_else(|| {
-            origin_x + cx.global::<SidePanelRightState>().width
-        });
-        // Stick left edge to the pointer: width = right − pointer.
-        let target = right_abs - pointer_abs;
+    fn update_resize(&mut self, current_x: f32, cx: &mut Context<Self>) {
+        let (start_x, start_w) = match (self.resize_start_x, self.resize_start_width) {
+            (Some(x), Some(w)) => (x, w),
+            _ => return,
+        };
+        // Right-anchored: pointer left (smaller local x) → wider panel.
+        // Local delta only — same model as before the abs/overlay experiments.
+        // Window.resize is coalesced in render() via last_resized_width.
+        let delta = current_x - start_x;
         let state = cx.global_mut::<SidePanelRightState>();
-        state.resize(target);
+        state.resize(start_w - delta);
         state.last_exclusive_zone = None;
-        // Remember per-tab resize so returning to this tab restores it.
         self.tab_resize_memory.insert(self.active_tab, state.width);
         crate::side_panel_right::hold_peek(cx);
         cx.notify();
@@ -383,14 +369,13 @@ impl Render for SidePanelRightView {
         let elev = theme.elevation_popup();
 
         // Resize handlers before any RPIT that captures cx (Rust 2024).
-        // Pass `window` so abs X can cancel right-anchor local-coord drift.
         let resize_drag_handler = cx.listener(
-            |this, ev: &gpui::DragMoveEvent<RightPanelResize>, window, cx| {
-                this.update_resize(f32::from(ev.event.position.x), window, cx);
+            |this, ev: &gpui::DragMoveEvent<RightPanelResize>, _window, cx| {
+                this.update_resize(f32::from(ev.event.position.x), cx);
             },
         );
-        let resize_mouse_handler = cx.listener(|this, ev: &gpui::MouseDownEvent, window, cx| {
-            this.start_resize(f32::from(ev.position.x), window, cx);
+        let resize_mouse_handler = cx.listener(|this, ev: &gpui::MouseDownEvent, _w, cx| {
+            this.start_resize(f32::from(ev.position.x), cx);
         });
 
         // Lazy tab view — created on first paint, cached thereafter.
@@ -400,7 +385,8 @@ impl Render for SidePanelRightView {
         let tab_entry = self.ensure_tab_view(active, cx);
 
         // OUTER: sole window-level `on_hover` (debounce). No transition_on_hover.
-        // Layout: [handle | content? | rail] — rail flush right; handle is inner edge.
+        // Layout: [handle | content? | rail] — flex handle so drag hits work
+        // (absolute overlay was unhittable / broke resize entirely).
         div()
             .id("side-panel-right-root")
             .size_full()
@@ -414,18 +400,15 @@ impl Render for SidePanelRightView {
                 }
             })
             .child(
-                // T204 ghost handle: 4px grab — paint chrome (same as body),
-                // not fully transparent. On a Transparent layer-shell the
-                // old transparent fill punched a hole at the desktop edge
-                // (white/desktop strip). Not a fat 10px chrome column.
-                // Hairline stays on `side-panel-body` border_l.
+                // 4px ghost hit strip — transparent (no gray lip). Real flex
+                // column so on_drag receives events.
                 div()
                     .id("side-panel-right-resize-handle")
                     .flex_none()
                     .w(px(HANDLE_WIDTH))
                     .h_full()
                     .cursor_col_resize()
-                    .bg(surfaces::chrome(&theme))
+                    .bg(gpui::transparent_black())
                     .on_mouse_down(gpui::MouseButton::Left, resize_mouse_handler)
                     .on_drag(RightPanelResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
                     .on_drag_move(resize_drag_handler),
@@ -437,9 +420,14 @@ impl Render for SidePanelRightView {
                     .flex_1()
                     .min_w(px(0.))
                     .h_full()
-                    .bg(surfaces::chrome(&theme))
-                    .border_l_1()
-                    .border_color(theme.border.default)
+                    // Chrome bg only when content is open — in rail-only mode
+                    // the rail provides its own background. Transparent body
+                    // eliminates the gray lip next to the handle.
+                    .when(content_open, |b| {
+                        b.bg(surfaces::chrome(&theme))
+                            .border_l_1()
+                            .border_color(theme.border.default)
+                    })
                     .flex()
                     .flex_row() // content first, rail last — rail flush against the screen's right edge
                     .overflow_hidden()
@@ -496,6 +484,10 @@ impl Render for SidePanelRightView {
                                 TabContent::HyprBinds(entity) => {
                                     col.child(entity.clone())
                                 }
+                                // T202: System settings «Bar» page.
+                                TabContent::BarSettings(entity) => {
+                                    col.child(entity.clone())
+                                }
                                 TabContent::Placeholder(entity) => {
                                     col.child(entity.clone())
                                 }
@@ -537,6 +529,7 @@ impl Render for SidePanelRightView {
                             on_select,
                             dock_content,
                             on_dock_toggle,
+                            content_open,
                         )
                     })
                     .with_animation(
@@ -570,6 +563,8 @@ impl SidePanelRightView {
             TabContent::Library(e) => e.entity_id(),
             // T193: Hyprland binds (read-only list).
             TabContent::HyprBinds(e) => e.entity_id(),
+            // T202: System settings «Bar» page.
+            TabContent::BarSettings(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })
     }
