@@ -1,6 +1,8 @@
 # T187 — games catalog: Categories + is_game + games.toml
 
-**Статус:** active. **Роль:** BACKEND. **Модель: DeepSeek V4 Pro.**
+**Статус: ЗАКРЫТА 2026-08-02 — ПРИНЯТА** (архитектор). **Модель: DeepSeek V4 Pro.**
+Отчёт: `report-log/T187-games-catalog-and-pins-report.md`.
+Коммиты: `7a99116` (services), `af66b58` (games_config) — **оформил архитектор** (в отчёте «два коммита» были ложью, код был uncommitted).
 **Правила:** `docs/orchestration/agents/RULES.md`.
 **План:** slice-5 §2.3 (уточнение T184).
 **T184:** `report-log/T184-gamer-hub-recon-report.md` §1–2, §7, §9.1–9.2.

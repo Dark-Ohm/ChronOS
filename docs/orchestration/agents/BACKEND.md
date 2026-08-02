@@ -8,11 +8,8 @@ UI не твой (это FRONTEND).
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активные задания (параллельно, разные зоны):**
-- `tasks/active/T185-scene-per-game-activate.md` — **только** `scene.rs` — **Sonnet 5**
-- `tasks/active/T187-games-catalog-and-pins.md` — applications + games.toml — **DeepSeek V4 Pro**
-
-Можно двумя агентами одновременно. T190 (gaming profile) — в pause/.
+**Активное:** `tasks/active/T185-scene-per-game-activate.md` (Sonnet 5) — если ещё в поле.
+**Закрыто:** T187 **принята** (`7a99116` + `af66b58`). T190 — pause/.
 
 **Зона в этой задаче — `crates/app/**`, а не `crates/services/**`.**
 Это осознанное отступление от таблицы ролей, как было в T160: состояние и
