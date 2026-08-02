@@ -41,7 +41,8 @@ Hypr live config **модульный:** `~/.config/hypr/modules/` + thin `hyprl
 |---|---|---|
 | T192 | rail product cut | **done** `6660d2f` |
 | T193 | hypr binds RO | **done** `4bce975` |
-| T194 | Editor+edit + **terminal drawer (Zed)** | **active** Sonnet 5 |
+| T194 | Editor+edit (no drawer yet) | **done** `7d0be09` residual T194b |
+| T194b | terminal drawer under Editor | **active** |
 | T195 | agent follow + right activity | pause |
 | T196 | system settings + ACP agents CRUD | pause |
 | T197 | Terminal rail restore | **SUPERSEDED** → drawer in T194 |
