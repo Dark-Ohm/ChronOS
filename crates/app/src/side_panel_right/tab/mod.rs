@@ -62,6 +62,12 @@ impl TabContent {
             // Preview: `PreviewTab::new` only subscribes to PreviewTarget; no
             // I/O happens until the user actually clicks a file in Files.
             PanelTab::Preview => TabContent::Preview(cx.new(|cx| PreviewTab::new(cx))),
+            // Gamer at-rest hub (§4.2): placeholder until T188 (Library) /
+            // T189 (Scenes) land real entities. Captures stays placeholder —
+            // no capture backend exists this slice (§13 honest empty state).
+            PanelTab::Library
+            | PanelTab::Scenes
+            | PanelTab::Captures => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
             _ => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
         }
     }
@@ -128,6 +134,9 @@ pub fn placeholder_description(tab: PanelTab) -> &'static str {
         PanelTab::Inspector => "UI hierarchy and design-token inspector",
         PanelTab::Build => "Build, test, task and run orchestration",
         PanelTab::SourceControl => "Version control: branches, commits, diffs",
+        PanelTab::Library => "List, pin and launch detected games",
+        PanelTab::Scenes => "Activate per-game scenes and profiles",
+        PanelTab::Captures => "Unavailable - no capture backend",
         PanelTab::AcpSettings => "Configure the AI agent protocol connection",
         PanelTab::McpSettings => "Manage Model Context Protocol server endpoints",
         PanelTab::LspSettings => "Language server and diagnostics configuration",

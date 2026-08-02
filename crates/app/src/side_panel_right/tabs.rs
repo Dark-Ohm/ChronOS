@@ -11,12 +11,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_has_fourteen_tabs_in_fixed_order() {
+    fn all_has_seventeen_tabs_in_fixed_order() {
         // §4.1 spec: Developer sees System + 7 work tools (Files/Editor/
         // Terminal/Preview/Inspector/Build/SourceControl) + 6 settings
         // (AcpSettings/McpSettings/LspSettings/ApiProviders/EditorSettings/
-        // HyprlandBinds). Settings group sits at the tail, unchanged.
-        assert_eq!(PanelTab::ALL.len(), 14);
+        // HyprlandBinds). §4.2 adds three Gamer at-rest hub tools
+        // (Library/Scenes/Captures) to the full catalog, slotted between the
+        // work tools and the settings group. `for_mode(Developer)` excludes
+        // them — they live in `ALL` for icon/label/coverage, not the dev rail.
+        assert_eq!(PanelTab::ALL.len(), 17);
         assert_eq!(PanelTab::ALL[0], PanelTab::System);
         assert_eq!(PanelTab::ALL[1], PanelTab::Files);
         assert_eq!(PanelTab::ALL[2], PanelTab::Editor);
@@ -25,12 +28,15 @@ mod tests {
         assert_eq!(PanelTab::ALL[5], PanelTab::Inspector);
         assert_eq!(PanelTab::ALL[6], PanelTab::Build);
         assert_eq!(PanelTab::ALL[7], PanelTab::SourceControl);
-        assert_eq!(PanelTab::ALL[8], PanelTab::AcpSettings);
-        assert_eq!(PanelTab::ALL[9], PanelTab::McpSettings);
-        assert_eq!(PanelTab::ALL[10], PanelTab::LspSettings);
-        assert_eq!(PanelTab::ALL[11], PanelTab::ApiProviders);
-        assert_eq!(PanelTab::ALL[12], PanelTab::EditorSettings);
-        assert_eq!(PanelTab::ALL[13], PanelTab::HyprlandBinds);
+        assert_eq!(PanelTab::ALL[8], PanelTab::Library);
+        assert_eq!(PanelTab::ALL[9], PanelTab::Scenes);
+        assert_eq!(PanelTab::ALL[10], PanelTab::Captures);
+        assert_eq!(PanelTab::ALL[11], PanelTab::AcpSettings);
+        assert_eq!(PanelTab::ALL[12], PanelTab::McpSettings);
+        assert_eq!(PanelTab::ALL[13], PanelTab::LspSettings);
+        assert_eq!(PanelTab::ALL[14], PanelTab::ApiProviders);
+        assert_eq!(PanelTab::ALL[15], PanelTab::EditorSettings);
+        assert_eq!(PanelTab::ALL[16], PanelTab::HyprlandBinds);
     }
 
     #[test]
@@ -168,9 +174,49 @@ mod tests {
         );
     }
 
+    // --- T186: three Gamer hub tabs round-trip parse_id ↔ id (§4.2) ---
+
+    #[test]
+    fn parse_id_round_trip_for_gamer_hub_tools() {
+        for tab in [PanelTab::Library, PanelTab::Scenes, PanelTab::Captures] {
+            assert_eq!(
+                PanelTab::parse_id(tab.id()),
+                Some(tab),
+                "{tab:?} round-trip via id() failed"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_id_accepts_case_and_hyphen_variants_for_gamer_hub_tools() {
+        // Single-word ids: case-insensitive + hyphen→underscore lenience,
+        // same rule as the original ten and the four work tools.
+        assert_eq!(PanelTab::parse_id("library"), Some(PanelTab::Library));
+        assert_eq!(PanelTab::parse_id("LIBRARY"), Some(PanelTab::Library));
+        assert_eq!(PanelTab::parse_id("Library"), Some(PanelTab::Library));
+        assert_eq!(PanelTab::parse_id("scenes"), Some(PanelTab::Scenes));
+        assert_eq!(PanelTab::parse_id("SCENES"), Some(PanelTab::Scenes));
+        assert_eq!(PanelTab::parse_id("Scenes"), Some(PanelTab::Scenes));
+        assert_eq!(PanelTab::parse_id("captures"), Some(PanelTab::Captures));
+        assert_eq!(PanelTab::parse_id("CAPTURES"), Some(PanelTab::Captures));
+        assert_eq!(PanelTab::parse_id("Captures"), Some(PanelTab::Captures));
+    }
+
     #[test]
     fn parse_id_rejects_unknown_names_including_new_ones() {
-        for bogus in ["previewz", "inspectorrr", "buildit", "git", "scm", ""] {
+        for bogus in [
+            "previewz",
+            "inspectorrr",
+            "buildit",
+            "git",
+            "scm",
+            "",
+            "lib",
+            "scene",
+            "capture",
+            "games",
+            "librarys",
+        ] {
             assert_eq!(
                 PanelTab::parse_id(bogus),
                 None,
@@ -182,32 +228,59 @@ mod tests {
     // --- T169: composition rules per §4.1 + §5 ---
 
     #[test]
-    fn developer_rail_is_full_catalog_of_fourteen() {
+    fn developer_rail_is_fourteen_workbench_tabs_without_gamer_tools() {
+        // §4.1: Developer rail = System + 7 work tools + 6 settings (14).
+        // The three Gamer hub tools (Library/Scenes/Captures, §4.2) are in
+        // `ALL` for coverage but must NOT appear in the Developer rail.
         let dev = PanelTab::for_mode(WorkspaceMode::Developer);
         assert_eq!(dev.len(), 14);
-        assert_eq!(dev, PanelTab::ALL.to_vec());
-        // The four new work tools must be present.
-        assert!(dev.contains(&PanelTab::Preview));
-        assert!(dev.contains(&PanelTab::Inspector));
-        assert!(dev.contains(&PanelTab::Build));
-        assert!(dev.contains(&PanelTab::SourceControl));
+        assert_eq!(
+            dev,
+            vec![
+                PanelTab::System,
+                PanelTab::Files,
+                PanelTab::Editor,
+                PanelTab::Terminal,
+                PanelTab::Preview,
+                PanelTab::Inspector,
+                PanelTab::Build,
+                PanelTab::SourceControl,
+                PanelTab::AcpSettings,
+                PanelTab::McpSettings,
+                PanelTab::LspSettings,
+                PanelTab::ApiProviders,
+                PanelTab::EditorSettings,
+                PanelTab::HyprlandBinds,
+            ]
+        );
+        for absent in [PanelTab::Library, PanelTab::Scenes, PanelTab::Captures] {
+            assert!(
+                !dev.contains(&absent),
+                "Developer rail must not include Gamer hub tab {absent:?}"
+            );
+        }
+        // Developer rail is ALL minus the three Gamer hub tools.
+        assert_ne!(dev, PanelTab::ALL.to_vec());
     }
 
     #[test]
-    fn gamer_rail_stays_seven_tabs_without_new_work_tools() {
-        // §4.1 line 149: "Gamer mode replaces the work-tool group with its
-        // own tools and keeps the settings group intact". Work tools
-        // (Files/Editor/Terminal + the four new ones) are absent; settings
-        // group is intact; System stays first.
+    fn gamer_rail_is_ten_tabs_with_three_hub_tools() {
+        // §4.2: Gamer rail = System + 3 at-rest hub tools (Library/Scenes/
+        // Captures) + 6 settings (10 total). The Developer work tools leave
+        // so the deck is not a second IDE. System stays first; the settings
+        // tail keeps its order (§5).
         let gamer = PanelTab::for_mode(WorkspaceMode::Gamer);
-        assert_eq!(gamer.len(), 7);
+        assert_eq!(gamer.len(), 10);
         assert_eq!(gamer[0], PanelTab::System);
-        assert_eq!(gamer[1], PanelTab::AcpSettings);
-        assert_eq!(gamer[2], PanelTab::McpSettings);
-        assert_eq!(gamer[3], PanelTab::LspSettings);
-        assert_eq!(gamer[4], PanelTab::ApiProviders);
-        assert_eq!(gamer[5], PanelTab::EditorSettings);
-        assert_eq!(gamer[6], PanelTab::HyprlandBinds);
+        assert_eq!(gamer[1], PanelTab::Library);
+        assert_eq!(gamer[2], PanelTab::Scenes);
+        assert_eq!(gamer[3], PanelTab::Captures);
+        assert_eq!(gamer[4], PanelTab::AcpSettings);
+        assert_eq!(gamer[5], PanelTab::McpSettings);
+        assert_eq!(gamer[6], PanelTab::LspSettings);
+        assert_eq!(gamer[7], PanelTab::ApiProviders);
+        assert_eq!(gamer[8], PanelTab::EditorSettings);
+        assert_eq!(gamer[9], PanelTab::HyprlandBinds);
         for absent in [
             PanelTab::Files,
             PanelTab::Editor,
@@ -227,8 +300,11 @@ mod tests {
     #[test]
     fn developer_settings_group_matches_gamer_settings_group_order() {
         // §5: shared rail tabs keep relative order across modes. Settings
-        // is shared between Developer and Gamer; the four new work tools
-        // are not in Gamer, so they must not affect the shared order.
+        // is shared between Developer and Gamer. Gamer slots three hub tools
+        // (Library/Scenes/Captures) between System and the settings tail, so
+        // the settings group is `gamer[4..]`; the Developer work tools and
+        // the three Gamer hub tools are not shared and must not affect the
+        // shared order.
         let dev = PanelTab::for_mode(WorkspaceMode::Developer);
         let gamer = PanelTab::for_mode(WorkspaceMode::Gamer);
         let dev_settings: Vec<PanelTab> = dev
@@ -244,7 +320,7 @@ mod tests {
                     | PanelTab::HyprlandBinds
             ))
             .collect();
-        assert_eq!(dev_settings, gamer[1..].to_vec());
+        assert_eq!(dev_settings, gamer[4..].to_vec());
     }
 
     #[test]
@@ -263,6 +339,28 @@ mod tests {
         sorted.dedup();
         assert_eq!(sorted.len(), paths.len(), "new tabs share an icon path");
         // And the paths all live under icons/.
+        for p in paths {
+            assert!(
+                p.starts_with("icons/") && p.ends_with(".svg"),
+                "icon path does not look like icons/rail-*.svg: {p}"
+            );
+        }
+    }
+
+    #[test]
+    fn gamer_hub_tabs_have_distinct_icon_paths() {
+        // T186: the three Gamer at-rest hub tabs each need their own icon
+        // file, registered in `assets.rs` (T169 lesson — missing registration
+        // renders an empty slot).
+        let paths = [
+            PanelTab::Library.icon_path(),
+            PanelTab::Scenes.icon_path(),
+            PanelTab::Captures.icon_path(),
+        ];
+        let mut sorted: Vec<&str> = paths.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), paths.len(), "gamer hub tabs share an icon path");
         for p in paths {
             assert!(
                 p.starts_with("icons/") && p.ends_with(".svg"),
@@ -307,6 +405,7 @@ mod tests {
     fn empty_state_tabs_preferred_width_is_320() {
         for tab in [
             PanelTab::Inspector,
+            PanelTab::Captures,
             PanelTab::AcpSettings,
             PanelTab::McpSettings,
             PanelTab::LspSettings,
@@ -333,6 +432,19 @@ mod tests {
     fn build_preferred_width_is_640() {
         assert_eq!(PanelTab::Build.preferred_content_width(), 640.);
     }
+
+    #[test]
+    fn library_preferred_width_is_480() {
+        // §4.2 at-rest hub: game grid + artwork needs more than the 320
+        // empty-state width (T188 lands the real content).
+        assert_eq!(PanelTab::Library.preferred_content_width(), 480.);
+    }
+
+    #[test]
+    fn scenes_preferred_width_is_400() {
+        // §4.2 at-rest hub: per-game scene cards (T189).
+        assert_eq!(PanelTab::Scenes.preferred_content_width(), 400.);
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
@@ -347,6 +459,10 @@ pub enum PanelTab {
     Inspector,
     Build,
     SourceControl,
+    // --- Gamer at-rest hub tools (§4.2) ---
+    Library,
+    Scenes,
+    Captures,
     // --- Settings group ---
     AcpSettings,
     McpSettings,
@@ -358,7 +474,7 @@ pub enum PanelTab {
 
 impl PanelTab {
     /// Full catalog — every tab that exists. Coverage tests iterate this.
-    pub const ALL: [PanelTab; 14] = [
+    pub const ALL: [PanelTab; 17] = [
         PanelTab::System,
         PanelTab::Files,
         PanelTab::Editor,
@@ -367,6 +483,9 @@ impl PanelTab {
         PanelTab::Inspector,
         PanelTab::Build,
         PanelTab::SourceControl,
+        PanelTab::Library,
+        PanelTab::Scenes,
+        PanelTab::Captures,
         PanelTab::AcpSettings,
         PanelTab::McpSettings,
         PanelTab::LspSettings,
@@ -386,6 +505,9 @@ impl PanelTab {
             PanelTab::Inspector => "inspector",
             PanelTab::Build => "build",
             PanelTab::SourceControl => "source_control",
+            PanelTab::Library => "library",
+            PanelTab::Scenes => "scenes",
+            PanelTab::Captures => "captures",
             PanelTab::AcpSettings => "acp_settings",
             PanelTab::McpSettings => "mcp_settings",
             PanelTab::LspSettings => "lsp_settings",
@@ -406,6 +528,9 @@ impl PanelTab {
             "preview" => Some(PanelTab::Preview),
             "inspector" => Some(PanelTab::Inspector),
             "build" => Some(PanelTab::Build),
+            "library" => Some(PanelTab::Library),
+            "scenes" => Some(PanelTab::Scenes),
+            "captures" => Some(PanelTab::Captures),
             "source_control" | "sourcecontrol" => Some(PanelTab::SourceControl),
             "acp_settings" | "acpsettings" => Some(PanelTab::AcpSettings),
             "mcp_settings" | "mcpsettings" => Some(PanelTab::McpSettings),
@@ -419,16 +544,34 @@ impl PanelTab {
 
     /// Default rail composition for a workspace mode.
     ///
-    /// Developer — full workbench (all 14 tabs per §4.1). Gamer — System +
-    /// settings group; work tools (the original three plus
-    /// Preview/Inspector/Build/SourceControl) leave so the deck is not a
-    /// second IDE. Shared tabs keep the same relative order in both sets
-    /// (§5).
+    /// Developer — workbench (14 tabs per §4.1: System + 7 work tools + 6
+    /// settings). Gamer — System + 3 at-rest hub tools (Library/Scenes/
+    /// Captures, §4.2) + the 6 settings; the Developer work tools leave so
+    /// the deck is not a second IDE. Shared tabs (System + settings group)
+    /// keep the same relative order in both sets (§5).
     pub fn for_mode(mode: WorkspaceMode) -> Vec<PanelTab> {
         match mode {
-            WorkspaceMode::Developer => PanelTab::ALL.to_vec(),
+            WorkspaceMode::Developer => vec![
+                PanelTab::System,
+                PanelTab::Files,
+                PanelTab::Editor,
+                PanelTab::Terminal,
+                PanelTab::Preview,
+                PanelTab::Inspector,
+                PanelTab::Build,
+                PanelTab::SourceControl,
+                PanelTab::AcpSettings,
+                PanelTab::McpSettings,
+                PanelTab::LspSettings,
+                PanelTab::ApiProviders,
+                PanelTab::EditorSettings,
+                PanelTab::HyprlandBinds,
+            ],
             WorkspaceMode::Gamer => vec![
                 PanelTab::System,
+                PanelTab::Library,
+                PanelTab::Scenes,
+                PanelTab::Captures,
                 PanelTab::AcpSettings,
                 PanelTab::McpSettings,
                 PanelTab::LspSettings,
@@ -482,6 +625,9 @@ impl PanelTab {
             PanelTab::Inspector => "Inspector",
             PanelTab::Build => "Build",
             PanelTab::SourceControl => "Source control",
+            PanelTab::Library => "Library",
+            PanelTab::Scenes => "Scenes",
+            PanelTab::Captures => "Captures",
             PanelTab::AcpSettings => "ACP settings",
             PanelTab::McpSettings => "MCP settings",
             PanelTab::LspSettings => "LSP settings",
@@ -501,6 +647,9 @@ impl PanelTab {
             PanelTab::Inspector => "icons/rail-inspector.svg",
             PanelTab::Build => "icons/rail-build.svg",
             PanelTab::SourceControl => "icons/rail-source-control.svg",
+            PanelTab::Library => "icons/rail-library.svg",
+            PanelTab::Scenes => "icons/rail-scenes.svg",
+            PanelTab::Captures => "icons/rail-captures.svg",
             PanelTab::AcpSettings => "icons/rail-acp.svg",
             PanelTab::McpSettings => "icons/rail-mcp.svg",
             PanelTab::LspSettings => "icons/rail-lsp.svg",
@@ -527,8 +676,16 @@ impl PanelTab {
             // only a ceiling, not a target. Lower than Build because no
             // mono diagnostics demand wider.
             PanelTab::Preview => super::DEFAULT_CONTENT_WIDTH,
+            // Gamer at-rest hub (§4.2): Library hosts a game grid + artwork
+            // (T188), Scenes lists per-game scene cards (T189). Widths are
+            // set now so the panel does not jump when real content lands.
+            PanelTab::Library => 480.,
+            PanelTab::Scenes => 400.,
             // Empty-state tabs: icon + label + one-line description.
+            // Captures is honestly unavailable this slice (no capture
+            // backend — slice 6), so it stays an empty-state 320.
             PanelTab::Inspector
+            | PanelTab::Captures
             | PanelTab::AcpSettings
             | PanelTab::McpSettings
             | PanelTab::LspSettings
