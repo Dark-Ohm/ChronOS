@@ -23,6 +23,7 @@ use crate::side_panel_right::power_row::{
     ARM_TIMEOUT, ArmState, PowerAction, is_confirming_click, on_click as arm_on_click, on_timeout,
     render_footer,
 };
+use crate::side_panel_right::preview_target::PreviewTarget;
 use crate::side_panel_right::surfaces;
 use crate::side_panel_right::tab::TabContent;
 use crate::side_panel_right::tab::system::format_net_pair;
@@ -60,10 +61,32 @@ pub struct SidePanelRightView {
     /// When a tab is selected, its width here (or `preferred_content_width`
     /// if never resized) is applied to `SidePanelRightState.width`.
     tab_resize_memory: HashMap<PanelTab, f32>,
+    /// T194: opening a file (Files click, or a future agent-follow path —
+    /// T195) switches the panel to the Editor tab. Kept alive only to hold
+    /// the `observe_global` subscription; dropping it would silently stop
+    /// the switch.
+    _preview_target_subscription: gpui::Subscription,
 }
 
 impl SidePanelRightView {
-    pub fn new(_cx: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        // Defensive default — mirrors `PreviewTab::new`'s guard: tests and
+        // early wiring must not race with `side_panel_right::init`, and
+        // `cx.observe_global` requires the global to already exist.
+        if !cx.has_global::<PreviewTarget>() {
+            cx.set_global(PreviewTarget::default());
+        }
+        let preview_target_subscription = cx.observe_global::<PreviewTarget>(|this, cx| {
+            // A file was opened (path went from None to Some, or a new file
+            // was clicked) — switch to Editor so the user sees it land
+            // without a second click. `Files → Editor` is the wire T194
+            // asks for; `resolve_for_mode`/`for_mode` already put both in
+            // the same (Developer) rail, so switching cannot land on a tab
+            // absent from the current rail.
+            if cx.global::<PreviewTarget>().path.is_some() {
+                this.on_tab_select(PanelTab::Preview, cx);
+            }
+        });
         Self {
             power_arm: ArmState::default(),
             net_state: NetState::default(),
@@ -76,6 +99,7 @@ impl SidePanelRightView {
             resize_start_width: None,
             tab_views: HashMap::new(),
             tab_resize_memory: HashMap::new(),
+            _preview_target_subscription: preview_target_subscription,
         }
     }
 

@@ -17,9 +17,11 @@ use std::path::{Path, PathBuf};
 
 use chronos_ui::Theme;
 use gpui::{
-    AnyElement, Context, FontWeight, IntoElement, ObjectFit, ParentElement, Render, ScrollHandle,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, img, prelude::*, px,
+    AnyElement, Context, Entity, FontWeight, IntoElement, ObjectFit, ParentElement, Render,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div,
+    img, prelude::*, px,
 };
+use gpui_component::input::{Input, InputEvent, InputState};
 
 use crate::side_panel_right::preview_target::PreviewTarget;
 
@@ -87,6 +89,19 @@ pub(crate) enum ImageUrlClass {
     /// Empty / whitespace — left alone so the alt text is still visible
     /// behind whatever the parser makes of it.
     Unsupported(String),
+}
+
+/// Whether the loaded body can be opened for editing (T194 — Editor = view
+/// + edit, not view-only Preview).
+///
+/// `Text`/`Markdown` are editable as **plain source** — Markdown is not
+/// rendered while editing, matching `docs/PRODUCT.md`'s "not a second
+/// Zed/VS Code" stance: one buffer, one Save, no split preview/source view.
+/// `truncated` disqualifies a file from editing outright: the buffer would
+/// only hold the first `TEXT_CAP_BYTES`, and a Save would silently discard
+/// everything past the cap — that is data loss, not an edge case.
+fn is_editable(kind: PreviewKind, truncated: bool) -> bool {
+    matches!(kind, PreviewKind::Text | PreviewKind::Markdown) && !truncated
 }
 
 /// Pure classifier over (extension, head bytes). Single source of truth;
@@ -349,6 +364,30 @@ pub struct PreviewTab {
     /// Holds the `observe_global` subscription. Dropping it removes the
     /// listener. `new` returns immediately after subscribing.
     _target_subscription: gpui::Subscription,
+    /// Editable buffer (T194). Created lazily on first `render()` — `new`
+    /// has no `Window`, and `InputState::new` requires one — then reused
+    /// across file switches (one `InputState` per tab, not per file).
+    editor: Option<Entity<InputState>>,
+    /// `InputEvent::Change` subscription on `editor`, created alongside it.
+    /// `InputState::set_value` (used to load fresh content) suppresses
+    /// `Change` internally, so this only fires on genuine user keystrokes.
+    _editor_subscription: Option<Subscription>,
+    /// `State::Loaded::generation` last synced into `editor`. `None` = not
+    /// synced yet. Compared on every render to know when a newly loaded
+    /// file (or a re-click of the same file after an external edit) needs
+    /// `set_value` again.
+    editor_generation: Option<u64>,
+    /// Set on the first `InputEvent::Change` after a load/save; cleared by
+    /// a fresh load or a successful save.
+    dirty: bool,
+    /// True while a save write is in flight — disables the Save button so
+    /// a double-click cannot race two writes.
+    saving: bool,
+    /// Outcome of the last save attempt: `(true, _)` success, `(false,
+    /// reason)` failure. Only the failure case is rendered (§13 — the
+    /// Save button's own "Save" → "Saved" label already communicates
+    /// success honestly, a duplicate banner would be noise).
+    save_result: Option<(bool, String)>,
 }
 
 impl PreviewTab {
@@ -367,12 +406,188 @@ impl PreviewTab {
             state: State::Empty,
             scroll: ScrollHandle::new(),
             _target_subscription: subscription,
+            editor: None,
+            _editor_subscription: None,
+            editor_generation: None,
+            dirty: false,
+            saving: false,
+            save_result: None,
         };
         // The observer only fires on *changes*; the global may already
         // carry a path that was set before the tab was first created,
         // so we read the current value once.
         this.on_target_changed(cx);
         this
+    }
+
+    /// Write the editor's current content back to the loaded file. No-op if
+    /// there is nothing loaded, no editor yet, or a save is already in
+    /// flight (guards the double-click race the Save button's disabled
+    /// state already prevents visually, but events can still queue up).
+    fn save(&mut self, cx: &mut Context<Self>) {
+        if self.saving {
+            return;
+        }
+        let State::Loaded { path, .. } = &self.state else {
+            return;
+        };
+        let Some(editor) = &self.editor else {
+            return;
+        };
+        let path = path.clone();
+        let content = editor.read(cx).value().to_string();
+
+        self.saving = true;
+        self.save_result = None;
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let io_path = path.clone();
+            let result = cx
+                .background_spawn(async move {
+                    std::fs::write(&io_path, content.as_bytes())
+                        .map_err(|e| format!("Cannot save '{}': {e}", io_path.display()))
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
+                match result {
+                    Ok(()) => {
+                        this.dirty = false;
+                        this.save_result = Some((true, String::new()));
+                        tracing::info!(path = %path.display(), "side_panel_right editor: saved");
+                    }
+                    Err(message) => {
+                        tracing::warn!(
+                            path = %path.display(),
+                            %message,
+                            "side_panel_right editor: save failed"
+                        );
+                        this.save_result = Some((false, message));
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Editable body: header (path + dirty indicator + Save button) over a
+    /// multi-line `Input`. Bypasses `render_loaded`'s free-function match —
+    /// building the Save button needs `cx.listener`, which only exists on a
+    /// live `Context<Self>`.
+    fn render_editor_body(
+        &mut self,
+        path: &Path,
+        theme: &Theme,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        // `self.editor` is guaranteed `Some` here: `Render::render` creates
+        // it (and syncs the loaded content) in the sync block that runs
+        // before this is ever called. `_window` stays a parameter for
+        // signature symmetry with the sync block, unused here.
+        let path_label: SharedString = path.to_string_lossy().into_owned().into();
+        let dirty = self.dirty;
+        let saving = self.saving;
+        let can_save = dirty && !saving;
+        let save_label: &'static str = if saving {
+            "Saving…"
+        } else if dirty {
+            "Save"
+        } else {
+            "Saved"
+        };
+        let failure = self
+            .save_result
+            .clone()
+            .filter(|(ok, _)| !ok)
+            .map(|(_, message)| message);
+
+        let mut status_line = div().flex().items_center().gap(px(6.)).child(
+            div()
+                .text_size(px(13.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(theme.text.primary)
+                .child("Editor"),
+        );
+        if dirty {
+            status_line = status_line.child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(theme.status.warning)
+                    .child("• unsaved"),
+            );
+        }
+
+        let mut left_col = div()
+            .flex()
+            .flex_col()
+            .gap(px(2.))
+            .min_w(px(0.))
+            .child(status_line)
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .font_family(theme.font_mono)
+                    .text_color(theme.text.muted)
+                    .whitespace_nowrap()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(path_label),
+            );
+        if let Some(message) = failure {
+            left_col = left_col.child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(theme.status.error)
+                    .child(format!("Save failed: {message}")),
+            );
+        }
+
+        let header = div()
+            .id("editor-header")
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap(px(8.))
+            .px(px(12.))
+            .py(px(10.))
+            .border_b_1()
+            .border_color(theme.border.subtle)
+            .child(left_col)
+            .child(
+                div()
+                    .id("editor-save")
+                    .px(px(10.))
+                    .py(px(4.))
+                    .rounded_md()
+                    .cursor_pointer()
+                    .bg(if can_save { theme.accent.primary } else { theme.border.subtle })
+                    .text_color(if can_save { theme.text.primary } else { theme.text.muted })
+                    .text_size(px(11.))
+                    .when(can_save, |el| {
+                        el.on_click(cx.listener(|this, _e, _w, cx| this.save(cx)))
+                    })
+                    .child(save_label),
+            );
+
+        let body = div()
+            .id("editor-body")
+            .flex_1()
+            .min_h(px(0.))
+            .p(px(10.))
+            .when_some(self.editor.clone(), |el, editor| {
+                el.child(Input::new(&editor).bordered(false).h_full().focus_bordered(false))
+            });
+
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(header)
+            .child(body)
+            .into_any_element()
     }
 
     fn on_target_changed(&mut self, cx: &mut Context<Self>) {
@@ -500,10 +715,42 @@ fn read_for_preview(path: &Path) -> Result<Loaded, String> {
 }
 
 impl Render for PreviewTab {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *Theme::global(cx);
         let state = self.state.clone();
         let scroll = self.scroll.clone();
+
+        // T194: sync freshly loaded editable content into `editor`. Runs
+        // before the match so `render_editor_body` below can assume
+        // `editor` already reflects `state` for this generation.
+        if let State::Loaded { generation, kind, text: Some(text), truncated, .. } = &state
+            && is_editable(*kind, *truncated)
+            && self.editor_generation != Some(*generation)
+        {
+            if self.editor.is_none() {
+                let editor = cx.new(|cx| InputState::new(window, cx).multi_line(true));
+                let subscription = cx.subscribe(
+                    &editor,
+                    |this: &mut Self, _editor, event: &InputEvent, cx| {
+                        if matches!(event, InputEvent::Change) {
+                            this.dirty = true;
+                            this.save_result = None;
+                            cx.notify();
+                        }
+                    },
+                );
+                self.editor = Some(editor);
+                self._editor_subscription = Some(subscription);
+            }
+            if let Some(editor) = &self.editor {
+                editor.update(cx, |input, cx| input.set_value(text.clone(), window, cx));
+            }
+            self.editor_generation = Some(*generation);
+            self.dirty = false;
+            self.saving = false;
+            self.save_result = None;
+        }
+
         match state {
             State::Empty => render_empty(&theme),
             State::Loading { path, .. } => render_loading(&path, &theme),
@@ -514,7 +761,13 @@ impl Render for PreviewTab {
                 text,
                 truncated,
                 ..
-            } => render_loaded(&path, kind, size_bytes, text.as_deref(), truncated, &theme, &scroll),
+            } => {
+                if is_editable(kind, truncated) {
+                    self.render_editor_body(&path, &theme, window, cx)
+                } else {
+                    render_loaded(&path, kind, size_bytes, text.as_deref(), truncated, &theme, &scroll)
+                }
+            }
             State::Error { message, .. } => render_error(&message, &theme),
         }
     }
@@ -965,6 +1218,34 @@ mod tests {
         let path = PathBuf::from("/x/.dat");
         let head = [0u8; SNIFF_BYTES];
         assert_eq!(classify(&path, &head), PreviewKind::Unsupported);
+    }
+
+    // --- T194: editability rule ---
+
+    #[test]
+    fn text_and_markdown_are_editable_when_not_truncated() {
+        assert!(is_editable(PreviewKind::Text, false));
+        assert!(is_editable(PreviewKind::Markdown, false));
+    }
+
+    #[test]
+    fn truncated_text_and_markdown_are_not_editable() {
+        // A truncated buffer only holds the first TEXT_CAP_BYTES — saving it
+        // would silently discard the rest of the file. Never editable.
+        assert!(!is_editable(PreviewKind::Text, true));
+        assert!(!is_editable(PreviewKind::Markdown, true));
+    }
+
+    #[test]
+    fn non_text_kinds_are_never_editable() {
+        for kind in [
+            PreviewKind::Image,
+            PreviewKind::WebPreview,
+            PreviewKind::Unsupported,
+        ] {
+            assert!(!is_editable(kind, false), "{kind:?} must not be editable");
+            assert!(!is_editable(kind, true), "{kind:?} must not be editable");
+        }
     }
 
     #[test]

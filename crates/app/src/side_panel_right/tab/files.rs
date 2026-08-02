@@ -128,10 +128,12 @@ impl FilesTab {
             return;
         }
         // File click → push the path into the shared PreviewTarget. The
-        // Preview tab observes the global and starts reading in the
-        // background. We deliberately do NOT switch tabs here: the user
-        // opens Preview themselves, and T174's fallback compensates for
-        // `on_tab_select` no-ops on same-tab clicks.
+        // Editor (former Preview) tab observes the global and starts
+        // reading in the background. `SidePanelRightView` observes the same
+        // global and switches the active tab to Editor (T194) — this
+        // function stays tab-agnostic on purpose so a future agent-follow
+        // path (T195) can set the same global and get the same switch for
+        // free, without knowing about `files.rs` at all.
         let (path, next_generation) = {
             let t = cx
                 .global::<crate::side_panel_right::preview_target::PreviewTarget>();
