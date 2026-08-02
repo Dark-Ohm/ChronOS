@@ -8,11 +8,9 @@
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активное:** `tasks/active/T193-hyprland-binds-readonly.md` — binds RO (Grok 4.5 / GLM).
-T192 **принята** (`6660d2f`).
-
-**Pause:** T194 Editor+edit · T195 agent follow · T196 system+ACP.
-**Kill:** T189 Scenes. **Канон:** `docs/PRODUCT.md`.
+**Активных нет.** T192 `6660d2f` · T193 `4bce975` приняты.
+**Pause:** T194 Editor+edit · T195 agent follow · T196 system+ACP — ready to unpause T194.
+**Kill:** T189. **Канон:** `docs/PRODUCT.md`.
 
 **Урок T179/T180, стоил двух приёмок:** доказывать надо тот путь, который
 порождает проблему. В T180 отчёт предъявлял «ноль сетевых запросов после
