@@ -341,6 +341,10 @@ pub fn set_bar_config(patch: &BarConfigPatch) -> SetBarConfigResult {
 
     match sanitized.save() {
         Ok(()) => {
+            tracing::info!(
+                path = %super::layout_config::config_path().display(),
+                "bar: agent applied"
+            );
             super::layout_config::update_cache(sanitized.clone());
             SetBarConfigResult {
                 ok: true,
@@ -364,8 +368,30 @@ pub fn set_bar_config_applied(patch: &BarConfigPatch, cx: &mut gpui::App) -> Set
     let result = set_bar_config(patch);
     if result.ok {
         super::layout_config::apply(cx);
+        point_editor_at_bar_config(cx);
     }
     result
+}
+
+/// T203 dogfood glue: after an agent-driven `set_bar_config`, point the
+/// existing `PreviewTarget` global at `bar.toml` in View mode — the same
+/// global `FilesTab` sets on a click and `SidePanelRightView` already
+/// observes to switch the panel to Editor (T194). This is the "minimal
+/// last-config-path toast" the task allows in place of a real Follow UI
+/// (T195 not built yet): the user sees *which file just changed* without
+/// a new UI surface, by reusing one that already exists end-to-end.
+fn point_editor_at_bar_config(cx: &mut gpui::App) {
+    use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
+
+    if !cx.has_global::<PreviewTarget>() {
+        cx.set_global(PreviewTarget::default());
+    }
+    let next_generation = cx.global::<PreviewTarget>().generation.wrapping_add(1);
+    cx.set_global(PreviewTarget {
+        path: Some(super::layout_config::config_path()),
+        generation: next_generation,
+        intent: PreviewIntent::View,
+    });
 }
 
 #[cfg(test)]

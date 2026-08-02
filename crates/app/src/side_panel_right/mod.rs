@@ -16,7 +16,7 @@ mod hover_strip;
 mod mpris_card;
 mod permission;
 mod power_row;
-mod preview_target;
+pub(crate) mod preview_target;
 mod rail;
 mod spectrum_row;
 mod surfaces;

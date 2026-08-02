@@ -102,6 +102,86 @@ silently not apply. Widget list changes (`left`/`center`/`right`) don't need
    not in the schema above is ignored on load (harmless, but it means your
    change had no effect, so don't rely on it).
 
+**Always `cat` the file (or call `get_bar_config`, if you have Rust/tool
+access to `crates/app/src/bar/agent_api.rs`) immediately before writing.**
+This is a read-modify-write, not a blind overwrite — skipping the read means
+you're guessing at fields you didn't ask to change, and a guess that's wrong
+silently reverts something the user set five minutes ago.
+
+**Never tell the user to restart ChronOS, log out, or `pkill chronos` to see
+a bar change.** That is never the correct answer for anything in this
+schema — the bar hot-reloads on save (T134 inotify watch), typically within
+300ms. If a change doesn't seem to apply, the fix is: re-read the file to
+confirm your write landed and check for a TOML type error (see the sanitize
+table below, last row) — never "have you tried restarting".
+
+## Natural-language phrase → schema key
+
+| User says | Field(s) |
+|---|---|
+| "move the bar to the bottom" | `appearance.edge = "bottom"` |
+| "make it float" / "floating bar" | `appearance.floating = true` (this also forces `exclusive = false` — don't write `exclusive = true` alongside it, it will be silently overridden) |
+| "80% width", "narrower", "not full width" | `appearance.width = "fraction:0.8"` |
+| "full width" | `appearance.width = "full"` |
+| "center it", "align center" | `appearance.align = "center"` (only visible when `width != "full"`) |
+| "left-aligned", "right-aligned" | `appearance.align = "start"` / `"end"` |
+| "rounder corners", "round the corners", "radius 12" | `appearance.radius = 12` |
+| "sharp corners", "no rounding" | `appearance.radius = 0` |
+| "taller bar", "make it bigger", "height 40" | `appearance.height = 40` (clamped to [20, 80]) |
+| "add a shadow", "give it depth" | `appearance.elevation = "soft"` (or `"strong"` for "more shadow" / "stronger depth") |
+| "flat", "no shadow" | `appearance.elevation = "none"` |
+| "add margin", "give it some breathing room" / "gap from the edge" | `appearance.margin = { x = ..., y = ... }` |
+| "hide cava" / "remove the visualizer" | remove `"cava"` from whichever section currently has it (read first — it's `center` by default) |
+| "clock on the right" | ensure `"clock"` is in `right`, not wherever it currently is — if it's already elsewhere, remove it from there and add it to `right` |
+| "add \<widget\> to the \<section\>" | append the name to that section's array (full-array write, not "add" sugar in the file itself) |
+
+If a phrase doesn't map cleanly to one row here, say so to the user rather
+than guessing a field name that doesn't exist in the schema — an unknown
+top-level key is silently ignored (§Writing a change, point 4), so a wrong
+guess looks like nothing happened, which is worse than admitting you're not
+sure.
+
+## Full worked example — the epic demo phrase
+
+> "бар снизу, 80% ширины по центру, скругление 12, тень, без cava, clock справа"
+> ("bar on the bottom, 80% width centered, radius 12, shadow, no cava, clock on the right")
+
+Read current `right` first (assume it's still the shipped default — always
+verify against the real file, this is illustrative):
+
+```
+right (before) = ["project", "workspace_mode", "separator", "volume",
+                    "network", "tray", "updates", "system",
+                    "notification_bell", "separator", "battery", "clock"]
+center (before) = ["mpris", "cava"]
+```
+
+`clock` is already in `right` — "clock on the right" is a no-op for that
+field, nothing to move. `cava` is in `center` — remove it. Full patch, one
+multi-field turn:
+
+```toml
+version = 2
+
+[appearance]
+edge = "bottom"
+width = "fraction:0.8"
+align = "center"
+radius = 12
+elevation = "soft"
+# height/margin/floating/exclusive not mentioned → left as they were, don't touch
+
+left = [...]        # unchanged — copy the current value verbatim
+center = ["mpris"]  # cava removed, mpris kept
+right = [...]        # unchanged — clock already here, copy current value verbatim
+```
+
+Write the whole file (all fields, not a diff) with this shape. This is one
+`set_bar_config`-equivalent turn even though it touches five appearance
+fields and one widget section — do it as a single file write, not five
+separate edits (five separate writes each retrigger the hot-reload/apply
+cycle for no benefit and risk an intermediate state being visible).
+
 ## Sanitize — what happens if you write something out of range
 
 The shell always clamps/corrects on load, so a slightly-wrong write is
@@ -150,6 +230,22 @@ width = "fraction:0.6"
 align = "center"
 # exclusive not written — floating forces it off regardless
 ```
+
+## After you write: the user sees which file changed
+
+If ChronOS's own `set_bar_config`/`set_bar_config_applied` path is what
+actually performed the write (rather than you editing the file directly),
+the shell points its Editor tab at `bar.toml` automatically after a
+successful apply (T203) — the user sees the exact file and the exact diff
+without asking. If you're editing the file directly with your own file
+tools instead of going through that path, mention the file path
+(`~/.config/chronos/bar.toml`) in your reply so the user has the same
+visibility either way.
+
+There is no undo command. If the shell ever writes a `.bak` alongside
+`bar.toml` before an agent write, mention it; as of this schema version it
+does not — treat every write as final, and lean harder on "read before you
+write" for that reason.
 
 ## What this skill does NOT cover
 
