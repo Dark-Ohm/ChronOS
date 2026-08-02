@@ -246,15 +246,12 @@ fn section_div(section: BarSection, widgets: Vec<AnyElement>) -> AnyElement {
 
 /// Returns window options for the bar on the given display.
 ///
-/// Cold-path appearance: `edge` (anchor) and `height` (+exclusive zone) come
-/// from `cached_appearance()`. Width mode / margins / align need live
-/// `set_anchor`/`set_margin` (not in fork, T198) — v1 keeps full-width
-/// stretch; `apply_appearance` warns when a file asks for more.
+/// Edge (anchor), fraction width, and floating margins are baked into the
+/// open-time WindowOptions. The fork does not have live `set_anchor`/
+/// `set_margin`, so changes to these fields trigger a window recreate
+/// (T207: destroy + reopen — the bar reappears in <1 s, no process restart).
+/// Height, exclusive zone, radius, and elevation apply live.
 fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
-    // Callers all pass a result of `pult_display_id_or_primary` here, which
-    // already implements the full fallback chain (configured uuid →
-    // largest by area → primary). Any further `.or_else(|| primary_display())`
-    // just re-runs the same chain, so we just trust the id we got.
     let display_size = display_id
         .and_then(|id| cx.find_display(id))
         .map(|display| display.bounds().size)
@@ -262,16 +259,68 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
 
     let appearance = layout_config::cached_appearance();
     let height = px(appearance.height);
-    // Edge is cold-path: anchor is fixed at open (no live set_anchor in the
-    // fork). Vertical edges parse+store but are not applied (later wave).
-    let anchor = match appearance.edge {
-        BarEdge::Bottom => Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
-        _ => Anchor::LEFT | Anchor::RIGHT | Anchor::TOP,
+
+    // Edge → anchor. For full-width bars we stretch horizontally (LEFT|RIGHT);
+    // fraction/hug bars anchor to a single horizontal edge and use margins
+    // for alignment (the compositor would stretch LEFT|RIGHT to display width,
+    // rendering the fraction width ineffective).
+    let is_full = appearance.width == BarWidth::Full;
+    let edge_anchor = match appearance.edge {
+        BarEdge::Bottom => Anchor::BOTTOM,
+        _ => Anchor::TOP,
     };
+    let anchor = if is_full {
+        Anchor::LEFT | Anchor::RIGHT | edge_anchor
+    } else {
+        edge_anchor
+    };
+
+    let bar_width = match appearance.width {
+        BarWidth::Fraction(f) => px(f32::from(display_size.width) * f),
+        _ => display_size.width,
+    };
+
     let exclusive_zone = if appearance.exclusive {
         Some(height)
     } else {
         Some(px(0.))
+    };
+
+    // Margins: for non-full bars, horizontal margins position the pill
+    // (align: start → left margin 0; center → split the gap; end → right
+    // margin 0). Floating bars add the user-configured margin on top.
+    let margin = if is_full && !appearance.floating {
+        None
+    } else {
+        let user_x = if appearance.floating {
+            px(appearance.margin.x)
+        } else {
+            px(0.)
+        };
+        let user_y = if appearance.floating {
+            px(appearance.margin.y)
+        } else {
+            px(0.)
+        };
+        let leftover_w = f32::from(display_size.width) - f32::from(bar_width);
+        let (left_m, right_m) = if is_full {
+            (user_x, user_x)
+        } else {
+            match appearance.align {
+                appearance::BarAlign::Start => (user_x, px(leftover_w).max(user_x)),
+                appearance::BarAlign::Center => {
+                    let half = px((leftover_w / 2.0).max(0.0));
+                    (half.max(user_x), half.max(user_x))
+                }
+                appearance::BarAlign::End => (px(leftover_w).max(user_x), user_x),
+            }
+        };
+        Some((
+            px(appearance.margin.y).max(user_y),  // top
+            right_m,                                // right
+            px(appearance.margin.y).max(user_y),  // bottom
+            left_m,                                 // left
+        ))
     };
 
     WindowOptions {
@@ -279,7 +328,7 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: point(px(0.), px(0.)),
-            size: Size::new(display_size.width, height),
+            size: Size::new(bar_width, height),
         })),
         app_id: Some("chronos-bar".to_string()),
         window_background: WindowBackgroundAppearance::Transparent,
@@ -288,7 +337,7 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
             layer: Layer::Top,
             anchor,
             exclusive_zone,
-            margin: None,
+            margin,
             keyboard_interactivity: KeyboardInteractivity::None,
             ..Default::default()
         }),
@@ -331,43 +380,86 @@ fn elevation_shadow(elevation: BarElevation, theme: &Theme) -> Vec<BoxShadow> {
     }
 }
 
-/// Deferred-field warnings, deduplicated per value (the watcher fires on
-/// every `bar.toml` touch; a stuck config must not spam the log).
-static DEFERRED_WARNED: OnceLock<Mutex<Option<(BarWidth, BarEdge)>>> = OnceLock::new();
+/// Snapshot of the fields that require a window recreate when they change
+/// (edge, width mode, align, floating, margin — no live `set_anchor`/
+/// `set_margin` in the fork). Tracked so `apply_appearance` can decide:
+/// live path vs destroy+reopen (T207).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct AnchorFields {
+    edge: BarEdge,
+    width: BarWidth,
+    align: appearance::BarAlign,
+    floating: bool,
+    margin_x: f32,
+    margin_y: f32,
+}
 
-/// Warn (once per value) that `width`/`edge` need a restart — no live
-/// `set_anchor`/`set_margin` in the fork (T198), cold-path only.
-fn warn_deferred_fields(width: BarWidth, edge: BarEdge) {
-    let slot = DEFERRED_WARNED.get_or_init(|| Mutex::new(None));
-    let mut last = slot.lock().unwrap_or_else(|e| e.into_inner());
-    if *last == Some((width, edge)) {
-        return;
-    }
-    *last = Some((width, edge));
-    drop(last);
-    if width != BarWidth::Full {
-        tracing::warn!(
-            "bar: width mode change requires shell restart (no live set_anchor in fork)"
-        );
-    }
-    if edge != BarEdge::Top {
-        tracing::warn!(
-            "bar: edge change requires shell restart (no live set_anchor in fork)"
-        );
+impl AnchorFields {
+    fn from_appearance(a: &appearance::BarAppearance) -> Self {
+        Self {
+            edge: a.edge,
+            width: a.width,
+            align: a.align,
+            floating: a.floating,
+            margin_x: a.margin.x,
+            margin_y: a.margin.y,
+        }
     }
 }
 
-/// Live-apply `cached_appearance()` to the bar window — height, exclusive
-/// zone, input region. Called from `layout_config::apply` on every `bar.toml`
-/// change (300 ms debounce) and once after open — no process restart.
+static LAST_ANCHOR: OnceLock<Mutex<Option<AnchorFields>>> = OnceLock::new();
+
+fn last_anchor() -> &'static Mutex<Option<AnchorFields>> {
+    LAST_ANCHOR.get_or_init(|| Mutex::new(None))
+}
+
+/// Close the bar window (idempotent — no-op if already closed).
+fn close_bar(cx: &mut App) {
+    if let Some(handle) = bar_window().lock().unwrap_or_else(|e| e.into_inner()).take() {
+        match handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
+            Ok(()) => tracing::info!("bar: closed for recreate"),
+            Err(e) => tracing::warn!("bar: close for recreate could not reach window ({e})"),
+        }
+    }
+}
+
+/// Live-apply `cached_appearance()` to the bar window. Height, exclusive
+/// zone, and input region are live. Edge, width mode, floating, and margin
+/// changes trigger a window recreate (destroy + reopen — the bar reappears
+/// in <1 s, no process restart). Called from `layout_config::apply` on
+/// every `bar.toml` change (300 ms debounce) and once after open.
 /// Idempotent.
-///
-/// Width mode / edge changes need anchor+margin (fork `set_anchor`/
-/// `set_margin` do not exist yet, T198) — cold-path only, restart to apply;
-/// we log that here so a config edit surfaces it.
 pub fn apply_appearance(cx: &mut App) {
     let appearance = layout_config::cached_appearance();
-    warn_deferred_fields(appearance.width, appearance.edge);
+    let current_anchor = AnchorFields::from_appearance(&appearance);
+
+    // If anchor-dependent fields changed → destroy + reopen the window.
+    // The fork has no live `set_anchor`/`set_margin`; this is the honest
+    // cold-path (T207 product path).
+    // If anchor-dependent fields changed → destroy + reopen the window.
+    // The fork has no live `set_anchor`/`set_margin`; this is the honest
+    // cold-path (T207 product path). Only update `last_anchor` on success
+    // — a failed reopen leaves the old state so the next attempt retries.
+    let needs_recreate = {
+        let last = last_anchor().lock().unwrap_or_else(|e| e.into_inner());
+        *last != Some(current_anchor)
+    };
+    if needs_recreate {
+        let display_id = crate::monitor::pult_display_id_or_primary(cx);
+        close_bar(cx);
+        if open_on_display(display_id, cx) {
+            *last_anchor().lock().unwrap_or_else(|e| e.into_inner()) = Some(current_anchor);
+            tracing::info!(
+                ?current_anchor,
+                "bar: recreated window for anchor-dependent change"
+            );
+        } else {
+            tracing::error!(
+                "bar: failed to reopen after anchor change — bar will be missing until next restart"
+            );
+            return;
+        }
+    }
 
     let Some(handle) = *bar_window().lock().unwrap_or_else(|e| e.into_inner()) else {
         tracing::debug!("bar: no window yet, appearance apply deferred");
@@ -375,8 +467,6 @@ pub fn apply_appearance(cx: &mut App) {
     };
 
     match handle.update(cx, |_bar, window, cx| {
-        // Height is live on the free axis; width stays compositor-set for a
-        // stretched (full) bar.
         let current = window.bounds().size;
         window.resize(Size::new(current.width, px(appearance.height)));
         if appearance.exclusive {
@@ -384,14 +474,23 @@ pub fn apply_appearance(cx: &mut App) {
         } else {
             window.set_exclusive_zone(px(0.));
         }
-        // v1 surface == visible pill → full-surface input region is correct.
-        // Explicit call keeps intent documented (API exists — T198 note).
-        window.set_input_region(None);
+        // Pill-shaped bar (fraction or floating): limit input to the visible
+        // content area so clicks outside the pill fall through to the desktop.
+        // For non-stretched (fraction) bars the window IS the pill, so the
+        // full-bounds region = visible area. For floating bars the compositor
+        // positions the surface at the margin offset; the full surface is the
+        // pill area, same logic applies.
+        if !(appearance.width == BarWidth::Full && !appearance.floating) {
+            window.set_input_region(Some(&[Bounds::new(
+                point(px(0.), px(0.)),
+                Size::new(current.width, px(appearance.height)),
+            )]));
+        } else {
+            window.set_input_region(None);
+        }
         cx.notify();
     }) {
         Ok(()) => {
-            // Publish only after the window actually resized — the panel gap
-            // must follow the applied (not merely configured) height.
             crate::state::set_bar_height_px(appearance.height);
             tracing::debug!("bar: appearance applied");
         }
@@ -428,7 +527,8 @@ pub fn init(cx: &mut App) {
                 }
             }
             // Idempotent: apply the configured appearance right after open
-            // (resize/zone) and surface deferred-field warnings.
+            // (resize/zone). Seeds LAST_ANCHOR so subsequent hot-reload
+            // changes can detect anchor-dependent deltas.
             apply_appearance(cx);
         });
     })
