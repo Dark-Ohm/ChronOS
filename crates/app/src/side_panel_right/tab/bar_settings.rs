@@ -1,5 +1,7 @@
 //! System settings — Bar page (T202). All controls inlined.
 
+use std::path::PathBuf;
+
 use gpui::{
     Context, DragMoveEvent, EmptyView, InteractiveElement, IntoElement, ParentElement, Render,
     ScrollHandle, SharedString, Styled, Window, div, prelude::*, px,
@@ -11,6 +13,7 @@ use crate::bar_settings::{
     config_path, read_current,
 };
 use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
+use crate::theme_config;
 
 const HEIGHT_MIN: f32 = 20.;
 const HEIGHT_MAX: f32 = 48.;
@@ -24,11 +27,47 @@ pub struct BarSettingsTab {
     error: Option<String>,
     applied_preset: Option<&'static str>,
     scroll: ScrollHandle,
+    /// T196: cached Hypr module listing (name, path). Lazily loaded on first render.
+    hypr_modules: Vec<(String, PathBuf)>,
+    hypr_modules_loaded: bool,
 }
 
 impl BarSettingsTab {
     pub fn new(_cx: &mut Context<Self>) -> Self {
-        Self { current: read_current(), error: None, applied_preset: None, scroll: ScrollHandle::new() }
+        Self {
+            current: read_current(),
+            error: None,
+            applied_preset: None,
+            scroll: ScrollHandle::new(),
+            hypr_modules: Vec::new(),
+            hypr_modules_loaded: false,
+        }
+    }
+
+    fn load_hypr_modules(&mut self) {
+        if self.hypr_modules_loaded { return; }
+        self.hypr_modules_loaded = true;
+        let dir = match dirs::config_dir() {
+            Some(d) => d.join("hypr/modules"),
+            None => return,
+        };
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        let mut modules: Vec<(String, PathBuf)> = Vec::new();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map_or(false, |e| e == "lua") {
+                let name = path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                modules.push((name, path));
+            }
+        }
+        modules.sort_by(|a, b| a.0.cmp(&b.0));
+        self.hypr_modules = modules;
     }
 
     fn persist(&mut self, cx: &mut Context<Self>) {
@@ -96,6 +135,21 @@ impl Render for BarSettingsTab {
         let on_open = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
             let p = config_path();
             cx.set_global(PreviewTarget { path: Some(p), generation: 1, intent: PreviewIntent::Edit });
+            this.error = None;
+            cx.notify();
+        });
+
+        // T196: Theme toggle
+        let theme_scheme = if Theme::global(cx).is_light { "Light" } else { "Default" };
+        let is_light = Theme::global(cx).is_light;
+        let toggle_theme = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
+            cx.update_global::<Theme, _>(|theme, cx| {
+                let next = if theme.is_light { "Default" } else { "Light" };
+                let _ = theme_config::persist_scheme(next);
+                *theme = Theme::select_scheme(Some(next.to_string()));
+                theme_config::sync_gpui_component_theme(cx);
+                cx.refresh_windows();
+            });
             this.error = None;
             cx.notify();
         });
@@ -197,6 +251,38 @@ impl Render for BarSettingsTab {
                             .hover(move |s| { s.bg(if cur.exclusive { theme.accent.primary.opacity(0.16) } else { theme.interactive.hover }) }).border_1().border_color(if cur.exclusive { theme.accent.primary } else { theme.border.subtle })
                             .child(if cur.exclusive { "on" } else { "off" }).on_click(on_excl);
                             if floating { div().opacity(0.35).child(chip).into_any_element() } else { chip.into_any_element() } }))
+                    // Theme toggle (T196)
+                    .child(div().w_full().flex_col().gap(px(2.)).child(div().text_color(theme.text.primary).text_size(px(12.)).font_weight(gpui::FontWeight::SEMIBOLD).child("Theme")).child(div().text_color(theme.text.muted).text_xs().child("theme.toml — hot-reload")))
+                    .child(div().id("sys-theme-toggle").w_full().flex().justify_between().items_center().px(px(12.)).py(px(9.)).rounded_md().border_1().border_color(theme.border.subtle)
+                        .child(div().flex_col().gap(px(1.)).child(div().text_color(theme.text.primary).text_size(px(12.)).child(if is_light { "☀ Light" } else { "🌙 Dark" })).child(div().text_color(theme.text.muted).text_xs().font_family(theme.font_mono).child(theme_scheme)))
+                        .child(div().id("sys-theme-btn").px(px(10.)).py(px(5.)).rounded_md().cursor_pointer().text_size(px(11.5)).font_family(theme.font_mono).bg(theme.accent.primary.opacity(0.16)).text_color(theme.accent.primary).border_1().border_color(theme.accent.primary).hover(|s| s.bg(theme.accent.primary.opacity(0.28))).child("Toggle").on_click(toggle_theme)))
+                    // Hypr modules (T196)
+                    .child(div().w_full().flex_col().gap(px(2.)).child(div().text_color(theme.text.primary).text_size(px(12.)).font_weight(gpui::FontWeight::SEMIBOLD).child("Hypr modules")).child(div().text_color(theme.text.muted).text_xs().child("~/.config/hypr/modules/ — click to open in Editor")))
+                    .child({
+                        self.load_hypr_modules();
+                        let mut rows: Vec<gpui::AnyElement> = Vec::new();
+                        if self.hypr_modules.is_empty() {
+                            rows.push(div().w_full().px(px(12.)).py(px(9.)).rounded_md().border_1().border_color(theme.border.subtle).text_color(theme.text.muted).text_xs().child("No modules found in ~/.config/hypr/modules/").into_any_element());
+                        }
+                        for (name, path) in &self.hypr_modules {
+                            let p = path.clone();
+                            rows.push(div().id(SharedString::from(format!("hypr-mod-{name}"))).w_full().flex().justify_between().items_center().px(px(12.)).py(px(9.)).rounded_md().border_1().border_color(theme.border.subtle).cursor_pointer().hover(|s| s.bg(theme.interactive.hover))
+                                .child(div().flex_col().gap(px(1.)).child(div().text_color(theme.text.primary).text_size(px(12.)).font_family(theme.font_mono).child(name.clone())).child(div().text_color(theme.text.muted).text_xs().child(path.display().to_string())))
+                                .child(div().text_color(theme.accent.primary).text_size(px(11.)).child("Open"))
+                                .on_click(cx.listener(move |this, _ev, _w, cx| {
+                                    cx.set_global(PreviewTarget { path: Some(p.clone()), generation: 1, intent: PreviewIntent::View });
+                                    this.error = None;
+                                    cx.notify();
+                                })).into_any_element());
+                        }
+                        div().w_full().flex_col().gap(px(4.)).children(rows)
+                    })
+                    // About (T196)
+                    .child(div().w_full().flex_col().gap(px(2.)).child(div().text_color(theme.text.primary).text_size(px(12.)).font_weight(gpui::FontWeight::SEMIBOLD).child("About")).child(div().text_color(theme.text.muted).text_xs().child("Build info")))
+                    .child(div().w_full().flex_col().px(px(12.)).py(px(9.)).rounded_md().border_1().border_color(theme.border.subtle).gap(px(4.))
+                        .child(div().flex().justify_between().child(div().text_color(theme.text.primary).text_size(px(12.)).child("ChronOS shell")).child(div().text_color(theme.text.muted).text_xs().font_family(theme.font_mono).child(env!("CARGO_PKG_VERSION"))))
+                        .child(div().flex().justify_between().child(div().text_color(theme.text.muted).text_xs().child("Desktop shell for Hyprland")).child(div().text_color(theme.text.muted).text_xs().font_family(theme.font_mono).child("Apache-2.0")))
+                        .child(div().flex().justify_between().child(div().text_color(theme.text.muted).text_xs().child("Rust + GPUI + mlua/LuauJIT")).child(div().text_color(theme.text.muted).text_xs().font_family(theme.font_mono).child("2026"))))
                     // Open config
                     .child(div().id("bar-settings-open-config").w_full().flex().justify_between().items_center().px(px(12.)).py(px(9.)).rounded_md().border_1().border_color(theme.border.subtle).cursor_pointer().hover(|s| s.bg(theme.interactive.hover))
                         .child(div().flex_col().gap(px(1.)).child(div().text_color(theme.text.primary).text_size(px(12.)).child("Open bar.toml")).child(div().text_color(theme.text.muted).text_xs().font_family(theme.font_mono).child("~/.config/chronos/bar.toml")))

@@ -153,7 +153,7 @@ pub fn toggle(cx: &mut App) {
     cx.refresh_windows();
 }
 
-fn persist_scheme(name: &str) -> std::io::Result<()> {
+pub(crate) fn persist_scheme(name: &str) -> std::io::Result<()> {
     let path = config_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;

@@ -7,6 +7,7 @@
 //! Empty tabs render a common honest-empty-state component that describes
 //! what will be there without promising a delivery date (§13).
 
+pub(crate) mod acp_settings;
 pub(crate) mod bar_settings;
 pub(crate) mod build;
 pub(crate) mod files;
@@ -21,6 +22,7 @@ use gpui::{FontWeight, IntoElement, Render, Window, Context, div, prelude::*, px
 use chronos_ui::Theme;
 use crate::side_panel_right::tabs::PanelTab;
 
+use acp_settings::AcpSettingsTab;
 use bar_settings::BarSettingsTab;
 use build::BuildTab;
 use files::FilesTab;
@@ -48,6 +50,8 @@ pub(crate) enum TabContent {
     HyprBinds(gpui::Entity<HyprBindsTab>),
     // T202: System settings «Bar» page — appearance presets + controls.
     BarSettings(gpui::Entity<BarSettingsTab>),
+    // T196: ACP agents — list, add, remove agent backends.
+    AcpSettings(gpui::Entity<AcpSettingsTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
 
@@ -83,6 +87,9 @@ impl TabContent {
             // page — appearance presets + live controls. Reads bar.toml on
             // first activation, writes through the watcher (T134).
             PanelTab::EditorSettings => TabContent::BarSettings(cx.new(|cx| BarSettingsTab::new(cx))),
+            // T196: ACP agents — list/add/remove ACP-compatible backends.
+            // Reads/writes ~/.config/chronos/agents.toml.
+            PanelTab::AcpSettings => TabContent::AcpSettings(cx.new(|cx| AcpSettingsTab::new(cx))),
             PanelTab::Scenes
             | PanelTab::Captures => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
             _ => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),

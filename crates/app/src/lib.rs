@@ -11,5 +11,6 @@ pub mod scene;
 pub mod side_panel_right;
 pub mod state;
 pub mod system_popup;
+pub mod theme_config;
 pub mod wallpaper_ctl;
 pub mod workspace_mode;

@@ -496,6 +496,9 @@ impl Render for SidePanelRightView {
                                 TabContent::BarSettings(entity) => {
                                     col.child(entity.clone())
                                 }
+                                TabContent::AcpSettings(entity) => {
+                                    col.child(entity.clone())
+                                }
                                 TabContent::Placeholder(entity) => {
                                     col.child(entity.clone())
                                 }
@@ -573,6 +576,7 @@ impl SidePanelRightView {
             TabContent::HyprBinds(e) => e.entity_id(),
             // T202: System settings «Bar» page.
             TabContent::BarSettings(e) => e.entity_id(),
+            TabContent::AcpSettings(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })
     }
