@@ -417,6 +417,10 @@ pub struct PreviewTab {
     /// `InputState::set_value` (used to load fresh content) suppresses
     /// `Change` internally, so this only fires on genuine user keystrokes.
     _editor_subscription: Option<Subscription>,
+    /// Observe `editor` notifies so Ln/Col status re-renders on pure
+    /// cursor moves (InputEvent has no SelectionChanged; arrows only
+    /// `cx.notify()` the InputState entity).
+    _editor_observe: Option<Subscription>,
     /// `State::Loaded::generation` last synced into `editor`. `None` = not
     /// synced yet. Compared on every render to know when a newly loaded
     /// file (or a re-click of the same file after an external edit) needs
@@ -428,6 +432,10 @@ pub struct PreviewTab {
     /// True while a save write is in flight — disables the Save button so
     /// a double-click cannot race two writes.
     saving: bool,
+    /// Soft-wrap toggle (T208). Default true — long lines wrap at the
+    /// panel width instead of requiring horizontal scroll. Flips
+    /// `InputState::set_soft_wrap` on the editor entity when toggled.
+    soft_wrap: bool,
     /// Outcome of the last save attempt: `(true, _)` success, `(false,
     /// reason)` failure. Only the failure case is rendered (§13 — the
     /// Save button's own "Save" → "Saved" label already communicates
@@ -468,10 +476,12 @@ impl PreviewTab {
             pending_intent: PreviewIntent::View,
             editor: None,
             _editor_subscription: None,
+            _editor_observe: None,
             editor_generation: None,
             dirty: false,
             saving: false,
             save_result: None,
+            soft_wrap: true,
             terminal_drawer: None,
             drawer_open: false,
             drawer_height: DRAWER_DEFAULT_H,
@@ -654,6 +664,17 @@ impl PreviewTab {
                 );
         }
 
+        let soft_wrap = self.soft_wrap;
+        let sw_listener = cx.listener(|this, _e, _w: &mut Window, cx| {
+            this.soft_wrap = !this.soft_wrap;
+            if let Some(editor) = &this.editor {
+                editor.update(cx, |input, cx| {
+                    input.set_soft_wrap(this.soft_wrap, _w, cx);
+                });
+            }
+            cx.notify();
+        });
+
         div()
             .id("editor-chrome-bar")
             .flex()
@@ -667,18 +688,38 @@ impl PreviewTab {
             .child(left)
             .child(
                 div()
-                    .id("editor-terminal-toggle")
-                    .px(px(10.))
-                    .py(px(4.))
-                    .rounded_md()
-                    .cursor_pointer()
-                    .bg(if drawer_open { theme.interactive.hover } else { theme.border.subtle })
-                    .text_color(theme.text.primary)
-                    .text_size(px(11.))
-                    .on_click(cx.listener(|this, _e, _w, cx| {
-                        this.toggle_drawer(cx);
-                    }))
-                    .child(if drawer_open { "Terminal ▾" } else { "Terminal ▸" }),
+                    .flex()
+                    .items_center()
+                    .gap(px(4.))
+                    // T208: soft-wrap toggle — active = text wraps at panel edge
+                    .child(
+                        div()
+                            .id("editor-wrap-toggle")
+                            .px(px(8.))
+                            .py(px(4.))
+                            .rounded_md()
+                            .cursor_pointer()
+                            .bg(if soft_wrap { theme.interactive.hover } else { theme.border.subtle })
+                            .text_color(if soft_wrap { theme.text.primary } else { theme.text.muted })
+                            .text_size(px(10.5))
+                            .on_click(sw_listener)
+                            .child("Wrap"),
+                    )
+                    .child(
+                        div()
+                            .id("editor-terminal-toggle")
+                            .px(px(10.))
+                            .py(px(4.))
+                            .rounded_md()
+                            .cursor_pointer()
+                            .bg(if drawer_open { theme.interactive.hover } else { theme.border.subtle })
+                            .text_color(theme.text.primary)
+                            .text_size(px(11.))
+                            .on_click(cx.listener(|this, _e, _w, cx| {
+                                this.toggle_drawer(cx);
+                            }))
+                            .child(if drawer_open { "Terminal ▾" } else { "Terminal ▸" }),
+                    ),
             )
             .into_any_element()
     }
@@ -742,6 +783,13 @@ impl PreviewTab {
             );
         }
 
+        // T208: cursor position — 0-based Position from InputState, displayed 1-based.
+        let cursor_pos = self
+            .editor
+            .as_ref()
+            .map(|editor| editor.read(cx).cursor_position())
+            .map(|pos| format!("Ln {}, Col {}", pos.line + 1, pos.character + 1));
+
         let header = div()
             .id("editor-input-header")
             .flex()
@@ -755,18 +803,34 @@ impl PreviewTab {
             .child(left_col)
             .child(
                 div()
-                    .id("editor-save")
-                    .px(px(10.))
-                    .py(px(4.))
-                    .rounded_md()
-                    .cursor_pointer()
-                    .bg(if can_save { theme.accent.primary } else { theme.border.subtle })
-                    .text_color(if can_save { theme.text.primary } else { theme.text.muted })
-                    .text_size(px(11.))
-                    .when(can_save, |el| {
-                        el.on_click(cx.listener(|this, _e, _w, cx| this.save(cx)))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    // T208: status line — Ln X, Col Y (1-based from InputState cursor)
+                    .when_some(cursor_pos, |el, pos| {
+                        el.child(
+                            div()
+                                .text_size(px(10.5))
+                                .font_family(theme.font_mono)
+                                .text_color(theme.text.muted)
+                                .child(pos),
+                        )
                     })
-                    .child(save_label),
+                    .child(
+                        div()
+                            .id("editor-save")
+                            .px(px(10.))
+                            .py(px(4.))
+                            .rounded_md()
+                            .cursor_pointer()
+                            .bg(if can_save { theme.accent.primary } else { theme.border.subtle })
+                            .text_color(if can_save { theme.text.primary } else { theme.text.muted })
+                            .text_size(px(11.))
+                            .when(can_save, |el| {
+                                el.on_click(cx.listener(|this, _e, _w, cx| this.save(cx)))
+                            })
+                            .child(save_label),
+                    ),
             );
 
         let body = div()
@@ -1038,8 +1102,11 @@ impl Render for PreviewTab {
                 // `highlighter` left None so no syntax highlight (spec non-goal).
                 // Buffer bg/text/font are themed on the `Input` element itself
                 // in `render_editor_input_body`.
-                let editor =
-                    cx.new(|cx| InputState::new(window, cx).code_editor("plaintext"));
+                let editor = cx.new(|cx| {
+                    InputState::new(window, cx)
+                        .code_editor("plaintext")
+                        .soft_wrap(self.soft_wrap)
+                });
                 let subscription = cx.subscribe(
                     &editor,
                     |this: &mut Self, _editor, event: &InputEvent, cx| {
@@ -1050,8 +1117,14 @@ impl Render for PreviewTab {
                         }
                     },
                 );
+                // T208 errata: refresh Ln/Col when InputState notifies
+                // (cursor moves do not emit InputEvent).
+                let observe = cx.observe(&editor, |_this, _editor, cx| {
+                    cx.notify();
+                });
                 self.editor = Some(editor);
                 self._editor_subscription = Some(subscription);
+                self._editor_observe = Some(observe);
             }
             if let Some(editor) = &self.editor {
                 editor.update(cx, |input, cx| input.set_value(text.clone(), window, cx));
