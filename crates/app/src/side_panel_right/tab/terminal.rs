@@ -61,6 +61,13 @@ pub struct TerminalTab {
     cursor_col: usize,
     cursor_row: usize,
     show_cursor: bool,
+    /// Explicit body height in px, overriding the window-based calculation
+    /// (T194b). `None` (default) — full right-panel body, sized against
+    /// the window like before. `Some(h)` — a host embedding this tab in a
+    /// constrained area (the Editor terminal drawer) supplies its own
+    /// available height every render so the PTY grid matches the drawer's
+    /// real box instead of the whole window.
+    available_height_override: Option<f32>,
 }
 
 impl TerminalTab {
@@ -76,9 +83,18 @@ impl TerminalTab {
             cursor_col: 0,
             cursor_row: 0,
             show_cursor: false,
+            available_height_override: None,
         };
         this.launch(cx);
         this
+    }
+
+    /// Set (or clear) the explicit body height override — see the field
+    /// doc. Cheap: just a compare-and-store, no I/O. The caller's own
+    /// render loop drives the cadence (T194b: the drawer host calls this
+    /// once before rendering the terminal child each frame).
+    pub fn set_available_height(&mut self, height: Option<f32>) {
+        self.available_height_override = height;
     }
 
     /// Lazily spawn the shell: the tab view is created on first activation
@@ -168,8 +184,15 @@ impl TerminalTab {
         }
         let panel_width = cx.global::<SidePanelRightState>().width;
         let avail_w = (panel_width - RAIL_WIDTH - HANDLE_WIDTH - 2.0 * PAD_X).max(0.0);
-        let win_h = window.bounds().size.height.as_f32();
-        let avail_h = (win_h - HEADER_H - 2.0 * PAD_Y).max(0.0);
+        // T194b: a host embedding this tab in a constrained box (the Editor
+        // terminal drawer) supplies its own total box height in place of
+        // the window height. The header row is still rendered inside that
+        // box either way, so the same `- HEADER_H` subtraction applies to
+        // both the standalone-tab and embedded-drawer cases.
+        let total_h = self
+            .available_height_override
+            .unwrap_or_else(|| window.bounds().size.height.as_f32());
+        let avail_h = (total_h - HEADER_H - 2.0 * PAD_Y).max(0.0);
         let target = compute_grid(avail_w, avail_h, self.cell_w, CELL_H);
         if target == self.grid {
             return;

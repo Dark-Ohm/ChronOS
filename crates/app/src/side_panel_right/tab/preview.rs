@@ -17,13 +17,26 @@ use std::path::{Path, PathBuf};
 
 use chronos_ui::Theme;
 use gpui::{
-    AnyElement, Context, Entity, FontWeight, IntoElement, ObjectFit, ParentElement, Render,
-    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div,
-    img, prelude::*, px,
+    AnyElement, Context, DragMoveEvent, Entity, FontWeight, IntoElement, MouseButton,
+    MouseDownEvent, ObjectFit, ParentElement, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, Window, div, img, prelude::*, px,
 };
 use gpui_component::input::{Input, InputEvent, InputState};
 
 use crate::side_panel_right::preview_target::PreviewTarget;
+use crate::side_panel_right::tab::terminal::TerminalTab;
+
+/// Drag marker for the drawer's resize handle — own type so it never
+/// cross-fires with `RightPanelResize` (the panel's own horizontal drag).
+struct EditorTerminalResize;
+
+/// First-open default height.
+const DRAWER_DEFAULT_H: f32 = 200.;
+/// Floor so the grid always has room for at least a couple of rows.
+const DRAWER_MIN_H: f32 = 80.;
+/// Ceiling as a fraction of the window height (§UX point 3: "max ~50% of
+/// tab" — approximated against the window since the tab fills it).
+const DRAWER_MAX_FRACTION: f32 = 0.5;
 
 /// Soft cap on text bodies before we stop reading and mark truncated
 /// (§2 of T179). 128 KiB covers CONFIG/manifest/log scans comfortably;
@@ -388,6 +401,19 @@ pub struct PreviewTab {
     /// Save button's own "Save" → "Saved" label already communicates
     /// success honestly, a duplicate banner would be noise).
     save_result: Option<(bool, String)>,
+    /// Terminal drawer (T194b) — lazily created on first toggle-open, then
+    /// reused for the lifetime of this `PreviewTab` entity (so the PTY
+    /// session survives collapsing/reopening the drawer, only dying with
+    /// the tab itself).
+    terminal_drawer: Option<Entity<TerminalTab>>,
+    /// Whether the drawer is currently shown. Toggling does not drop
+    /// `terminal_drawer` — collapsing just hides it.
+    drawer_open: bool,
+    /// Drawer body height in px while open. Persists across collapse/open
+    /// so reopening restores the user's last size.
+    drawer_height: f32,
+    drawer_resize_start_y: Option<f32>,
+    drawer_resize_start_height: Option<f32>,
 }
 
 impl PreviewTab {
@@ -412,6 +438,11 @@ impl PreviewTab {
             dirty: false,
             saving: false,
             save_result: None,
+            terminal_drawer: None,
+            drawer_open: false,
+            drawer_height: DRAWER_DEFAULT_H,
+            drawer_resize_start_y: None,
+            drawer_resize_start_height: None,
         };
         // The observer only fires on *changes*; the global may already
         // carry a path that was set before the tab was first created,
@@ -472,6 +503,38 @@ impl PreviewTab {
         .detach();
     }
 
+    /// Toggle the terminal drawer open/closed. Lazily spawns the shared
+    /// `TerminalTab` engine (and its PTY) on the *first* open only — later
+    /// toggles just flip visibility, reusing the same session (T194b UX
+    /// point 4).
+    fn toggle_drawer(&mut self, cx: &mut Context<Self>) {
+        if self.terminal_drawer.is_none() {
+            self.terminal_drawer = Some(cx.new(TerminalTab::new));
+        }
+        self.drawer_open = !self.drawer_open;
+        cx.notify();
+    }
+
+    fn start_drawer_resize(&mut self, start_y: f32, cx: &mut Context<Self>) {
+        self.drawer_resize_start_y = Some(start_y);
+        self.drawer_resize_start_height = Some(self.drawer_height);
+        cx.notify();
+    }
+
+    fn update_drawer_resize(&mut self, current_y: f32, max_h: f32, cx: &mut Context<Self>) {
+        let (start_y, start_h) = match (self.drawer_resize_start_y, self.drawer_resize_start_height)
+        {
+            (Some(y), Some(h)) => (y, h),
+            _ => return,
+        };
+        // Handle sits above the drawer body: pointer moves up (smaller y) →
+        // drawer grows. new = start_h - (current_y - start_y)
+        let delta = current_y - start_y;
+        let target = (start_h - delta).clamp(DRAWER_MIN_H, max_h.max(DRAWER_MIN_H));
+        self.drawer_height = target;
+        cx.notify();
+    }
+
     /// Editable body: header (path + dirty indicator + Save button) over a
     /// multi-line `Input`. Bypasses `render_loaded`'s free-function match —
     /// building the Save button needs `cx.listener`, which only exists on a
@@ -480,13 +543,12 @@ impl PreviewTab {
         &mut self,
         path: &Path,
         theme: &Theme,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         // `self.editor` is guaranteed `Some` here: `Render::render` creates
         // it (and syncs the loaded content) in the sync block that runs
-        // before this is ever called. `_window` stays a parameter for
-        // signature symmetry with the sync block, unused here.
+        // before this is ever called.
         let path_label: SharedString = path.to_string_lossy().into_owned().into();
         let dirty = self.dirty;
         let saving = self.saving;
@@ -545,6 +607,7 @@ impl PreviewTab {
             );
         }
 
+        let drawer_open = self.drawer_open;
         let header = div()
             .id("editor-header")
             .flex()
@@ -558,18 +621,39 @@ impl PreviewTab {
             .child(left_col)
             .child(
                 div()
-                    .id("editor-save")
-                    .px(px(10.))
-                    .py(px(4.))
-                    .rounded_md()
-                    .cursor_pointer()
-                    .bg(if can_save { theme.accent.primary } else { theme.border.subtle })
-                    .text_color(if can_save { theme.text.primary } else { theme.text.muted })
-                    .text_size(px(11.))
-                    .when(can_save, |el| {
-                        el.on_click(cx.listener(|this, _e, _w, cx| this.save(cx)))
-                    })
-                    .child(save_label),
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .child(
+                        div()
+                            .id("editor-terminal-toggle")
+                            .px(px(10.))
+                            .py(px(4.))
+                            .rounded_md()
+                            .cursor_pointer()
+                            .bg(if drawer_open { theme.interactive.hover } else { theme.border.subtle })
+                            .text_color(theme.text.primary)
+                            .text_size(px(11.))
+                            .on_click(cx.listener(|this, _e, _window, cx| {
+                                this.toggle_drawer(cx);
+                            }))
+                            .child(if drawer_open { "Terminal ▾" } else { "Terminal ▸" }),
+                    )
+                    .child(
+                        div()
+                            .id("editor-save")
+                            .px(px(10.))
+                            .py(px(4.))
+                            .rounded_md()
+                            .cursor_pointer()
+                            .bg(if can_save { theme.accent.primary } else { theme.border.subtle })
+                            .text_color(if can_save { theme.text.primary } else { theme.text.muted })
+                            .text_size(px(11.))
+                            .when(can_save, |el| {
+                                el.on_click(cx.listener(|this, _e, _w, cx| this.save(cx)))
+                            })
+                            .child(save_label),
+                    ),
             );
 
         let body = div()
@@ -581,13 +665,59 @@ impl PreviewTab {
                 el.child(Input::new(&editor).bordered(false).h_full().focus_bordered(false))
             });
 
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .child(header)
-            .child(body)
-            .into_any_element()
+        let mut column = div().size_full().flex().flex_col().child(header).child(body);
+
+        if drawer_open {
+            let max_h = (window.bounds().size.height.as_f32() * DRAWER_MAX_FRACTION).max(DRAWER_MIN_H);
+            // Clamp on every render too, not just at drag time — a window
+            // resize (or a drawer height carried over from a bigger window)
+            // must not leave the drawer taller than the current 50% ceiling.
+            if self.drawer_height > max_h {
+                self.drawer_height = max_h;
+            }
+            let drawer_height = self.drawer_height.max(DRAWER_MIN_H);
+
+            if let Some(terminal) = &self.terminal_drawer {
+                terminal.update(cx, |t, _cx| t.set_available_height(Some(drawer_height)));
+            }
+
+            let resize_drag_handler = cx.listener(
+                |this, ev: &DragMoveEvent<EditorTerminalResize>, window, cx| {
+                    let max_h = window.bounds().size.height.as_f32() * DRAWER_MAX_FRACTION;
+                    this.update_drawer_resize(f32::from(ev.event.position.y), max_h.max(DRAWER_MIN_H), cx);
+                },
+            );
+            let resize_mouse_handler = cx.listener(|this, ev: &MouseDownEvent, _w, cx| {
+                this.start_drawer_resize(f32::from(ev.position.y), cx);
+            });
+
+            let handle = div()
+                .id("editor-terminal-resize-handle")
+                .flex_none()
+                .h(px(6.))
+                .w_full()
+                .cursor_row_resize()
+                .bg(theme.border.subtle)
+                .on_mouse_down(MouseButton::Left, resize_mouse_handler)
+                .on_drag(EditorTerminalResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
+                .on_drag_move(resize_drag_handler);
+
+            let mut drawer_body = div()
+                .id("editor-terminal-drawer")
+                .flex_none()
+                .h(px(drawer_height))
+                .w_full()
+                .overflow_hidden()
+                .border_t_1()
+                .border_color(theme.border.subtle);
+            if let Some(terminal) = &self.terminal_drawer {
+                drawer_body = drawer_body.child(terminal.clone());
+            }
+
+            column = column.child(handle).child(drawer_body);
+        }
+
+        column.into_any_element()
     }
 
     fn on_target_changed(&mut self, cx: &mut Context<Self>) {
@@ -1370,6 +1500,76 @@ mod tests {
             other => panic!("prior target must drive Loaded state on construct, got {other:?}"),
         });
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // --- T194b: terminal drawer ---
+
+    #[gpui::test]
+    fn drawer_starts_closed_without_terminal(cx: &mut TestAppContext) {
+        install_theme(cx);
+        cx.update(|cx| cx.set_global(PreviewTarget::default()));
+        let view = cx.new(|cx| PreviewTab::new(cx));
+        cx.update_entity(&view, |this, _cx| {
+            assert!(!this.drawer_open, "drawer must default collapsed");
+            assert!(
+                this.terminal_drawer.is_none(),
+                "no PTY session before the drawer is ever opened"
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn toggle_drawer_creates_terminal_once_and_reuses_session(cx: &mut TestAppContext) {
+        install_theme(cx);
+        cx.update(|cx| cx.set_global(PreviewTarget::default()));
+        let view = cx.new(|cx| PreviewTab::new(cx));
+
+        let first_id = cx.update_entity(&view, |this, cx| {
+            this.toggle_drawer(cx);
+            assert!(this.drawer_open, "first toggle opens the drawer");
+            this.terminal_drawer
+                .as_ref()
+                .expect("terminal must be created on first open")
+                .entity_id()
+        });
+
+        // Close then reopen — same entity id proves the PTY session is
+        // reused, not respawned (T194b UX point 4).
+        cx.update_entity(&view, |this, cx| {
+            this.toggle_drawer(cx);
+            assert!(!this.drawer_open, "second toggle closes the drawer");
+            assert!(
+                this.terminal_drawer.is_some(),
+                "closing must not drop the terminal entity"
+            );
+        });
+        let second_id = cx.update_entity(&view, |this, cx| {
+            this.toggle_drawer(cx);
+            assert!(this.drawer_open, "third toggle reopens the drawer");
+            this.terminal_drawer.as_ref().unwrap().entity_id()
+        });
+
+        assert_eq!(first_id, second_id, "reopening must reuse the same terminal entity");
+    }
+
+    #[gpui::test]
+    fn drawer_resize_clamps_to_min_and_max(cx: &mut TestAppContext) {
+        install_theme(cx);
+        cx.update(|cx| cx.set_global(PreviewTarget::default()));
+        let view = cx.new(|cx| PreviewTab::new(cx));
+
+        cx.update_entity(&view, |this, cx| {
+            this.toggle_drawer(cx);
+            this.start_drawer_resize(500., cx);
+            // Drag far up (small y) — would exceed max_h without clamping.
+            this.update_drawer_resize(0., 300., cx);
+            assert_eq!(this.drawer_height, 300., "must clamp to max_h");
+
+            this.start_drawer_resize(0., cx);
+            // Drag far down — would go negative/below the floor.
+            this.update_drawer_resize(900., 300., cx);
+            assert_eq!(this.drawer_height, DRAWER_MIN_H, "must clamp to DRAWER_MIN_H");
+        });
     }
 
     #[test]
