@@ -26,15 +26,17 @@
 - **слайс 4** (рабочий стол разработчика): T175–T183 — **закрыт**
   (T181 residual в TBD). В поле **нет** активной T181.
 
-**Слайс 5 — план УТВЕРЖДЁН 2026-08-02 (вариант A):**
+**Слайс 5 — план A; T184 принята; волна 1 ×3 параллельно (master):**
+
+| ID | роль | зона |
+|---|---|---|
+| **T185** | BACKEND | `scene.rs` activate+hub |
+| **T186** | FRONTEND | rail Library/Scenes/Captures |
+| **T187** | BACKEND | categories + games.toml |
+
+T188–T191 — `active/pause/` BLOCKED. План:
 `docs/superpowers/plans/2026-08-02-gamer-hub-slice-5.md`.
-Hub + per-game scenes + Captures empty + T189; Game Deck → слайс 6.
-**T184 RECON принята** (`report-log/T184-gamer-hub-recon-report.md`).
-Ключевые факты: Categories не парсятся; 3 игры через `Categories=Game`
-(CS2/PUBG/SCUM), `steam_app_*` filenames = 0 — id из `rungameid/N`;
-исключать `steam.desktop`; launch = `launcher::launch::launch` (и dock
-уже зовёт его — эррата к отчёту); `games.toml` отдельно; `activate` +
-поля scene — T185. **В поле:** ждать T185 BACKEND.
+T184: Categories нет; 3 игры `rungameid`; exclude steam client; `games.toml`.
 
 **Четыре живые вкладки и три движка в `crates/services/` без единого
 GPUI-типа:** `files/` (порт из Chronos-FM), `terminal/` (вынесен из спайка
