@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# chronos-ipc — send one command to the running ChronOS shell over the
+# UNIX socket ($XDG_RUNTIME_DIR/chronos.sock).
+#
+# Usage:
+#   chronos-ipc toggle-launcher
+#   chronos-ipc toggle-side-panel-left
+#   chronos-ipc toggle-side-panel-right
+#   chronos-ipc toggle-theme
+#   chronos-ipc toggle-edit-mode
+#   chronos-ipc set-workspace-mode:gamer
+#
+# Exit codes:
+#   0  ok
+#   1  usage / missing socket / send failed
+#
+# Ship with ChronOS. Hyprland binds should call this (or `chronos ipc …`
+# later), not inline python one-liners.
+
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+    echo "usage: chronos-ipc <command>" >&2
+    exit 1
+fi
+
+CMD="$*"
+SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/chronos.sock"
+
+if [[ ! -S "$SOCK" ]]; then
+    echo "chronos-ipc: no socket at $SOCK (is chronos running?)" >&2
+    exit 1
+fi
+
+# Prefer python3 (always on this machine); fall back to socat if present.
+if command -v python3 >/dev/null 2>&1; then
+    python3 -c "
+import socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect(sys.argv[1])
+s.sendall(sys.argv[2].encode())
+s.shutdown(socket.SHUT_WR)
+s.close()
+" "$SOCK" "$CMD"
+elif command -v socat >/dev/null 2>&1; then
+    printf '%s' "$CMD" | socat - UNIX-CONNECT:"$SOCK"
+else
+    echo "chronos-ipc: need python3 or socat" >&2
+    exit 1
+fi
