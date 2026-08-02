@@ -29,8 +29,12 @@
 **Слайс 5 — план УТВЕРЖДЁН 2026-08-02 (вариант A):**
 `docs/superpowers/plans/2026-08-02-gamer-hub-slice-5.md`.
 Hub + per-game scenes + Captures empty + T189; Game Deck → слайс 6.
-**В поле:** T184 RECON — `tasks/active/T184-gamer-hub-recon.md`.
-Очередь T185…T190 после приёмки T184.
+**T184 RECON принята** (`report-log/T184-gamer-hub-recon-report.md`).
+Ключевые факты: Categories не парсятся; 3 игры через `Categories=Game`
+(CS2/PUBG/SCUM), `steam_app_*` filenames = 0 — id из `rungameid/N`;
+исключать `steam.desktop`; launch = `launcher::launch::launch` (и dock
+уже зовёт его — эррата к отчёту); `games.toml` отдельно; `activate` +
+поля scene — T185. **В поле:** ждать T185 BACKEND.
 
 **Четыре живые вкладки и три движка в `crates/services/` без единого
 GPUI-типа:** `files/` (порт из Chronos-FM), `terminal/` (вынесен из спайка

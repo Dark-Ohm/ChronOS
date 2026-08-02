@@ -84,13 +84,16 @@ Resolution/refresh — capability-gated follow-up.
 
 **Не** тащить Steam Web API / ProtonDB / achievements в слайс 5.
 
-Минимум, достаточный для hub:
+Минимум, достаточный для hub (**уточнено T184, 2026-08-02**):
 
 1. **XDG `.desktop`** с `Categories` содержащим `Game` (после расширения парсера);
-2. **эвристика id**: `steam_app_*`, `heroic_*`, `lutris_*`, `com.valvesoftware.*` —
-   fallback, если Categories пуст;
-3. **pinned / recent** — локальный файл
-   `~/.config/chronos/games.toml` (или секция в `scenes.toml`), не сеть.
+2. **эвристика Exec** (не filename): `steam steam://rungameid/<id>`,
+   плюс id-префиксы `steam_app_*` / `heroic_*` / `lutris_*` если появятся;
+   на этой машине `steam_app_*.desktop` = **0**, реальные ярлыки —
+   `Counter-Strike 2.desktop` и т.п. с `rungameid` в Exec;
+3. **исключить** client `steam.desktop` (Categories=Game, но не игра);
+4. **pinned / recent** — отдельный `~/.config/chronos/games.toml`
+   (решение T184, не секция scenes.toml).
 
 Playtime / artwork / achievements — `unavailable` с причиной «no integration»,
 пока нет реального backend. Не рисовать фейковые часы и обложки.

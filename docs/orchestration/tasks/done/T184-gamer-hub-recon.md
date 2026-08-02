@@ -1,6 +1,9 @@
 # T184 — разведка: источники игр и per-game scene для слайса 5
 
-**Статус:** active. **Роль:** RECON.
+**Статус: ЗАКРЫТА 2026-08-02 — ПРИНЯТА с эрратой** (архитектор).
+**Роль была:** RECON.
+Отчёт: `report-log/T184-gamer-hub-recon-report.md`.
+**Эррата:** §3 отчёта — dock **запускает** приложения (`bar/widgets/dock.rs:131-133` → `launch(&entry.exec)`); утверждение «док декоративный / без on_click» — ложь. Остальное (Categories, 3 игры, rungameid, scene gaps, GamingMode, rail) — подтверждено.
 **Правила:** `docs/orchestration/agents/RULES.md` (прочитать целиком).
 **План (утверждён вариант A):** `docs/superpowers/plans/2026-08-02-gamer-hub-slice-5.md`.
 **Спека:** `docs/superpowers/specs/2026-07-30-adaptive-developer-gamer-shell-ide-design.md` §4.2, §5, §13, §14 п.5.
