@@ -9,6 +9,7 @@
 
 pub(crate) mod build;
 pub(crate) mod files;
+pub(crate) mod hypr_binds;
 pub(crate) mod library;
 pub(crate) mod preview;
 pub(crate) mod system;
@@ -21,6 +22,7 @@ use crate::side_panel_right::tabs::PanelTab;
 
 use build::BuildTab;
 use files::FilesTab;
+use hypr_binds::HyprBindsTab;
 use library::LibraryTab;
 use preview::PreviewTab;
 use system::SystemTab;
@@ -41,6 +43,7 @@ pub(crate) enum TabContent {
     Build(gpui::Entity<BuildTab>),
     Preview(gpui::Entity<PreviewTab>),
     Library(gpui::Entity<LibraryTab>),
+    HyprBinds(gpui::Entity<HyprBindsTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
 
@@ -69,6 +72,9 @@ impl TabContent {
             // lists/launches detected games. Scenes/Captures stay placeholder
             // until T189 / a capture backend (slice 6, §13 honest empty).
             PanelTab::Library => TabContent::Library(cx.new(|cx| LibraryTab::new(cx))),
+            // Hyprland binds: read-only keybind list (T193). Loads from the
+            // modular Lua config lazily on first activation.
+            PanelTab::HyprlandBinds => TabContent::HyprBinds(cx.new(|cx| HyprBindsTab::new(cx))),
             PanelTab::Scenes
             | PanelTab::Captures => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
             _ => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
@@ -140,11 +146,11 @@ pub fn placeholder_description(tab: PanelTab) -> &'static str {
         PanelTab::Library => "List, pin and launch detected games",
         PanelTab::Scenes => "Activate per-game scenes and profiles",
         PanelTab::Captures => "Unavailable - no capture backend",
-        PanelTab::AcpSettings => "Configure the AI agent protocol connection",
+        PanelTab::AcpSettings => "Add, remove, and configure ACP agent endpoints",
         PanelTab::McpSettings => "Manage Model Context Protocol server endpoints",
         PanelTab::LspSettings => "Language server and diagnostics configuration",
         PanelTab::ApiProviders => "API provider credentials and rate limits",
-        PanelTab::EditorSettings => "Editor font, theme, and keybinding preferences",
+        PanelTab::EditorSettings => "Shell and OS settings: appearance, keybindings, integrations",
         PanelTab::HyprlandBinds => "View and search active Hyprland keybindings",
     }
 }

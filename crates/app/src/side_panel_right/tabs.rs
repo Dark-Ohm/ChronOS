@@ -40,6 +40,17 @@ mod tests {
     }
 
     #[test]
+    fn product_cut_labels_are_renamed() {
+        // T192: Preview surfaces as "Editor" (real edit lands T194),
+        // AcpSettings as "ACP agents", EditorSettings as "System settings"
+        // (docs/PRODUCT.md §2/§4). HyprlandBinds label is unchanged.
+        assert_eq!(PanelTab::Preview.label(), "Editor");
+        assert_eq!(PanelTab::AcpSettings.label(), "ACP agents");
+        assert_eq!(PanelTab::EditorSettings.label(), "System settings");
+        assert_eq!(PanelTab::HyprlandBinds.label(), "Hyprland binds");
+    }
+
+    #[test]
     fn every_tab_has_a_non_empty_label() {
         for tab in PanelTab::ALL {
             assert!(!tab.label().is_empty(), "{tab:?} has an empty label");
@@ -71,24 +82,26 @@ mod tests {
     }
 
     #[test]
-    fn shared_tabs_keep_relative_order_across_modes() {
-        let dev = PanelTab::for_mode(WorkspaceMode::Developer);
-        let gamer = PanelTab::for_mode(WorkspaceMode::Gamer);
-        let shared: Vec<PanelTab> = dev
-            .iter()
-            .copied()
-            .filter(|t| gamer.contains(t))
-            .collect();
-        let shared_in_gamer: Vec<PanelTab> = gamer
-            .iter()
-            .copied()
-            .filter(|t| dev.contains(t))
-            .collect();
-        assert_eq!(
-            shared, shared_in_gamer,
-            "relative order of shared rail tabs must be stable across modes"
-        );
-        assert!(shared.contains(&PanelTab::System));
+    fn acp_settings_precedes_system_settings_in_both_modes() {
+        // T192 product cut: HyprlandBinds intentionally sits in a different
+        // relative slot per mode (ahead of settings in Developer, trailing
+        // in Gamer — see `for_mode` doc comment), so the old "all shared
+        // tabs keep identical relative order" invariant no longer holds.
+        // What *does* still hold: System is first, and within the settings
+        // pair, ACP agents precedes System settings, in both modes.
+        for mode in [WorkspaceMode::Developer, WorkspaceMode::Gamer] {
+            let tabs = PanelTab::for_mode(mode);
+            assert_eq!(tabs[0], PanelTab::System, "{mode:?}: System must be first");
+            let acp_idx = tabs.iter().position(|t| *t == PanelTab::AcpSettings);
+            let sys_settings_idx = tabs.iter().position(|t| *t == PanelTab::EditorSettings);
+            match (acp_idx, sys_settings_idx) {
+                (Some(a), Some(s)) => assert!(
+                    a < s,
+                    "{mode:?}: ACP agents must precede System settings, got acp={a} sys={s}"
+                ),
+                _ => panic!("{mode:?}: both AcpSettings and EditorSettings must be present"),
+            }
+        }
     }
 
     #[test]
@@ -228,59 +241,65 @@ mod tests {
     // --- T169: composition rules per §4.1 + §5 ---
 
     #[test]
-    fn developer_rail_is_fourteen_workbench_tabs_without_gamer_tools() {
-        // §4.1: Developer rail = System + 7 work tools + 6 settings (14).
-        // The three Gamer hub tools (Library/Scenes/Captures, §4.2) are in
-        // `ALL` for coverage but must NOT appear in the Developer rail.
+    fn developer_rail_is_six_product_tabs() {
+        // T192 product cut (docs/PRODUCT.md §2/§4): Developer default rail
+        // ships System, Files, Editor (Preview relabeled, real edit is
+        // T194), Hyprland binds, ACP agents, System settings. Everything
+        // else (empty IDE tabs, LSP/MCP/API-providers settings, Gamer hub
+        // tools) stays in `ALL` for parse/scene-override/icon coverage but
+        // is not in the default rail.
         let dev = PanelTab::for_mode(WorkspaceMode::Developer);
-        assert_eq!(dev.len(), 14);
         assert_eq!(
             dev,
             vec![
                 PanelTab::System,
                 PanelTab::Files,
-                PanelTab::Editor,
-                PanelTab::Terminal,
                 PanelTab::Preview,
-                PanelTab::Inspector,
-                PanelTab::Build,
-                PanelTab::SourceControl,
+                PanelTab::HyprlandBinds,
                 PanelTab::AcpSettings,
-                PanelTab::McpSettings,
-                PanelTab::LspSettings,
-                PanelTab::ApiProviders,
+                PanelTab::EditorSettings,
+            ]
+        );
+        for absent in [
+            PanelTab::Editor,
+            PanelTab::Terminal,
+            PanelTab::Inspector,
+            PanelTab::Build,
+            PanelTab::SourceControl,
+            PanelTab::McpSettings,
+            PanelTab::LspSettings,
+            PanelTab::ApiProviders,
+            PanelTab::Library,
+            PanelTab::Scenes,
+            PanelTab::Captures,
+        ] {
+            assert!(
+                !dev.contains(&absent),
+                "Developer rail must not include cut tab {absent:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn gamer_rail_is_six_product_tabs() {
+        // T192 product cut: Gamer default rail ships System, Library,
+        // Captures (honest empty — no capture backend), then the same
+        // three settings tabs as Developer. Scenes is a full product kill
+        // (docs/PRODUCT.md §4 — "сцены нахуй не нужны") and does not
+        // appear in any default rail, even though `scene.rs`/seed code may
+        // stay dormant.
+        let gamer = PanelTab::for_mode(WorkspaceMode::Gamer);
+        assert_eq!(
+            gamer,
+            vec![
+                PanelTab::System,
+                PanelTab::Library,
+                PanelTab::Captures,
+                PanelTab::AcpSettings,
                 PanelTab::EditorSettings,
                 PanelTab::HyprlandBinds,
             ]
         );
-        for absent in [PanelTab::Library, PanelTab::Scenes, PanelTab::Captures] {
-            assert!(
-                !dev.contains(&absent),
-                "Developer rail must not include Gamer hub tab {absent:?}"
-            );
-        }
-        // Developer rail is ALL minus the three Gamer hub tools.
-        assert_ne!(dev, PanelTab::ALL.to_vec());
-    }
-
-    #[test]
-    fn gamer_rail_is_ten_tabs_with_three_hub_tools() {
-        // §4.2: Gamer rail = System + 3 at-rest hub tools (Library/Scenes/
-        // Captures) + 6 settings (10 total). The Developer work tools leave
-        // so the deck is not a second IDE. System stays first; the settings
-        // tail keeps its order (§5).
-        let gamer = PanelTab::for_mode(WorkspaceMode::Gamer);
-        assert_eq!(gamer.len(), 10);
-        assert_eq!(gamer[0], PanelTab::System);
-        assert_eq!(gamer[1], PanelTab::Library);
-        assert_eq!(gamer[2], PanelTab::Scenes);
-        assert_eq!(gamer[3], PanelTab::Captures);
-        assert_eq!(gamer[4], PanelTab::AcpSettings);
-        assert_eq!(gamer[5], PanelTab::McpSettings);
-        assert_eq!(gamer[6], PanelTab::LspSettings);
-        assert_eq!(gamer[7], PanelTab::ApiProviders);
-        assert_eq!(gamer[8], PanelTab::EditorSettings);
-        assert_eq!(gamer[9], PanelTab::HyprlandBinds);
         for absent in [
             PanelTab::Files,
             PanelTab::Editor,
@@ -289,38 +308,16 @@ mod tests {
             PanelTab::Inspector,
             PanelTab::Build,
             PanelTab::SourceControl,
+            PanelTab::Scenes,
+            PanelTab::McpSettings,
+            PanelTab::LspSettings,
+            PanelTab::ApiProviders,
         ] {
             assert!(
                 !gamer.contains(&absent),
-                "Gamer must not include work-tool tab {absent:?}"
+                "Gamer rail must not include cut tab {absent:?}"
             );
         }
-    }
-
-    #[test]
-    fn developer_settings_group_matches_gamer_settings_group_order() {
-        // §5: shared rail tabs keep relative order across modes. Settings
-        // is shared between Developer and Gamer. Gamer slots three hub tools
-        // (Library/Scenes/Captures) between System and the settings tail, so
-        // the settings group is `gamer[4..]`; the Developer work tools and
-        // the three Gamer hub tools are not shared and must not affect the
-        // shared order.
-        let dev = PanelTab::for_mode(WorkspaceMode::Developer);
-        let gamer = PanelTab::for_mode(WorkspaceMode::Gamer);
-        let dev_settings: Vec<PanelTab> = dev
-            .iter()
-            .copied()
-            .filter(|t| matches!(
-                t,
-                PanelTab::AcpSettings
-                    | PanelTab::McpSettings
-                    | PanelTab::LspSettings
-                    | PanelTab::ApiProviders
-                    | PanelTab::EditorSettings
-                    | PanelTab::HyprlandBinds
-            ))
-            .collect();
-        assert_eq!(dev_settings, gamer[4..].to_vec());
     }
 
     #[test]
@@ -542,40 +539,42 @@ impl PanelTab {
         }
     }
 
-    /// Default rail composition for a workspace mode.
+    /// Default rail composition for a workspace mode (product cut, T192 —
+    /// `docs/PRODUCT.md` §2/§4). The full 17-tab catalog (`ALL`) still
+    /// exists for `parse_id`/scene overrides/icon coverage, but the default
+    /// rail only shows what the product actually ships: no empty IDE
+    /// tabs (Terminal/Inspector/Build/SourceControl/empty Editor), no
+    /// LSP/MCP/API-providers settings, no Scenes (killed per §4 — "сцены
+    /// нахуй не нужны").
     ///
-    /// Developer — workbench (14 tabs per §4.1: System + 7 work tools + 6
-    /// settings). Gamer — System + 3 at-rest hub tools (Library/Scenes/
-    /// Captures, §4.2) + the 6 settings; the Developer work tools leave so
-    /// the deck is not a second IDE. Shared tabs (System + settings group)
-    /// keep the same relative order in both sets (§5).
+    /// Developer: System, Files, Editor (`PanelTab::Preview` relabeled —
+    /// real view+edit lands T194), Hyprland binds, ACP agents, System
+    /// settings (former Editor settings).
+    ///
+    /// Gamer: System, Library, Captures (honest empty — no capture backend
+    /// yet), then the same three settings tabs as Developer.
+    ///
+    /// Hyprland binds sits ahead of the settings pair in Developer (it's a
+    /// primary work surface once binds RO ships, T193) but trails them in
+    /// Gamer (it's a secondary settings-group entry there) — this is a
+    /// deliberate per-mode placement, not a shared-order invariant; only
+    /// System-first and Acp-before-System-settings hold across both modes
+    /// (see `tests::acp_settings_precedes_system_settings_in_both_modes`).
     pub fn for_mode(mode: WorkspaceMode) -> Vec<PanelTab> {
         match mode {
             WorkspaceMode::Developer => vec![
                 PanelTab::System,
                 PanelTab::Files,
-                PanelTab::Editor,
-                PanelTab::Terminal,
                 PanelTab::Preview,
-                PanelTab::Inspector,
-                PanelTab::Build,
-                PanelTab::SourceControl,
-                PanelTab::AcpSettings,
-                PanelTab::McpSettings,
-                PanelTab::LspSettings,
-                PanelTab::ApiProviders,
-                PanelTab::EditorSettings,
                 PanelTab::HyprlandBinds,
+                PanelTab::AcpSettings,
+                PanelTab::EditorSettings,
             ],
             WorkspaceMode::Gamer => vec![
                 PanelTab::System,
                 PanelTab::Library,
-                PanelTab::Scenes,
                 PanelTab::Captures,
                 PanelTab::AcpSettings,
-                PanelTab::McpSettings,
-                PanelTab::LspSettings,
-                PanelTab::ApiProviders,
                 PanelTab::EditorSettings,
                 PanelTab::HyprlandBinds,
             ],
@@ -621,18 +620,23 @@ impl PanelTab {
             PanelTab::Files => "Files",
             PanelTab::Editor => "Editor",
             PanelTab::Terminal => "Terminal",
-            PanelTab::Preview => "Preview",
+            // T192 product cut: Preview is the default rail's "Editor" tab
+            // until T194 lands the real view+edit path and the enum can be
+            // renamed/merged with the (now rail-hidden) empty `Editor`
+            // variant. Two variants sharing the label "Editor" is a known,
+            // temporary duplication — not a bug.
+            PanelTab::Preview => "Editor",
             PanelTab::Inspector => "Inspector",
             PanelTab::Build => "Build",
             PanelTab::SourceControl => "Source control",
             PanelTab::Library => "Library",
             PanelTab::Scenes => "Scenes",
             PanelTab::Captures => "Captures",
-            PanelTab::AcpSettings => "ACP settings",
+            PanelTab::AcpSettings => "ACP agents",
             PanelTab::McpSettings => "MCP settings",
             PanelTab::LspSettings => "LSP settings",
             PanelTab::ApiProviders => "API providers",
-            PanelTab::EditorSettings => "Editor settings",
+            PanelTab::EditorSettings => "System settings",
             PanelTab::HyprlandBinds => "Hyprland binds",
         }
     }
