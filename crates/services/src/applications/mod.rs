@@ -19,6 +19,53 @@ use crate::Service;
 use crate::ServiceStatus;
 pub use types::{AppEntry, ApplicationsCommand, ApplicationsState, strip_field_codes};
 
+/// Return `true` when an `AppEntry` represents a playable game (not the Steam client).
+///
+/// Rules (T184/T187):
+/// 1. Exclude id `steam` — Steam client carries `Categories=Game` but is not a game.
+/// 2. Include if `categories` contains `Game` (case-sensitive, as written in desktop files).
+/// 3. Include if Exec matches `steam://rungameid/`.
+/// 4. Include if id starts with `steam_app_`, `heroic_`, or `lutris_`.
+/// 5. Otherwise false.
+pub fn is_game_entry(entry: &AppEntry) -> bool {
+    // Rule 1: Steam client is not a game
+    if entry.id == "steam" {
+        return false;
+    }
+    // Rule 2: Categories=Game
+    if entry.categories.iter().any(|c| c == "Game") {
+        return true;
+    }
+    // Rule 3: steam://rungameid/ launch pattern
+    if entry.exec.contains("steam://rungameid/") {
+        return true;
+    }
+    // Rule 4: filename heuristics
+    if entry.id.starts_with("steam_app_")
+        || entry.id.starts_with("heroic_")
+        || entry.id.starts_with("lutris_")
+    {
+        return true;
+    }
+    false
+}
+
+/// Extract the numeric Steam app id from a `steam://rungameid/<id>` Exec string.
+///
+/// Returns `None` if the pattern is not found.
+pub fn steam_app_id_from_exec(exec: &str) -> Option<String> {
+    let marker = "steam://rungameid/";
+    let pos = exec.find(marker)?;
+    let after = &exec[pos + marker.len()..];
+    // Take digits only
+    let id: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if id.is_empty() {
+        None
+    } else {
+        Some(id)
+    }
+}
+
 pub mod types;
 
 const DEBOUNCE_MS: u64 = 500;
@@ -266,6 +313,7 @@ mod tests {
                 exec: "/usr/bin/test".into(),
                 icon: None,
                 terminal: false,
+                categories: vec![],
             }],
         };
         let b = a.clone();
@@ -283,5 +331,93 @@ mod tests {
                 window[1].name
             );
         }
+    }
+
+    // --- is_game_entry tests ---
+
+    fn entry(id: &str, categories: &[&str], exec: &str) -> AppEntry {
+        AppEntry {
+            id: id.into(),
+            name: id.into(),
+            exec: exec.into(),
+            icon: None,
+            terminal: false,
+            categories: categories.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn game_by_categories() {
+        // CS2: Categories=Game -> true
+        assert!(is_game_entry(&entry("Counter-Strike 2", &["Game"], "steam steam://rungameid/730")));
+    }
+
+    #[test]
+    fn steam_client_excluded_even_with_game_category() {
+        // Steam client has Categories=Game but id=steam -> false
+        assert!(!is_game_entry(&entry("steam", &["Game", "Network"], "/usr/bin/steam %U")));
+    }
+
+    #[test]
+    fn random_app_without_game() {
+        assert!(!is_game_entry(&entry("firefox", &["Network"], "/usr/bin/firefox")));
+    }
+
+    #[test]
+    fn steam_app_id_filename_heuristic() {
+        assert!(is_game_entry(&entry("steam_app_730", &[], "steam steam://rungameid/730")));
+    }
+
+    #[test]
+    fn heroic_id_heuristic() {
+        assert!(is_game_entry(&entry("heroic_some_game", &[], "/usr/bin/heroic")));
+    }
+
+    #[test]
+    fn lutris_id_heuristic() {
+        assert!(is_game_entry(&entry("lutris_some_game", &[], "/usr/bin/lutris")));
+    }
+
+    #[test]
+    fn rungameid_in_exec_without_categories() {
+        let e = entry("some-game", &[], "steam steam://rungameid/578080");
+        assert!(is_game_entry(&e));
+    }
+
+    #[test]
+    fn empty_categories_not_game() {
+        assert!(!is_game_entry(&entry("app", &[], "/usr/bin/app")));
+    }
+
+    // --- steam_app_id_from_exec tests ---
+
+    #[test]
+    fn extract_steam_app_id_from_rungameid() {
+        assert_eq!(
+            steam_app_id_from_exec("steam steam://rungameid/730"),
+            Some("730".into())
+        );
+        assert_eq!(
+            steam_app_id_from_exec("steam steam://rungameid/578080"),
+            Some("578080".into())
+        );
+        assert_eq!(
+            steam_app_id_from_exec("steam steam://rungameid/513710"),
+            Some("513710".into())
+        );
+    }
+
+    #[test]
+    fn no_rungameid_returns_none() {
+        assert_eq!(steam_app_id_from_exec("/usr/bin/steam"), None);
+        assert_eq!(steam_app_id_from_exec("/usr/bin/firefox"), None);
+    }
+
+    #[test]
+    fn rungameid_without_trailing_digits() {
+        assert_eq!(
+            steam_app_id_from_exec("steam steam://rungameid/"),
+            None
+        );
     }
 }

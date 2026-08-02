@@ -15,6 +15,8 @@ pub struct AppEntry {
     pub icon: Option<String>,
     /// Whether Terminal=true (launch in terminal).
     pub terminal: bool,
+    /// Categories= split by `;`, empty strings dropped.
+    pub categories: Vec<String>,
 }
 
 /// Reactive snapshot of all desktop entries on the system.
@@ -71,6 +73,7 @@ pub fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
     let mut icon = None;
     let mut terminal = false;
     let mut no_display = false;
+    let mut categories = Vec::new();
 
     let locale = std::env::var("LANG").ok().and_then(|l| {
         let lang_part = l.split('.').next()?;
@@ -97,6 +100,13 @@ pub fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
                 "NoDisplay" => no_display = value.eq_ignore_ascii_case("true"),
                 "Exec" if exec.is_none() => exec = Some(value.to_string()),
                 "Icon" => icon = Some(value.to_string()),
+                "Categories" => {
+                    categories = value
+                        .split(';')
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string())
+                        .collect();
+                }
                 _ => {}
             }
             if key.starts_with("Name[") && key.ends_with(']') {
@@ -127,6 +137,7 @@ pub fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
         exec,
         icon,
         terminal,
+        categories,
     })
 }
 
@@ -234,6 +245,34 @@ mod tests {
         let entry = parse_desktop_file(&path).unwrap();
         assert_eq!(entry.icon.as_deref(), Some("htop"));
         assert!(entry.terminal);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_categories_splits_and_drops_empty() {
+        let dir = std::env::temp_dir().join("app-service-test-categories");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = write_desktop_file(
+            &dir,
+            "game",
+            "[Desktop Entry]\nType=Application\nName=Game\nExec=/usr/bin/game\nCategories=Game;Action;\n",
+        );
+        let entry = parse_desktop_file(&path).unwrap();
+        assert_eq!(entry.categories, vec!["Game", "Action"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_no_categories_defaults_to_empty() {
+        let dir = std::env::temp_dir().join("app-service-test-no-categories");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = write_desktop_file(
+            &dir,
+            "app",
+            "[Desktop Entry]\nType=Application\nName=App\nExec=/usr/bin/app\n",
+        );
+        let entry = parse_desktop_file(&path).unwrap();
+        assert!(entry.categories.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
