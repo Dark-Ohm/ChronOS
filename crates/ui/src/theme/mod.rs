@@ -218,8 +218,10 @@ impl Default for Theme {
             radius_lg: px(12.0),
             transparent: rgba(0x00000000).into(),
             font_sizes: FontSizes::default(),
+            // Canon: JetBrains Mono shell-wide (UI + code). Inter was the old
+            // font_ui; dogfood 2026-08-03 — one face everywhere for consistency.
             font_mono: "JetBrains Mono",
-            font_ui: "Inter",
+            font_ui: "JetBrains Mono",
             is_light: false,
         }
     }
@@ -365,9 +367,10 @@ mod tests {
     }
 
     #[test]
-    fn theme_default_font_ui_is_inter() {
+    fn theme_default_font_ui_is_jetbrains_mono() {
         let theme = Theme::default();
-        assert_eq!(theme.font_ui, "Inter");
+        assert_eq!(theme.font_ui, "JetBrains Mono");
+        assert_eq!(theme.font_mono, "JetBrains Mono");
     }
 
     #[test]

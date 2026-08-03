@@ -225,7 +225,7 @@ impl Render for DesktopTerminalView {
                     .py(px(4.))
                     .flex()
                     .flex_col()
-                    .font_family("DejaVu Sans Mono")
+                    .font_family(theme.font_mono)
                     .text_size(px(FONT_SIZE))
                     .text_color(fg);
                 if let Some(err) = error {

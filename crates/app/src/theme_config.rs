@@ -127,6 +127,13 @@ pub fn sync_gpui_component_theme(cx: &mut App) {
         shell.text.primary
     };
     let gpui_theme = gpui_component::theme::Theme::global_mut(cx);
+    // Font lock: gpui-component defaults mono to "DejaVu Sans Mono" on Linux
+    // (Menlo/Consolas elsewhere). ChronOS canon is JetBrains Mono everywhere —
+    // editor gutter/body use mono_font_family; UI chrome uses font_family.
+    // Must re-apply after Theme::change (loads stock theme fonts).
+    let mono: gpui::SharedString = shell.font_mono.into();
+    gpui_theme.font_family = mono.clone();
+    gpui_theme.mono_font_family = mono;
     let highlight = std::sync::Arc::make_mut(&mut gpui_theme.highlight_theme);
     highlight.style.editor_active_line = Some(active_line);
     highlight.style.editor_active_line_number = Some(active_num);

@@ -587,8 +587,8 @@ mod tests {
 
     #[test]
     fn fallback_cell_width_is_reasonable() {
-        // 13 px mono ≈ 7.8 px per cell (DejaVu Sans Mono advance is 1229/2048
-        // of the em square). The measured value replaces this at first render.
+        // 13 px mono ≈ 7.8 px per cell (JetBrains Mono / typical mono advance).
+        // The measured value replaces this at first render.
         assert!(
             (7.5..8.1).contains(&CELL_W_FALLBACK),
             "fallback cell width {CELL_W_FALLBACK} out of expected band"
