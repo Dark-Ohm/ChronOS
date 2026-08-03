@@ -12,9 +12,11 @@ use std::path::PathBuf;
 use gpui::Global;
 
 /// What the caller wants to do with the file — view it (rendered/scrolled
-/// read) or edit it (raw source in an editable buffer). Only meaningful
-/// for markdown-like files (T194c) — `PreviewTab` forces `View` for any
-/// kind that isn't editable, regardless of what was requested.
+/// read) or edit it (raw source in an editable buffer). Markdown is the
+/// only kind where the two actually differ (T194c dual toggle); plain Text
+/// settles Edit regardless of which was requested (T213 — no fake read-only
+/// dead end), and `PreviewTab` forces `View` for any kind that isn't
+/// editable at all, regardless of what was requested.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PreviewIntent {
     #[default]

@@ -129,14 +129,47 @@ fn is_editable(kind: PreviewKind, truncated: bool) -> bool {
     matches!(kind, PreviewKind::Text | PreviewKind::Markdown) && !truncated
 }
 
-/// Whether the Preview/Edit dual-mode toggle applies at all (T194c).
-/// Narrower than [`is_editable`]: this task scopes the two-button UI to
-/// **markdown-like** files only — plain `Text` stays view-only for now
-/// (spec: "realistic: plain Text не обязан иметь Edit в этой задаче").
+/// Whether the Preview/Edit **dual-toggle chrome** applies (T194c, narrowed
+/// again by T213). Markdown is the only kind with a rendered View worth
+/// toggling back to — every other editable kind (`Text`) is single-mode
+/// Edit (see [`resolve_view_mode`]) and never shows the Preview/Edit pair.
 /// `is_editable` still governs the raw-buffer mechanics once in Edit mode;
-/// this governs whether Edit mode is ever offered in the first place.
+/// this only governs whether the two-button chrome is ever drawn.
 fn can_toggle_edit(kind: PreviewKind, truncated: bool) -> bool {
     kind == PreviewKind::Markdown && !truncated
+}
+
+/// Resolve an intent against the just-(re)confirmed `kind`/`truncated` into
+/// the view mode to actually land in — single source of truth shared by
+/// `apply_intent` and the same-path fast path in `on_target_changed`.
+///
+/// T213: plain `Text` used to be forced to `View` here regardless of intent
+/// (dogfood dead end — Follow/ACP opening a `.toml`/`.rs`/`.log` landed in a
+/// permanently read-only render with no chrome to switch out of, since
+/// `can_toggle_edit` — rightly — never shows a toggle for non-markdown).
+/// Any editable kind other than Markdown is now single-mode: if it's
+/// editable at all, it settles in Edit unconditionally. Markdown keeps its
+/// real View⇄Edit choice since its View is a rendered preview, not a stand-in.
+fn resolve_view_mode(intent: PreviewIntent, kind: PreviewKind, truncated: bool) -> ViewMode {
+    if !is_editable(kind, truncated) {
+        if matches!(intent, PreviewIntent::Edit) {
+            tracing::warn!(
+                ?kind,
+                truncated,
+                "side_panel_right editor: Edit intent on non-editable kind, forcing View"
+            );
+        }
+        return ViewMode::View;
+    }
+    match kind {
+        PreviewKind::Markdown => match intent {
+            PreviewIntent::Edit => ViewMode::Edit,
+            PreviewIntent::View => ViewMode::View,
+        },
+        // Text (and any future editable-non-markdown kind): no fake
+        // Preview to fall back to — always Edit once it's loaded.
+        _ => ViewMode::Edit,
+    }
 }
 
 /// Pure classifier over (extension, head bytes). Single source of truth;
@@ -566,25 +599,11 @@ impl PreviewTab {
     }
 
     /// Resolve `intent` against the just-(re)confirmed `kind`/`truncated`
-    /// and apply it as the view mode. `Edit` on a non-editable kind (or a
-    /// truncated file) is honored as `View` with a log line — never a
+    /// and apply it as the view mode via [`resolve_view_mode`] — never a
     /// silent no-op, never a crash. Used both for a fresh load settling
     /// and for the same-path fast path in `on_target_changed`.
     fn apply_intent(&mut self, intent: PreviewIntent, kind: PreviewKind, truncated: bool) {
-        let can_edit = can_toggle_edit(kind, truncated);
-        let target = match intent {
-            PreviewIntent::Edit if can_edit => ViewMode::Edit,
-            PreviewIntent::Edit => {
-                tracing::warn!(
-                    ?kind,
-                    truncated,
-                    "side_panel_right editor: Edit intent on non-editable kind, forcing View"
-                );
-                ViewMode::View
-            }
-            PreviewIntent::View => ViewMode::View,
-        };
-        self.view_mode = target;
+        self.view_mode = resolve_view_mode(intent, kind, truncated);
     }
 
     /// Toggle the terminal drawer open/closed. Lazily spawns the shared
@@ -958,11 +977,7 @@ impl PreviewTab {
             && *loaded_path == path
         {
             let (kind, truncated) = (*kind, *truncated);
-            let can_edit = can_toggle_edit(kind, truncated);
-            let target = match intent {
-                PreviewIntent::Edit if can_edit => ViewMode::Edit,
-                _ => ViewMode::View,
-            };
+            let target = resolve_view_mode(intent, kind, truncated);
             self.try_set_view_mode(target, cx);
             return;
         }
@@ -1672,6 +1687,64 @@ mod tests {
     }
 
     #[test]
+    fn resolve_view_mode_text_ignores_intent_when_editable() {
+        // T213: Text has no fake Preview to fall back to — both intents
+        // converge on Edit once the buffer is actually editable.
+        assert_eq!(
+            resolve_view_mode(PreviewIntent::View, PreviewKind::Text, false),
+            ViewMode::Edit
+        );
+        assert_eq!(
+            resolve_view_mode(PreviewIntent::Edit, PreviewKind::Text, false),
+            ViewMode::Edit
+        );
+    }
+
+    #[test]
+    fn resolve_view_mode_truncated_text_stays_view_regardless_of_intent() {
+        // Goal 4: truncated is never editable — a Save would silently
+        // discard everything past the cap. Both intents must land View.
+        assert_eq!(
+            resolve_view_mode(PreviewIntent::View, PreviewKind::Text, true),
+            ViewMode::View
+        );
+        assert_eq!(
+            resolve_view_mode(PreviewIntent::Edit, PreviewKind::Text, true),
+            ViewMode::View
+        );
+    }
+
+    #[test]
+    fn resolve_view_mode_markdown_keeps_real_dual_choice() {
+        // Markdown is the one kind whose View is an actual rendered
+        // preview, not a stand-in — intent must still pick between them.
+        assert_eq!(
+            resolve_view_mode(PreviewIntent::View, PreviewKind::Markdown, false),
+            ViewMode::View
+        );
+        assert_eq!(
+            resolve_view_mode(PreviewIntent::Edit, PreviewKind::Markdown, false),
+            ViewMode::Edit
+        );
+    }
+
+    #[test]
+    fn resolve_view_mode_non_editable_kinds_force_view() {
+        for kind in [
+            PreviewKind::Image,
+            PreviewKind::WebPreview,
+            PreviewKind::Unsupported,
+        ] {
+            assert_eq!(resolve_view_mode(PreviewIntent::View, kind, false), ViewMode::View);
+            assert_eq!(
+                resolve_view_mode(PreviewIntent::Edit, kind, false),
+                ViewMode::View,
+                "{kind:?} must never settle Edit, no matter the intent"
+            );
+        }
+    }
+
+    #[test]
     fn human_bytes_formats() {
         assert_eq!(human_bytes(0), "0B");
         assert_eq!(human_bytes(512), "512B");
@@ -1771,15 +1844,17 @@ mod tests {
     }
 
     #[gpui::test]
-    fn edit_intent_on_plain_text_also_forces_view(cx: &mut TestAppContext) {
-        // T194c scope: dual-mode is markdown-only. Plain Text is
-        // `is_editable` (mechanics allow it) but NOT `can_toggle_edit` —
-        // Edit intent on a .txt/.log must land in View, same as an image,
-        // not silently succeed into edit mode.
+    fn edit_intent_on_plain_text_settles_to_edit_mode(cx: &mut TestAppContext) {
+        // T213: plain Text is single-mode Edit — no dual toggle chrome
+        // (`can_toggle_edit` stays markdown-only), but Edit intent (or any
+        // intent at all, see `default_intent_on_plain_text_also_settles_edit`
+        // below) must actually land in Edit, not a permanent read-only View
+        // with no way out. This inverts the old T194c-era
+        // `edit_intent_on_plain_text_also_forces_view`.
         install_theme(cx);
         cx.update(|cx| cx.set_global(PreviewTarget::default()));
         let view = cx.new(|cx| PreviewTab::new(cx));
-        let dir = std::env::temp_dir().join(format!("chronos-t194c-text-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("chronos-t213-text-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let target = dir.join("notes.txt");
@@ -1795,10 +1870,39 @@ mod tests {
         cx.update_entity(&view, |this, _cx| {
             assert_eq!(
                 this.view_mode,
-                ViewMode::View,
-                "Edit intent on plain Text must be forced to View — dual-mode is markdown-only this task"
+                ViewMode::Edit,
+                "Edit intent on plain Text must settle to Edit — dogfood needs config/log/code editing"
             );
-            assert!(this.editor.is_none(), "forced View must never build the raw buffer");
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[gpui::test]
+    fn default_intent_on_plain_text_also_settles_edit(cx: &mut TestAppContext) {
+        // T213 goal 3: Text has no useful View to default into (no rendered
+        // preview, unlike Markdown) — even the ambient default `View` intent
+        // (e.g. a plain Files-tab click) must settle Edit for Text.
+        install_theme(cx);
+        cx.update(|cx| cx.set_global(PreviewTarget::default()));
+        let view = cx.new(|cx| PreviewTab::new(cx));
+        let dir = std::env::temp_dir().join(format!("chronos-t213-text-default-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("agents.toml");
+        // >= SNIFF_BYTES unpadded: a shorter body zero-pads the sniff head
+        // and fails `looks_like_text`, misclassifying as `Unsupported`
+        // rather than `Text` — not what this test means to exercise.
+        std::fs::write(&target, "[[agents]]\nname = \"hermes\"\n").unwrap();
+
+        cx.update(|cx| cx.set_global(PreviewTarget::file(target.clone())));
+        cx.background_executor.run_until_parked();
+
+        cx.update_entity(&view, |this, _cx| {
+            assert_eq!(
+                this.view_mode,
+                ViewMode::Edit,
+                "default View intent on plain Text must still settle Edit — no fake read-only dead end"
+            );
         });
         let _ = std::fs::remove_dir_all(&dir);
     }
