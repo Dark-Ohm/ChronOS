@@ -366,25 +366,73 @@ mod tests {
             cx.set_global(SidePanelRightState::default());
         });
         let view = cx.new(|cx| SidePanelRightView::new(cx));
-        // Select Files, resize to 480 (via sim_resize to store per-tab memory).
+        // T218: memory only applies to resizable tabs, so this exercises Preview
+        // (the Editor surface) rather than Files, which is now fixed width.
+        assert!(PanelTab::Preview.resizable());
         cx.update_entity(&view, |this, cx| {
-            this.on_tab_select(PanelTab::Files, cx);
+            this.on_tab_select(PanelTab::Preview, cx);
             this.sim_resize(480., cx);
         });
-        // Switch to Editor — width becomes Editor's preferred (560).
-        cx.update_entity(&view, |this, cx| {
-            this.on_tab_select(PanelTab::Editor, cx);
-        });
-        cx.update(|cx| {
-            assert_eq!(cx.global::<SidePanelRightState>().width, 560.);
-        });
-        // Switch back to Files — must restore 480, not 440.
+        // Switch to Files — width becomes Files' natural 440.
         cx.update_entity(&view, |this, cx| {
             this.on_tab_select(PanelTab::Files, cx);
+        });
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                PanelTab::Files.preferred_content_width()
+            );
+        });
+        // Switch back to Preview — must restore 480, not its preferred 560.
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Preview, cx);
         });
         cx.update(|cx| {
             let state = cx.global::<SidePanelRightState>();
-            assert_eq!(state.width, 480., "returning to Files must restore its resized width");
+            assert_eq!(
+                state.width, 480.,
+                "returning to Preview must restore its resized width"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn fixed_width_tab_keeps_its_natural_width(cx: &mut TestAppContext) {
+        // T218: Files is laid out for its content, so a drag must not move it and
+        // leaving/returning must land on exactly `preferred_content_width` —
+        // otherwise a tab could stay stuck narrow enough to clip its own controls.
+        use crate::side_panel_right::SidePanelRightState;
+        cx.update(|cx| {
+            // Content open, otherwise per-tab widths are not applied at all.
+            let mut state = SidePanelRightState::default();
+            state.dock_content = true;
+            cx.set_global(state);
+        });
+        let view = cx.new(|cx| SidePanelRightView::new(cx));
+        assert!(!PanelTab::Files.resizable());
+
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Files, cx);
+            this.sim_resize(900., cx);
+        });
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                PanelTab::Files.preferred_content_width(),
+                "a drag on a fixed-width tab must not change its width"
+            );
+        });
+
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Preview, cx);
+            this.on_tab_select(PanelTab::Files, cx);
+        });
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                PanelTab::Files.preferred_content_width(),
+                "returning to a fixed-width tab must land on its natural width"
+            );
         });
     }
 

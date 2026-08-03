@@ -137,6 +137,18 @@ fn should_close_on_peek_leave(state: &SidePanelRightState) -> bool {
     !state.pinned && !state.resizing
 }
 
+/// Pure geometry: target width for one right-anchored drag event (T216).
+///
+/// The panel is anchored to the RIGHT screen edge, so `current_x` (window-local)
+/// is measured from the LEFT edge that the resize itself moves. Deriving the
+/// target from live geometry (`actual_w`, i.e. `window.bounds()`) keeps the
+/// grabbed point glued under the cursor and makes the result idempotent: a frame
+/// where the compositor has not yet acked the resize repeats the same target
+/// instead of compounding the error, which is what made T210/T214 thrash.
+pub(crate) fn resize_target_width(actual_w: f32, current_x: f32, grab: f32) -> f32 {
+    (actual_w - current_x + grab).clamp(RAIL_ONLY_WIDTH, MAX_WIDTH)
+}
+
 /// Cursor entered strip or panel — cancel any pending peek-close.
 pub(crate) fn hold_peek(cx: &mut App) {
     let state = cx.global_mut::<SidePanelRightState>();
@@ -404,11 +416,66 @@ mod tests {
 
     #[test]
     fn drag_left_grows_right_anchored_width() {
-        // T214 anchor: new_w = start_w - (current_x - start_x)
-        let start_w = 200.0_f32;
-        let start_x = 100.0_f32;
-        let current_x = 80.0_f32; // moved left 20px
-        let new_w = (start_w - (current_x - start_x)).clamp(RAIL_ONLY_WIDTH, MAX_WIDTH);
-        assert_eq!(new_w, 220.0);
+        // Cursor 20px left of the grabbed point → panel 20px wider.
+        let grab = 2.0_f32; // grabbed mid-handle
+        let actual_w = 200.0_f32;
+        let current_x = grab - 20.0; // moved left 20px
+        assert_eq!(resize_target_width(actual_w, current_x, grab), 220.0);
+    }
+
+    #[test]
+    fn drag_target_is_idempotent_across_a_stale_frame() {
+        // The regression guard for T210/T214: `window.resize()` is async, so the
+        // same pointer position is re-delivered against geometry that has not
+        // caught up yet. An accumulating model compounds that into runaway width;
+        // the absolute model must return the SAME target for the same input, and
+        // must land on that target once the compositor catches up.
+        let grab = 2.0_f32;
+        let current_x = grab - 20.0;
+
+        let first = resize_target_width(200.0, current_x, grab);
+        let stale_repeat = resize_target_width(200.0, current_x, grab);
+        assert_eq!(first, stale_repeat, "stale frame must not compound");
+
+        // Compositor acked: geometry is now the target, and the pointer has not
+        // moved (local x shifted by the same Δw the edge moved) → width holds.
+        let settled = resize_target_width(first, current_x + (first - 200.0), grab);
+        assert_eq!(settled, first, "settled frame must hold the width");
+    }
+
+    #[test]
+    fn grab_offset_survives_the_rail_to_content_expand() {
+        // Pressing the handle rail-only expands first (the drag needs a surface
+        // wide enough for GPUI to start a drag session on). The left edge slides
+        // left by Δw while the cursor stays put, so the grab offset must be
+        // re-expressed in the post-expand frame — otherwise the first event reads
+        // the cursor as deep in the body and snaps the panel straight back.
+        let press_x = 2.0_f32; // mid-handle, rail-only window
+        let rail_w = RAIL_ONLY_WIDTH;
+        let target = 400.0_f32;
+        let grab = press_x + (target - rail_w); // what start_resize stores
+
+        // Cursor has not moved: its local x is now press_x + Δw — the same value.
+        let local_after_expand = press_x + (target - rail_w);
+        assert_eq!(
+            resize_target_width(target, local_after_expand, grab),
+            target,
+            "expand must not snap back"
+        );
+
+        // Now drag 100px further left → 100px wider.
+        assert_eq!(
+            resize_target_width(target, local_after_expand - 100.0, grab),
+            target + 100.0
+        );
+    }
+
+    #[test]
+    fn drag_target_clamps_to_both_bounds() {
+        let grab = 2.0_f32;
+        // Yanked far right past the rail-only floor.
+        assert_eq!(resize_target_width(200.0, 400.0, grab), RAIL_ONLY_WIDTH);
+        // Yanked far left past the max.
+        assert_eq!(resize_target_width(900.0, -400.0, grab), MAX_WIDTH);
     }
 }

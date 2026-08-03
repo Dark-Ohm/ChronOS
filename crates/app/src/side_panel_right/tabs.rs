@@ -698,4 +698,15 @@ impl PanelTab {
             | PanelTab::HyprlandBinds => 320.,
         }
     }
+
+    /// May the user drag this tab's width? (T218)
+    ///
+    /// Only the two surfaces whose useful width is a matter of taste stay
+    /// draggable: the Editor (notepad — line length is personal) and System
+    /// settings. Everything else is laid out for its content and gets exactly
+    /// `preferred_content_width`, so no tab can be dragged narrow enough to
+    /// clip its own controls.
+    pub fn resizable(self) -> bool {
+        matches!(self, PanelTab::Preview | PanelTab::EditorSettings)
+    }
 }

@@ -112,16 +112,23 @@ impl SidePanelRightView {
         }
     }
 
-    /// Return the effective width for `tab`: user-resized width if set,
-    /// otherwise the tab's `preferred_content_width`. Clamped to
+    /// Return the effective width for `tab`: user-resized width if the tab is
+    /// draggable at all, otherwise its `preferred_content_width`. Clamped to
     /// `RAIL_ONLY_WIDTH .. MAX_WIDTH`.
+    ///
+    /// T218: a fixed-width tab ignores `tab_resize_memory` outright, so a width
+    /// recorded before the tab was frozen (or by a stray drag) can never keep it
+    /// off its natural size.
     fn active_tab_width(&self, tab: PanelTab, _cx: &Context<Self>) -> f32 {
         let preferred = tab.preferred_content_width();
-        let w = self
-            .tab_resize_memory
-            .get(&tab)
-            .copied()
-            .unwrap_or(preferred);
+        let w = if tab.resizable() {
+            self.tab_resize_memory
+                .get(&tab)
+                .copied()
+                .unwrap_or(preferred)
+        } else {
+            preferred
+        };
         w.clamp(RAIL_ONLY_WIDTH, MAX_WIDTH)
     }
 
@@ -162,49 +169,89 @@ impl SidePanelRightView {
     }
 
     fn start_resize(&mut self, start_x: f32, cx: &mut Context<Self>) {
-        // T210: suppress peek-close for the drag lifetime.
+        // T210: suppress peek-close for the press lifetime.
         cx.global_mut::<SidePanelRightState>().resizing = true;
         let w = cx.global::<SidePanelRightState>().width;
-        // T214: anchor model — fixed (start_x, start_w) for the whole drag.
-        // Frame-to-frame + render +dw (T210) double-corrected and thrashed live.
-        // After each window.resize, only start_x is shifted by Δw (render).
+        let tab = self.active_tab;
+        let resizable = tab.resizable();
+
+        // Pressing the handle rail-only opens the tab at its natural width. This
+        // happens for EVERY tab, fixed-width ones included — it is the affordance
+        // that opens content, not a resize.
+        //
+        // It is also what makes a drag possible at all: rail-only the window is
+        // 40px wide, so the first pointer motion leaves the surface before GPUI
+        // has started a drag session and `on_drag_move` never fires (measured:
+        // `resize drag started` with zero `resize drag move` when the expand was
+        // removed). Expanding first gives the gesture a surface to be born on.
         if w <= RAIL_ONLY_WIDTH + 1.0 {
-            let tab = self.active_tab;
             let target = self.active_tab_width(tab, cx);
             let state = cx.global_mut::<SidePanelRightState>();
             state.width = target;
             state.last_exclusive_zone = None;
-            self.tab_resize_memory.insert(tab, target);
-            // Right-anchored grow LEFT: local x jumps right by (target - w).
-            self.resize_start_x = Some(start_x + (target - w));
-            self.resize_start_width = Some(target);
             self.last_resized_width = f32::NAN;
+            if resizable {
+                self.tab_resize_memory.insert(tab, target);
+            }
             tracing::info!(
                 width = target,
                 tab = tab.label(),
                 "side_panel_right: handle grab expanded rail → content"
             );
             cx.notify();
-        } else {
-            self.resize_start_x = Some(start_x);
-            self.resize_start_width = Some(w);
         }
+
+        // T218: arm the drag only for tabs the user may resize. Fixed-width tabs
+        // leave the anchors unset, so `update_resize` returns immediately and the
+        // width stays exactly `preferred_content_width`.
+        if !resizable {
+            self.resize_start_x = None;
+            self.resize_start_width = None;
+            tracing::debug!(tab = tab.label(), "side_panel_right: tab is fixed width, drag ignored");
+            return;
+        }
+
+        // T216 grab offset. After a rail→content expand the left edge slid left by
+        // (target - w) while the cursor stayed put, so the same physical point now
+        // sits that much deeper into the window; without re-expressing it the first
+        // event would read the cursor as deep in the body and snap back to rail.
+        let width_now = cx.global::<SidePanelRightState>().width;
+        self.resize_start_x = Some(start_x + (width_now - w));
+        self.resize_start_width = Some(width_now);
+        tracing::debug!(
+            grab_x = ?self.resize_start_x,
+            start_w = w,
+            tab = tab.label(),
+            "side_panel_right: resize drag started"
+        );
     }
 
-    fn update_resize(&mut self, current_x: f32, cx: &mut Context<Self>) {
-        let (start_x, start_w) = match (self.resize_start_x, self.resize_start_width) {
-            (Some(x), Some(w)) => (x, w),
-            _ => return,
+    fn update_resize(&mut self, current_x: f32, window: &Window, cx: &mut Context<Self>) {
+        let Some(grab) = self.resize_start_x else {
+            return;
         };
-        // Right-anchored: pointer left (smaller local x) → wider panel.
-        // Total delta from drag start — start_x adjusted in render() by Δw only.
-        let delta = current_x - start_x;
+        // T216 — self-correcting absolute model. The panel is anchored to the RIGHT
+        // screen edge, so width growth drags the window's LEFT edge leftward, and
+        // `current_x` (window-local) is measured from that moving edge.
+        //
+        //   pointer_screen = window_left + current_x,  window_left = screen_right - actual_w
+        //   keep the grabbed point under the cursor  =>  desired_left = pointer_screen - grab
+        //   desired_w = screen_right - desired_left  =  actual_w - current_x + grab
+        //
+        // `actual_w` MUST come from the surface the pointer coords are relative to
+        // (window.bounds()), not from our own state: `window.resize()` is async on
+        // Wayland, so state runs ahead of the compositor between configure acks.
+        // Feeding state width back in is what made T210/T214 accumulate error and
+        // thrash to both clamps; reading live geometry makes a stale frame merely
+        // repeat the same target instead of compounding it.
+        let actual_w = window.bounds().size.width.as_f32();
+        let new_w = crate::side_panel_right::resize_target_width(actual_w, current_x, grab);
         let state = cx.global_mut::<SidePanelRightState>();
-        state.resize(start_w - delta);
+        state.resize(new_w);
         state.last_exclusive_zone = None;
         self.tab_resize_memory.insert(self.active_tab, state.width);
-        // Do NOT re-base start_x to current_x here (that + render +dw = thrash).
         crate::side_panel_right::hold_peek(cx);
+        tracing::trace!(current_x, actual_w, new_w, "side_panel_right: resize drag move");
         cx.notify();
     }
 
@@ -360,16 +407,11 @@ impl Render for SidePanelRightView {
                 .unwrap_or(1080.);
             let panel_h =
                 (display_h - crate::side_panel_right::panel_edge_gap()).max(100.);
-            let old_w = self.last_resized_width;
             window.resize(gpui::Size::new(px(panel_width), px(panel_h)));
             self.last_resized_width = panel_width;
-            // T214: right-anchored grow left → local origin shifts. Adjust
-            // drag-start local x by Δw only (start_w stays fixed). Skip first
-            // rail→content expand — start_resize already offset start_x.
-            if self.resize_start_x.is_some() && old_w > RAIL_ONLY_WIDTH + 2.0 {
-                let dw = panel_width - old_w;
-                self.resize_start_x = self.resize_start_x.map(|x| x + dw);
-            }
+            // T216: no drag-anchor fixup here. `update_resize` re-derives the target
+            // from live window geometry each event, so shifting the grab offset by Δw
+            // (T214) would double-count the very same edge movement.
             tracing::debug!(
                 panel_width,
                 panel_h,
@@ -387,14 +429,15 @@ impl Render for SidePanelRightView {
 
         // Resize handlers before any RPIT that captures cx (Rust 2024).
         let resize_drag_handler = cx.listener(
-            |this, ev: &gpui::DragMoveEvent<RightPanelResize>, _window, cx| {
-                this.update_resize(f32::from(ev.event.position.x), cx);
+            |this, ev: &gpui::DragMoveEvent<RightPanelResize>, window, cx| {
+                this.update_resize(f32::from(ev.event.position.x), window, cx);
             },
         );
         let resize_mouse_handler = cx.listener(|this, ev: &gpui::MouseDownEvent, _w, cx| {
             this.start_resize(f32::from(ev.position.x), cx);
         });
-        // T210: mouse-up on the handle means the drag ended.
+        // T210: mouse-up on the handle means the drag ended. Expansion already
+        // happened on mouse-down (see `start_resize`), so this is pure cleanup.
         let resize_mouse_up_handler = cx.listener(|this, _ev: &gpui::MouseUpEvent, _w, cx| {
             cx.global_mut::<SidePanelRightState>().resizing = false;
             this.resize_start_x = None;
@@ -427,17 +470,24 @@ impl Render for SidePanelRightView {
             .child(
                 // 4px ghost hit strip — transparent (no gray lip). Real flex
                 // column so on_drag receives events.
+                //
+                // T218: the strip stays in the layout for every tab (rail-only
+                // width is rail + handle, and mouse-down here is what opens the
+                // content), but on a fixed-width tab it advertises no resize —
+                // no col-resize cursor, no drag session to start.
                 div()
                     .id("side-panel-right-resize-handle")
                     .flex_none()
                     .w(px(HANDLE_WIDTH))
                     .h_full()
-                    .cursor_col_resize()
                     .bg(gpui::transparent_black())
                     .on_mouse_down(gpui::MouseButton::Left, resize_mouse_handler)
-                    .on_drag(RightPanelResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
-                    .on_drag_move(resize_drag_handler)
-                    .on_mouse_up(gpui::MouseButton::Left, resize_mouse_up_handler),
+                    .on_mouse_up(gpui::MouseButton::Left, resize_mouse_up_handler)
+                    .when(active.resizable(), |h| {
+                        h.cursor_col_resize()
+                            .on_drag(RightPanelResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
+                            .on_drag_move(resize_drag_handler)
+                    }),
             )
             .child(
                 div()
@@ -601,7 +651,13 @@ impl SidePanelRightView {
 
     /// Simulate a user resize for testing: stores width in both the
     /// global state and per-tab memory.
+    ///
+    /// T218: mirrors the real drag path — a fixed-width tab refuses the resize
+    /// outright, so a test cannot record a width the UI would never produce.
     pub(crate) fn sim_resize(&mut self, width: f32, cx: &mut Context<Self>) {
+        if !self.active_tab.resizable() {
+            return;
+        }
         let state = cx.global_mut::<SidePanelRightState>();
         state.resize(width);
         self.tab_resize_memory.insert(self.active_tab, state.width);
@@ -636,7 +692,10 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn mode_fallback_restores_system_resize_memory(cx: &mut TestAppContext) {
+    async fn mode_fallback_applies_fixed_system_width(cx: &mut TestAppContext) {
+        // T218: System is fixed width now, so the mode fallback must land on its
+        // preferred 400 and ignore any recorded width. The memory path itself is
+        // covered for a resizable tab by `switch_tab_restores_per_tab_resize_memory`.
         cx.update(|cx| {
             let mut state = SidePanelRightState::default();
             state.dock_content = true;
@@ -651,7 +710,11 @@ mod tests {
         });
 
         cx.update(|cx| {
-            assert_eq!(cx.global::<SidePanelRightState>().width, 480.);
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                PanelTab::System.preferred_content_width(),
+                "fixed-width System must ignore recorded width on mode fallback"
+            );
         });
     }
 
