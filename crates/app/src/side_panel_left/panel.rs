@@ -544,10 +544,16 @@ fn build_sessions_sidebar(
                     .cursor_pointer()
                     .hover(|s| s.bg(theme.border.subtle))
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.state.dock_chat = !this.state.dock_chat;
+                        // T220: when collapsing the chat (dock on → off), remember
+                        // the current expanded width so a later summon→expand
+                        // returns it, not the 352px default. When expanding
+                        // (off → on), grow to the remembered/default width.
                         if this.state.dock_chat {
+                            this.state.remembered_chat_width = Some(this.state.width);
+                        } else {
                             this.state.ensure_chat_width();
                         }
+                        this.state.dock_chat = !this.state.dock_chat;
                         // Force exclusive recompute next paint.
                         this.state.last_exclusive_zone = None;
                         cx.notify();
@@ -801,10 +807,13 @@ fn build_sessions_sidebar(
                                     .cursor_pointer()
                                     .hover(|s| s.bg(theme.border.subtle))
                                     .on_click(cx.listener(|this, _, _, cx| {
-                                        this.state.dock_chat = !this.state.dock_chat;
+                                        // T220: collapse remembers width; expand grows to it.
                                         if this.state.dock_chat {
+                                            this.state.remembered_chat_width = Some(this.state.width);
+                                        } else {
                                             this.state.ensure_chat_width();
                                         }
+                                        this.state.dock_chat = !this.state.dock_chat;
                                         this.state.last_exclusive_zone = None;
                                         cx.notify();
                                     }))

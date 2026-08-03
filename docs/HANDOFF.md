@@ -8,7 +8,35 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
-**Обновлено: 2026-08-02.** **T181 закрыт решением архитектора (ACCEPTED WITH RESIDUAL).** Слайс 4 закрыт целиком. Дальше — слайс 5 (Gamer hub + per-game scenes), не ещё один заход по T181.
+**Обновлено: 2026-08-03 (T209 live smoke).** Live-customization wave
+**T198–T208** закрыта по статике/unit; **живой прогон T209 сделан** —
+вердикт **FAIL**, три P0. Отчёт: `docs/orchestration/tasks/report-log/T209-live-smoke-residuals-report.md`, артефакты `/tmp/t209-smoke/20260803-0250/`.
+
+**P0 из живого прогона (ни один не ловится unit-тестами):**
+1. **Правая панель умирает от hover** после прерванного drag'а ручки: peek
+   закрывается прямо во время drag'а, после чего hover-strip больше НИКОГДА
+   не открывает панель (IPC `toggle-side-panel-right` — открывает; значит
+   мёртв обработчик strip'а, а не `state.handle`). До рестарта шелла.
+2. **Follow-тумблер не имеет визуального состояния вообще** —
+   `magick compare` даёт **0 различающихся пикселей** ON/OFF. Причина в
+   коде: `side_panel_left/panel.rs:236-252` красит **эмодзи-глиф `👁`**
+   через `text_color`, а цветной bitmap-глиф на `text_color` не реагирует.
+   Само состояние переключается верно (F2/F3 прошли).
+3. **Кнопка Theme Toggle в System settings роняет шелл целиком:**
+   `no state of type chronos_ui::theme::Theme exists` (gpui `app.rs:1872`)
+   → wayland pointer panic → abort. При этом `theme.toml` уже записан, а
+   правка того же файла руками хот-релоадится без краша.
+
+Прошло чисто: весь editor-слой (E1–E8: View/Edit, тема, гуттер, живой
+Ln/Col, wrap, save, terminal-drawer + PTY-ввод), Follow ON/OFF по существу
+(F2/F3, живой ACP-turn Hermes), вся bar-кастомизация (B1–B6: height,
+floating-sanitize, пресеты, bottom, fraction 0.7), S1/S3/S4/S5, X1–X3.
+Сетевой guard T180 держится (badge'и не грузятся).
+
+Дальше: три тонкие задачи — **T210** (drag/peek + hover-strip),
+**T211** (theme-toggle контекст + иконка Follow), **T212** (честность
+settings: reload `agents.toml`, пустой Editor на отсутствующем файле,
+светлая тема наполовину). T181/slice4 history ниже — не трогать.
 
 **Почему не 5-й QA-заход.** Код слайса 4 (T175–T180) + T182/T183 приняты.
 Пять заходов T181, две фабрикации кадров, отстранение QA-роли, HANDOFF/память
@@ -41,14 +69,61 @@ Hypr live config **модульный:** `~/.config/hypr/modules/` + thin `hyprl
 |---|---|---|
 | T192 | rail product cut | **done** `6660d2f` |
 | T193 | hypr binds RO | **done** `4bce975` |
-| T194 | Editor+edit (no drawer yet) | **done** `7d0be09` residual T194b |
-| T194b | terminal drawer under Editor | **active** |
-| T195 | agent follow + right activity | pause |
-| T196 | system settings + ACP agents CRUD | pause |
+| T194 | Editor+edit | **done** `7d0be09` |
+| T194c | view default + md Preview/Edit | **done** `b3939d8`+`e884411` ACCEPTED WITH RESIDUAL |
+| T194b | terminal drawer under Editor | **done** `6a32ef6` ACCEPTED WITH RESIDUAL |
+| T195 | agent follow + right activity | **done** `9268440` ACCEPTED WITH RESIDUAL (activity strip deferred, live N/V) |
+| T196 | system settings + ACP agents list | **done** `9435cc0` ACCEPTED WITH RESIDUAL (inline add/remove deferred, live N/V) |
+| T209 | live smoke residuals (wave tails) | **done FAIL** (architect accept) · report-log · `/tmp/t209-smoke/20260803-0250/` |
+| T210 | right drag peek-dead + half-rate | **done** `7d09628` ACCEPTED static; live R7/R2 re-smoke |
+| T211 | theme toggle panic + Follow affordance | **done** `ee35b2b` ACCEPTED static; live S2/F1 re-smoke |
+| T212 | settings honesty | **done** `4ed5bef` ACCEPTED WITH RESIDUAL (Reload clip; follow.svg embed; agents View until T213; light editor N/V) |
+| T213 | editor edit all text (not md-only) | **done** `40183cb` ACCEPTED static; live dogfood re-smoke |
+| T214 | resize thrash + active line | **done** `d2fa7c7` ACCEPTED static; needs release restart |
 | T197 | Terminal rail restore | **SUPERSEDED** → drawer in T194 |
-| T198 | chrome customization RECON | **active** |
+| T198 | chrome customization RECON | **done** ACCEPTED WITH NOTE → report-log |
+| T199 | bar.toml appearance schema | **done** `31ec352` ACCEPTED |
+| T200 | bar appearance apply live | **done** `dc811e9` ACCEPTED WITH RESIDUAL |
+| T201 | bar agent get/set/list tools | **done** `51219ab` ACCEPTED WITH NOTE |
+| T202 | bar presets + System settings | **done** `82e100a` ACCEPTED WITH RESIDUAL (arch report) |
+| T205 | editor themed buffer + line gutter | **done** `8b36055` ACCEPTED WITH RESIDUAL |
+| T206 | right panel resize stick + no gray lip | **done** `6ec95a0` ACCEPTED WITH RESIDUAL (live N/V) |
+| T207 | bar edge/fraction live (recreate, no fork) | **done** `08d5857` ACCEPTED WITH RESIDUAL (live N/V) |
+| T208 | editor Ln/Col + soft wrap | **done** `4f22718` ACCEPTED WITH RESIDUAL (live N/V; arch observe errata) |
+| T203 | agent dogfood NL→schema | **done** `b0d3ff3` ACCEPTED WITH NOTE |
+| T204 | ghost handles + unified 36px rails L/R | **done** `96c40d4` + errata `1d9b71b` |
 | T189 | scenes UI | **KILL** |
 | T191 | gamer slice smoke | park |
+
+
+**Пауза/архив 2026-08-02:** `active/check` очищен; `T102`/`T114`/`T197` →
+`notes/superseded/`; AUR `T103–T106` → `notes/other-repo/`. В `pause/` остались
+T191 (park), T195 (unblocked pickup), T196 (после T202).
+
+**Чекпоинт 2026-08-03 (Grok Lead Architect) — full:**
+
+Customization wave **closed** (accept by tree + tests; live grim N/V):
+
+| ID | commit | residual |
+|---|---|---|
+| T202 | `82e100a` | arch-committed; live UI N/V |
+| T203 | `b0d3ff3` | dogfood skill |
+| T204 | `96c40d4`+`1d9b71b` | errata hole/drift |
+| T205 | `8b36055` | themed buffer+gutter; highlight-line deferred |
+| T206 | `6ec95a0` | start_x offset after expand; body/rail chrome only content_open; live drag N/V; one-frame jank |
+| T207 | `08d5857` | recreate for edge/width/align/float/margin (no fork set_anchor); cold-start double-open residual; live N/V |
+| T208 | `4f22718` | Ln/Col + Wrap; arch errata `cx.observe` for cursor moves; live N/V |
+
+**HEAD tip:** `4f22718`. Inbox `tasks/report/` empty for T206–T208 (in report-log).
+**active/:** empty product briefs; **pause/** T191 park · T195 unblocked · T196 after T202 (T202 done → T196 unblocked when free).
+**Working tree dirt:** orchestration archive moves (done/report-log/notes) uncommitted docs; code clean for T206–T208.
+**Next:** **T210+T211 P0 parallel** (zones: right panel vs theme/left Follow); then T212. Re-smoke via T209 spec after fixes.
+**Hindsight :8888 down** at this checkpoint.
+
+**Чекпоинт 2026-08-02 (Grok Lead Architect):** T194c+T199 **приняты**;
+очередь **T200 → T204** (параллель ok) → T201/T202/T203. T200+T201
+параллель ok; T202 после T200; T203 после T201. Live smoke T194c/b residual.
+Customization plan approved. Hindsight :8888 **down** на момент чекпоинта.
 
 Customization plan **approved:** `docs/superpowers/plans/2026-08-02-live-customization.md`.
 
@@ -1235,10 +1310,23 @@ clone without ChronOS character.
 | T132 | One 3D demo surface | after T131 |
 
 ### Панели (кратко)
-- Left: sessions = bar; chat overlay; Dock full exclusive; Super+A.
+- Left: sessions = bar; chat **rail-only при призыве** (Super+A / peek открывает
+  только рейл = 36px strip + 4px handle = 40px, чат НЕ выезжает); раскрытие
+  отдельно — dock-тоггл (`⊞`/`⊟`) или drag ручки. Запомненная ширина чата
+  (N) живёт между призывами (`remembered_chat_width` в глобале), следующий
+  призыв→раскрытие возвращает N, не 352px. Dock full exclusive. T220.
 - Right: tab rail = bar; content overlay; Dock; Super+G IPC.
 - Surfaces: `side_panel_right/surfaces.rs` (is_light-aware).
 - Dev CLI: `chronos-rebuild && chronos-stop && chronos-start`.
+
+#### Живой прогон панелей (рецепт, не врёт)
+- **Левая (T220):** призвать (`Super+A`) → `hyprctl layers | grep side_panel_left`
+  показывает ширину ~40px, видна ТОЛЬКО рейл-полоса (чат не выехал). Нажать
+  dock-тоггл `⊞` → чат раскрывается (exclusive зона растёт). Drag ручки
+  расширить до N пикселей, закрыть панель (`Super+A` снова), призвать ещё раз
+  → снова рейл ~40px; нажать `⊞` → чата ширина = N (не 352). `grim` до/после.
+  Окна не заезжают под панель (exclusive zone == ширина в обоих состояниях).
+- **Правая:** `Super+G` → рейл; таб-иконка → контент раскрывается; `grim`.
 
 ### Docs (канон)
 | Doc | Роль |

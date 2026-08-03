@@ -54,14 +54,22 @@ pub struct SidePanelLeftState {
     pub dock_chat: bool,
     /// Last exclusive_zone value sent to compositor (avoids redundant Wayland round-trips).
     pub last_exclusive_zone: Option<f32>,
+    /// Remembered expanded-chat width (N), restored on the next expand so a
+    /// summon→expand→close→summon cycle returns the same N instead of the
+    /// 352px default. Mirrors right panel `tab_resize_memory`. Survives panel
+    /// close by being mirrored into the global `SidePanelLeftState_`.
+    pub remembered_chat_width: Option<f32>,
 }
 
 impl SidePanelLeftState {
     pub fn new() -> Self {
-        // Open with chat column visible (T137) — rail-only Super+A hid composer.
-        let mut s = Self {
+        // T220: summon rail-only — only the 36px strip + 4px handle show; the
+        // chat column does NOT auto-open on Super+A/peek (that hid the composer
+        // in the old T137 behaviour). Chat is revealed by the dock toggle or a
+        // resize drag, which expand to `remembered_chat_width` (or default).
+        let s = Self {
             state: PanelState::Peek,
-            width: Self::DEFAULT_CHAT_WIDTH,
+            width: super::sessions_list::SIDEBAR_MIN_WIDTH,
             height: 1080.0,
             min_width: super::sessions_list::SIDEBAR_MIN_WIDTH,
             max_width: 960.0,
@@ -71,8 +79,8 @@ impl SidePanelLeftState {
             active_session_id: None,
             dock_chat: false,
             last_exclusive_zone: None,
+            remembered_chat_width: None,
         };
-        s.ensure_chat_width();
         s
     }
 
@@ -108,15 +116,39 @@ impl SidePanelLeftState {
 
     pub fn resize(&mut self, new_width: f32) {
         self.width = new_width.clamp(self.min_width, self.max_width);
+        // A manual resize (drag / dock toggle) sets the remembered chat width
+        // so a later summon→expand returns here, not the 352px default.
+        let rail = self.sidebar_width() + super::sessions_list::SIDEBAR_HANDLE_WIDTH;
+        if self.width - rail > 1.0 {
+            self.remembered_chat_width = Some(self.width);
+        }
     }
 
     /// Default width when opening chat / turning dock on from sidebar-only.
     pub const DEFAULT_CHAT_WIDTH: f32 = 352.;
 
+    /// Rail-only summon width: collapsed sidebar strip + resize handle.
+    /// Equal to the right panel's `RAIL_ONLY_WIDTH` (asserted by
+    /// `rails_and_handles_match_right_panel`). T220: this is the width a
+    /// summon opens at — only the rail shows; chat reveals separately.
+    pub fn rail_only_width() -> f32 {
+        super::sessions_list::SIDEBAR_MIN_WIDTH
+    }
+
+    /// Expand the chat column from rail-only to a usable width.
+    /// Prefers the remembered width from a previous expand/resize; falls back
+    /// to `DEFAULT_CHAT_WIDTH`. Never narrower than the sidebar strip + 120px
+    /// thread column so the chat stays usable.
     pub fn ensure_chat_width(&mut self) {
         let need = self.sidebar_width() + super::sessions_list::SIDEBAR_HANDLE_WIDTH + 120.0; // min thread column so chat is usable
-        if self.width < need {
-            self.width = Self::DEFAULT_CHAT_WIDTH.max(need).min(self.max_width);
+        let target = self
+            .remembered_chat_width
+            .unwrap_or(Self::DEFAULT_CHAT_WIDTH)
+            .max(need)
+            .min(self.max_width);
+        if self.width < target {
+            self.width = target;
         }
+        self.remembered_chat_width = Some(self.width);
     }
 }

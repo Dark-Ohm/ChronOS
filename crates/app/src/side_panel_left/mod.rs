@@ -48,6 +48,10 @@ pub struct SidePanelLeftState_ {
     handle: Option<WindowHandle<SidePanelLeft>>,
     pinned: bool,
     peek_generation: u64,
+    /// T220: remembered expanded-chat width (N) that survives panel close so a
+    /// later summon→expand returns N, not the 352px default. Mirrored from /
+    /// into the per-instance `SidePanelLeftState.remembered_chat_width`.
+    remembered_chat_width: Option<f32>,
 }
 
 impl Global for SidePanelLeftState_ {}
@@ -64,8 +68,10 @@ fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
 fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     let display_h = display_height(display_id, cx);
     let panel_h = (display_h - panel_edge_gap()).max(100.);
-    // Super+A opens wide enough for chat column (not rail-only strip).
-    let open_w = state::SidePanelLeftState::DEFAULT_CHAT_WIDTH;
+    // T220: Super+A / peek opens rail-only (strip + handle), NOT the chat
+    // column. Chat reveals via dock toggle or resize drag. Matches the right
+    // panel's rail-only summon (`RAIL_ONLY_WIDTH`).
+    let open_w = state::SidePanelLeftState::rail_only_width();
     WindowOptions {
         display_id,
         titlebar: None,
@@ -1107,10 +1113,17 @@ fn open_window(cx: &mut App, pinned: bool) {
         return;
     }
     let display_id = crate::monitor::pult_display_id_or_primary(cx);
+    // T220: apply the remembered chat width (from a previous expand) to the
+    // fresh per-instance state so the next dock-toggle/resize returns N, not 352.
+    let remembered = cx.global::<SidePanelLeftState_>().remembered_chat_width;
     match cx.open_window(window_options(display_id, cx), |_, view_cx| {
         view_cx.new(|cx| SidePanelLeft::new(cx))
     }) {
         Ok(handle) => {
+            // Mirror the remembered width into the new instance before first paint.
+            let _ = handle.update(cx, |this, _, _| {
+                this.state.remembered_chat_width = remembered;
+            });
             let state = cx.global_mut::<SidePanelLeftState_>();
             state.handle = Some(handle);
             state.pinned = pinned;
@@ -1137,6 +1150,16 @@ pub fn open_peek(cx: &mut App) {
 pub fn close(cx: &mut App) {
     if let Some(handle) = cx.global_mut::<SidePanelLeftState_>().handle.take() {
         cx.global_mut::<SidePanelLeftState_>().pinned = false;
+        // T220: read the remembered chat width out of the dying instance
+        // (separate `update` from the one that destroys the surface, because
+        // `handle.update` borrows `cx` for the whole closure and we can't
+        // touch the global mid-borrow). Mirror it into the global so a later
+        // summon→expand returns N instead of the 352px default.
+        let remembered = handle
+            .update(cx, |this, _, _| this.state.remembered_chat_width)
+            .ok()
+            .flatten();
+        cx.global_mut::<SidePanelLeftState_>().remembered_chat_width = remembered;
         // Clear exclusive zone before destroying the surface so the
         // compositor reclaims reserved space even if it doesn't auto-clean.
         match handle.update(cx, |_, window: &mut Window, _| {
@@ -1267,11 +1290,12 @@ mod tests {
     }
 
     #[test]
-    fn state_default_width_opens_chat_column() {
-        // T137: Super+A must show composer, not rail-only strip.
+    fn state_default_width_opens_rail_only() {
+        // T220: a summon opens rail-only (strip + handle), NOT the chat column.
         let state = state::SidePanelLeftState::new();
-        assert_eq!(state.width, state::SidePanelLeftState::DEFAULT_CHAT_WIDTH);
-        assert!(state.width > sessions_list::SIDEBAR_MIN_WIDTH);
+        assert_eq!(state.width, sessions_list::SIDEBAR_MIN_WIDTH);
+        assert!(state.width <= sessions_list::SIDEBAR_MIN_WIDTH + f32::EPSILON);
+        assert!(!state.dock_chat);
     }
 
     #[test]
@@ -1294,13 +1318,18 @@ mod tests {
             crate::side_panel_right::HANDLE_WIDTH,
             sessions_list::SIDEBAR_HANDLE_WIDTH
         );
+        // T220: summon width must equal the right panel's rail-only width.
+        assert_eq!(
+            state::SidePanelLeftState::rail_only_width(),
+            crate::side_panel_right::RAIL_ONLY_WIDTH
+        );
     }
 
     #[test]
     fn toggle_collapse_recalculates_min_width() {
         let mut state = state::SidePanelLeftState::new();
         assert!(state.sessions_collapsed);
-        assert_eq!(state.width, state::SidePanelLeftState::DEFAULT_CHAT_WIDTH);
+        assert_eq!(state.width, sessions_list::SIDEBAR_MIN_WIDTH);
         // Expand sessions: min must fit 200 + handle
         state.sessions_collapsed = false;
         state.recalc_min_width();
@@ -1329,8 +1358,11 @@ mod tests {
             state.exclusive_px(),
             sessions_list::SIDEBAR_EXPANDED_WIDTH + sessions_list::SIDEBAR_HANDLE_WIDTH
         );
-        state.width = 400.0;
+        // T220: dock on at rail-only width — exclusive zone == width == rail-only.
         state.dock_chat = true;
+        assert_eq!(state.exclusive_px(), sessions_list::SIDEBAR_MIN_WIDTH);
+        // Dock on at expanded width — exclusive zone follows the width.
+        state.width = 400.0;
         assert_eq!(state.exclusive_px(), 400.0);
     }
 
@@ -1341,5 +1373,34 @@ mod tests {
         state.ensure_chat_width();
         assert!(state.width > sessions_list::SIDEBAR_MIN_WIDTH);
         assert_eq!(state.width, state::SidePanelLeftState::DEFAULT_CHAT_WIDTH);
+        // Remembered width is now set so a later summon→expand returns it.
+        assert_eq!(state.remembered_chat_width, Some(state.width));
+    }
+
+    #[test]
+    fn ensure_chat_width_restores_remembered_width() {
+        // T220 req #1: expand to N, collapse, next expand returns N not 352.
+        let mut state = state::SidePanelLeftState::new();
+        let n = 500.0;
+        state.width = n;
+        state.remembered_chat_width = Some(n);
+        // Collapse back to rail-only (simulating close).
+        state.width = sessions_list::SIDEBAR_MIN_WIDTH;
+        // Re-expand: must return the remembered N, not DEFAULT_CHAT_WIDTH.
+        state.ensure_chat_width();
+        assert_eq!(state.width, n);
+    }
+
+    #[test]
+    fn resize_remembers_expanded_width() {
+        // T220 req #1: a manual drag/resize sets the remembered width.
+        let mut state = state::SidePanelLeftState::new();
+        let n = 600.0;
+        state.resize(n);
+        assert_eq!(state.remembered_chat_width, Some(n));
+        // Collapse and re-expand via ensure_chat_width → returns N.
+        state.width = sessions_list::SIDEBAR_MIN_WIDTH;
+        state.ensure_chat_width();
+        assert_eq!(state.width, n);
     }
 }
