@@ -22,7 +22,7 @@ use chronos_services::{Notification, NotificationCommand, Urgency};
 use crate::notifications::{LIST_MAX_H, NotificationPopupState};
 use crate::state::AppState;
 
-use chronos_ui::Theme;
+use chronos_ui::{Theme, WindowRootExt};
 
 // ── Time helpers ─────────────────────────────────────────────────────
 
@@ -318,6 +318,7 @@ impl Render for NotificationsView {
 
         // Card stack — no outer border (mockup: each card is independent).
         div()
+            .window_font(theme)
             .flex_col()
             .gap(px(8.))
             .max_h(px(LIST_MAX_H))

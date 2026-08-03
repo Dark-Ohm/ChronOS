@@ -35,7 +35,7 @@ use crate::side_panel_right::{
 use crate::state::AppState;
 use crate::{scene, workspace_mode};
 
-use chronos_ui::{Theme, elevation_glow_bar};
+use chronos_ui::{Theme, WindowRootExt, elevation_glow_bar};
 
 /// Delay before peek-close after mouse leaves panel (or strip).
 const PEEK_LEAVE_DEBOUNCE: Duration = Duration::from_millis(280);
@@ -477,6 +477,7 @@ impl Render for SidePanelRightView {
         // bar) no rounding and no clip — keeps the elevation shadows intact.
         div()
             .id("side-panel-right-root")
+            .window_font(&theme)
             .size_full()
             .flex()
             .flex_row()

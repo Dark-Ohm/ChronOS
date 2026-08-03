@@ -16,7 +16,7 @@ use chronos_services::{PackageUpdate, Service, UpdateSource, UpgradeState};
 use crate::state::AppState;
 use crate::updates_popup::{MAX_LIST_H, refresh, upgrade_all, upgrade_selected};
 
-use chronos_ui::{Theme, elevation_apply_light_chrome, elevation_blur_layer};
+use chronos_ui::{Theme, WindowRootExt, elevation_apply_light_chrome, elevation_blur_layer};
 use crate::motion;
 
 // ── Geometry from mockup ────────────────────────────────────────────
@@ -392,6 +392,7 @@ impl Render for UpdatesPopupView {
         let blur_layer = elevation_blur_layer(&elev, radius);
 
         let card = div()
+            .window_font(&theme)
             .relative()
             .flex_col()
             .rounded(radius) // 6px, not 10px

@@ -39,7 +39,7 @@ use chronos_services::{
     AudioCommand, AudioDevice, AudioState, EndpointState, Service, audio::clamp_volume,
 };
 use chronos_ui::{
-    Theme, elevation_apply_light_chrome, elevation_blur_layer,
+    Theme, WindowRootExt, elevation_apply_light_chrome, elevation_blur_layer,
 };
 
 use crate::state::AppState;
@@ -136,6 +136,7 @@ impl Render for VolumePopupView {
         let blur_layer = elevation_blur_layer(&elev, radius_lg);
 
         let card = div()
+            .window_font(&theme)
             .relative()
             .flex_col()
             .w(px(POPUP_WIDTH))

@@ -20,7 +20,7 @@ use chronos_services::{Notification, NotificationCommand, Service, Urgency};
 
 use crate::state::AppState;
 
-use chronos_ui::{Theme, elevation_blur_layer, elevation_glow_bar};
+use chronos_ui::{Theme, WindowRootExt, elevation_blur_layer, elevation_glow_bar};
 use crate::motion;
 
 // ── Mockup-faithful geometry ────────────────────────────────────────
@@ -168,6 +168,7 @@ impl Render for HistoryPopupView {
         let blur_layer = elevation_blur_layer(&elev, radius_lg);
 
         let mut panel = div()
+            .window_font(&theme)
             .relative()
             .flex_col()
             .rounded(radius_lg)

@@ -1323,3 +1323,21 @@ list, load/resume, rename/pin/archive, search) — T151 depends on T150.
   нашего PTY. Когда появится вкладка Terminal (слайс 4), запустить в ней
   yazi можно бесплатно и без единой строки кода. Это не заменяет нативную
   вкладку, но и не запрещено.
+
+## 2026-08-03 — T227: JetBrains Mono на самом деле применён на корне каждого окна
+
+Коррекция к T215 (`4a7d9dd` «ui : JetBrains Mono shell-wide including
+gpui-component»): T215 поменял только **данные** дефолтной темы
+(`font_ui: "JetBrains Mono"`) и прописал шрифт в тему gpui-component, но не
+применял его на корнях окон. Ни одно собственное окно ChronOS не ставило
+семейство шрифта на корне — поэтому шелл рисовался дефолтным шрифтом GPUI,
+а «shell-wide» была иллюзией (редактор/инпуты получили шрифт через тему
+gpui-component, и дерево выглядело «шелл-широко»).
+
+T227 (commit `ui : apply theme font at every window root (T227)`) завёл
+хелпер `WindowRootExt::window_font` в `crates/ui` и применил его на
+корневом `div` каждого окна; per-element `.font_family(font_ui)` убраны из
+`system_popup`. `font_mono` оставлен осознанно там, где нужен моноширинный
+смысл (tool-карточки, вывод команд, гуттер). Дисциплина закреплена тестом
+`every_window_root_uses_window_font` в `crates/ui/src/window_root.rs`,
+который читает исходники корней окон и запрещает ручной `font_family(font_ui)`.

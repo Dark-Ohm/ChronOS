@@ -20,7 +20,7 @@ use crate::state::AppState;
 use crate::tray_menu::TrayMenuState;
 use crate::tray_menu::{click_item, close};
 
-use chronos_ui::Theme;
+use chronos_ui::{Theme, WindowRootExt};
 
 /// Padding applied to each menu row (px).
 const ROW_PAD_Y: f32 = 6.;
@@ -92,6 +92,7 @@ impl Render for TrayMenuView {
             .collect();
 
         div()
+            .window_font(theme)
             .flex_col()
             .rounded(radius_lg)
             .bg(bg)

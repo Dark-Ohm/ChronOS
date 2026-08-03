@@ -12,7 +12,7 @@ use gpui::{
     prelude::*, px,
 };
 
-use chronos_ui::Theme;
+use chronos_ui::{Theme, WindowRootExt};
 
 use crate::project_switcher::{add_project, cached, close_this, current_branch, set_active};
 
@@ -147,6 +147,7 @@ impl Render for ProjectPopupView {
             });
 
         div()
+            .window_font(theme)
             .flex_col()
             .rounded(radius_lg)
             .bg(bg)

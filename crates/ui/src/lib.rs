@@ -7,6 +7,7 @@
 
 pub mod elevation;
 pub mod theme;
+pub mod window_root;
 
 pub use elevation::{
     BlurSpec, EMPTY_SHADOWS, ElevationTokens, elevation_apply_light_chrome, elevation_blur_layer,
@@ -14,3 +15,4 @@ pub use elevation::{
 };
 pub use theme::{ActiveTheme, Base16Colors, FontSizes, Theme, ThemeScheme, builtin_schemes};
 pub use theme::{on_fill, parse_hex};
+pub use window_root::WindowRootExt;

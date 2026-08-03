@@ -1,6 +1,6 @@
 use gpui::{AnimationExt, AnyElement, Context, IntoElement, Window, div, img, prelude::*, px};
 
-use chronos_ui::{Theme, elevation_glow_bar};
+use chronos_ui::{Theme, WindowRootExt, elevation_glow_bar};
 
 use crate::motion;
 
@@ -393,6 +393,7 @@ pub fn render_panel(
     // rounding and no clip — keeps the elevation shadows intact.
     div()
         .id("side-panel-left-root")
+        .window_font(&theme)
         .w(px(panel.state.width))
         .h_full()
         .flex()

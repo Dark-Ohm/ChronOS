@@ -15,7 +15,7 @@ use gpui::{
 };
 
 use chronos_services::{BrightnessCommand, PowerProfile, Service, UPowerData};
-use chronos_ui::{Theme, elevation_apply_light_chrome, elevation_blur_layer};
+use chronos_ui::{Theme, WindowRootExt, elevation_apply_light_chrome, elevation_blur_layer};
 use crate::motion;
 use crate::state::AppState;
 use crate::system_popup::{close_this, gaming_mode, POPUP_WIDTH};
@@ -76,12 +76,12 @@ impl Render for SystemPopupView {
         let accent = theme.accent.primary;
         let border_subtle = theme.border.subtle;
         let font_mono = theme.font_mono;
-        let font_ui = theme.font_ui;
 
         let elev = theme.elevation_popup();
         let blur_layer = elevation_blur_layer(&elev, radius_lg);
 
         let card = div()
+            .window_font(&theme)
             .relative()
             .flex_col()
             .w(px(POPUP_WIDTH))
@@ -95,7 +95,7 @@ impl Render for SystemPopupView {
         let mut card = elevation_apply_light_chrome(&elev, card);
 
         let card = card
-            .child(header(text_primary, text_muted, hover, radius, font_ui))
+            .child(header(text_primary, text_muted, hover, radius))
             .child(div().w_full().h(px(1.)).bg(divider))
             .child(brightness_block(
                 &brightness,
@@ -108,7 +108,6 @@ impl Render for SystemPopupView {
                 hover,
                 radius,
                 font_mono,
-                font_ui,
                 cx,
             ))
             .child(div().w_full().h(px(1.)).bg(divider))
@@ -119,7 +118,6 @@ impl Render for SystemPopupView {
                 accent,
                 hover,
                 radius,
-                font_ui,
                 cx,
             ))
             .child(div().w_full().h(px(1.)).bg(divider))
@@ -130,7 +128,6 @@ impl Render for SystemPopupView {
                 accent,
                 hover,
                 radius,
-                font_ui,
                 cx,
             ));
 
@@ -143,7 +140,6 @@ fn header(
     text_muted: gpui::Hsla,
     hover: gpui::Hsla,
     radius: gpui::Pixels,
-    font_ui: &'static str,
 ) -> AnyElement {
     div()
         .w_full()
@@ -154,7 +150,6 @@ fn header(
         .py(px(12.))
         .child(
             div()
-                .font_family(font_ui)
                 .text_size(px(13.))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(text_primary)
@@ -191,7 +186,6 @@ fn brightness_block(
     hover: gpui::Hsla,
     radius: gpui::Pixels,
     font_mono: &'static str,
-    font_ui: &'static str,
     cx: &mut Context<SystemPopupView>,
 ) -> AnyElement {
     let available = brightness.available;
@@ -251,7 +245,6 @@ fn brightness_block(
                 )
                 .child(
                     div()
-                        .font_family(font_ui)
                         .text_size(px(12.5))
                         .font_weight(gpui::FontWeight::MEDIUM)
                         .text_color(label_color)
@@ -455,7 +448,6 @@ fn power_profile_block(
     accent: gpui::Hsla,
     hover: gpui::Hsla,
     radius: gpui::Pixels,
-    font_ui: &'static str,
     cx: &mut Context<SystemPopupView>,
 ) -> AnyElement {
     let current = upower.power_profile;
@@ -468,7 +460,6 @@ fn power_profile_block(
 
     let title = div()
         .w_full()
-        .font_family(font_ui)
         .text_size(px(12.5))
         .font_weight(gpui::FontWeight::MEDIUM)
         .text_color(text_primary)
@@ -499,7 +490,6 @@ fn power_profile_block(
                 .text_color(color)
                 .bg(seg_bg)
                 .cursor_pointer()
-                .font_family(font_ui)
                 .text_size(px(11.5))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .hover(move |s| if is_active { s } else { s.bg(hover) })
@@ -538,7 +528,6 @@ fn gaming_mode_block(
     accent: gpui::Hsla,
     hover: gpui::Hsla,
     radius: gpui::Pixels,
-    font_ui: &'static str,
     cx: &mut Context<SystemPopupView>,
 ) -> AnyElement {
     let title_row = div()
@@ -548,7 +537,6 @@ fn gaming_mode_block(
         .justify_between()
         .child(
             div()
-                .font_family(font_ui)
                 .text_size(px(12.5))
                 .font_weight(gpui::FontWeight::MEDIUM)
                 .text_color(text_primary)
@@ -570,7 +558,6 @@ fn gaming_mode_block(
         .child(
             div()
                 .text_color(text_muted)
-                .font_family(font_ui)
                 .text_size(px(10.5))
                 .line_height(px(16.))
                 .child(effect),

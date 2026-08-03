@@ -7,7 +7,7 @@ pub mod layout_config;
 mod widgets;
 
 use chronos_services::Service;
-use chronos_ui::Theme;
+use chronos_ui::{Theme, WindowRootExt};
 
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -101,6 +101,7 @@ impl Render for Bar {
         let theme = Theme::global(cx);
         let appearance = layout_config::cached_appearance();
         let mut root = div()
+            .window_font(theme)
             .size_full()
             .bg(theme.bg.tertiary)
             .px(px(10.))
@@ -597,7 +598,7 @@ pub fn init(cx: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chronos_ui::Theme;
+use chronos_ui::{Theme, WindowRootExt};
 
     #[test]
     fn elevation_none_has_no_shadow() {

@@ -3,7 +3,7 @@
 use gpui::{App, Focusable, Render, SharedString, Window, div, prelude::*, px};
 
 use chronos_services::{AppEntry, Service};
-use chronos_ui::Theme;
+use chronos_ui::{Theme, WindowRootExt};
 
 use crate::launcher::launch::launch;
 use crate::launcher::search::FuzzySearch;
@@ -152,6 +152,7 @@ impl Render for LauncherView {
             // along the focused element's ancestor path, so focusing an
             // untracked handle sends keystrokes into the void.
             .track_focus(&self.focus)
+            .window_font(theme)
             .size_full()
             .bg(bg_primary)
             .text_color(text_primary)

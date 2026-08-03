@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use chronos_services::terminal::{TermSize, Terminal};
-use chronos_ui::Theme;
+use chronos_ui::{Theme, WindowRootExt};
 use gpui::{
     App, Context, Focusable, FontWeight, InteractiveElement, KeyDownEvent, MouseButton, Render,
     SharedString, Window, div, prelude::*, px,
@@ -186,6 +186,7 @@ impl Render for DesktopTerminalView {
         div()
             .track_focus(&self.focus)
             .id("desktop-terminal")
+            .window_font(theme)
             .size_full()
             .flex()
             .flex_col()

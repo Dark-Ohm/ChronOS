@@ -11,7 +11,7 @@ use gpui::{
     px,
 };
 
-use chronos_ui::Theme;
+use chronos_ui::{Theme, WindowRootExt};
 
 use crate::dock::config::DockConfig;
 use crate::dock::signal::notify_config_changed;
@@ -70,6 +70,7 @@ impl Render for DockMenuView {
         let radius = theme.radius;
 
         div()
+            .window_font(theme)
             .flex_col()
             .w(px(MENU_WIDTH))
             .h(px(MENU_HEIGHT))

@@ -2,7 +2,7 @@
 
 use gpui::{App, Context, FontWeight, Render, Window, div, prelude::*, px};
 
-use chronos_ui::Theme;
+use chronos_ui::{Theme, WindowRootExt};
 
 use crate::osd::OsdPopupState;
 
@@ -63,6 +63,7 @@ impl Render for OsdView {
 
         // Outer: full layer-shell width (BOTTOM|LEFT|RIGHT), centre the card.
         let card = div()
+            .window_font(theme)
             .flex()
             .items_center()
             .gap(px(12.))
