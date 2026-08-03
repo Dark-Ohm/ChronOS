@@ -509,12 +509,13 @@ mod tests {
     fn files_view_edit_buttons_match_preview_contract() {
         use crate::side_panel_right::tab::preview::{classify, is_editable, SNIFF_BYTES};
 
-        // A text-like 16-byte sniff head (same tiling trick preview's tests use).
+        // A text-like 16-byte sniff head (same full-tiling trick preview's
+        // tests use): every slot printable, so `looks_like_text` clears 80%.
         let text_head = {
-            let probe: &[u8] = b"fn main() {";
+            let src: &[u8] = b"fn main() {\n";
             let mut a = [0u8; SNIFF_BYTES];
             for (i, slot) in a.iter_mut().enumerate() {
-                *slot = probe.get(i).copied().unwrap_or(0);
+                *slot = src[i % src.len()];
             }
             a
         };
