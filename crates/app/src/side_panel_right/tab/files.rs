@@ -3,7 +3,7 @@
 //! Listing layer: `chronos_services::files` (ported from Chronos-FM).
 //! UI: narrow single-column view for `preferred_content_width = 440`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chronos_services::files::{
     DIR_LISTING_LIMIT, FileEntryDto, ListParams, ListResult, SortKey, list_dir_sync, sort_entries,
@@ -16,6 +16,7 @@ use gpui::{
 };
 
 use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
+use super::preview;
 
 /// Load lifecycle for honest empty / error / truncated states (§13).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,18 +157,6 @@ impl FilesTab {
     }
 }
 
-/// Cheap extension check — same list as `preview::classify`'s Markdown
-/// branch. Files uses this to decide whether a row gets the View/Edit
-/// button pair (T194c) instead of a single click-to-view row.
-pub(crate) fn is_markdown_name(name: &str) -> bool {
-    let ext = std::path::Path::new(name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    matches!(ext.as_str(), "md" | "markdown" | "mdown")
-}
-
 impl Render for FilesTab {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *Theme::global(cx);
@@ -295,7 +284,18 @@ impl Render for FilesTab {
             let entry = entry.clone();
             let is_dir = entry.kind == "dir";
             let name = entry.name.clone();
-            let is_md = !is_dir && is_markdown_name(&name);
+            // Defer the editable decision to `preview` (T222): the files tab
+            // stops keeping its own, narrower gate. `classify` sniffs the
+            // first `SNIFF_BYTES` of the body, so an extension-less or unknown
+            // file is classified by content, not by name. `truncated` mirrors
+            // preview's content cap: a text/markdown body larger than
+            // `TEXT_CAP_BYTES` would lose its tail on Save, so Edit is withheld.
+            let show_edit = !is_dir && {
+                let head = sniff_head(&entry.path);
+                let kind = preview::classify(Path::new(&entry.path), &head);
+                let truncated = entry.size > preview::TEXT_CAP_BYTES;
+                preview::is_editable(kind, truncated)
+            };
             let size_label = if is_dir {
                 String::new()
             } else {
@@ -347,12 +347,32 @@ impl Render for FilesTab {
                 .font_family(theme.font_mono)
                 .child(size_label);
 
-            let row = if is_md {
-                // Markdown-like: no whole-row click. Icon+name is its own
-                // clickable region (View intent — "click name/icon =
-                // Preview"); View/Edit buttons sit beside it as siblings,
-                // never nested inside a click target, so there is nothing
-                // to stop-propagate (T194c UX).
+            let row = if is_dir {
+                // Dirs: whole-row click navigates into the directory.
+                div()
+                    .id(SharedString::from(format!("files-row-{ix}")))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .px(px(8.))
+                    .py(px(5.))
+                    .rounded_md()
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme.interactive.hover))
+                    .on_click(cx.listener({
+                        let entry = entry.clone();
+                        move |this, _ev, _w, cx| {
+                            this.open_entry(&entry, PreviewIntent::View, cx);
+                        }
+                    }))
+                    .child(icon)
+                    .child(name_text)
+                    .child(size_text)
+            } else {
+                // Files: icon+name is its own clickable View region; a "View"
+                // button always sits beside it, and an "Edit" button is added
+                // when `preview` says the body is editable (T222 — every
+                // text-like file, not only markdown).
                 let icon_and_name = div()
                     .id(SharedString::from(format!("files-open-{ix}")))
                     .flex()
@@ -386,22 +406,31 @@ impl Render for FilesTab {
                         }
                     }))
                     .child("View");
-                let edit_btn = div()
-                    .id(SharedString::from(format!("files-edit-{ix}")))
-                    .px(px(6.))
-                    .py(px(2.))
-                    .rounded_sm()
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme.interactive.hover))
-                    .text_size(px(10.))
-                    .text_color(theme.accent.primary)
-                    .on_click(cx.listener({
-                        let entry = entry.clone();
-                        move |this, _ev, _w, cx| {
-                            this.open_entry(&entry, PreviewIntent::Edit, cx);
-                        }
-                    }))
-                    .child("Edit");
+
+                let mut buttons = div()
+                    .flex()
+                    .items_center()
+                    .gap(px(2.))
+                    .child(view_btn);
+                if show_edit {
+                    let edit_btn = div()
+                        .id(SharedString::from(format!("files-edit-{ix}")))
+                        .px(px(6.))
+                        .py(px(2.))
+                        .rounded_sm()
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme.interactive.hover))
+                        .text_size(px(10.))
+                        .text_color(theme.accent.primary)
+                        .on_click(cx.listener({
+                            let entry = entry.clone();
+                            move |this, _ev, _w, cx| {
+                                this.open_entry(&entry, PreviewIntent::Edit, cx);
+                            }
+                        }))
+                        .child("Edit");
+                    buttons = buttons.child(edit_btn);
+                }
 
                 div()
                     .id(SharedString::from(format!("files-row-{ix}")))
@@ -414,30 +443,7 @@ impl Render for FilesTab {
                     .hover(|s| s.bg(theme.interactive.hover))
                     .child(icon_and_name)
                     .child(size_text)
-                    .child(div().flex().items_center().gap(px(2.)).child(view_btn).child(edit_btn))
-            } else {
-                // Everything else: single click on the whole row. Dirs
-                // navigate; files open with View intent (unchanged
-                // behavior from before T194c).
-                div()
-                    .id(SharedString::from(format!("files-row-{ix}")))
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .px(px(8.))
-                    .py(px(5.))
-                    .rounded_md()
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme.interactive.hover))
-                    .on_click(cx.listener({
-                        let entry = entry.clone();
-                        move |this, _ev, _w, cx| {
-                            this.open_entry(&entry, PreviewIntent::View, cx);
-                        }
-                    }))
-                    .child(icon)
-                    .child(name_text)
-                    .child(size_text)
+                    .child(buttons)
             };
 
             list = list.child(row);
@@ -450,6 +456,16 @@ impl Render for FilesTab {
             .child(path_bar)
             .child(list)
     }
+}
+
+/// Read the first `SNIFF_BYTES` of a file for `preview::classify`. Missing or
+/// unreadable files yield an all-zero head (classify → Unsupported → View
+/// only), the same safe fallback `preview` uses. Cheap: 16 bytes per row, and
+/// the listing is already capped by `DIR_LISTING_LIMIT`.
+fn sniff_head(path: &str) -> [u8; preview::SNIFF_BYTES] {
+    let mut head = [0u8; preview::SNIFF_BYTES];
+    let _ = std::fs::File::open(path).and_then(|mut f| std::io::Read::read(&mut f, &mut head));
+    head
 }
 
 fn human_bytes(size: u64) -> String {
@@ -485,20 +501,48 @@ mod tests {
         assert_eq!(human_bytes(2048), "2.0K");
     }
 
-    // --- T194c: markdown-like name detection (same list as preview::classify) ---
+    // --- T222: which files get an Edit button follows `preview`'s contract,
+    // not a private markdown-only gate. We assert the *decision* (button set),
+    // never a string/extension match (that was the original bug).
 
     #[test]
-    fn is_markdown_name_matches_known_extensions() {
-        for name in ["README.md", "notes.markdown", "x.mdown", "README.MD", "a.Markdown"] {
-            assert!(is_markdown_name(name), "{name:?} should be markdown-like");
-        }
-    }
+    fn files_view_edit_buttons_match_preview_contract() {
+        use crate::side_panel_right::tab::preview::{classify, is_editable, SNIFF_BYTES};
 
-    #[test]
-    fn is_markdown_name_rejects_everything_else() {
-        for name in ["foo.rs", "main.py", "README", "archive.tar.md.bak", "noext"] {
-            assert!(!is_markdown_name(name), "{name:?} should not be markdown-like");
+        // A text-like 16-byte sniff head (same tiling trick preview's tests use).
+        let text_head = {
+            let probe: &[u8] = b"fn main() {";
+            let mut a = [0u8; SNIFF_BYTES];
+            for (i, slot) in a.iter_mut().enumerate() {
+                *slot = probe.get(i).copied().unwrap_or(0);
+            }
+            a
+        };
+        let bin_head = [0x7fu8, 0x45, 0x4c, 0x46, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+        // T222 core: every text-like body is editable, regardless of extension.
+        for name in ["main.rs", "Cargo.toml", "notes.md", ".zshrc", "noext"] {
+            let path = PathBuf::from(format!("/x/{name}"));
+            let kind = classify(&path, &text_head);
+            assert!(is_editable(kind, false), "{name}: text body must be editable");
         }
+
+        // Known non-text kinds are never editable, even with text-looking head.
+        for name in ["photo.png", "page.html"] {
+            let path = PathBuf::from(format!("/x/{name}"));
+            let kind = classify(&path, &text_head);
+            assert!(!is_editable(kind, false), "{name}: non-text kind must not be editable");
+        }
+
+        // Decision is content-driven, not extension-driven: the same `.rs`
+        // extension with a binary head is Unsupported → not editable.
+        let path = PathBuf::from("/x/main.rs");
+        let kind = classify(&path, &bin_head);
+        assert!(!is_editable(kind, false), "binary .rs must not be editable");
+
+        // Truncated text/markdown must not offer Edit (T222: silent tail loss).
+        let kind = classify(&PathBuf::from("/x/main.rs"), &text_head);
+        assert!(!is_editable(kind, true));
     }
 
     #[gpui::test]

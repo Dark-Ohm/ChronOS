@@ -53,7 +53,7 @@ const DRAWER_MAX_FRACTION: f32 = 0.5;
 /// Soft cap on text bodies before we stop reading and mark truncated
 /// (§2 of T179). 128 KiB covers CONFIG/manifest/log scans comfortably;
 /// beyond that the user should open the file in an editor.
-const TEXT_CAP_BYTES: u64 = 128 * 1024;
+pub(crate) const TEXT_CAP_BYTES: u64 = 128 * 1024;
 
 /// Hard cap on image bodies. Past this we do not even attempt to load —
 /// at 10 MiB we would burn Wayland texture memory for a thumbnail-sized
@@ -69,7 +69,7 @@ const IMAGE_CAP_BYTES: u64 = 10 * 1024 * 1024;
 /// binary vs printable text when the extension is unknown. Sixteen
 /// bytes is enough to spot nulls and a UTF-8 BOM without touching
 /// a full sector.
-const SNIFF_BYTES: usize = 16;
+pub(crate) const SNIFF_BYTES: usize = 16;
 
 /// What we do with the file, decided once on the background thread.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -125,7 +125,7 @@ pub(crate) enum ImageUrlClass {
 /// `truncated` disqualifies a file from editing outright: the buffer would
 /// only hold the first `TEXT_CAP_BYTES`, and a Save would silently discard
 /// everything past the cap — that is data loss, not an edge case.
-fn is_editable(kind: PreviewKind, truncated: bool) -> bool {
+pub(crate) fn is_editable(kind: PreviewKind, truncated: bool) -> bool {
     matches!(kind, PreviewKind::Text | PreviewKind::Markdown) && !truncated
 }
 
