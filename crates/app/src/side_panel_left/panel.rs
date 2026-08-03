@@ -525,6 +525,9 @@ fn build_sessions_sidebar(
                     .text_color(theme.text.muted)
                     .cursor_pointer()
                     .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.primary))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.create_new_session(cx);
+                    }))
                     .child("+"),
             )
             .children(sessions.iter().map(|s| {
