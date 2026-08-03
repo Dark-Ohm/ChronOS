@@ -76,6 +76,11 @@ pub struct SidePanelRightState {
     /// Dock mode: when true, content is always visible (full width).
     /// When false (default), only the rail shows until content is opened.
     pub dock_content: bool,
+    /// T210: true while a resize drag is active. Suppresses peek-close so
+    /// the 280ms debounce cannot close the panel mid-drag — destroying the
+    /// Wayland surface while the implicit grab is still held permanently
+    /// kills the hover strip's enter events.
+    pub(crate) resizing: bool,
     /// Last exclusive_zone value sent to compositor (avoids redundant
     /// Wayland round-trips, mirrors left panel pattern).
     pub last_exclusive_zone: Option<f32>,
@@ -89,6 +94,7 @@ impl Default for SidePanelRightState {
             peek_generation: 0,
             width: RAIL_ONLY_WIDTH,
             dock_content: false,
+            resizing: false,
             last_exclusive_zone: None,
         }
     }
@@ -125,7 +131,10 @@ impl Global for SidePanelRightState {}
 
 /// Pure decision: should a peek-leave request close the panel?
 fn should_close_on_peek_leave(state: &SidePanelRightState) -> bool {
-    !state.pinned
+    // T210: never close while a resize drag is active — the Wayland
+    // implicit grab on a destroyed surface permanently breaks hover
+    // strip enter events.
+    !state.pinned && !state.resizing
 }
 
 /// Cursor entered strip or panel — cancel any pending peek-close.
@@ -251,7 +260,9 @@ pub fn close_peek_if_not_pinned(cx: &mut App) {
 /// the handle was taken but the window never closed, i.e. a ghost.
 pub fn close(cx: &mut App) {
     if let Some(handle) = cx.global_mut::<SidePanelRightState>().handle.take() {
-        cx.global_mut::<SidePanelRightState>().pinned = false;
+        let state = cx.global_mut::<SidePanelRightState>();
+        state.pinned = false;
+        state.resizing = false;
         // Clear exclusive zone before destroying the surface so the
         // compositor reclaims reserved space (mirrors left panel).
         match handle.update(cx, |_, window: &mut Window, _| {
@@ -286,6 +297,7 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
         let state = cx.global_mut::<SidePanelRightState>();
         state.handle.take();
         state.pinned = false;
+        state.resizing = false;
     }
     window.set_exclusive_zone(px(0.));
     window.remove_window();
@@ -346,6 +358,14 @@ mod tests {
     }
 
     #[test]
+    fn peek_close_suppressed_while_resizing() {
+        let mut state = SidePanelRightState::default();
+        state.pinned = false;
+        state.resizing = true;
+        assert!(!should_close_on_peek_leave(&state));
+    }
+
+    #[test]
     fn rail_only_default_width() {
         assert_eq!(RAIL_ONLY_WIDTH, 40.0);
         assert_eq!(RAIL_ONLY_WIDTH, RAIL_WIDTH + HANDLE_WIDTH);
@@ -384,11 +404,11 @@ mod tests {
 
     #[test]
     fn drag_left_grows_right_anchored_width() {
-        // new_width = start_w - (current_x - start_x); x decreases → width grows
-        let start_w = 200.0_f32;
-        let start_x = 100.0_f32;
+        // T210 frame-to-frame: new_w = current_w - (current_x - prev_x)
+        let current_w = 200.0_f32;
+        let prev_x = 100.0_f32;
         let current_x = 80.0_f32; // moved left 20px
-        let new_w = (start_w - (current_x - start_x)).clamp(RAIL_ONLY_WIDTH, MAX_WIDTH);
+        let new_w = (current_w - (current_x - prev_x)).clamp(RAIL_ONLY_WIDTH, MAX_WIDTH);
         assert_eq!(new_w, 220.0);
     }
 }

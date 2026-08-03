@@ -54,7 +54,6 @@ pub struct SidePanelRightView {
     /// `window.set_exclusive_zone()` when it changes.
     last_exclusive_zone: Option<f32>,
     resize_start_x: Option<f32>,
-    resize_start_width: Option<f32>,
     /// Lazy, cached tab views — one per visited tab. Created on first
     /// activation, retained across switches and mode changes.
     tab_views: HashMap<PanelTab, TabContent>,
@@ -103,7 +102,6 @@ impl SidePanelRightView {
             last_resized_width: RAIL_ONLY_WIDTH,
             last_exclusive_zone: None,
             resize_start_x: None,
-            resize_start_width: None,
             tab_views: HashMap::new(),
             tab_resize_memory: HashMap::new(),
             _preview_target_subscription: preview_target_subscription,
@@ -161,6 +159,10 @@ impl SidePanelRightView {
     }
 
     fn start_resize(&mut self, start_x: f32, cx: &mut Context<Self>) {
+        // T210: suppress peek-close for the drag lifetime. The flag lives
+        // on the global state so that on_hover/schedule_release_peek (which
+        // run at the App level) can read it.
+        cx.global_mut::<SidePanelRightState>().resizing = true;
         let w = cx.global::<SidePanelRightState>().width;
         // Rail-only: first grab expands content; further drag uses delta math.
         // Do **not** recompute width from absolute pointer after expand — that
@@ -172,7 +174,6 @@ impl SidePanelRightView {
             state.width = target;
             state.last_exclusive_zone = None;
             self.tab_resize_memory.insert(tab, target);
-            self.resize_start_width = Some(target);
             // Right-anchored window grows LEFT — the cursor's local position
             // inside the now-wider window shifts right by (target - w). Offset
             // start_x so the next DragMoveEvent's delta math doesn't snap back.
@@ -186,23 +187,26 @@ impl SidePanelRightView {
             cx.notify();
         } else {
             self.resize_start_x = Some(start_x);
-            self.resize_start_width = Some(w);
         }
     }
 
     fn update_resize(&mut self, current_x: f32, cx: &mut Context<Self>) {
-        let (start_x, start_w) = match (self.resize_start_x, self.resize_start_width) {
-            (Some(x), Some(w)) => (x, w),
+        let start_x = match self.resize_start_x {
+            Some(x) => x,
             _ => return,
         };
-        // Right-anchored: pointer left (smaller local x) → wider panel.
-        // Local delta only — same model as before the abs/overlay experiments.
-        // Window.resize is coalesced in render() via last_resized_width.
+        // T210: delta from previous event's local x (not the initial
+        // mouse-down x). After window.resize() in render(), the right-
+        // anchored coordinate system shifts — render() corrects
+        // resize_start_x by the same Δw so the next delta is accurate.
         let delta = current_x - start_x;
         let state = cx.global_mut::<SidePanelRightState>();
-        state.resize(start_w - delta);
+        let new_w = (state.width - delta).clamp(RAIL_ONLY_WIDTH, MAX_WIDTH);
+        state.resize(new_w);
         state.last_exclusive_zone = None;
         self.tab_resize_memory.insert(self.active_tab, state.width);
+        // Track for next delta — will be corrected in render() after resize.
+        self.resize_start_x = Some(current_x);
         crate::side_panel_right::hold_peek(cx);
         cx.notify();
     }
@@ -359,8 +363,18 @@ impl Render for SidePanelRightView {
                 .unwrap_or(1080.);
             let panel_h =
                 (display_h - crate::side_panel_right::panel_edge_gap()).max(100.);
+            let old_w = self.last_resized_width;
             window.resize(gpui::Size::new(px(panel_width), px(panel_h)));
             self.last_resized_width = panel_width;
+            // T210: right-anchored window grows left → local coordinate
+            // system shifts right by Δw. Correct the stored cursor position
+            // so the next update_resize delta is accurate.
+            // Skip the initial rail→content expand — start_resize already
+            // applied the (target−rail) offset to resize_start_x.
+            if self.resize_start_x.is_some() && old_w > RAIL_ONLY_WIDTH + 2.0 {
+                let dw = panel_width - old_w;
+                self.resize_start_x = self.resize_start_x.map(|x| x + dw);
+            }
             tracing::debug!(
                 panel_width,
                 panel_h,
@@ -384,6 +398,13 @@ impl Render for SidePanelRightView {
         );
         let resize_mouse_handler = cx.listener(|this, ev: &gpui::MouseDownEvent, _w, cx| {
             this.start_resize(f32::from(ev.position.x), cx);
+        });
+        // T210: mouse-up on the handle means the drag ended.
+        let resize_mouse_up_handler = cx.listener(|this, _ev: &gpui::MouseUpEvent, _w, cx| {
+            cx.global_mut::<SidePanelRightState>().resizing = false;
+            this.resize_start_x = None;
+            tracing::info!("side_panel_right: resize drag ended (mouse-up)");
+            cx.notify();
         });
 
         // Lazy tab view — created on first paint, cached thereafter.
@@ -419,7 +440,8 @@ impl Render for SidePanelRightView {
                     .bg(gpui::transparent_black())
                     .on_mouse_down(gpui::MouseButton::Left, resize_mouse_handler)
                     .on_drag(RightPanelResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
-                    .on_drag_move(resize_drag_handler),
+                    .on_drag_move(resize_drag_handler)
+                    .on_mouse_up(gpui::MouseButton::Left, resize_mouse_up_handler),
             )
             .child(
                 div()
