@@ -76,4 +76,7 @@ pub enum CompositorCommand {
     PrevWorkspace,
     /// Move active window to a workspace.
     MoveToWorkspace(i32),
+    /// Cycle every keyboard to its next layout (Hyprland dispatcher
+    /// `switchxkblayout all next`; `all` desyncs multi-device layouts).
+    CycleKeyboardLayout,
 }

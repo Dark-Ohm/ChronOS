@@ -38,7 +38,15 @@ pub fn is_available() -> bool {
 /// See `DECISIONS.log` (2026-07-17 — compositor dispatch via Lua socket).
 pub fn execute_command(cmd: CompositorCommand) -> Result<()> {
     let line = command_to_socket_line(&cmd);
-    send_dispatch(&line)
+    if matches!(cmd, CompositorCommand::CycleKeyboardLayout) {
+        // `switchxkblayout` is a hyprctl subcommand, NOT a `/dispatch`
+        // dispatcher: sending it through `/dispatch` makes Lua-Hyprland parse
+        // it as Lua and silently no-op (`nil` calls / `)` expected). Write the
+        // raw subcommand line straight to the socket instead.
+        send_raw(&line)
+    } else {
+        send_dispatch(&line)
+    }
 }
 
 /// Pure: render a `CompositorCommand` to the Lua-Hyprland `/dispatch` line.
@@ -59,6 +67,9 @@ fn command_to_socket_line(cmd: &CompositorCommand) -> String {
         }
         CompositorCommand::MoveToWorkspace(id) => {
             format!("hl.dsp.window.move({{ workspace = {id} }})")
+        }
+        CompositorCommand::CycleKeyboardLayout => {
+            "switchxkblayout all next".to_string()
         }
     }
 }
@@ -86,6 +97,21 @@ fn send_dispatch(line: &str) -> Result<()> {
     use std::io::Write;
     stream
         .write_all(format!("/dispatch {line}\n").as_bytes())
+        .map_err(|e| anyhow::anyhow!("write Hyprland socket {}: {e}", path.display()))?;
+    Ok(())
+}
+
+/// Write a raw hyprctl subcommand line (e.g. `switchxkblayout all next`) to
+/// the Hyprland control socket — no `/dispatch` Lua wrapping.
+fn send_raw(line: &str) -> Result<()> {
+    let path = socket_path().ok_or_else(|| {
+        anyhow::anyhow!("Hyprland socket unavailable: HYPRLAND_INSTANCE_SIGNATURE / XDG_RUNTIME_DIR not set")
+    })?;
+    let mut stream = std::os::unix::net::UnixStream::connect(&path)
+        .map_err(|e| anyhow::anyhow!("connect Hyprland socket {}: {e}", path.display()))?;
+    use std::io::Write;
+    stream
+        .write_all(format!("{line}\n").as_bytes())
         .map_err(|e| anyhow::anyhow!("write Hyprland socket {}: {e}", path.display()))?;
     Ok(())
 }
@@ -267,6 +293,10 @@ mod tests {
         assert_eq!(
             command_to_socket_line(&CompositorCommand::MoveToWorkspace(7)),
             "hl.dsp.window.move({ workspace = 7 })"
+        );
+        assert_eq!(
+            command_to_socket_line(&CompositorCommand::CycleKeyboardLayout),
+            "switchxkblayout all next"
         );
     }
 
