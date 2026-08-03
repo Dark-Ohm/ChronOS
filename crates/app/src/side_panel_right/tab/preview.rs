@@ -943,6 +943,17 @@ impl PreviewTab {
         // dirty on this same file is guarded the same way the header
         // toggle is — no silent buffer loss just because the request came
         // from Files instead of the tab itself.
+        //
+        // T212 residual (not fixed here — deliberate, tested contract,
+        // see `same_path_intent_switch_does_not_reload`): this intentionally
+        // does not check `generation`, so a same-path re-open never re-reads
+        // disk even if the caller bumped generation specifically to force a
+        // fresh look (e.g. after the file changed or was deleted externally).
+        // Tried making the fast path also require matching generation —
+        // broke that test, which pins "same path + Edit intent switches
+        // mode synchronously, never re-enters Loading" as by-design
+        // regardless of generation. Revisiting that contract is a separate,
+        // deliberate decision, not a drive-by settings-tab fix.
         if let State::Loaded { path: loaded_path, kind, truncated, .. } = &self.state
             && *loaded_path == path
         {
@@ -984,10 +995,21 @@ impl PreviewTab {
                         text: loaded.text,
                         truncated: loaded.truncated,
                     },
-                    Err(err) => State::Error {
-                        generation,
-                        message: err,
-                    },
+                    Err(err) => {
+                        // T212: the Ok arm logs from inside `read_for_preview`;
+                        // the Err arm was silent, so a failed open left zero
+                        // trace in the log — indistinguishable from a missed
+                        // click when auditing a live smoke afterwards.
+                        tracing::warn!(
+                            path = %path.display(),
+                            error = %err,
+                            "side_panel_right preview: load failed"
+                        );
+                        State::Error {
+                            generation,
+                            message: err,
+                        }
+                    }
                 };
                 // Apply the intent captured when *this* load was kicked
                 // off — not whatever the global holds now, which may have

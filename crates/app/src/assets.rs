@@ -32,6 +32,7 @@ icons!(
     "brightness.svg",
     "chevron-down.svg",
     "folder.svg",
+    "follow.svg",
     "hexagon-core.svg",
     "hexagon-sigil.svg",
     "microphone.svg",

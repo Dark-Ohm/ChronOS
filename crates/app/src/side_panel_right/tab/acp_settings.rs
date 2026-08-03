@@ -3,8 +3,10 @@
 //! Reads agents via `hermes_acp::registry::known_agents()`, which merges
 //! built-in (Hermes) + `~/.config/chronos/agents.toml`.
 //!
-//! Edit: opens agents.toml in Editor. Reload: re-queries the registry.
-//! Add/remove is done by editing the TOML directly — pragmatic MVP.
+//! Open: views agents.toml in the Editor (View-only — plain-text `.toml`
+//! is out of scope for the Preview/Edit dual toggle, T194c). Reload:
+//! re-queries the registry. Add/remove is done by editing the TOML
+//! directly with an external editor — pragmatic MVP.
 
 use gpui::{
     Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
@@ -84,7 +86,20 @@ impl Render for AcpSettingsTab {
             cx.set_global(PreviewTarget {
                 path: Some(agents_path()),
                 generation: 1,
-                intent: PreviewIntent::Edit,
+                // `.toml` is Text-kind and T194c scopes the Preview/Edit
+                // dual toggle to Markdown only — an Edit intent here would
+                // silently downgrade to View anyway (`apply_intent`). Ask
+                // for what will actually happen so the label below is true.
+                //
+                // T212 residual: a same-path re-open (this button clicked
+                // twice) never re-reads disk regardless of `generation`
+                // (deliberate T194c contract — see the comment on the fast
+                // path in `preview.rs::on_target_changed`). If the file was
+                // edited or deleted externally since the last View, this
+                // shows the stale in-memory copy until a different path is
+                // loaded first. Not fixed here — that contract is shared
+                // with Files/Follow and is a bigger call than this tab.
+                intent: PreviewIntent::View,
             });
             this.error = None;
             cx.notify();
@@ -106,7 +121,7 @@ impl Render for AcpSettingsTab {
                 div().id("acp-settings-scroll").flex_1().min_h(px(0.)).overflow_y_scroll().track_scroll(&self.scroll).flex().flex_col().gap(px(14.)).p(px(14.))
                     .child(div().w_full().flex_col().gap(px(2.))
                         .child(div().text_color(theme.text.primary).text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Configured agents"))
-                        .child(div().text_color(theme.text.muted).text_xs().child("ACP-compatible backends. Edit agents.toml to add or remove.")))
+                        .child(div().text_color(theme.text.muted).text_xs().child("ACP-compatible backends. View agents.toml, then edit it externally to add or remove.")))
                     .child({
                         let mut rows: Vec<gpui::AnyElement> = Vec::new();
                         if agents_snapshot.is_empty() {
@@ -130,13 +145,20 @@ impl Render for AcpSettingsTab {
                     })
                     .child(div().w_full().flex_col().gap(px(2.))
                         .child(div().text_color(theme.text.primary).text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Actions"))
-                        .child(div().text_color(theme.text.muted).text_xs().child("Edit agents.toml to add/remove agents, then reload.")))
-                    .child(div().w_full().flex().gap(px(8.))
-                        .child(div().id("acp-open-file").flex_1().flex().justify_between().items_center().px(px(12.)).py(px(9.)).rounded_md().border_1().border_color(theme.border.subtle).cursor_pointer().hover(|s| s.bg(theme.interactive.hover))
-                            .child(div().flex_col().gap(px(1.)).child(div().text_color(theme.text.primary).text_size(px(12.)).child("Open agents.toml")).child(div().text_color(theme.text.muted).text_xs().font_family(theme.font_mono).child("~/.config/chronos/agents.toml")))
-                            .child(div().text_color(theme.accent.primary).text_size(px(12.)).child("Edit"))
+                        .child(div().text_color(theme.text.muted).text_xs().child("View agents.toml (edit it externally), then Reload.")))
+                    .child(div().w_full().flex().items_center().gap(px(8.))
+                        .child(div().id("acp-open-file").flex_1().min_w(px(0.)).flex().justify_between().items_center().gap(px(8.)).px(px(12.)).py(px(9.)).rounded_md().border_1().border_color(theme.border.subtle).cursor_pointer().hover(|s| s.bg(theme.interactive.hover))
+                            .child(div().flex_1().min_w(px(0.)).flex_col().gap(px(1.))
+                                .child(div().text_color(theme.text.primary).text_size(px(12.)).child("Open agents.toml"))
+                                .child(div().text_color(theme.text.muted).text_xs().font_family(theme.font_mono).whitespace_nowrap().overflow_hidden().text_ellipsis().child("~/.config/chronos/agents.toml")))
+                            .child(div().flex_none().text_color(theme.accent.primary).text_size(px(12.)).child("View"))
                             .on_click(open_file))
-                        .child(div().id("acp-reload").px(px(12.)).py(px(9.)).rounded_md().border_1().border_color(theme.border.subtle).cursor_pointer().text_color(theme.text.secondary).text_size(px(12.)).hover(|s| s.bg(theme.interactive.hover)).child("Reload").on_click(reload_h)))
+                        // Reload is `flex_none` so a long path in the sibling above can
+                        // never push it out of the 320px settings-width viewport (T212 —
+                        // S7 in the T209 live smoke read this as "missing"; it was clipped,
+                        // not absent — `flex_1` without `min_w(0.)` let the text grow
+                        // unbounded instead of eliding).
+                        .child(div().id("acp-reload").flex_none().px(px(12.)).py(px(9.)).rounded_md().border_1().border_color(theme.border.subtle).cursor_pointer().text_color(theme.text.secondary).text_size(px(12.)).hover(|s| s.bg(theme.interactive.hover)).child("Reload").on_click(reload_h)))
                     .when_some(error_snapshot, |d, e| {
                         d.child(div().w_full().px(px(10.)).py(px(8.)).rounded_md().border_1().border_color(theme.status.error).text_color(theme.status.error).text_xs().child(e))
                     })
