@@ -232,24 +232,29 @@ pub fn render_panel(
                         .child("☰"),
                 )
                 .child(
+                    // T211: 👁 emoji was a color-bitmap → `text_color` couldn't
+                    // tint it → ON/OFF were pixel-identical (0px diff). Swap to a
+                    // `currentColor` SVG (follow.svg) + an accent bg when enabled,
+                    // so the affordance actually flips visually.
                     div()
                         .id("thread-follow")
-                        .w(px(20.))
+                        .w(px(26.))
                         .h(px(20.))
                         .rounded(px(5.))
                         .flex()
                         .items_center()
                         .justify_center()
-                        .text_size(px(12.))
-                        .text_color(if panel.follow_enabled {
-                            theme.accent.primary
-                        } else {
-                            theme.text.muted
+                        .text_size(px(10.))
+                        .when(panel.follow_enabled, |el| {
+                            el.bg(theme.accent.primary.opacity(0.16)).text_color(theme.accent.primary)
+                        })
+                        .when(!panel.follow_enabled, |el| {
+                            el.text_color(theme.text.muted)
                         })
                         .cursor_pointer()
                         .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.primary))
                         .on_click(thread_follow_handler)
-                        .child("👁"),
+                        .child(img("icons/follow.svg").w(px(16.)).h(px(16.))),
                 )
                 .child(
                     div()

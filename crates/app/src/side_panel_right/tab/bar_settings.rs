@@ -13,7 +13,6 @@ use crate::bar_settings::{
     config_path, read_current,
 };
 use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
-use crate::theme_config;
 
 const HEIGHT_MIN: f32 = 20.;
 const HEIGHT_MAX: f32 = 48.;
@@ -139,17 +138,16 @@ impl Render for BarSettingsTab {
             cx.notify();
         });
 
-        // T196: Theme toggle
+        // T196: Theme toggle — T211: went through `update_global::<Theme,_>`
+        // which panics (`no state of type Theme exists`) when the listener's
+        // app context can't resolve the Theme global. Reuse the IPC/hot-reload
+        // path `theme_config::toggle` instead — it `set_global`s (never panics),
+        // persists scheme, syncs the gpui-component theme and refreshes windows.
+        // Degrade+log on persist failure (no `expect`).
         let theme_scheme = if Theme::global(cx).is_light { "Light" } else { "Default" };
         let is_light = Theme::global(cx).is_light;
         let toggle_theme = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
-            cx.update_global::<Theme, _>(|theme, cx| {
-                let next = if theme.is_light { "Default" } else { "Light" };
-                let _ = theme_config::persist_scheme(next);
-                *theme = Theme::select_scheme(Some(next.to_string()));
-                theme_config::sync_gpui_component_theme(cx);
-                cx.refresh_windows();
-            });
+            crate::theme_config::toggle(cx);
             this.error = None;
             cx.notify();
         });
