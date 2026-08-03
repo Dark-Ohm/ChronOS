@@ -21,7 +21,7 @@ use gpui::{
 use crate::edit_mode;
 use crate::state::{AppState, watch};
 
-use self::appearance::{BarEdge, BarElevation, BarWidth};
+use self::appearance::{BarAppearance, BarEdge, BarElevation, BarWidth};
 
 struct Bar;
 
@@ -345,6 +345,61 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     }
 }
 
+/// Screen-space horizontal extent `[x0, x1]` of the bar on a display of the
+/// given width (px, left edge = 0). Powers the T217 panel junction: panels
+/// decide whether their top edge sits under the bar by comparing against
+/// this. Mirrors the margin/anchor math in `window_options` so the published
+/// extent matches what the compositor actually places.
+fn bar_screen_x_extent(display_w: f32, appearance: &BarAppearance) -> (f32, f32) {
+    // Full-width, non-floating bar stretches to both screen edges → covers
+    // every panel strip, so panels butt against it with square corners.
+    if appearance.width == BarWidth::Full && !appearance.floating {
+        return (0.0, display_w);
+    }
+    let bar_w = match appearance.width {
+        // Floating full bar is inset by margin.x on both edges (the window
+        // width is `Full`, but the compositor shrinks it by the margins).
+        BarWidth::Full => (display_w - 2.0 * appearance.margin.x).max(0.0),
+        BarWidth::Fraction(f) => display_w * f,
+        BarWidth::Hug => display_w,
+    };
+    let leftover = (display_w - bar_w).max(0.0);
+    let user_x = appearance.margin.x;
+    let offset = if appearance.floating {
+        // Floating bars inset every edge by margin.x on top of alignment.
+        match appearance.align {
+            appearance::BarAlign::Start => user_x,
+            appearance::BarAlign::Center => (leftover / 2.0).max(user_x),
+            appearance::BarAlign::End => leftover.max(user_x),
+        }
+    } else {
+        match appearance.align {
+            appearance::BarAlign::Start => user_x,
+            appearance::BarAlign::Center => leftover / 2.0,
+            appearance::BarAlign::End => leftover,
+        }
+    };
+    (offset, offset + bar_w)
+}
+
+/// Publish the live bar geometry (height + radius + horizontal extent) to
+/// `crate::state`. The height part preserves the T200 contract; radius and
+/// extent drive the T217 panel junction. With no display enumerated yet the
+/// safe default is published: full-width square bar (panels keep square
+/// corners — pre-T217 chrome).
+fn publish_bar_geometry(cx: &mut App) {
+    let appearance = layout_config::cached_appearance();
+    match crate::monitor::pult_display_id_or_primary(cx).and_then(|id| cx.find_display(id)) {
+        Some(display) => {
+            let display_w = f32::from(display.bounds().size.width);
+            let (x0, x1) = bar_screen_x_extent(display_w, &appearance);
+            crate::state::set_bar_geometry(appearance.radius, x0, x1);
+        }
+        None => crate::state::set_bar_geometry(0.0, 0.0, f32::INFINITY),
+    }
+    crate::state::set_bar_height_px(appearance.height);
+}
+
 fn open_on_display(display_id: Option<DisplayId>, cx: &mut App) -> bool {
     match cx.open_window(window_options(display_id, cx), move |_, cx| {
         cx.new(|cx| Bar::new(cx))
@@ -433,6 +488,11 @@ pub fn apply_appearance(cx: &mut App) {
     let appearance = layout_config::cached_appearance();
     let current_anchor = AnchorFields::from_appearance(&appearance);
 
+    // Publish radius + horizontal extent for the panel junction first — the
+    // decision only depends on the (sanitized) appearance + pult display,
+    // not on the window being open yet.
+    publish_bar_geometry(cx);
+
     // If anchor-dependent fields changed → destroy + reopen the window.
     // The fork has no live `set_anchor`/`set_margin`; this is the honest
     // cold-path (T207 product path).
@@ -491,7 +551,6 @@ pub fn apply_appearance(cx: &mut App) {
         cx.notify();
     }) {
         Ok(()) => {
-            crate::state::set_bar_height_px(appearance.height);
             tracing::debug!("bar: appearance applied");
         }
         Err(e) => tracing::warn!("bar: appearance apply could not reach window ({e})"),
@@ -504,10 +563,10 @@ pub fn init(cx: &mut App) {
     cx.set_global(BarWidgetRegistry::default());
     widgets::register_builtin(cx);
     layout_config::spawn_watcher(cx);
-    // Publish the configured height before any panel opens (strips open
+    // Publish the configured geometry before any panel opens (strips open
     // ~50 ms after start; bar window at ~100 ms) — panels must see the
-    // right gap from the first frame.
-    crate::state::set_bar_height_px(layout_config::cached_appearance().height);
+    // right gap and corner rule from the first frame.
+    publish_bar_geometry(cx);
 
     cx.spawn(async move |cx| {
         // Small delay to allow Wayland to enumerate displays.
@@ -546,5 +605,58 @@ mod tests {
         assert!(elevation_shadow(BarElevation::None, &theme).is_empty());
         assert_eq!(elevation_shadow(BarElevation::Soft, &theme).len(), 1);
         assert_eq!(elevation_shadow(BarElevation::Strong, &theme).len(), 2);
+    }
+
+    #[test]
+    fn bar_screen_x_extent_full_non_floating_covers_display() {
+        let a = BarAppearance {
+            edge: BarEdge::Top,
+            ..Default::default()
+        };
+        assert_eq!(bar_screen_x_extent(2560.0, &a), (0.0, 2560.0));
+    }
+
+    #[test]
+    fn bar_screen_x_extent_fraction_centered() {
+        let a = BarAppearance {
+            width: BarWidth::Fraction(0.7),
+            align: appearance::BarAlign::Center,
+            ..Default::default()
+        };
+        // 2560 * 0.7 = 1792, leftover 768 → centered at x=384.
+        assert_eq!(bar_screen_x_extent(2560.0, &a), (384.0, 2176.0));
+    }
+
+    #[test]
+    fn bar_screen_x_extent_fraction_end_touches_right_edge() {
+        let a = BarAppearance {
+            width: BarWidth::Fraction(0.7),
+            align: appearance::BarAlign::End,
+            ..Default::default()
+        };
+        assert_eq!(bar_screen_x_extent(2560.0, &a), (768.0, 2560.0));
+    }
+
+    #[test]
+    fn bar_screen_x_extent_floating_insets_every_edge() {
+        let a = BarAppearance {
+            width: BarWidth::Fraction(0.7),
+            align: appearance::BarAlign::Center,
+            floating: true,
+            margin: appearance::BarMargin { x: 12.0, y: 8.0 },
+            ..Default::default()
+        };
+        // leftover/2 = 384, max(user_x = 12) → 384. Bar ends at 384+1792.
+        assert_eq!(bar_screen_x_extent(2560.0, &a), (384.0, 2176.0));
+        // A center-float whose gap would push it under margin.x keeps the margin.
+        let a = BarAppearance {
+            width: BarWidth::Fraction(0.95),
+            align: appearance::BarAlign::Center,
+            floating: true,
+            margin: appearance::BarMargin { x: 12.0, y: 8.0 },
+            ..Default::default()
+        };
+        // leftover = 128, half = 64 ≥ 12 → still 64.
+        assert_eq!(bar_screen_x_extent(2560.0, &a), (64.0, 2496.0));
     }
 }

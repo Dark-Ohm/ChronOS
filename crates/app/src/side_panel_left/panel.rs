@@ -23,6 +23,12 @@ pub fn render_panel(
 ) -> impl IntoElement {
     let theme = *Theme::global(cx);
     let dot_color = status_color(panel.state.agent_status, &theme);
+    // T217 — top-corner radius where the panel meets the bar. Left-anchored:
+    // screen x runs 0..width. Same per-corner rule as the right panel (both
+    // resolve through `crate::state::panel_corner_radius`); a corner the bar
+    // sits above stays square, a free one rhymes with the bar's pill radius.
+    let corner_tl = crate::state::panel_corner_radius(0.0);
+    let corner_tr = crate::state::panel_corner_radius(panel.state.width);
     let collapsed = panel.state.sessions_collapsed;
     let agent_menu_open = panel.agent_menu_open;
     // Chat visibility is width-driven (or forced by dock). Dock only changes
@@ -380,12 +386,22 @@ pub fn render_panel(
     // Outer: sole window-level on_hover. Motion is native with_animation on the
     // shell row (T129) — not gpui_animation transition_when (silent no-op on
     // fresh layer-shell windows).
+    //
+    // T217: round the top corners + clip when either corner is free (bar does
+    // not reach it). The window base is transparent, so rounded cutouts show
+    // the desktop behind. When both corners are covered (full-width bar) no
+    // rounding and no clip — keeps the elevation shadows intact.
     div()
         .id("side-panel-left-root")
         .w(px(panel.state.width))
         .h_full()
         .flex()
         .flex_row()
+        .when(corner_tl > 0.0 || corner_tr > 0.0, |d| {
+            d.rounded_tl(px(corner_tl))
+                .rounded_tr(px(corner_tr))
+                .overflow_hidden()
+        })
         .on_hover(|hovered, _window, cx| {
             if *hovered {
                 super::hold_peek(cx);

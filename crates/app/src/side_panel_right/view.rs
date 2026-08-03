@@ -422,6 +422,19 @@ impl Render for SidePanelRightView {
         // Content open when dock is ON OR user dragged past rail+handle threshold
         let content_open = dock_content || panel_width > rail_only_width + 1.0;
 
+        // T217 — top-corner radius where the panel meets the bar. Each corner
+        // is decided independently: one the bar sits above stays square (the
+        // panel tucks under the bar's bottom edge — rounding would seam), a
+        // free one rhymes with the bar's pill radius. Re-evaluated every
+        // render, so bar hot-reload (radius / extent) and panel resizes take
+        // effect live without a window recreate.
+        let display_w = crate::monitor::pult_display_info(cx)
+            .map(|d| f32::from(d.bounds().size.width))
+            .or_else(|| window.display(cx).map(|d| f32::from(d.bounds().size.width)))
+            .unwrap_or(1920.);
+        let corner_tl = crate::state::panel_corner_radius(display_w - panel_width);
+        let corner_tr = crate::state::panel_corner_radius(display_w);
+
         // Elevated chrome на content-колонке (не rail-only) — общий язык
         // глубины из `theme.elevation_popup()` (T128).
         let theme = *Theme::global(cx);
@@ -455,11 +468,23 @@ impl Render for SidePanelRightView {
         // OUTER: sole window-level `on_hover` (debounce). No transition_on_hover.
         // Layout: [handle | content? | rail] — flex handle so drag hits work
         // (absolute overlay was unhittable / broke resize entirely).
+        //
+        // T217: round the top corners + clip when either corner is free (bar
+        // does not reach it). Root's own background is transparent (the
+        // gpui-component Root base was overridden to transparent in
+        // `open_window`), so the rounded cutouts show the desktop behind, not
+        // a square chrome corner. When both corners are covered (full-width
+        // bar) no rounding and no clip — keeps the elevation shadows intact.
         div()
             .id("side-panel-right-root")
             .size_full()
             .flex()
             .flex_row()
+            .when(corner_tl > 0.0 || corner_tr > 0.0, |d| {
+                d.rounded_tl(px(corner_tl))
+                    .rounded_tr(px(corner_tr))
+                    .overflow_hidden()
+            })
             .on_hover(|hovered, _window, cx| {
                 if *hovered {
                     crate::side_panel_right::hold_peek(cx);

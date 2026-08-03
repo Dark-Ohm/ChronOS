@@ -225,7 +225,16 @@ fn open_window(cx: &mut App, pinned: bool) {
         // without it, Input panics on `window.root()` because the root element is not a
         // component-managed node. This is not a ChronOS choice but a hard requirement of
         // gpui-component.
-        view_cx.new(|cx| Root::new(view, window, cx).bordered(false))
+        //
+        // Root paints `tokens.background` across the whole window, which would keep the
+        // top corners square no matter how the view rounds them (T217). Overriding that
+        // base fill with transparent moves all visible chrome to the view's own divs, so
+        // the rounded top corners expose the desktop behind instead of Root's solid color.
+        view_cx.new(|cx| {
+            Root::new(view, window, cx)
+                .bordered(false)
+                .bg(gpui::transparent_black())
+        })
     }) {
         Ok(handle) => {
             let state = cx.global_mut::<SidePanelRightState>();

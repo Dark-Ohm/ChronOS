@@ -1326,6 +1326,35 @@ mod tests {
     }
 
     #[test]
+    fn panel_top_corners_follow_the_same_bar_junction_rule() {
+        // T217: both panels resolve their top-corner radius through the single
+        // `state::panel_corner_radius` (mirrors T204's single-constant rule),
+        // so a left and a right corner at the same screen x can never drift.
+        let display_w = 2560.0;
+        crate::state::set_bar_geometry(16.0, 384.0, 2176.0); // fraction:0.7 centered
+
+        // Free edges (beyond the bar) rhyme with the bar.
+        assert_eq!(crate::state::panel_corner_radius(0.0), 16.0); // left panel TL
+        assert_eq!(crate::state::panel_corner_radius(display_w), 16.0); // right panel TR
+        // Right panel rail-only strip sits right of the bar → rounded.
+        assert_eq!(crate::state::panel_corner_radius(display_w - 40.0), 16.0);
+        // Left panel rail-only strip sits left of the bar → rounded.
+        assert_eq!(crate::state::panel_corner_radius(40.0), 16.0);
+
+        // Under the bar → square (butt, no seam) for either panel.
+        assert_eq!(crate::state::panel_corner_radius(2000.0), 0.0);
+        assert_eq!(crate::state::panel_corner_radius(1000.0), 0.0);
+
+        // Full-width bar → every corner square.
+        crate::state::set_bar_geometry(16.0, 0.0, display_w);
+        assert_eq!(crate::state::panel_corner_radius(0.0), 0.0);
+        assert_eq!(crate::state::panel_corner_radius(display_w), 0.0);
+
+        // Restore process-wide default for other tests.
+        crate::state::set_bar_geometry(0.0, 0.0, f32::INFINITY);
+    }
+
+    #[test]
     fn toggle_collapse_recalculates_min_width() {
         let mut state = state::SidePanelLeftState::new();
         assert!(state.sessions_collapsed);
