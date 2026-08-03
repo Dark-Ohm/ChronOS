@@ -404,11 +404,11 @@ mod tests {
 
     #[test]
     fn drag_left_grows_right_anchored_width() {
-        // T210 frame-to-frame: new_w = current_w - (current_x - prev_x)
-        let current_w = 200.0_f32;
-        let prev_x = 100.0_f32;
+        // T214 anchor: new_w = start_w - (current_x - start_x)
+        let start_w = 200.0_f32;
+        let start_x = 100.0_f32;
         let current_x = 80.0_f32; // moved left 20px
-        let new_w = (current_w - (current_x - prev_x)).clamp(RAIL_ONLY_WIDTH, MAX_WIDTH);
+        let new_w = (start_w - (current_x - start_x)).clamp(RAIL_ONLY_WIDTH, MAX_WIDTH);
         assert_eq!(new_w, 220.0);
     }
 }

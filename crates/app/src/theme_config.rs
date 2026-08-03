@@ -111,9 +111,25 @@ pub fn resolve_active_theme() -> Theme {
 /// overwrites the mode with Light default, so theme_config::init (earlier)
 /// alone would leave a dark shell with a light gutter until first hot-reload.
 pub fn sync_gpui_component_theme(cx: &mut App) {
-    let dark = !Theme::global(cx).is_light;
+    let shell = *Theme::global(cx);
+    let dark = !shell.is_light;
     let mode = if dark { ThemeMode::Dark } else { ThemeMode::Light };
     gpui_component::theme::Theme::change(mode, None, cx);
+
+    // Current-line band: stock dark `#171717` is nearly invisible on ChronOS
+    // buffer (`surfaces::editor` ≈ bg.primary). Map from shell tokens so the
+    // caret line is always readable (dogfood D1). Requires line_number mode
+    // (code_editor) — paint path only draws the band when gutter is on.
+    let active_line = shell.interactive.hover.opacity(if dark { 0.5 } else { 0.4 });
+    let active_num = if dark {
+        shell.accent.primary
+    } else {
+        shell.text.primary
+    };
+    let gpui_theme = gpui_component::theme::Theme::global_mut(cx);
+    let highlight = std::sync::Arc::make_mut(&mut gpui_theme.highlight_theme);
+    highlight.style.editor_active_line = Some(active_line);
+    highlight.style.editor_active_line_number = Some(active_num);
 }
 
 /// Set active `Theme` global + schedule all windows to repaint via
