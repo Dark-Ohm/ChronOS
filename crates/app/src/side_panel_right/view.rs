@@ -19,6 +19,7 @@ use gpui::{
 };
 
 use crate::agent_follow::AgentFollowState;
+use crate::edit_mode;
 use crate::motion;
 use crate::side_panel_right::power_row::{
     ARM_TIMEOUT, ArmState, PowerAction, is_confirming_click, on_click as arm_on_click, on_timeout,
@@ -28,6 +29,7 @@ use crate::side_panel_right::preview_target::PreviewTarget;
 use crate::side_panel_right::surfaces;
 use crate::side_panel_right::tab::TabContent;
 use crate::side_panel_right::tab::system::format_net_pair;
+use crate::side_panel_right::panels_config;
 use crate::side_panel_right::tabs::PanelTab;
 use crate::side_panel_right::{
     HANDLE_WIDTH, MAX_WIDTH, RAIL_ONLY_WIDTH, RightPanelResize, SidePanelRightState,
@@ -155,8 +157,8 @@ impl SidePanelRightView {
         );
     }
 
-    fn resolve_active_tab(&mut self, rail_tabs: &[PanelTab], cx: &mut Context<Self>) -> bool {
-        if rail_tabs.contains(&self.active_tab) {
+    fn resolve_active_tab(&mut self, all_tabs: &[PanelTab], cx: &mut Context<Self>) -> bool {
+        if all_tabs.contains(&self.active_tab) {
             return false;
         }
         tracing::info!(
@@ -321,22 +323,110 @@ impl SidePanelRightView {
     }
 
     pub(crate) fn on_tab_select(&mut self, tab: PanelTab, cx: &mut Context<Self>) {
-        // Re-clicking the same tab is a no-op — don't reset the user's
-        // manual resize.
-        if tab == self.active_tab {
+        // T221 — rail icon is the single affordance. Three actions, in order:
+        //
+        //   1. Same tab, `dock_content = true`  → no-op. Dock keeps content
+        //      always-visible; a rail icon cannot shrink a docked panel
+        //      without contradicting dock state. ⊞/⊟ is the dock knob.
+        //   2. Same tab, content open           → collapse to rail.
+        //      `tab_resize_memory` is NOT touched — the view owns it, not
+        //      `SidePanelRightState.width`, so a future re-open restores
+        //      the remembered width (T218).
+        //   3. Same tab, content closed          → open at `active_tab_width`
+        //      (T218: preferred for fixed-width tabs, remembered for
+        //      Editor / System settings).
+        //   4. Different tab                    → switch AND open (a click
+        //      somewhere else cannot be a clamp-to-rail action — it has to
+        //      show the user the new tab).
+        //
+        // Width arithmetic goes through `active_tab_width`, the same path
+        // T171/T218 wired. We deliberately bypass `apply_active_tab_width`'s
+        // «skip when collapsed» optimisation in the re-open branch, because
+        // that branch IS the act of opening.
+
+        let (dock_content, content_open) = {
+            let state = cx.global::<SidePanelRightState>();
+            (
+                state.dock_content,
+                state.dock_content || state.width > RAIL_ONLY_WIDTH + 1.0,
+            )
+        };
+
+        if tab != self.active_tab {
+            // Branch 4 — different tab.
+            //
+            // Under dock: only switch `active_tab`. The dock button ⊞/⊟
+            // and the resize handle are the only knobs for width when
+            // content is always-visible; switching tabs in dock mode must
+            // not undo a pinned width. (Otherwise clicking another icon
+            // would collapse from 700 to 440 — surprising for any tab
+            // whose `preferred_content_width` differs from the docked
+            // panel width.)
+            //
+            // Off dock: switch AND force-open at the new tab's natural /
+            // remembered width. We bypass `apply_active_tab_width` because
+            // it is a no-op when content is collapsed (the T171 "trap #3"
+            // — only mode-fallback needs to re-cover the width silently).
+            // A user clicking a *different* rail icon requires the new
+            // tab to be visible — that's the whole affordance, and a click
+            // while collapsed that only updates `active_tab` would be
+            // invisible.
+            self.active_tab = tab;
+            self.ensure_tab_view(self.active_tab, cx);
+            if dock_content {
+                self.last_resized_width = f32::NAN;
+                cx.notify();
+                tracing::info!(
+                    tab = tab.label(),
+                    "side_panel_right: switched tab under dock (width pinned)"
+                );
+                return;
+            }
+            let target = self.active_tab_width(self.active_tab, cx);
+            cx.global_mut::<SidePanelRightState>().ensure_content_width(target);
+            self.last_resized_width = f32::NAN;
+            cx.notify();
+            tracing::info!(
+                tab = tab.label(),
+                width = target,
+                "side_panel_right: switched tab → opened at per-tab width"
+            );
             return;
         }
-        self.active_tab = tab;
-        // Lazy-create the tab view on first activation. Also called from
-        // render() for the very-first-paint case. T168 errata 3.
-        self.ensure_tab_view(self.active_tab, cx);
-        // Apply per-tab width only when content is visible (trap #3).
-        self.apply_active_tab_width(cx);
-        // Preserve the existing retry contract: a user-driven tab switch
-        // retries the platform resize on the next paint even if the width did
-        // not change, because the previous resize may not have reached Wayland.
-        self.last_resized_width = f32::NAN;
-        cx.notify();
+
+        // Same tab clicked.
+        if dock_content {
+            // Branch 1.
+            tracing::debug!(
+                tab = tab.label(),
+                "side_panel_right: same active tab click while docked → no-op (⊞/⊟ is the dock knob)"
+            );
+            return;
+        }
+
+        if content_open {
+            // Branch 2 — collapse. `tab_resize_memory` stays intact because
+            // we only touch `state.width` and `state.last_exclusive_zone`.
+            cx.global_mut::<SidePanelRightState>().width = RAIL_ONLY_WIDTH;
+            cx.global_mut::<SidePanelRightState>().last_exclusive_zone = None;
+            self.last_resized_width = f32::NAN;
+            cx.notify();
+            tracing::info!(
+                tab = tab.label(),
+                "side_panel_right: same tab → collapsed to rail (memory preserved)"
+            );
+        } else {
+            // Branch 3 — re-open at the tab's stored width.
+            let target = self.active_tab_width(self.active_tab, cx);
+            cx.global_mut::<SidePanelRightState>().ensure_content_width(target);
+            self.last_resized_width = f32::NAN;
+            cx.notify();
+            tracing::info!(
+                tab = tab.label(),
+                width = target,
+                "side_panel_right: same tab → re-opened at stored width"
+            );
+        }
     }
 
     /// Lazily create the tab view if not already cached. Called from both
@@ -359,16 +449,19 @@ impl SidePanelRightView {
 impl Render for SidePanelRightView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sample_network();
-        // Mode/scene composition for the rail (scene override > mode default).
-        let rail_tabs = PanelTab::resolve_for_mode(
-            workspace_mode::current(cx),
-            scene::rail_tabs_override(cx).as_deref(),
-        );
+        // T219: resolve rail groups from panels.toml (two groups: top + bottom).
+        // Falls back to panels_config defaults which mirror the old for_mode.
+        let current_mode = workspace_mode::current(cx);
+        let panel_cfg = panels_config::cached();
+        let (top_tabs, bottom_tabs) = panels_config::resolve_grouped(current_mode, &panel_cfg);
+        // Flatten for active-tab validation.
+        let mut all_tabs: Vec<PanelTab> = top_tabs.iter().chain(bottom_tabs.iter()).copied().collect();
+        all_tabs.dedup();
         // Active tab left the set after a mode switch — land on System, keep
         // the panel open (§5: must not discard panel state / close on mode change).
         // Resolve the fallback and apply System's per-tab width. The resolver
         // is a no-op on the next render once the active tab belongs to the rail.
-        if self.resolve_active_tab(&rail_tabs, cx) {
+        if self.resolve_active_tab(&all_tabs, cx) {
             // System may not have been visited yet — ensure the entry exists
             // before the render path reads it via get().
             self.ensure_tab_view(PanelTab::System, cx);
@@ -602,6 +695,7 @@ impl Render for SidePanelRightView {
                     .child({
                         let active = self.active_tab;
                         let this = cx.entity();
+                        let editing = edit_mode::is_active(cx);
                         let this_for_select = this.clone();
                         let on_select = std::rc::Rc::new(
                             move |tab: PanelTab, _window: &mut Window, cx: &mut gpui::App| {
@@ -627,14 +721,30 @@ impl Render for SidePanelRightView {
                                     cx.notify();
                                 });
                             });
+                        // T219: on_move callback. The closure is intentionally
+                        // trivial: it looks up the current workspace mode and
+                        // delegates to `panels_config::move_tab`, which owns
+                        // the cache → disk → refresh_windows pipeline. Putting
+                        // all the IO in one place means the unit tests in
+                        // `panels_config::tests` exercise *the* code that ships
+                        // — re-writing the same glue inside a test (the T164
+                        // anti-pattern) is no longer a temptation.
+                        let on_move: std::rc::Rc<dyn Fn(PanelTab, isize, &mut gpui::App)> =
+                            std::rc::Rc::new(move |tab: PanelTab, delta: isize, cx: &mut gpui::App| {
+                                let mode = workspace_mode::current(cx);
+                                panels_config::move_tab(cx, mode, tab, delta);
+                            });
                         crate::side_panel_right::rail::render_rail(
                             cx,
-                            &rail_tabs,
+                            &top_tabs,
+                            &bottom_tabs,
                             active,
                             on_select,
                             dock_content,
                             on_dock_toggle,
                             content_open,
+                            editing,
+                            on_move,
                         )
                     })
                     .with_animation(
@@ -693,6 +803,7 @@ impl SidePanelRightView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::workspace_mode::WorkspaceMode;
     use gpui::TestAppContext;
 
     #[gpui::test]
@@ -760,6 +871,300 @@ mod tests {
             let state = cx.global::<SidePanelRightState>();
             assert_eq!(state.width, RAIL_ONLY_WIDTH);
             assert!(!state.dock_content);
+        });
+    }
+
+    // ── T219 regression: on_move callback wires through to panels_config ──
+    //
+    // These tests call the *same* helper the production closure delegates to
+    // (`panels_config::move_tab`). They are NOT a re-implementation of the
+    // closure body — that was the T164 anti-pattern the spec warned about.
+    // If `move_tab` ever grows a new step (e.g. a server sync), these tests
+    // reflect that automatically because they drive the real entry point.
+    //
+    // Bonus: visiting `panels_config::move_tab` directly from the test side
+    // confirms the helper is independently callable, not just accidentally
+    // correct via its single caller in `view.rs`.
+
+    #[gpui::test]
+    async fn move_tab_helper_persists_reorder_and_updates_cache(cx: &mut TestAppContext) {
+        // No panels.toml on disk → cached() returns fresh defaults. We do
+        // NOT call `apply()` here because that pulls from the real config
+        // path; we want the test to start from a known sanitized default.
+        cx.update(|cx| {
+            cx.set_global(crate::workspace_mode::WorkspaceModeState::default());
+        });
+        cx.update_global::<crate::workspace_mode::WorkspaceModeState, _>(|s, _| {
+            s.mode = WorkspaceMode::Developer;
+        });
+
+        // Move system (idx 0 in dev top) up by -1 → crosses to end of bottom.
+        // This is exactly what the rail's ▲ handler fires against the same tab.
+        cx.update(|cx| {
+            assert!(
+                panels_config::move_tab(cx, WorkspaceMode::Developer, PanelTab::System, -1),
+                "`move_tab` must report success"
+            );
+        });
+
+        // The next render reads `cached()` via `resolve_grouped`. system must
+        // have left the dev top group and joined the dev bottom group's tail.
+        cx.update(|_cx| {
+            let cfg = panels_config::cached();
+            let dev = &cfg.right.rail.developer;
+            assert!(
+                !dev.top.contains(&"system".to_string()),
+                "system must leave dev top after the move: {:?}",
+                dev.top
+            );
+            assert_eq!(
+                dev.bottom.last().expect("non-empty bottom"),
+                "system",
+                "system must land at the tail of dev bottom"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn move_tab_helper_noop_leaves_cache_and_disk_untouched(cx: &mut TestAppContext) {
+        // Library is a Gamer-hub tab, not in the Developer rail.
+        cx.update(|cx| {
+            cx.set_global(crate::workspace_mode::WorkspaceModeState::default());
+        });
+        cx.update_global::<crate::workspace_mode::WorkspaceModeState, _>(|s, _| {
+            s.mode = WorkspaceMode::Developer;
+        });
+
+        let before = cx.read(|cx| panels_config::cached());
+        cx.update(|cx| {
+            assert!(
+                !panels_config::move_tab(cx, WorkspaceMode::Developer, PanelTab::Library, -1),
+                "Library is not in the Developer rail — helper must report no-op"
+            );
+        });
+        let after = cx.read(|cx| panels_config::cached());
+        assert_eq!(
+            before, after,
+            "no-op must not perturb the cache (save/update_cache skipped)"
+        );
+    }
+
+    // ── T221 regression: rail icon toggles panel content —─────────────────
+    //
+    // The contract is tested by calling the real `on_tab_select` (not by
+    // reading the corresponding state-assembly code back into the test, which
+    // is the anti-T164 shortcut). When `on_tab_select` grows a fourth branch,
+    // these tests fail in proportion.
+    //
+    // State is constructed directly (not via render) so the assertions aren't
+    // coupled to layer-shell geometry, width rounding, or platform-window
+    // resize — `state.width` is the truth under test, the Wayland surface
+    // tracks it on the next paint (T216/T218 already cover that contract).
+
+    /// Helper: stand up view + a given initial `SidePanelRightState`.
+    fn boot_view(
+        cx: &mut TestAppContext,
+        state: SidePanelRightState,
+        mode: WorkspaceMode,
+    ) -> gpui::Entity<SidePanelRightView> {
+        cx.update(|cx| {
+            cx.set_global(state);
+            cx.set_global(crate::workspace_mode::WorkspaceModeState::default());
+        });
+        cx.update_global::<crate::workspace_mode::WorkspaceModeState, _>(|s, _| {
+            s.mode = mode;
+        });
+        cx.new(|cx| SidePanelRightView::new(cx))
+    }
+
+    /// (1) Click a **different** tab → switches AND opens content at that
+    /// tab's natural width. Catches the regression where a click on another
+    /// icon would do nothing or stay at rail-only.
+    #[gpui::test]
+    async fn on_tab_select_different_tab_opens_at_natural_width(cx: &mut TestAppContext) {
+        let view = boot_view(
+            cx,
+            SidePanelRightState::default(), // rail-only
+            WorkspaceMode::Developer,
+        );
+        let target = PanelTab::Files; // natural width 440, fixed (T218)
+        assert_ne!(target, PanelTab::System); // sanity: this test starts non-active
+
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(target, cx);
+        });
+
+        cx.update_entity(&view, |this, _| {
+            assert_eq!(this.active_tab, target);
+        });
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                PanelTab::Files.preferred_content_width(),
+                "different-tab click must open content at the new tab's natural width"
+            );
+        });
+    }
+
+    /// (2) Same tab, **content open** → collapse to rail-only. Companion of
+    /// case (3) below.
+    #[gpui::test]
+    async fn on_tab_select_same_tab_open_collapses_to_rail(cx: &mut TestAppContext) {
+        let mut state = SidePanelRightState::default();
+        state.width = PanelTab::System.preferred_content_width();
+        let view = boot_view(cx, state, WorkspaceMode::Developer);
+
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::System, cx);
+        });
+
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                RAIL_ONLY_WIDTH,
+                "open + active-tab click must collapse to rail-only"
+            );
+        });
+    }
+
+    /// (3) Same tab, **content collapsed** → re-open at the tab's
+    /// `active_tab_width`. System is fixed-width so it lands on its
+    /// preferred 400; the “re-opens at remembered width” case for
+    /// resizable tabs is covered separately below.
+    #[gpui::test]
+    async fn on_tab_select_same_tab_collapsed_reopens_at_natural_width(cx: &mut TestAppContext) {
+        let view = boot_view(cx, SidePanelRightState::default(), WorkspaceMode::Developer);
+        // active_tab is System by default; System is fixed-width 400 (T218).
+
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::System, cx);
+        });
+
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                PanelTab::System.preferred_content_width(),
+                "collapsed + active-tab click must re-open at the tab's natural width, \
+                 not the panel default"
+            );
+        });
+    }
+
+    /// (4) Editor round-trip: collapse must NOT erase remembered resize.
+    /// This is the contract §2 of the task: “Editor: раскрыть → перетянуть
+    /// до N → свернуть → раскрыть = N.” Drives the real `update_resize`
+    /// path (the test harness `sim_resize` mirrors it) to record N.
+    #[gpui::test]
+    async fn on_tab_select_collapse_preserves_editor_resize_memory(cx: &mut TestAppContext) {
+        const N: f32 = 720.0;
+        let mut state = SidePanelRightState::default();
+        state.width = N;
+        let view = boot_view(cx, state, WorkspaceMode::Developer);
+        cx.update_entity(&view, |this, cx| {
+            this.active_tab = PanelTab::Preview; // the “Editor” tab (T192 product cut)
+            // The drag-vs-memory path (T218) writes through the view's
+            // `update_resize`, which `sim_resize` mirrors; that is what
+            // populates `tab_resize_memory`. Direct field assignments
+            // skip this contract.
+            this.sim_resize(N, cx);
+        });
+
+        // Collapse.
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Preview, cx);
+        });
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                RAIL_ONLY_WIDTH,
+                "Editor: collapse phase must shrink to rail"
+            );
+        });
+        cx.update_entity(&view, |this, _| {
+            assert_eq!(
+                this.tab_resize_memory.get(&PanelTab::Preview).copied(),
+                Some(N),
+                "collapse must NOT erase resize memory (T221 §2)"
+            );
+        });
+
+        // Re-open.
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Preview, cx);
+        });
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width, N,
+                "Editor: re-open phase must restore remembered width N, \
+                 not the tab's preferred 560"
+            );
+        });
+    }
+
+    /// (5) Dock wins: with `dock_content = true`, clicking the active tab
+    /// is a no-op. The dock button ⊞/⊟ is the only knob for docked mode —
+    /// mixing rail-icon-toggling into dock would create the inconsistent
+    /// «always-visible but rail-only» state we explicitly forbid.
+    #[gpui::test]
+    async fn on_tab_select_active_tab_while_docked_is_noop(cx: &mut TestAppContext) {
+        const PINNED: f32 = 700.0;
+        let mut state = SidePanelRightState::default();
+        state.width = PINNED;
+        state.dock_content = true;
+        let view = boot_view(cx, state, WorkspaceMode::Developer);
+        cx.update_entity(&view, |this, _| {
+            this.active_tab = PanelTab::Preview;
+        });
+
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Preview, cx);
+        });
+
+        cx.update(|cx| {
+            let state = cx.global::<SidePanelRightState>();
+            assert_eq!(
+                state.width, PINNED,
+                "dock + active-tab click must NOT resize"
+            );
+            assert!(
+                state.dock_content,
+                "dock mode must remain unchanged (rail-icon click cannot un-dock)"
+            );
+        });
+    }
+
+    /// (6) Belt-and-braces: under dock, a **different** tab click still
+    /// works (it's just a tab switch — content stays because dock keeps it).
+    /// Defends the spec's “click on another icon is a tab switch” contract
+    /// from drifting into “dock forbids all rail clicks”.
+    #[gpui::test]
+    async fn on_tab_select_different_tab_while_docked_still_switches(cx: &mut TestAppContext) {
+        const PINNED: f32 = 700.0;
+        let mut state = SidePanelRightState::default();
+        state.width = PINNED;
+        state.dock_content = true;
+        let view = boot_view(cx, state, WorkspaceMode::Developer);
+
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Files, cx);
+        });
+
+        cx.update(|cx| {
+            let state = cx.global::<SidePanelRightState>();
+            assert_eq!(
+                state.width, PINNED,
+                "different-tab click under dock must not resize"
+            );
+            assert!(
+                state.dock_content,
+                "dock mode must be unchanged on tab switch"
+            );
+        });
+        cx.update_entity(&view, |this, _| {
+            assert_eq!(
+                this.active_tab, PanelTab::Files,
+                "different-tab click must still switch the active tab"
+            );
         });
     }
 }

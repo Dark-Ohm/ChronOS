@@ -2,6 +2,7 @@
 
 pub mod agent_follow;
 pub mod bar_settings;
+pub mod edit_mode;
 pub mod games_config;
 pub mod launcher;
 pub mod monitor;

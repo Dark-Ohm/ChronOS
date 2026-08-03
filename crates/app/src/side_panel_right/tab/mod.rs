@@ -283,22 +283,30 @@ mod tests {
 
     #[gpui::test]
     async fn tab_select_applies_preferred_width(cx: &mut TestAppContext) {
+        // T221 changes the precondition: rail-off-dock clicks on a different
+        // tab apply preferred width (branch 4), rail-dock clicks only
+        // switch active_tab. Use the off-dock rail-only path so widths are
+        // assertable end-to-end — under dock, click → no width change (the
+        // dock button ⊞/⊟ is the controlling knob for height-zone, and
+        // pinning overrides per-tab width).
         use crate::side_panel_right::{RAIL_ONLY_WIDTH, SidePanelRightState};
         cx.update(|cx| {
-            let mut state = SidePanelRightState::default();
-            state.dock_content = true; // content visible → width applies
-            cx.set_global(state);
+            cx.set_global(SidePanelRightState::default());
         });
         let view = cx.new(|cx| SidePanelRightView::new(cx));
-        // System is the default active_tab — select a different tab first
-        // so on_tab_select actually applies width (same-tab re-click is no-op).
         cx.update_entity(&view, |this, cx| {
             this.on_tab_select(PanelTab::Files, cx);
         });
         cx.update(|cx| {
             let state = cx.global::<SidePanelRightState>();
-            assert_eq!(state.width, 440., "Files tab preferred width must be applied");
-            assert!(state.width > RAIL_ONLY_WIDTH, "must have expanded from rail-only");
+            assert_eq!(
+                state.width, 440.,
+                "different-tab click off dock must apply Files preferred width (T221 branch 4)"
+            );
+            assert!(
+                state.width > RAIL_ONLY_WIDTH,
+                "must have expanded from rail-only"
+            );
         });
         // Switch to Editor → width should be 560 (DEFAULT_CONTENT_WIDTH).
         cx.update_entity(&view, |this, cx| {
@@ -311,31 +319,81 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn dock_content_false_keeps_rail_only_width(cx: &mut TestAppContext) {
+    async fn first_rail_click_under_dock_off_opens_at_natural_width(cx: &mut TestAppContext) {
+        // T221 deliberately inverted the prior invariant: rail icon is the
+        // SINGLE affordance. Pre-T221: clicking a non-active icon while
+        // the panel was rail-only + dock_content=false was a silent no-op
+        // (active_tab changed but width stayed at RAIL_ONLY_WIDTH). T221
+        // branch 4: a click on a *different* rail icon must open the panel
+        // at that tab's natural width. The pre-T221 test was named
+        // `dock_content_false_keeps_rail_only_width`; the renamed version
+        // pins the new contract so a future revert is caught here.
         use crate::side_panel_right::{RAIL_ONLY_WIDTH, SidePanelRightState};
         cx.update(|cx| {
-            cx.set_global(SidePanelRightState::default()); // dock_content = false
+            cx.set_global(SidePanelRightState::default()); // dock_content=false, width=RAIL_ONLY_WIDTH
         });
         let view = cx.new(|cx| SidePanelRightView::new(cx));
-        // Select non-System tabs (System requires AppState service globals).
-        // Width must stay at RAIL_ONLY_WIDTH when dock_content == false.
-        for tab in [PanelTab::Files, PanelTab::Editor, PanelTab::Terminal] {
-            cx.update_entity(&view, |this, cx| {
-                this.on_tab_select(tab, cx);
-            });
-            cx.update(|cx| {
-                let state = cx.global::<SidePanelRightState>();
-                assert_eq!(
-                    state.width, RAIL_ONLY_WIDTH,
-                    "{tab:?}: width must stay RAIL_ONLY_WIDTH when dock_content == false"
-                );
-            });
-        }
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width, RAIL_ONLY_WIDTH,
+                "panel must start rail-only"
+            );
+        });
+
+        // (1) Click Files (different from default active=System) → opens
+        // at Files' natural width 440. Width is the user-visible signal; a
+        // matching `active_tab` is implicit because branch 4 sets it before
+        // applying width (we don't poke the private `active_tab` field here
+        // — it lives in `view::`'s module).
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Files, cx);
+        });
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                PanelTab::Files.preferred_content_width(),
+                "first rail-click under dock_content=false must open at natural width (T221 branch 4)"
+            );
+        });
+
+        // (2) Click Files again (same active, content open) → collapses.
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Files, cx);
+        });
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width, RAIL_ONLY_WIDTH,
+                "click on active open tab must collapse (T221 branch 2)"
+            );
+        });
+
+        // (3) Switch to Terminal (different active, content closed) →
+        // opens at Terminal's natural width 560.
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Terminal, cx);
+        });
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                PanelTab::Terminal.preferred_content_width(),
+                "different-tab click from collapsed must open at the new tab's natural width"
+            );
+        });
     }
 
     #[gpui::test]
-    async fn same_tab_reclick_preserves_resize(cx: &mut TestAppContext) {
-        use crate::side_panel_right::SidePanelRightState;
+    async fn same_tab_reclick_collapses_to_rail_under_t221(cx: &mut TestAppContext) {
+        // T221 deliberately inverted this contract: rail icon is the SINGLE
+        // affordance. Re-clicking the active tab while content is open now
+        // collapses to rail-only instead of silently preserving the manual
+        // width. Memory of the user's resize survives in
+        // `tab_resize_memory` (T218), so a subsequent click restores it
+        // when (and only when) the tab supports manual resize — covered by
+        // `on_tab_select_collapse_preserves_editor_resize_memory` in
+        // `view::tests` for resizable Editor/Settings tabs; Files here is a
+        // fixed-width tab whose `tab_resize_memory` is intentionally ignored
+        // by `active_tab_width` (T218 "fixed-width tabs ignore memory").
+        use crate::side_panel_right::{RAIL_ONLY_WIDTH, SidePanelRightState};
         cx.update(|cx| {
             cx.set_global(SidePanelRightState::default());
         });
@@ -344,18 +402,44 @@ mod tests {
         cx.update_entity(&view, |this, cx| {
             this.on_tab_select(PanelTab::Files, cx);
         });
-        // Simulate a resize to 480.
+        // The first click (from rail-only) opens Files at its natural
+        // width 440 — T221 branch 4 always opens, no more silent-rail-only.
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                PanelTab::Files.preferred_content_width(),
+                "first Files click must open content (T221 branch 4)"
+            );
+        });
+        // Simulate a manual resize to 480.
         cx.update(|cx| {
             let state = cx.global_mut::<SidePanelRightState>();
             state.resize(480.);
         });
-        // Re-click Files — must not reset to 440.
+        // Re-click Files — T221 branch 2 collapses to rail.
         cx.update_entity(&view, |this, cx| {
             this.on_tab_select(PanelTab::Files, cx);
         });
         cx.update(|cx| {
             let state = cx.global::<SidePanelRightState>();
-            assert_eq!(state.width, 480., "re-clicking same tab must not reset manual resize");
+            assert_eq!(
+                state.width,
+                RAIL_ONLY_WIDTH,
+                "re-clicking the active tab while open MUST collapse to rail (T221)"
+            );
+        });
+        // Re-clicking once more re-opens Files at 440 (fixed-width tab:
+        // memory is ignored, preferred wins; Editor+Settings use memory —
+        // same path, different contract).
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Files, cx);
+        });
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                PanelTab::Files.preferred_content_width(),
+                "third click (collapsed) re-opens Files at its natural width"
+            );
         });
     }
 
@@ -400,17 +484,19 @@ mod tests {
     async fn fixed_width_tab_keeps_its_natural_width(cx: &mut TestAppContext) {
         // T218: Files is laid out for its content, so a drag must not move it and
         // leaving/returning must land on exactly `preferred_content_width` —
-        // otherwise a tab could stay stuck narrow enough to clip its own controls.
+        // otherwise a tab could stay stuck narrow enough to clip its own
+        // controls. T221 changes the precondition: the off-dock rail-only
+        // start is the natural way to drive branch 4 (different-tab opens);
+        // under dock, click → no width change (pinned at the dock width).
         use crate::side_panel_right::SidePanelRightState;
         cx.update(|cx| {
-            // Content open, otherwise per-tab widths are not applied at all.
-            let mut state = SidePanelRightState::default();
-            state.dock_content = true;
-            cx.set_global(state);
+            cx.set_global(SidePanelRightState::default()); // off dock, rail-only
         });
         let view = cx.new(|cx| SidePanelRightView::new(cx));
         assert!(!PanelTab::Files.resizable());
 
+        // Click Files (different from default active System) → branch 4
+        // opens at Files' natural width 440.
         cx.update_entity(&view, |this, cx| {
             this.on_tab_select(PanelTab::Files, cx);
             this.sim_resize(900., cx);
@@ -419,10 +505,12 @@ mod tests {
             assert_eq!(
                 cx.global::<SidePanelRightState>().width,
                 PanelTab::Files.preferred_content_width(),
-                "a drag on a fixed-width tab must not change its width"
+                "T218: drag on a fixed-width tab must not change its width"
             );
         });
 
+        // Visit Preview (Editor) — branch 4 under non-dock: re-open at its
+        // natural 560; then return to Files — branch 4 re-opens at 440.
         cx.update_entity(&view, |this, cx| {
             this.on_tab_select(PanelTab::Preview, cx);
             this.on_tab_select(PanelTab::Files, cx);
@@ -431,7 +519,7 @@ mod tests {
             assert_eq!(
                 cx.global::<SidePanelRightState>().width,
                 PanelTab::Files.preferred_content_width(),
-                "returning to a fixed-width tab must land on its natural width"
+                "T218/T221: returning to a fixed-width tab must land on its natural width"
             );
         });
     }

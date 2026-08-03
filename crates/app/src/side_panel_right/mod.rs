@@ -14,6 +14,7 @@ mod disks;
 mod header;
 mod hover_strip;
 mod mpris_card;
+pub mod panels_config;
 mod permission;
 mod power_row;
 pub(crate) mod preview_target;
@@ -337,6 +338,12 @@ pub fn toggle(cx: &mut App) {
 pub fn init(cx: &mut App) {
     cx.set_global(SidePanelRightState::default());
     cx.set_global(preview_target::PreviewTarget::default());
+    // Load from disk once before any render runs. The watcher only fires on
+    // file CHANGES, so without this call a user-saved panels.toml would be
+    // silently ignored until the next save — first paint would always show
+    // the code defaults and only catch up after a manual edit (T219).
+    panels_config::apply(cx);
+    panels_config::spawn_watcher(cx);
     // Defer the strip one tick so `cx.displays()` / pult uuid match what
     // `bar::init` sees a moment later. Opening the strip synchronously in
     // `main` before the bar historically landed it on the wrong output
