@@ -1,4 +1,4 @@
-use gpui::{AnimationExt, AnyElement, Context, IntoElement, Window, div, img, prelude::*, px};
+use gpui::{AnimationExt, AnyElement, Context, IntoElement, Window, div, img, prelude::*, px, svg};
 
 use chronos_ui::{Theme, WindowRootExt, elevation_glow_bar};
 
@@ -335,7 +335,12 @@ pub fn render_panel(
                     this.agent_menu_open = !this.agent_menu_open;
                     cx.notify();
                 }))
-                .child(div().w(px(7.)).h(px(7.)).rounded_full().bg(dot_color))
+                .child(
+                    svg()
+                        .path("icons/chronos-sigil.svg")
+                        .size(px(15.))
+                        .text_color(theme.accent.primary),
+                )
                 .child(
                     div()
                         .text_size(px(12.5))
@@ -359,7 +364,8 @@ pub fn render_panel(
                         .text_size(px(9.))
                         .text_color(theme.text.muted)
                         .child("⌄"),
-                ),
+                )
+                .child(div().w(px(7.)).h(px(7.)).rounded_full().bg(dot_color)),
         )
         .child(
             div()

@@ -31,6 +31,7 @@ icons!(
     "bolt.svg",
     "brightness.svg",
     "chevron-down.svg",
+    "chronos-sigil.svg",
     "folder.svg",
     "follow.svg",
     "hexagon-core.svg",
