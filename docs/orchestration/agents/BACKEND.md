@@ -8,13 +8,12 @@ UI не твой (это FRONTEND).
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активных нет.** T190 **принята** (gaming profile wire). T185/T187/T190 closed.
-T189 Scenes — pause (FRONTEND).
+**T199** `31ec352` + **T201** `51219ab` ACCEPTED — schema + agent_api + skill
+`skills/chronos-bar-config/`.
 
-**Зона в этой задаче — `crates/app/**`, а не `crates/services/**`.**
-Это осознанное отступление от таблицы ролей, как было в T160: состояние и
-резолверы шелла живут в `crates/app`. Точный список файлов — в самих
-заданиях, он уже, чем «весь crates/app», и соблюдать надо именно его.
+**Активных BACKEND bar-задач нет.** Дальше T203 dogfood — FRONTEND/skill.
+
+T190/T185/T187 closed. T189 Scenes — pause.
 
 Закрыта: T166 (единственный резолвер пультового вывода + вотчер hotplug) —
 принята 2026-07-31 с эрратой в два захода. Цель §3.6 достигнута: единственный

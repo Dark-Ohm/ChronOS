@@ -4,8 +4,34 @@
 > Не замена `docs/HANDOFF.md` (оперативка) и не `docs/orchestration/tasks/` (T-ID).
 > Когда пункт созрел → бриф T-ID или вычёркивание с датой/коммитом.
 >
-> **Обновлено:** 2026-08-02 — T181 residual; слайс 4 закрыт.
+> **Обновлено:** 2026-08-03 — dogfood Editor D1–D4; + T181 residual.
 
+
+## 2026-08-03 — dogfood Editor (смена, без Kate)
+
+Источник: live daily driver на работе. **Блокирует ощущение «мой редактор».**
+
+| # | болячка | сейчас | pri |
+|---|---|---|---|
+| ~~**D1**~~ | current line highlight | **T214** sync `editor_active_line` from shell | closed code |
+| **D2** | нет **вкладок / cross-file** — один файл в PreviewTarget | PRODUCT non-goal multi-file tabs | P1 product |
+| **D3** | **нумерация не у левого края** gutter — бесит глаз | T205 code_editor gutter + pad residual | P1 |
+| ~~**D4**~~ | edit only md | **T213 done** `40183cb` — Text always Edit | closed |
+| **D5** | мышью **выделение текста** — **синяя сетка глючит** (selection paint) | gpui-component Input/code_editor selection/grid | **P0** edit UX |
+| **D6** | **цифры исчезают**, если после них писать буквы (набор/раскладка?) | Input/IME/layout; возможно gutter vs buffer paint | **P0** input corruption |
+
+### Черновик решений (не ADR)
+
+- **D4:** Edit для `PreviewKind::Text` (не truncated). Image/binary — View. Dual Preview|Edit — по-прежнему только md.
+- **D1:** current-line highlight (caret line API) — optional → must.
+- **D3:** gutter flush left (убрать лишний pad body/Input).
+- **D2:** не Zed MultiBuffer. Минимум: recent-path chips / 2–3 retained buffers.
+- **D5:** selection overlay / grid paint в code_editor — смотреть gpui-component Input selection + ChronOS bg layering.
+- **D6:** repro: type digits then letters; if layout RU/EN — note IME; if pure ASCII — buffer/gutter clip bug.
+
+Связано: E9 light partial; T212; spec `2026-08-02-editor-themed-notepad-gutter.md`.
+
+---
 ## 2026-08-02 — T181 residual (слайс 4 закрыт, edge-states не блокер)
 
 Слайс 4 ACCEPTED WITH RESIDUAL. **Не воскрешать T181 как active.**

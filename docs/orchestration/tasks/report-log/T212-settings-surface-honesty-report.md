@@ -125,3 +125,15 @@ Follow-иконка у пользователя сейчас не грузитс
    независимое подтверждение, что резмок T210 всё ещё нужен.
 
 **Коммит:** `settings : honesty reload missing-file light rail (T212)`.
+
+## Architect accept note (2026-08-03)
+
+**Verdict:** ACCEPTED WITH RESIDUAL (static + partial live).
+
+- Reload clip fix + follow.svg embed: real, good.
+- agents.toml **"View / edit externally"**: honest **until T213**. After T213
+  (edit all text), ACP Open should use `PreviewIntent::Edit` again — T212
+  copy is temporary product state, not final.
+- Light editor buffer: still **LIVE N/V** (report honest).
+- margin.x P2: deferred.
+

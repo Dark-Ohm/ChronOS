@@ -1,3 +1,5 @@
+<!-- Архив 2026-08-02: не ChronOS-шелл — репо Chronos-AUR. Парк вне product wave. -->
+
 <!-- T106 — активный бриф Zed, перенесён 2026-07-22 из docs/orchestration/agents/ZED.md -->
 
 ## АКТИВНОЕ ЗАДАНИЕ — Chronos-AUR порт (Alloy Tauri→GPUI), ТРЕК D — порт страниц React→rsx

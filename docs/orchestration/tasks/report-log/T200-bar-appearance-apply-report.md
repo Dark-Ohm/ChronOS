@@ -132,3 +132,33 @@ ghost handle, `rails_and_handles_match_right_panel`, `agent_api.rs`, docs) не
 (полоса на краю экрана); решение задокументировано в `elevation_shadow`.
 Поведение при закрытом окне (`Err` → warn) и `Some(px(0.))` vs `None` для
 floating — оставлены как есть (эквивалентны, дешевле без fork).
+
+---
+
+## Приёмка (Lead Architect / Grok, 2026-08-02)
+
+**Вердикт: ACCEPTED WITH RESIDUAL**
+
+**Коммит в HEAD:** `dc811e9` (отчёт писал `64fc2df` — amend-цепочка; смысл тот же).
+
+| claim | check |
+|---|---|
+| BAR_WINDOW store + apply without reopen | ✅ |
+| height resize + exclusive zone live | ✅ `apply_appearance` |
+| set_bar_height only on Ok(update) | ✅ review fix |
+| radius/overflow + elevation shadows | ✅ render |
+| layout_config::apply → apply_appearance | ✅ |
+| panel_edge_gap → state::bar_height_px | ✅ L/R + strips |
+| warn_deferred edge/width dedupe | ✅ |
+| bar:: 109 green | ✅ re-ran |
+| state:: 5 green incl round-trip | ✅ |
+| fork set_anchor | **не** (как brief) |
+| live grim height/radius | **NOT VERIFIED** |
+
+**Residual (ok v1):**
+1. Live smoke: edit bar.toml height/radius/exclusive → no pkill.
+2. Open panels don't resize mid-session on height change (reopen).
+3. fraction / live edge — fork gap, cold-path + warn.
+
+**T202 разблокирован** (schema+apply есть).
+

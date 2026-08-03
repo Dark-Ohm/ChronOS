@@ -1,3 +1,5 @@
+<!-- Архив 2026-08-02: не ChronOS-шелл — репо Chronos-AUR. Парк вне product wave. -->
+
 <!-- T105 — активный бриф Hermes, перенесён 2026-07-22 из docs/orchestration/agents/HERMES.md -->
 
 ## АКТИВНОЕ ЗАДАНИЕ — Chronos-AUR порт (Alloy Tauri→GPUI), ТРЕК C — GPUI-каркас aur-app

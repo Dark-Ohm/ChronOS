@@ -1,6 +1,6 @@
 # T225 — Выделение текста рисуется «синей сеткой» (D5)
 
-**Статус:** active, не начата  
+**Статус:** active → **code in tree** (`Source/gpui-component`, baseline `57f582f`). Fork check (default+lsp) ✓, геометрия-юниты 4/4 ✓, ChronOS `cargo check` ✓. **Live grim обеих тем — остаётся за руками.**
 **Источник:** `docs/TBD.md` D5, live dogfood 2026-08-03 — «мышью выделение текста,
 синяя сетка глючит»  
 **Приоритет:** P0 edit UX  

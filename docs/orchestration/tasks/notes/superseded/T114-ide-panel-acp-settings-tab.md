@@ -1,3 +1,5 @@
+<!-- Архив 2026-08-02: SUPERSEDED / не исполнять. См. notes/superseded. -->
+
 <!-- T114 — IDE-панель, вкладка ACP settings. Агент не назначен. -->
 
 ## ЗАДАНИЕ — Shell-IDE правая панель: вкладка ACP settings

@@ -211,3 +211,30 @@ _Cross-session durable: these are explicitly deferred, each tied to a named futu
   K=`q8_0`, V=`turbo3`, `-ngl 24`). `--reasoning off` действует **только**
   вместе с `--jinja`. Перенос банка — через `document-transfer`
   (переэмбеддит факты без переизвлечения LLM).
+
+## 2026-08-02 — чекпоинт product wave (Grok Lead Architect)
+
+- **Lead Architect = Grok**; Claude/minions — исполнители на T-брифах, без самоприёмки.
+- **Принято:** T198 RECON (NOTE: `set_input_region` live уже есть), T194b drawer
+  `6a32ef6`, T194c view+md dual `b3939d8`+`e884411`, T199 appearance schema
+  `31ec352` + `cached_appearance()`.
+- **Очередь:** T200 apply → T204 ghost rails 36px (параллель с T200 ok) →
+  T201 tools → T202 presets (после T200) → T203 dogfood (после T201).
+- **Продукт:** Agent Shell DE; terminal = Zed drawer, не rail tab; live
+  customization plan approved; hypr modules/ modular.
+- **UX residual:** live grim T194c/b; cross-file dirty; fat panel handle → T204.
+- **Параллель:** T200+T204 да; T200+T201 да (осторожно apply); T202 не раньше T200.
+
+
+## 2026-08-03 — чекпоинт (customization wave closed)
+
+- **Lead Architect = Grok.** T198–T208 **done** (unit/static). Live grim residual.
+- **Commits tip:** T202 `82e100a` · T205 `8b36055` · T206 `6ec95a0` · T207 `08d5857` · T208 `4f22718`.
+- **T206:** local delta resize; rail→expand offsets `start_x` by `(target-w)`; body/rail chrome only when `content_open`; transparent flex 4px handle. Residual one-frame jank.
+- **T207:** no fork `set_anchor`/`set_margin` — destroy+reopen bar window; fraction without L|R stretch + align margins; cold-start may double-open (`LAST_ANCHOR=None`).
+- **T208:** Wrap toggle + `.soft_wrap` on create; status `Ln/Col` from `cursor_position()`; **must** `cx.observe(editor)` — InputEvent has no selection change.
+- **Editor API trap:** `InputEvent` = Change|PressEnter|Focus|Blur only; cursor moves only notify InputState.
+- **Bar API trap:** compositor stretches L|R anchors → fraction needs vertical-only anchor + margins.
+- **Next:** live smoke T205–T208 **or** T195 agent follow. T196 unblocked (T202 done).
+- **Hindsight :8888** was down at checkpoint.
+

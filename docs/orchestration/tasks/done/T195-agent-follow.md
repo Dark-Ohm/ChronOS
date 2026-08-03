@@ -1,7 +1,7 @@
 # T195 — «Следить за агентом» + live activity справа
 
-**Статус:** BLOCKED — после T194 желательно (open file in Editor); можно
-частично раньше (activity only).
+**Статус:** UNBLOCKED for pickup (T194c done — Editor+PreviewTarget).
+Was BLOCKED on T194; **can start** when T205/T206 not starving UX.
 **Роль:** FRONTEND (+ thin BACKEND if event bus). **Модель: Sonnet 5**.
 **Канон:** `docs/PRODUCT.md` §2 Agent.
 

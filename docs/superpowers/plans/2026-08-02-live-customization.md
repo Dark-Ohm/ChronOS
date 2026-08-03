@@ -106,12 +106,12 @@ v1 files without `version` load as today (widgets only; appearance = code defaul
 
 | ID | Роль | Что | Зависит |
 |---|---|---|---|
-| **T198** | RECON | Карта: все hardcoded chrome props (bar/dock/panels) file:line; gap to target schema | — |
-| **T199** | BACKEND | `bar.toml` v2 appearance section + sanitize/defaults + tests; **no UI** | T198 |
-| **T200** | FRONTEND | Apply appearance: window_options / resize / re-anchor **without kill**; hot-reload path | T199 |
-| **T201** | BACKEND | Agent tools (or ACP-facing service API): get/set/list widgets + appearance patch | T199 |
-| **T202** | FRONTEND | Presets + System settings «Bar» page (sliders/toggles bound to same schema) | T200 |
-| **T203** | FRONTEND | Agent path dogfood: skills/prompt so NL maps to schema keys; Follow shows bar.toml | T201, T195 optional |
+| **T198** | RECON **done** | Карта: все hardcoded chrome props (bar/dock/panels) file:line; gap to target schema | — |
+| **T199** | BACKEND **done** `31ec352` | `bar.toml` v2 appearance section + sanitize/defaults + tests; **no UI** | T198 |
+| **T200** | FRONTEND **active** | Apply appearance: window_options / resize / re-anchor **without kill**; hot-reload path | T199 |
+| **T201** | BACKEND **blocked T199** | Agent tools (or ACP-facing service API): get/set/list widgets + appearance patch | T199 |
+| **T202** | FRONTEND **blocked T200** | Presets + System settings «Bar» page (sliders/toggles bound to same schema) | T200 |
+| **T203** | FRONTEND **blocked T201** | Agent path dogfood: skills/prompt so NL maps to schema keys; Follow shows bar.toml | T201, T195 optional |
 
 T194 (Editor) может идти **параллельно** T198–T199 (разные зоны).
 

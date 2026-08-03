@@ -11,9 +11,10 @@
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активное:** `tasks/active/T198-chrome-customization-recon.md`
-(live customization plan approved). Отчёт → `report/T198-…`.
-T184 закрыта.
+**Активное:** нет. T198 **ACCEPTED WITH NOTE** (2026-08-02) →
+`tasks/report-log/T198-chrome-customization-recon-report.md`, бриф
+`tasks/done/T198-…`. Live customization: дальше T199/T200 по go
+архитектора (не самозахват).
 
 **Зона чтения расширена этой задачей:** `../Chronos-FM/crates/**` — это
 проект того же автора, читать можно свободно.

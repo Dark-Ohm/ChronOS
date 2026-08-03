@@ -8,9 +8,14 @@
 
 **Общие правила:** `docs/orchestration/agents/RULES.md` — прочитать перед стартом.
 
-**Активное:** `tasks/active/T194b-editor-terminal-drawer.md` — terminal drawer
-(Zed-style under Editor). T194 edit/save **принята** (`7d0be09`).
-**Параллельно RECON:** T198. **Pause:** T195 · T196. **T197** SUPERSEDED.
+**Принято:** T194c · T199–T208 · T203 · T204 (+errata).
+T202 `82e100a` · T205–T208 done; live smoke residual on chrome/editor.
+
+**Активное:**
+1. ~~T195~~ **done** `9268440` Follow + PreviewTarget open (activity strip deferred)
+2. Live smoke residual: T206 resize · T207 edge/fraction · T208 Ln/Col+Wrap
+
+**Pause:** T196 · T197 SUPERSEDED. **T195** unblocked (pickup when free).
 **Канон:** `docs/PRODUCT.md`.
 
 **Урок T179/T180, стоил двух приёмок:** доказывать надо тот путь, который
@@ -124,3 +129,5 @@ intact»), он пошёл по спеке и процитировал исто�
 
 **Главное для этой роли:** «компилируется» не доказывает ничего. Доказывает
 релизный бинарь и кадр `grim`.
+
+**T196 done** `9435cc0` — theme/hypr/about + ACP list (edit via agents.toml; inline CRUD deferred).

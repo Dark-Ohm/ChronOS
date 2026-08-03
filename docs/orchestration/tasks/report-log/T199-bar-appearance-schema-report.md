@@ -114,3 +114,32 @@ Worktree удалён после проверки.
 - [x] tests cover sanitize + v1/v2 load — 21 новый тест, 94 всего зелёные
 
 Коммит: `bar : appearance schema v2 in bar.toml (T199)`.
+
+---
+
+## Приёмка (Lead Architect / Grok, 2026-08-02)
+
+**Вердикт: ACCEPTED**
+
+Коммит: `31ec352` — `bar/{appearance.rs,layout_config.rs,mod.rs}` (+ report в том же
+коммите — гигиена: лучше report отдельно; **не блокер**).
+
+| claim | check |
+|---|---|
+| BarAppearance + enums + BarWidth string form | ✅ appearance.rs |
+| defaults = T198 / BAR_HEIGHT | ✅ Default + test |
+| floating ⇒ !exclusive | ✅ sanitized |
+| v1 flat widgets + version gate | ✅ gated_appearance on load |
+| skip_serializing_if v1 byte-stable | ✅ version/appearance attrs |
+| cached_appearance for T200 | ✅ |
+| no window/fork/panel in schema | ✅ only bar/ |
+| bar:: tests | ✅ **95** passed (отчёт: 94 — drift ок) |
+| hug / left|right edge parse | ✅ |
+
+**Замечания (не residual-блокеры):**
+1. `BarLayoutConfig::sanitized()` **не** re-gates version (документировано) —
+   programmatic must call `gated_appearance`; `apply`→`load` ок.
+2. Report file в product commit — в следующий раз только код + report в inbox.
+
+**T200 разблокирован** (schema + `cached_appearance()` готовы).
+
