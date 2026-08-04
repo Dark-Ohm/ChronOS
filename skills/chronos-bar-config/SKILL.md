@@ -247,6 +247,45 @@ There is no undo command. If the shell ever writes a `.bak` alongside
 does not — treat every write as final, and lean harder on "read before you
 write" for that reason.
 
+## Right-section visual grouping (T234) — spacing, not dividers
+
+The right bar section is laid out with **two levels of spacing**, not a flat
+gap and not 1px `separator` dividers:
+
+- **`4px`** between widgets *inside* one semantic cluster.
+- **`14px`** between clusters.
+
+Clusters are decided by widget *role*, not by `separator` entries. The
+grouping lives in `crates/app/src/bar/mod.rs`
+(`right_section_div` + `group_right_names` + `right_widget_group`); the role
+map is:
+
+| Role (group id) | Widgets |
+|---|---|
+| `project` (2) | `project` |
+| `mode` (3) | `workspace_mode` |
+| `keyboard_layout` (4) | `keyboard_layout` |
+| `clock` (5) | `clock` |
+| `status` (1) | everything else (`volume`, `network`, `battery`, `tray`, `updates`, `system`, `notification_bell`, …) |
+| `separator` (0) | forced group break, **dropped from render** |
+
+Consequences when you edit `right = [...]`:
+
+- **`separator` in the right section no longer draws a 1px line.** It only
+  forces a cluster break; if you want a visible divider there, you won't get
+  one — the 14px gap is the delimiter. (Left/center sections still render the
+  1px `separator` divider as before.)
+- A cluster break also happens automatically when the *role* of consecutive
+  widgets changes (e.g. `project` → `workspace_mode` is already two clusters),
+  so you generally don't need `separator` in `right` at all.
+- Reordering widgets is safe: `move_widget` uses the config order index, which
+  is independent of which cluster a widget renders in.
+- The network ↓/↑ KB/s counters render in `theme.text.muted` (recolored from
+  `secondary` in T234) so they don't compete with the clock.
+
+Left section keeps its 12px gap; center keeps 8px. Only the right section is
+grouped this way.
+
 ## What this skill does NOT cover
 
 - Theme/color changes — separate config (`theme_config`), not this file.
