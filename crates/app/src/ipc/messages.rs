@@ -42,6 +42,15 @@ pub const TOGGLE_THEME_PAYLOAD: &str = "toggle-theme";
 pub const TOGGLE_EDIT_MODE_PAYLOAD: &str = "toggle-edit-mode";
 pub const TOGGLE_WORKSPACE_MODE_PAYLOAD: &str = "toggle-workspace-mode";
 const SET_WORKSPACE_MODE_PREFIX: &str = "set-workspace-mode:";
+/// T230 task B: switch the right panel to a tab by id (e.g. `terminal`).
+/// `PanelTab::parse_id` normalizes case/hyphens, so `select-tab:system` and
+/// `select-tab:System` are the same command.
+pub const SELECT_TAB_PREFIX: &str = "select-tab:";
+/// T226 tooling: point the right panel's Preview (Editor) tab at a file
+/// path — same `PreviewTarget` global a Files click sets.
+pub const PREVIEW_TARGET_PREFIX: &str = "preview-target:";
+/// T226 tooling: open the left agent panel docked and focus the composer.
+pub const EXPAND_LEFT_PAYLOAD: &str = "expand-left";
 
 // Same contract as `encode_toggle_launcher` above — external keybind
 // daemons trigger the right agent panel (pinned-only, no hover-peek).
@@ -95,6 +104,51 @@ pub fn classify_set_workspace_mode(
 ) -> Option<crate::workspace_mode::WorkspaceMode> {
     let rest = payload.trim().strip_prefix(SET_WORKSPACE_MODE_PREFIX)?;
     crate::workspace_mode::WorkspaceMode::parse(rest)
+}
+
+/// Encode a `select-tab:<id>` payload for an out-of-tree client.
+#[allow(dead_code)]
+pub fn encode_select_tab(tab: crate::side_panel_right::tabs::PanelTab) -> String {
+    format!("{SELECT_TAB_PREFIX}{}", tab.id())
+}
+
+/// Parse `select-tab:<alias>` into a panel tab. Unknown alias → `None`
+/// (command ignored — matches how an unknown widget name is dropped).
+pub fn classify_select_tab(
+    payload: &str,
+) -> Option<crate::side_panel_right::tabs::PanelTab> {
+    let rest = payload.trim().strip_prefix(SELECT_TAB_PREFIX)?;
+    crate::side_panel_right::tabs::PanelTab::parse_id(rest)
+}
+
+/// Encode a `preview-target:<abs-path>` payload for an out-of-tree client.
+#[allow(dead_code)]
+pub fn encode_preview_target(path: &std::path::Path) -> String {
+    format!("{PREVIEW_TARGET_PREFIX}{}", path.display())
+}
+
+/// Parse `preview-target:<abs-path>` into an absolute path.
+pub fn parse_preview_target(payload: &str) -> Option<std::path::PathBuf> {
+    let trimmed = payload.trim();
+    let rest = trimmed.strip_prefix(PREVIEW_TARGET_PREFIX)?;
+    if rest.is_empty() {
+        return None;
+    }
+    let path = std::path::PathBuf::from(rest);
+    if path.is_absolute() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+pub fn is_expand_left(payload: &str) -> bool {
+    payload.trim() == EXPAND_LEFT_PAYLOAD
+}
+
+#[allow(dead_code)]
+pub fn encode_expand_left() -> String {
+    EXPAND_LEFT_PAYLOAD.to_string()
 }
 
 pub fn is_wallpaper_next(payload: &str) -> bool {
@@ -344,5 +398,47 @@ mod tests {
         assert_eq!(classify_set_workspace_mode("set-workspace-mode:nonsense"), None);
         assert_eq!(classify_set_workspace_mode("set-workspace-mode:"), None);
         assert_eq!(classify_set_workspace_mode("toggle-workspace-mode"), None);
+    }
+
+    #[test]
+    fn classifies_select_tab() {
+        use crate::side_panel_right::tabs::PanelTab;
+        assert_eq!(
+            classify_select_tab(&encode_select_tab(PanelTab::Terminal)),
+            Some(PanelTab::Terminal)
+        );
+        assert_eq!(classify_select_tab("select-tab:system"), Some(PanelTab::System));
+        assert_eq!(
+            classify_select_tab("select-tab:Terminal"),
+            Some(PanelTab::Terminal)
+        );
+        assert_eq!(classify_select_tab("select-tab:preview"), Some(PanelTab::Preview));
+    }
+
+    #[test]
+    fn select_tab_unknown_alias_is_none() {
+        assert_eq!(classify_select_tab("select-tab:nonsense"), None);
+        assert_eq!(classify_select_tab("select-tab:"), None);
+        assert_eq!(classify_select_tab("toggle-side-panel-right"), None);
+    }
+
+    #[test]
+    fn parse_preview_target_extracts_absolute_path() {
+        let parsed = parse_preview_target("preview-target:/home/user/foo.md");
+        assert_eq!(parsed, Some(std::path::PathBuf::from("/home/user/foo.md")));
+    }
+
+    #[test]
+    fn parse_preview_target_rejects_empty_and_relative() {
+        assert!(parse_preview_target("preview-target:").is_none());
+        assert!(parse_preview_target("preview-target:relative/foo.md").is_none());
+        assert!(parse_preview_target("  preview-target:/x\n").is_some());
+    }
+
+    #[test]
+    fn encodes_and_recognizes_expand_left() {
+        let payload = encode_expand_left();
+        assert!(is_expand_left(&payload));
+        assert!(!is_expand_left("toggle-side-panel-left"));
     }
 }

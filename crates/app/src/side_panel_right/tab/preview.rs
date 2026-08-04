@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use chronos_ui::Theme;
 use gpui::{
-    AnyElement, Context, DragMoveEvent, Entity, FontWeight, IntoElement, MouseButton,
+    AnyElement, Context, DragMoveEvent, Entity, Focusable, FontWeight, IntoElement, MouseButton,
     MouseDownEvent, ObjectFit, ParentElement, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement, Styled, Subscription, Window, div, img, prelude::*, px,
 };
@@ -616,6 +616,17 @@ impl PreviewTab {
         }
         self.drawer_open = !self.drawer_open;
         cx.notify();
+    }
+
+    /// T226 tooling: focus handle of the editor `InputState`, when it
+    /// exists. Returns `None` before the first Edit-mode render creates
+    /// the editor entity. The caller (IPC `select_tab` →
+    /// `active_tab_focus`) defers focus by 50 ms so the editor has one
+    /// frame to materialise after a tab switch.
+    pub(crate) fn editor_focus_handle(&self, cx: &gpui::App) -> Option<gpui::FocusHandle> {
+        self.editor
+            .as_ref()
+            .map(|editor| editor.read(cx).focus_handle(cx))
     }
 
     fn start_drawer_resize(&mut self, start_y: f32, cx: &mut Context<Self>) {

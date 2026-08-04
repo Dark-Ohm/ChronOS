@@ -1248,6 +1248,28 @@ pub fn toggle(cx: &mut App) {
     }
 }
 
+/// T226 tooling: open the left agent panel pinned, dock the chat column
+/// (full panel width, not overlay) and focus the composer so typed input
+/// lands in the message box. `App` context — IPC handler has no `Window`,
+/// so it reaches the window through the tracked handle.
+pub fn expand_with_composer(cx: &mut App) {
+    open_pinned(cx);
+    let Some(handle) = cx.global::<SidePanelLeftState_>().handle.clone() else {
+        tracing::warn!("side_panel_left: expand_with_composer has no window");
+        return;
+    };
+    if let Err(e) = handle.update(cx, |this, window, cx| {
+        this.state.dock_chat = true;
+        this.state.ensure_chat_width();
+        this.composer_focused = true;
+        window.focus(&this.composer_focus, cx);
+        this.start_blink(cx);
+        cx.notify();
+    }) {
+        tracing::warn!("side_panel_left: expand_with_composer update failed: {e}");
+    }
+}
+
 pub fn init(cx: &mut App) {
     cx.set_global(SidePanelLeftState_::default());
     // Defer the strip one tick so `cx.displays()` / pult uuid match what

@@ -444,6 +444,23 @@ impl SidePanelRightView {
             .or_insert_with(|| TabContent::create(tab, cx))
             .clone()
     }
+
+    /// T226 tooling: focus handle of the currently active tab, when that tab
+    /// is keyboard-focusable. Synthetic mouse clicks do not focus GPUI
+    /// layer-shell windows, so `select_tab` re-focuses the window itself to
+    /// let external input (wtype/ydotool) reach the newly active tab.
+    pub(crate) fn active_tab_focus(&self, cx: &gpui::App) -> Option<gpui::FocusHandle> {
+        match self.tab_views.get(&self.active_tab)? {
+            TabContent::Terminal(entity) => Some(
+                <crate::side_panel_right::tab::terminal::TerminalTab as gpui::Focusable>::focus_handle(
+                    entity.read(cx),
+                    cx,
+                ),
+            ),
+            TabContent::Preview(entity) => entity.read(cx).editor_focus_handle(cx),
+            _ => None,
+        }
+    }
 }
 
 impl Render for SidePanelRightView {

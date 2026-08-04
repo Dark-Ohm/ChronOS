@@ -22,7 +22,7 @@ mod rail;
 mod spectrum_row;
 mod surfaces;
 pub mod tab;
-mod tabs;
+pub(crate) mod tabs;
 pub mod view;
 mod wallpaper_card;
 
@@ -33,6 +33,7 @@ use gpui::{
 };
 use gpui_component::Root;
 
+use crate::side_panel_right::tabs::PanelTab;
 use crate::side_panel_right::view::SidePanelRightView;
 
 // Width constants — mirror left panel's SIDEBAR_COLLAPSED_WIDTH / HANDLE_WIDTH pattern.
@@ -64,6 +65,11 @@ pub(crate) fn panel_edge_gap() -> f32 {
 
 pub struct SidePanelRightState {
     handle: Option<WindowHandle<Root>>,
+    /// T230: weak handle to the live `SidePanelRightView`, so `select_tab` /
+    /// `preview_target` IPC (App context, no window) can reach the view and
+    /// call `on_tab_select`. Filled at open time, dropped by the window when
+    /// the view dies — `None`/dead ⇒ panel is closed.
+    view: Option<gpui::WeakEntity<SidePanelRightView>>,
     /// `true` when opened by hotkey/bar-click (`toggle` / `open_pinned`) —
     /// stays open until re-toggled. `false` when opened by hover — closes
     /// on mouse-leave debounce unless a pin request arrives while peeked.
@@ -91,6 +97,7 @@ impl Default for SidePanelRightState {
     fn default() -> Self {
         Self {
             handle: None,
+            view: None,
             pinned: false,
             peek_generation: 0,
             width: RAIL_ONLY_WIDTH,
@@ -218,8 +225,10 @@ fn open_window(cx: &mut App, pinned: bool) {
     if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL").is_none() {
         cx.global_mut::<SidePanelRightState>().width = RAIL_ONLY_WIDTH;
     }
+    let mut opened_view: Option<gpui::WeakEntity<SidePanelRightView>> = None;
     match cx.open_window(window_options(display_id, cx), |window, view_cx| {
         let view = view_cx.new(|cx| SidePanelRightView::new(cx));
+        opened_view = Some(view.downgrade());
         // Wrap the panel view in gpui_component::Root.
         //
         // Component widgets such as Input expect the window root to be a component Root;
@@ -240,6 +249,7 @@ fn open_window(cx: &mut App, pinned: bool) {
         Ok(handle) => {
             let state = cx.global_mut::<SidePanelRightState>();
             state.handle = Some(handle);
+            state.view = opened_view;
             state.pinned = pinned;
 
             tracing::info!(
@@ -283,6 +293,7 @@ pub fn close_peek_if_not_pinned(cx: &mut App) {
 pub fn close(cx: &mut App) {
     if let Some(handle) = cx.global_mut::<SidePanelRightState>().handle.take() {
         let state = cx.global_mut::<SidePanelRightState>();
+        state.view = None;
         state.pinned = false;
         state.resizing = false;
         // Clear exclusive zone before destroying the surface so the
@@ -318,6 +329,7 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
     if tracked {
         let state = cx.global_mut::<SidePanelRightState>();
         state.handle.take();
+        state.view = None;
         state.pinned = false;
         state.resizing = false;
     }
@@ -333,6 +345,83 @@ pub fn toggle(cx: &mut App) {
     } else {
         open_pinned(cx);
     }
+}
+
+/// T230 task B: switch the right panel to `tab` from an `App` context
+/// (IPC handler — no `Window` in scope). Opens the panel pinned first if it
+/// is not already open, then calls `on_tab_select` on the live view.
+pub fn select_tab(tab: PanelTab, cx: &mut App) {
+    let view_live = cx
+        .global::<SidePanelRightState>()
+        .view
+        .as_ref()
+        .map(|w| w.upgrade().is_some())
+        .unwrap_or(false);
+    if !view_live {
+        open_pinned(cx);
+    }
+    let Some(view) = cx
+        .global::<SidePanelRightState>()
+        .view
+        .clone()
+        .and_then(|w| w.upgrade())
+    else {
+        tracing::warn!(tab = tab.id(), "side_panel_right: select_tab has no live view");
+        return;
+    };
+    view.update(cx, |view, cx| view.on_tab_select(tab, cx));
+    // T226 tooling: keyboard-focus the newly active tab. Synthetic mouse
+    // clicks don't focus GPUI layer-shell windows, so a programmatic tab
+    // switch would otherwise strand the window without keyboard input —
+    // external input (wtype/ydotool) targets the globally focused surface
+    // only. The focus handle is not registered in the window until the
+    // tab's first render, so the focus is deferred a frame after the tab
+    // switch; focusing synchronously would be a silent no-op.
+    if let Some(handle) = cx.global::<SidePanelRightState>().handle.clone() {
+        let focus_view = view.clone();
+        cx.spawn(async move |cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(50))
+                .await;
+            cx.update(|cx| {
+                let _ = handle.update(cx, |_, window, cx| {
+                    if let Some(focus) = focus_view.read(cx).active_tab_focus(cx) {
+                        window.focus(&focus, cx);
+                    }
+                });
+            })
+        })
+        .detach();
+    }
+}
+
+/// T226 tooling: point the Preview/Editor tab at `path`, exactly like a
+/// Files click would. Opens the panel pinned first so the live view exists
+/// to observe the `PreviewTarget` bump — that observer switches the tab to
+/// Preview (T194). `generation` is always advanced so a re-point at the same
+/// file still re-fires the observer.
+pub fn preview_target(path: std::path::PathBuf, cx: &mut App) {
+    use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
+
+    let view_live = cx
+        .global::<SidePanelRightState>()
+        .view
+        .as_ref()
+        .map(|w| w.upgrade().is_some())
+        .unwrap_or(false);
+    if !view_live {
+        open_pinned(cx);
+    }
+    if !cx.has_global::<PreviewTarget>() {
+        cx.set_global(PreviewTarget::default());
+    }
+    let generation = cx.global::<PreviewTarget>().generation.wrapping_add(1);
+    cx.set_global(PreviewTarget {
+        path: Some(path.clone()),
+        generation,
+        intent: PreviewIntent::Edit,
+    });
+    tracing::info!(?path, "side_panel_right: preview_target set");
 }
 
 pub fn init(cx: &mut App) {

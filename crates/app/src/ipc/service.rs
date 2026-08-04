@@ -6,10 +6,12 @@ use tokio::net::UnixListener as TokioUnixListener;
 use tokio::sync::mpsc;
 
 use super::messages::{
-    WallpaperIpcCmd, WorkspaceModeIpcCmd, classify_set_workspace_mode, classify_wallpaper,
-    encode_ping, is_ping, is_toggle_edit_mode, is_toggle_launcher, is_toggle_side_panel_left,
-    is_toggle_side_panel_right, is_toggle_theme, is_toggle_workspace_mode,
+    WallpaperIpcCmd, WorkspaceModeIpcCmd, classify_select_tab, classify_set_workspace_mode,
+    classify_wallpaper, encode_ping, is_expand_left, is_ping, is_toggle_edit_mode,
+    is_toggle_launcher, is_toggle_side_panel_left, is_toggle_side_panel_right, is_toggle_theme,
+    is_toggle_workspace_mode, parse_preview_target,
 };
+use crate::side_panel_right::tabs::PanelTab;
 
 pub type IpcReceiver = mpsc::UnboundedReceiver<()>;
 pub type IpcToggleReceiver = mpsc::UnboundedReceiver<()>;
@@ -19,6 +21,9 @@ pub type IpcSidePanelRightToggleReceiver = mpsc::UnboundedReceiver<()>;
 pub type IpcThemeToggleReceiver = mpsc::UnboundedReceiver<()>;
 pub type IpcEditModeToggleReceiver = mpsc::UnboundedReceiver<()>;
 pub type IpcWorkspaceModeReceiver = mpsc::UnboundedReceiver<WorkspaceModeIpcCmd>;
+pub type IpcSelectTabReceiver = mpsc::UnboundedReceiver<PanelTab>;
+pub type IpcPreviewTargetReceiver = mpsc::UnboundedReceiver<std::path::PathBuf>;
+pub type IpcExpandLeftReceiver = mpsc::UnboundedReceiver<()>;
 
 pub enum AcquireResult {
     Primary(IpcSubscriber),
@@ -65,6 +70,9 @@ impl IpcSubscriber {
         IpcThemeToggleReceiver,
         IpcEditModeToggleReceiver,
         IpcWorkspaceModeReceiver,
+        IpcSelectTabReceiver,
+        IpcPreviewTargetReceiver,
+        IpcExpandLeftReceiver,
     ) {
         let (ping_sender, ping_receiver) = mpsc::unbounded_channel();
         let (toggle_sender, toggle_receiver) = mpsc::unbounded_channel();
@@ -75,6 +83,9 @@ impl IpcSubscriber {
         let (theme_toggle_sender, theme_toggle_receiver) = mpsc::unbounded_channel();
         let (edit_mode_toggle_sender, edit_mode_toggle_receiver) = mpsc::unbounded_channel();
         let (workspace_mode_sender, workspace_mode_receiver) = mpsc::unbounded_channel();
+        let (select_tab_sender, select_tab_receiver) = mpsc::unbounded_channel();
+        let (preview_target_sender, preview_target_receiver) = mpsc::unbounded_channel();
+        let (expand_left_sender, expand_left_receiver) = mpsc::unbounded_channel();
 
         if let Some(std_listener) = self.listener.take() {
             // `from_std` requires a running tokio reactor, which is active here.
@@ -91,6 +102,9 @@ impl IpcSubscriber {
                             theme_toggle_sender,
                             edit_mode_toggle_sender,
                             workspace_mode_sender,
+                            select_tab_sender,
+                            preview_target_sender,
+                            expand_left_sender,
                         )
                         .await;
                     });
@@ -108,6 +122,9 @@ impl IpcSubscriber {
             theme_toggle_receiver,
             edit_mode_toggle_receiver,
             workspace_mode_receiver,
+            select_tab_receiver,
+            preview_target_receiver,
+            expand_left_receiver,
         )
     }
 }
@@ -187,6 +204,9 @@ async fn accept_loop(
     theme_toggle_sender: mpsc::UnboundedSender<()>,
     edit_mode_toggle_sender: mpsc::UnboundedSender<()>,
     workspace_mode_sender: mpsc::UnboundedSender<WorkspaceModeIpcCmd>,
+    select_tab_sender: mpsc::UnboundedSender<PanelTab>,
+    preview_target_sender: mpsc::UnboundedSender<std::path::PathBuf>,
+    expand_left_sender: mpsc::UnboundedSender<()>,
 ) {
     use tokio::io::AsyncReadExt;
 
@@ -201,6 +221,9 @@ async fn accept_loop(
                 let theme_toggle_sender = theme_toggle_sender.clone();
                 let edit_mode_toggle_sender = edit_mode_toggle_sender.clone();
                 let workspace_mode_sender = workspace_mode_sender.clone();
+                let select_tab_sender = select_tab_sender.clone();
+                let preview_target_sender = preview_target_sender.clone();
+                let expand_left_sender = expand_left_sender.clone();
                 tokio::spawn(async move {
                     let mut buffer = Vec::with_capacity(64);
                     let read = tokio::time::timeout(
@@ -238,6 +261,15 @@ async fn accept_loop(
                         } else if let Some(mode) = classify_set_workspace_mode(&payload) {
                             let _ = workspace_mode_sender.send(WorkspaceModeIpcCmd::Set(mode));
                             tracing::info!(mode = mode.label(), "IPC set-workspace-mode received");
+                        } else if let Some(tab) = classify_select_tab(&payload) {
+                            let _ = select_tab_sender.send(tab);
+                            tracing::info!(tab = tab.id(), "IPC select-tab received");
+                        } else if let Some(path) = parse_preview_target(&payload) {
+                            let _ = preview_target_sender.send(path);
+                            tracing::info!("IPC preview-target received");
+                        } else if is_expand_left(&payload) {
+                            let _ = expand_left_sender.send(());
+                            tracing::info!("IPC expand-left received");
                         } else if let Some(cmd) = classify_wallpaper(&payload) {
                             let _ = wallpaper_sender.send(cmd);
                             tracing::info!("IPC wallpaper command received");

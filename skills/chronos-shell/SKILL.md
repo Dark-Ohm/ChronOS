@@ -473,6 +473,29 @@ bus truth): filter unidentifiable items → dedupe by bus owner → cap at
   disappears when the offending app restarts). Say "covered by unit test
   only, live unconfirmed" — do not upgrade a half-proof to a full one.
 
+## IPC: программное управление панелями (2026-08-04, T226/T230)
+
+Три новых IPC-команды для автоматизации live-smoke без мыши:
+
+| Команда | Принимающая функция | Что делает |
+|---------|-------------------|------------|
+| `expand-left` | `side_panel_left::expand_with_composer(cx)` | Открывает левую панель, докает чат, фокусирует композер |
+| `select-tab:<id>` | `side_panel_right::select_tab(tab, cx)` | Переключает правую панель на вкладку, деферит фокус 50ms |
+| `preview-target:<path>` | `side_panel_right::preview_target(path, cx)` | Устанавливает `PreviewTarget` global, `PreviewIntent::Edit` |
+
+**Паттерн добавления новой IPC-команды** (ровно по `toggle-launcher`):
+1. `messages.rs`: константа префикса/пейлоада + `classify_*`/`is_*`/`encode_*` + тесты
+2. `service.rs`: `mpsc::unbounded_channel` + новый тип ресивера + поле в `IpcSubscriber::start_listener` + `accept_loop`
+3. `ipc/mod.rs`: `tokio::select!` arm с дебаунс-таймером + вызов целевой функции (только `&mut App`, без `Window`)
+
+**Дебаунс:** 100ms для `select-tab` (быстрые переключения), 200ms для `expand-left` (дорогой compose-фокус).
+
+**Фокус клавиатуры через IPC:** layer-shell окна GPUI не получают фокус от синтетических кликов (`ydotool`/`wtype`). Для каждого таба, который должен принимать клавиатурный ввод, нужен `FocusHandle`:
+- `TerminalTab` → `Focusable::focus_handle()` (терминал сам реализует `Focusable`)
+- `PreviewTab` → `editor_focus_handle()` → `InputState::focus_handle()` (editor создаётся лениво в Edit mode)
+- `select_tab()` деферит фокус на 50ms через `cx.spawn` + `background_executor().timer()` — этого достаточно для первого рендера и материализации editor'а
+- `preview_target()` использует `PreviewIntent::Edit` чтобы файл открылся сразу в Edit mode (view-only не создаёт `InputState`)
+
 ## Related skills
 
 | Need | Skill |

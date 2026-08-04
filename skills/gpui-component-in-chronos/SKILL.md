@@ -97,6 +97,29 @@ gpui_web = { path = "../Source/gpui_web" }
 | `Input` с гейтами T156 (29.07) | **+1 822 848 байт = +1.74 MiB** |
 | база ChronOS на 29.07 | 22 520 192 байта |
 
+## Фокус InputState через IPC (2026-08-04, T226)
+
+`InputState` (из `gpui_component::input`) реализует `gpui::Focusable` —
+`focus_handle(&self, cx: &App) -> FocusHandle`. Но:
+
+1. **`InputState` создаётся лениво при первом рендере в Edit mode.**
+   View mode (read-only) не создаёт editor вовсе — `active_tab_focus()`
+   вернёт `None`.
+2. **Чтобы файл открылся в Edit mode через IPC**, `preview_target()`
+   должен ставить `PreviewIntent::Edit` (не `View`). Для нередактируемых
+   файлов `resolve_view_mode` принудительно возвращает `View` — безопасно.
+3. **Фокус надо деферить.** `select_tab()` вызывает `on_tab_select` →
+   `cx.notify()` → GPUI планирует render → editor материализуется →
+   через 50ms `active_tab_focus()` возвращает валидный хендл.
+   Синхронный вызов сразу после `on_tab_select` — всегда `None`.
+
+Паттерн в `PreviewTab`:
+```rust
+pub(crate) fn editor_focus_handle(&self, cx: &gpui::App) -> Option<gpui::FocusHandle> {
+    self.editor.as_ref().map(|editor| editor.read(cx).focus_handle(cx))
+}
+```
+
 ## Ловушки, оплаченные кровью
 
 1. **Не делать компонент членом `[workspace]`** — ни нашего, ни
