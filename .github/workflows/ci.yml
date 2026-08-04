@@ -27,6 +27,20 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all --check
 
+  skill-proofs:
+    # Every `file:line` proof reference in the skill vault (SKILL.md,
+    # references/, *.eval.md) must resolve to a real file:line — stale proof
+    # links are treated as defects. Run early: cheap and independent of the
+    # Rust toolchain. Fork-only references (gpui fork, gpui-component
+    # worktree) are not present on CI and degrade to informational EXT there;
+    # repo-local proofs (crates/, docs/, reference/, skills/) are strict.
+    name: skill proof links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate skill proof references
+        run: bash skills/check-proofs.sh
+
   build-test:
     name: clippy + test
     runs-on: ubuntu-latest

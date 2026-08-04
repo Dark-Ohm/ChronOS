@@ -74,7 +74,7 @@ report before any port.
 | `ElementInputHandler`, `EntityInputHandler`, IME methods | `input.rs:100-117`; `platform.rs:1366,1494,1577` |
 | `read/write_from_clipboard` | `app.rs:1334,1349`; `platform.rs:259-260` |
 | `WrappedLine` + `wrap_boundaries()` | `text_system/line.rs:257`; `text_system/line_layout.rs:280` |
-| `unicode-segmentation` | `Cargo.toml:122` (`unicode-segmentation = "1.10"`), `gpui/Cargo.toml:155` |
+| `unicode-segmentation` | `Source/Cargo.toml:126` (`unicode-segmentation = "1.10"`), `gpui/Cargo.toml:155` |
 | `with_element_state` / `current_view` | `window.rs:3562` / `window.rs:4394` |
 | `paint_svg` (inline bytes) | `window.rs:4102` |
 

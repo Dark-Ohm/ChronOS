@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Pre-commit hook — fail the commit on broken skill proof references.
+#
+# Runs skills/check-proofs.sh against the staged skill vault files only
+# (SKILL.md, *.eval.md, references/*.md), so the check stays fast. The hook
+# checks the working-tree content of the staged files — the common case, and
+# the same content that would be committed moments later.
+#
+# Activate (per-clone, one time):
+#   git config core.hooksPath scripts/git-hooks
+# Deactivate:
+#   git config --unset core.hooksPath
+#
+# CI runs the same check over the whole vault (see .github/workflows/ci.yml,
+# job `skill-proofs`) — this hook is the fast local feedback loop.
+
+set -u
+
+REPO="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+cd "$REPO" || exit 1
+
+# Staged skill-vault files only; drop deleted ones (D).
+mapfile -t STAGED < <(
+  git diff --cached --name-only --diff-filter=ACM |
+    grep -E '^skills/.*(SKILL\.md|\.eval\.md|/references/)' || true
+)
+
+if [ "${#STAGED[@]}" -eq 0 ]; then
+  exit 0
+fi
+
+echo "check-proofs: ${#STAGED[@]} staged skill file(s) — validating proof links"
+if ! bash "$REPO/skills/check-proofs.sh" "${STAGED[@]}"; then
+  echo "✗ Broken proof reference(s) staged. Fix the stale file:line links before committing."
+  echo "  (or, if the target lives in an out-of-tree repo, extend the EXTERNAL allowlist in skills/check-proofs.sh)"
+  exit 1
+fi
+exit 0

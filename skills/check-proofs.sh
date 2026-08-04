@@ -36,8 +36,10 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "$SCRIPT_DIR/..")"
-SRC="$(dirname "$REPO")/Source"
-[ -d "$SRC" ] || SRC="$REPO/../Source"
+# The gpui fork is a *sibling* worktree on dev machines. CI has no fork, so
+# `CHECK_PROOFS_SRC` lets a job point elsewhere (or at nothing). When the fork
+# is absent, fork-only references degrade to EXT (informational) below.
+SRC="${CHECK_PROOFS_SRC:-$(dirname "$REPO")/Source}"
 
 if [ "$#" -gt 0 ]; then
   FILES=("$@")
@@ -55,6 +57,17 @@ python3 - "$SRC" "$REPO" "${FILES[@]}" <<'PYEOF'
 import re, os, sys
 
 SRC, REPO, FILES = sys.argv[1], sys.argv[2], sys.argv[3:]
+
+# When SRC is missing (CI), references that can only resolve against the fork
+# degrade to EXT(fork-missing) instead of failing — repo-local proofs stay
+# strict. A "fork-style" ref is any ref that is NOT repo-local (repo-local =
+# explicit `crates/…`/`docs/…`/`packaging/…`/`scripts/…`/`skills/…`/`reference/…`
+# or a short ref that resolves against one of those roots).
+FORK_MISSING = not os.path.isdir(SRC)
+REPO_PREFIX_RE = re.compile(r'^(crates|docs|packaging|scripts|skills|reference)/')
+
+def is_fork_style(ref):
+    return not REPO_PREFIX_RE.match(ref)
 
 # Short-ref prefixes, fork-first. `crates/…`-style prefixes come last because
 # full-path refs are handled by their own branch below.
@@ -132,6 +145,10 @@ for f in FILES:
             if found is None:
                 if is_external(ref):
                     print(f'EXT   {os.path.relpath(f, REPO)}:{ln}: {ref}')
+                    ext += 1
+                    continue
+                if FORK_MISSING and is_fork_style(ref):
+                    print(f'EXT(fork-missing) {os.path.relpath(f, REPO)}:{ln}: {ref}')
                     ext += 1
                     continue
                 print(f'MISS-FILE {os.path.relpath(f, REPO)}:{ln}: {ref}')
