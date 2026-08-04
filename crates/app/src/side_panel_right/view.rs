@@ -509,8 +509,34 @@ impl Render for SidePanelRightView {
             self.last_exclusive_zone = Some(new_zone);
         }
 
-        // Resize window if panel width changed (tab open / dock / drag).
-        if self.last_resized_width != panel_width {
+        // T243 trace: record the width-sync inputs on EVERY render so a live
+        // repro (toggle/select-tab ×10) can be read frame-by-frame. Key
+        // questions the log must answer: does `window.resize()` fire at all,
+        // and does `actual_width` ever converge to `panel_width` (compositor
+        // ack) or stay at the rail width (async resize never committing).
+        let actual_width_pre = window.bounds().size.width.as_f32();
+        tracing::debug!(
+            last_resized_width = self.last_resized_width,
+            panel_width,
+            actual_width = actual_width_pre,
+            dock_content,
+            "T243 render: width sync check"
+        );
+
+        // Resize window if the compositor's ACTUAL width hasn't caught up to
+        // the target (`panel_width`). T243: `window.resize()` is async on
+        // Wayland — the old guard compared `last_resized_width` (a state
+        // copy) against `panel_width` (also state), so a configure that
+        // never landed left last==target while the surface sat at rail
+        // width: the guard read "already resized" and never retried (the
+        // w=40 stick, caught live in the T243 trace: last=320 panel=320
+        // actual=40 for seconds). Gating on `window.bounds()` (live
+        // geometry) re-issues the resize on every render until the
+        // compositor acks — self-healing, same principle as `update_resize`
+        // (T216: "state runs ahead of the compositor between configure
+        // acks"). Once acked, actual==target and the re-issue stops.
+        let actual_width = window.bounds().size.width.as_f32();
+        if needs_width_resize(actual_width, panel_width) {
             let display_h = crate::monitor::pult_display_info(cx)
                 .map(|d| f32::from(d.bounds().size.height))
                 .or_else(|| window.display(cx).map(|d| f32::from(d.bounds().size.height)))
@@ -525,12 +551,31 @@ impl Render for SidePanelRightView {
             tracing::debug!(
                 panel_width,
                 panel_h,
-                "side_panel_right: window.resize after width change"
+                actual_width,
+                "T243 render: window.resize after width change"
             );
         }
 
-        // Content open when dock is ON OR user dragged past rail+handle threshold
-        let content_open = dock_content || panel_width > rail_only_width + 1.0;
+        // Content open when dock is ON OR the panel is past rail+handle
+        // threshold. Gated on the ACTUAL window width (`window.bounds()`),
+        // not `panel_width` (the target state) — `window.resize()` is
+        // async on Wayland (T216, see `update_resize` above: "state runs
+        // ahead of the compositor between configure acks"). Gating on the
+        // target let the content column vanish/appear a frame or two
+        // before the compositor actually committed the new width: the
+        // rail visibly reflowed inside a still-stale-sized window (the
+        // "wobble" on close), and the old content's hit-test region
+        // could still catch a click meant for the rail during that gap.
+        let actual_width = window.bounds().size.width.as_f32();
+        let content_open = dock_content || actual_width > rail_only_width + 1.0;
+        // T243 trace: content_open transition (wobble symptom on close).
+        tracing::debug!(
+            content_open,
+            actual_width,
+            panel_width,
+            dock_content,
+            "T243 render: content_open computed from live bounds"
+        );
 
         // T217 — top-corner radius where the panel meets the bar. Each corner
         // is decided independently: one the bar sits above stays square (the
@@ -660,7 +705,7 @@ impl Render for SidePanelRightView {
                                 None => col,
                             };
                             // --- Tab content ---
-                            match tab_entry {
+                            let content_el = match tab_entry {
                                 TabContent::System(entity) => {
                                     col.child(entity.clone())
                                         // Footer: power + net summary (stays on
@@ -706,7 +751,21 @@ impl Render for SidePanelRightView {
                                 TabContent::Placeholder(entity) => {
                                     col.child(entity.clone())
                                 }
-                            }
+                            };
+                            // Enter animation belongs to the content column
+                            // alone — it must NOT wrap the rail (rail is a
+                            // permanent sibling, not something that enters).
+                            // Previously `.with_animation` sat on the outer
+                            // `side-panel-body` div below, which included the
+                            // rail as a child; every content_open toggle (e.g.
+                            // closing a tab) replayed the EaseOutBack
+                            // slide-and-overshoot on the rail too, reading as
+                            // an unwanted "wobbly stretch" on close.
+                            content_el.with_animation(
+                                "side-panel-content-enter",
+                                motion::enter_animation(),
+                                motion::apply_enter_from_right,
+                            )
                         })
                     })
                     .child({
@@ -763,12 +822,7 @@ impl Render for SidePanelRightView {
                             editing,
                             on_move,
                         )
-                    })
-                    .with_animation(
-                        "side-panel-body-enter",
-                        motion::enter_animation(),
-                        motion::apply_enter_from_right,
-                    ),
+                    }),
             )
     }
 }
@@ -838,7 +892,10 @@ mod tests {
         });
 
         cx.update(|cx| {
-            assert_eq!(cx.global::<SidePanelRightState>().width, 400.);
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                PanelTab::System.preferred_content_width()
+            );
         });
         cx.update_entity(&view, |this, _cx| {
             assert_eq!(this.active_tab, PanelTab::System);
@@ -902,6 +959,23 @@ mod tests {
     // Bonus: visiting `panels_config::move_tab` directly from the test side
     // confirms the helper is independently callable, not just accidentally
     // correct via its single caller in `view.rs`.
+
+    #[test]
+    fn width_resize_guard_retries_until_compositor_acks() {
+        // T243: the old guard compared state-to-state (last_resized_width vs
+        // panel_width) and never retried a lost async configure. The new guard
+        // compares live geometry: it re-issues while actual != target and
+        // stops once acked.
+        // Stuck state caught live: last=320 panel=320 actual=40 — must retry.
+        assert!(needs_width_resize(40.0, 320.0));
+        // Acked: actual caught up — stop.
+        assert!(!needs_width_resize(320.0, 320.0));
+        // Sub-pixel drift — don't thrash set_size.
+        assert!(!needs_width_resize(320.4, 320.0));
+        // Shrink direction (close): window still wide, target rail — retry.
+        assert!(needs_width_resize(320.0, 40.0));
+        assert!(!needs_width_resize(40.0, 40.0));
+    }
 
     #[gpui::test]
     async fn move_tab_helper_persists_reorder_and_updates_cache(cx: &mut TestAppContext) {
@@ -1184,6 +1258,15 @@ mod tests {
             );
         });
     }
+}
+
+/// T243: pure decision for the render resize guard — re-issue `window.resize`
+/// while the compositor's actual width has not caught up to the target
+/// (`panel_width`). Comparing state-to-state (`last_resized_width` vs
+/// `panel_width`) let a lost async configure stick the surface at rail width
+/// forever; comparing live geometry makes the guard self-healing.
+pub(crate) fn needs_width_resize(actual: f32, target: f32) -> bool {
+    (actual - target).abs() > 1.0
 }
 
 #[allow(dead_code)]
