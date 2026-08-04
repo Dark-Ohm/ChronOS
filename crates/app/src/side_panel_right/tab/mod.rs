@@ -16,6 +16,7 @@ pub(crate) mod library;
 pub(crate) mod preview;
 pub(crate) mod system;
 pub(crate) mod terminal;
+pub(crate) mod ui;
 
 use gpui::{FontWeight, IntoElement, Render, Window, Context, div, prelude::*, px, svg};
 

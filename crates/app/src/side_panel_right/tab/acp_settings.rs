@@ -9,13 +9,14 @@
 //! directly with an external editor — pragmatic MVP.
 
 use gpui::{
-    Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    Render, ScrollHandle, SharedString, Styled, Window, div, prelude::*, px,
+    AnyElement, Context, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
+    ScrollHandle, SharedString, Styled, Window, div, prelude::*, px,
 };
 
 use chronos_services::hermes_acp::registry::known_agents;
 use chronos_ui::Theme;
 use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
+use super::ui;
 
 // ---------------------------------------------------------------------------
 // Agent display wrapper
@@ -79,8 +80,9 @@ impl AcpSettingsTab {
 }
 
 impl Render for AcpSettingsTab {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *Theme::global(cx);
+        let is_wide = ui::is_wide(window);
 
         let open_file = cx.listener(move |this, _ev, _w, cx| {
             cx.set_global(PreviewTarget {
@@ -113,64 +115,266 @@ impl Render for AcpSettingsTab {
         let agents_snapshot = self.agents.clone();
         let error_snapshot = self.error.clone();
 
-        div().id("acp-settings-tab").size_full().flex().flex_col()
-            .child(div().w_full().px(px(14.)).py(px(12.)).border_b_1().border_color(theme.border.default).flex().flex_col().gap(px(2.))
-                .child(div().text_color(theme.text.primary).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).child("ACP agents"))
-                .child(div().text_color(theme.text.muted).text_xs().font_family(theme.font_mono).child(format!("{} agent(s) · agents.toml", agents_snapshot.len()))))
+        // T231-pattern header: semibold title + mono subtitle.
+        let header = div()
+            .id("acp-settings-header")
+            .w_full()
+            .px(px(14.))
+            .py(px(12.))
+            .border_b_1()
+            .border_color(theme.border.default)
+            .flex()
+            .flex_col()
+            .gap(px(2.))
             .child(
-                div().id("acp-settings-scroll").flex_1().min_h(px(0.)).overflow_y_scroll().track_scroll(&self.scroll).flex().flex_col().gap(px(14.)).p(px(14.))
-                    .child(div().w_full().flex_col().gap(px(2.))
-                        .child(div().text_color(theme.text.primary).text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Configured agents"))
-                        .child(div().text_color(theme.text.muted).text_xs().child("ACP-compatible backends. View agents.toml, then edit it externally to add or remove.")))
-                    .child({
-                        let mut rows: Vec<gpui::AnyElement> = Vec::new();
-                        if agents_snapshot.is_empty() {
-                            rows.push(div().w_full().px(px(12.)).py(px(9.)).rounded_md().border_1().border_color(theme.border.subtle).text_color(theme.text.muted).text_xs().child("No agents configured. Click Open agents.toml below.").into_any_element());
-                        }
-                        for a in &agents_snapshot {
-                            rows.push(
-                                div().id(SharedString::from(format!("agent-{}", a.id)))
-                                    .w_full().flex_col().px(px(12.)).py(px(9.)).rounded_md()
-                                    .border_1().border_color(theme.border.subtle).gap(px(6.))
-                                    .child(div().w_full().flex().justify_between().items_center()
-                                        .child(div().flex().items_center().gap(px(8.))
-                                            .child(div().text_color(theme.text.primary).text_size(px(12.)).font_weight(FontWeight::MEDIUM).child(a.display_name.clone()))
-                                            .when(a.builtin, |d| d.child(div().px(px(5.)).py(px(1.)).rounded(px(3.)).text_xs().text_color(theme.accent.primary).bg(theme.accent.primary.opacity(0.12)).child("built-in"))))
-                                        .child(div().text_color(theme.text.muted).text_xs().font_family(theme.font_mono).child(a.id.clone())))
-                                    .child(div().text_color(theme.text.muted).text_xs().font_family(theme.font_mono).child(format!("{} {}", a.command, a.args.join(" "))))
-                                    .into_any_element(),
-                            );
-                        }
-                        div().w_full().flex_col().gap(px(4.)).children(rows)
-                    })
-                    .child(div().w_full().flex_col().gap(px(2.))
-                        .child(div().text_color(theme.text.primary).text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Actions"))
-                        .child(div().text_color(theme.text.muted).text_xs().child("View agents.toml (edit it externally), then Reload.")))
-                    .child(div().w_full().flex().items_center().gap(px(8.))
-                        .child(div().id("acp-open-file").flex_1().min_w(px(0.)).flex().justify_between().items_center().gap(px(8.)).px(px(12.)).py(px(9.)).rounded_md().border_1().border_color(theme.border.subtle).cursor_pointer().hover(|s| s.bg(theme.interactive.hover))
-                            .child(div().flex_1().min_w(px(0.)).flex_col().gap(px(1.))
-                                .child(div().text_color(theme.text.primary).text_size(px(12.)).child("Open agents.toml"))
-                                .child(div().text_color(theme.text.muted).text_xs().font_family(theme.font_mono).whitespace_nowrap().overflow_hidden().text_ellipsis().child("~/.config/chronos/agents.toml")))
-                            .child(div().flex_none().text_color(theme.accent.primary).text_size(px(12.)).child("View"))
-                            .on_click(open_file))
-                        // Reload is `flex_none` so a long path in the sibling above can
-                        // never push it out of the 320px settings-width viewport (T212 —
-                        // S7 in the T209 live smoke read this as "missing"; it was clipped,
-                        // not absent — `flex_1` without `min_w(0.)` let the text grow
-                        // unbounded instead of eliding).
-                        .child(div().id("acp-reload").flex_none().px(px(12.)).py(px(9.)).rounded_md().border_1().border_color(theme.border.subtle).cursor_pointer().text_color(theme.text.secondary).text_size(px(12.)).hover(|s| s.bg(theme.interactive.hover)).child("Reload").on_click(reload_h)))
-                    .when_some(error_snapshot, |d, e| {
-                        d.child(div().w_full().px(px(10.)).py(px(8.)).rounded_md().border_1().border_color(theme.status.error).text_color(theme.status.error).text_xs().child(e))
-                    })
-                    .child(div().w_full().flex_col().gap(px(2.))
-                        .child(div().text_color(theme.text.muted).text_xs().child("Example entry:"))
-                        .child(div().w_full().px(px(10.)).py(px(8.)).rounded_md().bg(theme.interactive.hover).text_color(theme.text.muted).text_xs().font_family(theme.font_mono).child("[[agents]]\nid = \"my-agent\"\ndisplay_name = \"My Agent\"\ncommand = \"/path/to/agent\"\nargs = [\"acp\"]")))
+                div()
+                    .text_color(theme.text.primary)
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child("ACP agents"),
+            )
+            .child(
+                div()
+                    .text_color(theme.text.muted)
+                    .text_xs()
+                    .font_family(theme.font_mono)
+                    .child(format!("{} agent(s) · agents.toml", agents_snapshot.len())),
+            );
+
+        // Content — inside the elevated card (T231 §5 pattern).
+        let mut card = ui::elevated_card(theme).id("acp-settings-card");
+
+        // ── Configured agents ───────────────────────────────────────────
+        card = card.child(ui::section_header(
+            theme,
+            "Configured agents",
+            "ACP-compatible backends · built-in + ~/.config/chronos/agents.toml",
+        ));
+        let mut rows: Vec<AnyElement> = Vec::new();
+        if agents_snapshot.is_empty() {
+            rows.push(
+                div()
+                    .w_full()
+                    .px(px(12.))
+                    .py(px(9.))
+                    .rounded_md()
+                    .border_1()
+                    .border_color(theme.border.subtle)
+                    .text_color(theme.text.muted)
+                    .text_xs()
+                    .child("No agents configured. Click Open agents.toml below.")
+                    .into_any_element(),
+            );
+        }
+        for a in &agents_snapshot {
+            rows.push(
+                div()
+                    .id(SharedString::from(format!("agent-{}", a.id)))
+                    .w_full()
+                    .flex_col()
+                    .px(px(12.))
+                    .py(px(9.))
+                    .rounded_md()
+                    .border_1()
+                    .border_color(theme.border.subtle)
+                    .gap(px(6.))
+                    .child(
+                        div()
+                            .w_full()
+                            .flex()
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.))
+                                    .child(
+                                        div()
+                                            .text_color(theme.text.primary)
+                                            .text_size(px(12.))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .child(a.display_name.clone()),
+                                    )
+                                    .when(a.builtin, |d| {
+                                        d.child(
+                                            div()
+                                                .px(px(5.))
+                                                .py(px(1.))
+                                                .rounded(px(3.))
+                                                .text_xs()
+                                                .text_color(theme.accent.primary)
+                                                .bg(theme.accent.primary.opacity(0.12))
+                                                .child("built-in"),
+                                        )
+                                    }),
+                            )
+                            .child(
+                                div()
+                                    .text_color(theme.text.muted)
+                                    .text_xs()
+                                    .font_family(theme.font_mono)
+                                    .child(a.id.clone()),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_color(theme.text.muted)
+                            .text_xs()
+                            .font_family(theme.font_mono)
+                            .child(format!("{} {}", a.command, a.args.join(" "))),
+                    )
+                    .into_any_element(),
+            );
+        }
+        card = card.child(
+            div()
+                .grid()
+                .w_full()
+                .gap(px(8.))
+                .when(is_wide && rows.len() > 1, |d| d.grid_cols(2))
+                .when(!is_wide || rows.len() <= 1, |d| d.grid_cols(1))
+                .children(rows),
+        );
+
+        // ── Actions ─────────────────────────────────────────────────────
+        card = card.child(ui::section_header(
+            theme,
+            "Actions",
+            "View agents.toml (edit it externally), then Reload",
+        ));
+        card = card.child(
+            div()
+                .w_full()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .id("acp-open-file")
+                        .flex_1()
+                        .min_w(px(0.))
+                        .flex()
+                        .justify_between()
+                        .items_center()
+                        .gap(px(8.))
+                        .px(px(12.))
+                        .py(px(9.))
+                        .rounded_md()
+                        .border_1()
+                        .border_color(theme.border.subtle)
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme.interactive.hover))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(0.))
+                                .flex_col()
+                                .gap(px(1.))
+                                .child(
+                                    div()
+                                        .text_color(theme.text.primary)
+                                        .text_size(px(12.))
+                                        .child("Open agents.toml"),
+                                )
+                                .child(
+                                    div()
+                                        .text_color(theme.text.muted)
+                                        .text_xs()
+                                        .font_family(theme.font_mono)
+                                        .whitespace_nowrap()
+                                        .overflow_hidden()
+                                        .text_ellipsis()
+                                        .child("~/.config/chronos/agents.toml"),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .flex_none()
+                                .text_color(theme.accent.primary)
+                                .text_size(px(12.))
+                                .child("View"),
+                        )
+                        .on_click(open_file),
+                )
+                // Reload is `flex_none` so a long path in the sibling above can
+                // never push it out of the 320px settings-width viewport (T212 —
+                // S7 in the T209 live smoke read this as "missing"; it was clipped,
+                // not absent — `flex_1` without `min_w(0.)` let the text grow
+                // unbounded instead of eliding).
+                .child(
+                    div()
+                        .id("acp-reload")
+                        .flex_none()
+                        .px(px(12.))
+                        .py(px(9.))
+                        .rounded_md()
+                        .border_1()
+                        .border_color(theme.border.subtle)
+                        .cursor_pointer()
+                        .text_color(theme.text.secondary)
+                        .text_size(px(12.))
+                        .hover(|s| s.bg(theme.interactive.hover))
+                        .child("Reload")
+                        .on_click(reload_h),
+                ),
+        );
+
+        // ── Error banner ────────────────────────────────────────────────
+        let card = card.when_some(error_snapshot, |d, e| {
+            d.child(
+                div()
+                    .w_full()
+                    .px(px(10.))
+                    .py(px(8.))
+                    .rounded_md()
+                    .border_1()
+                    .border_color(theme.status.error)
+                    .text_color(theme.status.error)
+                    .text_xs()
+                    .child(e),
+            )
+        });
+
+        // ── Example ─────────────────────────────────────────────────────
+        let card = card.child(
+            div()
+                .w_full()
+                .flex_col()
+                .gap(px(4.))
+                .child(div().text_color(theme.text.muted).text_xs().child("Example entry:"))
+                .child(
+                    div()
+                        .w_full()
+                        .px(px(10.))
+                        .py(px(8.))
+                        .rounded_md()
+                        .bg(theme.interactive.hover)
+                        .text_color(theme.text.muted)
+                        .text_xs()
+                        .font_family(theme.font_mono)
+                        .child(
+                            "[[agents]]\nid = \"my-agent\"\ndisplay_name = \"My Agent\"\ncommand = \"/path/to/agent\"\nargs = [\"acp\"]",
+                        ),
+                ),
+        );
+
+        div()
+            .id("acp-settings-tab")
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(header)
+            .child(
+                div()
+                    .id("acp-settings-scroll")
+                    .flex_1()
+                    .min_h(px(0.))
+                    .overflow_y_scroll()
+                    .track_scroll(&self.scroll)
+                    .p(px(14.))
+                    .child(card),
             )
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn placeholder() {}
-}

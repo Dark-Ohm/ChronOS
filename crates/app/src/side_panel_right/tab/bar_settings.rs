@@ -31,12 +31,9 @@ use crate::bar_settings::{
     config_path, read_current,
 };
 use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
+use super::ui::{is_wide, section_header, setting_label, setting_row};
 
 // ── Geometry ────────────────────────────────────────────────────────────────
-
-/// Panel width at which the appearance grid switches 2 columns → 1.
-/// Default docked width is `DEFAULT_CONTENT_WIDTH` (560) — stays 1 column.
-const GRID_BREAKPOINT: f32 = 720.0;
 
 /// Slider geometry — thicker than the old 4px line (T231 verdict: "низкая
 /// affordance"). Track 6px, thumb 16px with border + drop shadow.
@@ -139,8 +136,7 @@ impl Render for BarSettingsTab {
         let elev = theme.elevation_popup();
 
         // ── Responsive breakpoint (T231) ─────────────────────────────
-        let panel_w = window.bounds().size.width.as_f32();
-        let is_wide = panel_w >= GRID_BREAKPOINT;
+        let is_wide = is_wide(window);
 
         // ── Drag listeners (pattern: volume_popup, logic unchanged) ──
         let height_drag = cx.listener(
@@ -749,82 +745,6 @@ impl Render for BarSettingsTab {
 
 // ── Visual helpers ──────────────────────────────────────────────────────────
 
-/// Section header: accent tick + semibold title + muted mono subtitle.
-/// Distinct from setting labels (T231 §2 — visual hierarchy).
-fn section_header(theme: Theme, title: &str, subtitle: &str) -> AnyElement {
-    let title = SharedString::from(title);
-    let subtitle = SharedString::from(subtitle);
-    div()
-        .w_full()
-        .flex_col()
-        .gap(px(4.))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .child(
-                    div()
-                        .w(px(3.))
-                        .h(px(12.))
-                        .rounded(px(1.5))
-                        .bg(theme.accent.primary.opacity(0.85)),
-                )
-                .child(
-                    div()
-                        .text_color(theme.text.primary)
-                        .text_size(px(12.5))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(title),
-                ),
-        )
-        .child(
-            div()
-                .text_color(theme.text.muted)
-                .text_xs()
-                .font_family(theme.font_mono)
-                .child(subtitle),
-        )
-        .into_any_element()
-}
-
-/// Setting label: primary label + muted mono path (the `appearance.*` key).
-fn setting_label(theme: Theme, label: &str, path: &str) -> AnyElement {
-    let label = SharedString::from(label);
-    let path = SharedString::from(path);
-    div()
-        .flex_col()
-        .gap(px(1.))
-        .child(
-            div()
-                .text_color(theme.text.primary)
-                .text_size(px(11.))
-                .font_weight(FontWeight::MEDIUM)
-                .child(label),
-        )
-        .child(
-            div()
-                .text_color(theme.text.muted)
-                .text_xs()
-                .font_family(theme.font_mono)
-                .child(path),
-        )
-        .into_any_element()
-}
-
-/// One grid/flex cell: label · control, laid out on one baseline row.
-fn setting_row(label: AnyElement, control: AnyElement) -> AnyElement {
-    div()
-        .w_full()
-        .flex()
-        .items_center()
-        .justify_between()
-        .gap(px(10.))
-        .child(label)
-        .child(control)
-        .into_any_element()
-}
-
 /// Group of segment chips in a bordered control capsule (Edge/Width/Elevation).
 fn segmented(theme: Theme, chips: Vec<AnyElement>) -> AnyElement {
     div()
@@ -1140,18 +1060,6 @@ fn slider_frac(rel_x: f32, w: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::side_panel_right::DEFAULT_CONTENT_WIDTH;
-
-    /// The default docked width must stay single-column: the grid must only
-    /// kick in once the panel is stretched well past `DEFAULT_CONTENT_WIDTH`.
-    #[test]
-    fn breakpoint_keeps_default_width_single_column() {
-        assert!(
-            GRID_BREAKPOINT > DEFAULT_CONTENT_WIDTH,
-            "2-col grid would squeeze the default 560px panel"
-        );
-        assert!(GRID_BREAKPOINT <= 960.0, "breakpoint must be reachable at MAX_WIDTH");
-    }
 
     #[test]
     fn slider_frac_clamps_and_handles_zero_width() {

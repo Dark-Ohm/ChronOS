@@ -17,6 +17,7 @@ use gpui::{
 
 use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
 use super::preview;
+use super::ui;
 
 /// Load lifecycle for honest empty / error / truncated states (§13).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -162,54 +163,71 @@ impl Render for FilesTab {
         let theme = *Theme::global(cx);
         let cwd_label: SharedString = self.cwd.to_string_lossy().into_owned().into();
 
-        let path_bar = div()
-            .id("files-path-bar")
+        // T231-pattern header: title + actions on one line, cwd as the mono
+        // subtitle (path moves out of the content column into the chrome).
+        let header = div()
+            .id("files-header")
+            .w_full()
+            .px(px(14.))
+            .py(px(12.))
+            .border_b_1()
+            .border_color(theme.border.default)
             .flex()
             .flex_col()
-            .gap(px(4.))
-            .px(px(12.))
-            .py(px(10.))
-            .border_b_1()
-            .border_color(theme.border.subtle)
+            .gap(px(2.))
             .child(
                 div()
                     .flex()
                     .items_center()
+                    .justify_between()
                     .gap(px(8.))
                     .child(
                         div()
-                            .id("files-up")
-                            .px(px(8.))
-                            .py(px(4.))
-                            .rounded_md()
-                            .cursor_pointer()
-                            .hover(|s| s.bg(theme.interactive.hover))
-                            .on_click(cx.listener(|this, _e, _w, cx| {
-                                this.go_up(cx);
-                            }))
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(theme.text.primary)
-                                    .child(".."),
-                            ),
+                            .text_color(theme.text.primary)
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child("Files"),
                     )
                     .child(
                         div()
-                            .id("files-reload")
-                            .px(px(8.))
-                            .py(px(4.))
-                            .rounded_md()
-                            .cursor_pointer()
-                            .hover(|s| s.bg(theme.interactive.hover))
-                            .on_click(cx.listener(|this, _e, _w, cx| {
-                                this.request_reload(cx);
-                            }))
+                            .flex()
+                            .items_center()
+                            .gap(px(4.))
                             .child(
                                 div()
-                                    .text_size(px(11.))
-                                    .text_color(theme.text.muted)
-                                    .child("reload"),
+                                    .id("files-up")
+                                    .px(px(8.))
+                                    .py(px(4.))
+                                    .rounded_md()
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme.interactive.hover))
+                                    .on_click(cx.listener(|this, _e, _w, cx| {
+                                        this.go_up(cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(12.))
+                                            .text_color(theme.text.primary)
+                                            .child(".."),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("files-reload")
+                                    .px(px(8.))
+                                    .py(px(4.))
+                                    .rounded_md()
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme.interactive.hover))
+                                    .on_click(cx.listener(|this, _e, _w, cx| {
+                                        this.request_reload(cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.))
+                                            .text_color(theme.text.muted)
+                                            .child("reload"),
+                                    ),
                             ),
                     ),
             )
@@ -244,16 +262,8 @@ impl Render for FilesTab {
             None
         };
 
-        let mut list = div()
-            .id("files-list")
-            .flex_1()
-            .min_h(px(0.))
-            .overflow_y_scroll()
-            .track_scroll(&self.scroll)
-            .flex()
-            .flex_col()
-            .px(px(6.))
-            .py(px(4.));
+        // Content list — lives inside the elevated card (T231 §5 pattern).
+        let mut list = div().w_full().flex().flex_col().gap(px(2.));
 
         if let Some((msg, color)) = status {
             list = list.child(
@@ -450,11 +460,21 @@ impl Render for FilesTab {
         }
 
         div()
+            .id("files-tab")
             .size_full()
             .flex()
             .flex_col()
-            .child(path_bar)
-            .child(list)
+            .child(header)
+            .child(
+                div()
+                    .id("files-scroll")
+                    .flex_1()
+                    .min_h(px(0.))
+                    .overflow_y_scroll()
+                    .track_scroll(&self.scroll)
+                    .p(px(14.))
+                    .child(ui::elevated_card(theme).id("files-card").child(list)),
+            )
     }
 }
 

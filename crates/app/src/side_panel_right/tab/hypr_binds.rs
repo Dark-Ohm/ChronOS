@@ -20,6 +20,7 @@ use gpui::{
 };
 
 use crate::side_panel_right::preview_target::PreviewTarget;
+use super::ui;
 
 /// One parsed bind row. `source`/`path` identify the file it came from.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,56 +91,72 @@ impl HyprBindsTab {
 }
 
 impl Render for HyprBindsTab {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *Theme::global(cx);
         let count = self.binds.len();
+        let is_wide = ui::is_wide(window);
 
+        // T231-pattern header: title + Reload on one line, source path as the
+        // mono subtitle.
+        let source_label = if self.using_monolith {
+            "~/.config/hypr/hyprland.lua"
+        } else {
+            "~/.config/hypr/modules/"
+        };
         let header = div()
-            .px(px(12.))
-            .py(px(10.))
+            .id("hypr-binds-header")
+            .w_full()
+            .px(px(14.))
+            .py(px(12.))
             .border_b_1()
-            .border_color(theme.border.subtle)
+            .border_color(theme.border.default)
             .flex()
-            .items_center()
-            .justify_between()
+            .flex_col()
+            .gap(px(2.))
             .child(
                 div()
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(theme.text.primary)
-                    .child(format!("Hyprland binds · {count}")),
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme.text.primary)
+                            .child(format!("Hyprland binds · {count}")),
+                    )
+                    .child(
+                        div()
+                            .id("hypr-binds-reload")
+                            .px(px(8.))
+                            .py(px(4.))
+                            .rounded_md()
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme.interactive.hover))
+                            .on_click(cx.listener(|this, _ev, _w, cx| this.reload(cx)))
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(theme.text.muted)
+                                    .child("Reload"),
+                            ),
+                    ),
             )
             .child(
                 div()
-                    .id("hypr-binds-reload")
-                    .px(px(8.))
-                    .py(px(4.))
-                    .rounded_md()
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme.interactive.hover))
-                    .on_click(cx.listener(|this, _ev, _w, cx| this.reload(cx)))
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(theme.text.muted)
-                            .child("Reload"),
-                    ),
+                    .text_size(px(11.))
+                    .font_family(theme.font_mono)
+                    .text_color(theme.text.muted)
+                    .child(source_label),
             );
 
-        let mut list = div()
-            .id("hypr-binds-list")
-            .flex_1()
-            .min_h(px(0.))
-            .overflow_y_scroll()
-            .track_scroll(&self.scroll)
-            .flex()
-            .flex_col()
-            .px(px(6.))
-            .py(px(4.));
+        // Content — inside the elevated card (T231 §5 pattern).
+        let mut card = ui::elevated_card(theme).id("hypr-binds-card");
 
         match &self.load {
             LoadState::Error(msg) => {
-                list = list.child(
+                card = card.child(
                     div()
                         .px(px(10.))
                         .py(px(16.))
@@ -150,7 +167,7 @@ impl Render for HyprBindsTab {
             }
             LoadState::Ready => {
                 if self.using_monolith {
-                    list = list.child(
+                    card = card.child(
                         div()
                             .px(px(10.))
                             .py(px(6.))
@@ -162,7 +179,7 @@ impl Render for HyprBindsTab {
                     );
                 }
                 if self.binds.is_empty() {
-                    list = list.child(
+                    card = card.child(
                         div()
                             .px(px(10.))
                             .py(px(16.))
@@ -171,24 +188,54 @@ impl Render for HyprBindsTab {
                             .child("No binds found — see ~/.config/hypr/modules/ (PRODUCT.md)."),
                     );
                 } else {
-                    let mut seen: Vec<&str> = Vec::new();
+                    // Group binds by their metadata label. Each group gets a
+                    // shared T231 section header (accent tick + source file)
+                    // and a responsive grid: 1 col narrow, 2 col on wide.
+                    let mut groups: Vec<(String, Vec<&BindRow>)> = Vec::new();
                     for row in &self.binds {
-                        if !seen.contains(&row.source.as_str()) {
-                            seen.push(&row.source.as_str());
-                            list = list.child(section_header(&row.source, &theme));
+                        match groups.last_mut() {
+                            Some((g, rows)) if g.as_str() == row.source.as_str() => {
+                                rows.push(row);
+                            }
+                            _ => groups.push((row.source.clone(), vec![row])),
                         }
-                        list = list.child(bind_row(row, &theme, cx));
+                    }
+                    for (group, rows) in groups {
+                        let file = rows[0]
+                            .path
+                            .file_name()
+                            .map(|s| s.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        card = card.child(ui::section_header(theme, &group, &file));
+                        let grid = div()
+                            .grid()
+                            .w_full()
+                            .gap(px(8.))
+                            .when(is_wide && rows.len() > 1, |d| d.grid_cols(2))
+                            .when(!is_wide || rows.len() == 1, |d| d.grid_cols(1))
+                            .children(rows.into_iter().map(|r| bind_row(r, &theme, cx)));
+                        card = card.child(grid);
                     }
                 }
             }
         }
 
         div()
+            .id("hypr-binds-tab")
             .size_full()
             .flex()
             .flex_col()
             .child(header)
-            .child(list)
+            .child(
+                div()
+                    .id("hypr-binds-scroll")
+                    .flex_1()
+                    .min_h(px(0.))
+                    .overflow_y_scroll()
+                    .track_scroll(&self.scroll)
+                    .p(px(14.))
+                    .child(card),
+            )
     }
 }
 
@@ -382,17 +429,6 @@ fn parse_bind_line(text: &str, main_mod: Option<&str>) -> Option<(String, String
     Some((keys, action))
 }
 
-fn section_header(label: &str, theme: &Theme) -> AnyElement {
-    div()
-        .px(px(8.))
-        .pt(px(10.))
-        .pb(px(4.))
-        .text_size(px(10.))
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(theme.text.muted)
-        .child(label.to_string())
-        .into_any_element()
-}
 
 /// One binds row: keys · action · :line. Click opens the source in Preview.
 fn bind_row(row: &BindRow, theme: &Theme, cx: &mut Context<HyprBindsTab>) -> AnyElement {
