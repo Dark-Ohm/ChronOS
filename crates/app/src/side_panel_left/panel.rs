@@ -23,6 +23,9 @@ pub fn render_panel(
 ) -> impl IntoElement {
     let theme = *Theme::global(cx);
     let dot_color = status_color(panel.state.agent_status, &theme);
+    // T230-errata: elevation glow lives on the thread column now (header
+    // moved there — see below), needs to exist before thread_column builds.
+    let elev = Theme::global(cx).elevation_popup();
     // T217 — top-corner radius where the panel meets the bar. Left-anchored:
     // screen x runs 0..width. Same per-corner rule as the right panel (both
     // resolve through `crate::state::panel_corner_radius`); a corner the bar
@@ -297,17 +300,17 @@ pub fn render_panel(
         .child(chat)
         .child(composer);
 
-    let clipped_content = div()
-        .id("clipped-content")
-        .flex_1()
-        .min_h(px(0.))
-        .flex()
-        .flex_row()
-        .overflow_hidden()
-        .child(sidebar)
-        .when(chat_open, |el| el.child(thread_column));
-
-    // Header with listeners
+    // Header with listeners. Built AFTER thread_column so its `cx.listener`
+    // calls don't overlap `composer`'s RPIT-captured borrow of `cx` (Rust
+    // 2024 impl Trait capture rules — composer's borrow lives as long as
+    // the `composer` binding does, i.e. until thread_column moves it above;
+    // a `cx.listener` call spliced in before that move would conflict,
+    // E0502). Wrapped around `thread_column` below instead of sitting above
+    // the whole sidebar+thread row (T230-errata) — it used to be a sibling
+    // of `clipped_content` at the `main-content` level, so every resize
+    // drag that crossed the `chat_open` width threshold popped the header
+    // in/out and shoved the rail's `.h_full()` sidebar down with it (rail
+    // visibly reflowed on resize — reported live 2026-08-04).
     let header = div()
         .id("side-panel-header")
         .flex()
@@ -385,9 +388,32 @@ pub fn render_panel(
                 .child(img("icons/x.svg").w(px(12.)).h(px(12.))),
         );
 
-    // Elevated chrome на content-колонке (только когда чат открыт, не
-    // rail-only) — общий язык глубины из `theme.elevation_popup()` (T128).
-    let elev = Theme::global(cx).elevation_popup();
+    // Thread column + its header, stacked in their own flex_col — a sibling
+    // of `sidebar` inside `clipped_content`'s flex_row below. The rail
+    // (`sidebar`) never sees this subtree, so header show/hide (tied to
+    // `chat_open`, which is resize-driven) can never reflow it.
+    let thread_column_with_header = div()
+        .id("thread-column-wrap")
+        .flex_1()
+        .min_w(px(0.))
+        .h_full()
+        .flex()
+        .flex_col()
+        .overflow_hidden()
+        .child(header)
+        .children(dropdown)
+        .children(elev.glow.map(elevation_glow_bar))
+        .child(thread_column);
+
+    let clipped_content = div()
+        .id("clipped-content")
+        .flex_1()
+        .min_h(px(0.))
+        .flex()
+        .flex_row()
+        .overflow_hidden()
+        .child(sidebar)
+        .when(chat_open, |el| el.child(thread_column_with_header));
 
     // Outer: sole window-level on_hover. Motion is native with_animation on the
     // shell row (T129) — not gpui_animation transition_when (silent no-op on
@@ -436,13 +462,6 @@ pub fn render_panel(
                         .flex_col()
                         .bg(theme.bg.primary)
                         .shadow(elev.shadows.to_vec())
-                        .when(chat_open, |el| {
-                            let el = el.child(header).children(dropdown);
-                            match elev.glow {
-                                Some(glow) => el.child(elevation_glow_bar(glow)),
-                                None => el,
-                            }
-                        })
                         .child(clipped_content),
                 )
                 .child(
@@ -543,7 +562,12 @@ fn build_sessions_sidebar(
                     .justify_center()
                     .rounded_full()
                     .when(is_active, |el| el.bg(theme.text.disabled))
-                    .when(!is_active, |el| el.cursor_pointer())
+                    .when(!is_active, |el| {
+                        el.cursor_pointer().on_click(cx.listener({
+                            let sid = sid.clone();
+                            move |this, _, _, cx| this.select_session(&sid, cx)
+                        }))
+                    })
                     .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(if is_active {
                         theme.status.success
                     } else {
