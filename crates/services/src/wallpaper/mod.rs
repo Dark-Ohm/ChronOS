@@ -72,9 +72,30 @@ impl WallpaperSubscriber {
         handle.spawn(async move {
             ensure_daemon().await;
             match query_current().await {
-                Ok(state) => {
-                    if state.current.is_some() || !state.per_monitor.is_empty() {
-                        data_clone.set(state);
+                Ok(state) if state.current.is_some() || !state.per_monitor.is_empty() => {
+                    data_clone.set(state);
+                    status_clone.set(ServiceStatus::Available);
+                }
+                Ok(_) => {
+                    // Daemon is up but showing nothing — a freshly spawned
+                    // process (post-reboot: the old one died with the
+                    // session) has no image loaded yet, even though awww's
+                    // own on-disk cache (`~/.cache/awww/<ver>/<output>`)
+                    // still remembers the user's last pick. Without this,
+                    // the screen falls back to whatever the compositor/
+                    // other background client shows underneath, which
+                    // reads as "reset to a default I never chose" (live
+                    // report 2026-08-04). `awww restore` reapplies the
+                    // cached image per output — exactly what a fresh
+                    // daemon needs, no new persistence layer required.
+                    info!("WallpaperSubscriber: daemon has no image loaded, restoring from cache");
+                    let _ = tokio::task::spawn_blocking(|| {
+                        Command::new(AWWW_BIN).arg("restore").output()
+                    })
+                    .await;
+                    match query_current().await {
+                        Ok(state) => data_clone.set(state),
+                        Err(e) => warn!("WallpaperSubscriber: re-query after restore failed: {e}"),
                     }
                     status_clone.set(ServiceStatus::Available);
                 }
