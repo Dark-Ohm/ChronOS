@@ -381,8 +381,12 @@ mod tests {
     }
 
     #[test]
-    fn system_preferred_width_is_400() {
-        assert_eq!(PanelTab::System.preferred_content_width(), 400.);
+    fn system_preferred_width_is_410() {
+        // User-confirmed width (2026-08-05, exact live screenshot) — System
+        // opens on the narrow 1-column layout, not the wide grid. Do not
+        // "fix" this back to clearing GRID_BREAKPOINT without a fresh
+        // explicit ask.
+        assert_eq!(PanelTab::System.preferred_content_width(), 410.);
     }
 
     #[test]
@@ -668,7 +672,14 @@ impl PanelTab {
     /// for any tab that does not override this.
     pub fn preferred_content_width(self) -> f32 {
         match self {
-            PanelTab::System => 400.,
+            // 410 — the exact width the user asked for (2026-08-05 live
+            // screenshot, narrow single-column layout). Not resizable (see
+            // `resizable()` below), so this is the only width the tab is
+            // ever seen at. An earlier pass on 2026-08-04 misread the same
+            // ask as "make it open on the wide grid layout" and pushed this
+            // to 800 — the opposite of what was wanted. Do not re-widen
+            // this without a fresh, explicit ask.
+            PanelTab::System => 410.,
             PanelTab::Editor | PanelTab::Terminal => super::DEFAULT_CONTENT_WIDTH,
             PanelTab::Files | PanelTab::SourceControl => 440.,
             // Build/Logs: cargo diagnostics need ~82 mono cols (640/7.8).
@@ -702,10 +713,11 @@ impl PanelTab {
     /// May the user drag this tab's width? (T218)
     ///
     /// Only the two surfaces whose useful width is a matter of taste stay
-    /// draggable: the Editor (notepad — line length is personal) and System
-    /// settings. Everything else is laid out for its content and gets exactly
-    /// `preferred_content_width`, so no tab can be dragged narrow enough to
-    /// clip its own controls.
+    /// draggable: Preview (line length is personal) and EditorSettings.
+    /// Everything else — including `System` (fixed at the width the user
+    /// asked for, not draggable) — is laid out for its content and gets
+    /// exactly `preferred_content_width`, so no tab can be dragged narrow
+    /// enough to clip its own controls.
     pub fn resizable(self) -> bool {
         matches!(self, PanelTab::Preview | PanelTab::EditorSettings)
     }
