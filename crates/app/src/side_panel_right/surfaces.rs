@@ -1,7 +1,11 @@
 //! Theme surface roles for the right panel.
 //!
 //! Dark (Mocha-like) and Light C use different names for the same roles:
-//! - **chrome** (panel/rail shell): dark `bg.tertiary`, light `bg.primary` (pageBg)
+//! - **chrome** (panel/rail shell): dark `bg.tertiary`, light `bg.tertiary` (cardBase)
+//!   (T239: light chrome was `bg.primary` — identical to the content column, so
+//!   the rail/body step that exists in dark (tertiary vs primary) vanished in
+//!   light. Reverted to `bg.tertiary` so rail-only reads one palette level off
+//!   the content column, mirroring dark.)
 //! - **card** (raised content cards): dark `bg.primary`, light `bg.secondary` (cardBg)
 //! - **well** (inset tray / meter track): dark `bg.elevated`/`border.default`, light `bg.elevated`
 //!
@@ -14,7 +18,10 @@ use gpui::Hsla;
 /// Panel shell / rail / body fill.
 pub fn chrome(theme: &Theme) -> Hsla {
     if theme.is_light {
-        theme.bg.primary
+        // T239: one palette level off the content column (primary) so the rail
+        // keeps the step dark has. Light C tertiary = cardBase (pill/collapsed
+        // surface) — the light-side equivalent of the recessed shell.
+        theme.bg.tertiary
     } else {
         theme.bg.tertiary
     }
@@ -80,7 +87,10 @@ mod tests {
     fn light_chrome_is_page_card_is_cardbg() {
         let t = Theme::select_scheme(Some("Light".into()));
         assert!(t.is_light);
-        assert_eq!(chrome(&t), t.bg.primary);
+        // T239: light chrome = bg.tertiary (cardBase) — one palette level off
+        // the content column (bg.primary), restoring the rail step dark has.
+        assert_eq!(chrome(&t), t.bg.tertiary);
+        assert_ne!(chrome(&t), content(&t), "T239: rail must not merge with content in light");
         assert_eq!(card(&t), t.bg.secondary);
         assert_eq!(content(&t), t.bg.primary);
         // T205: light editor is soft paper (bg.secondary), not glare pageBg.
