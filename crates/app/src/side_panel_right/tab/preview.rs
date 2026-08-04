@@ -17,14 +17,17 @@ use std::path::{Path, PathBuf};
 
 use chronos_ui::Theme;
 use gpui::{
-    AnyElement, Context, DragMoveEvent, Entity, Focusable, FontWeight, IntoElement, MouseButton,
-    MouseDownEvent, ObjectFit, ParentElement, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, Subscription, Window, div, img, prelude::*, px,
+    AnyElement, Context, DragMoveEvent, Entity, Focusable, FontWeight, IntoElement,
+    InteractiveElement, MouseButton, MouseDownEvent, ObjectFit, ParentElement, Render,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div,
+    img, prelude::*, px, svg,
 };
 use gpui_component::input::{Input, InputEvent, InputState};
 
 use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
 use crate::side_panel_right::tab::terminal::TerminalTab;
+use crate::side_panel_right::tabs::PanelTab;
+use crate::side_panel_right::SidePanelRightState;
 
 /// Drag marker for the drawer's resize handle — own type so it never
 /// cross-fires with `RightPanelResize` (the panel's own horizontal drag).
@@ -1187,7 +1190,7 @@ impl Render for PreviewTab {
         let chrome_bar = self.render_chrome_bar(can_edit, &theme, cx);
 
         let content: AnyElement = match state {
-            State::Empty => render_empty(&theme),
+            State::Empty => render_empty(&theme, window, cx),
             State::Loading { path, .. } => render_loading(&path, &theme),
             State::Loaded {
                 path,
@@ -1222,15 +1225,36 @@ impl Render for PreviewTab {
     }
 }
 
-fn render_empty(theme: &Theme) -> AnyElement {
+/// Empty state — placeholder, not a call-to-action. The icon and the
+/// secondary line use `theme.text.muted` (T237 canon: this is a
+/// "nothing here yet" state, not an accent button). "Files" in the line
+/// is a real link: clicking it switches the right panel to the Files tab
+/// via the same `select_tab` path the rail and IPC use.
+fn render_empty(theme: &Theme, _window: &mut Window, cx: &mut Context<PreviewTab>) -> AnyElement {
+    let open_files = cx.listener(|_this, _e: &gpui::ClickEvent, _window, cx| {
+        if let Some(view) = cx
+            .global::<SidePanelRightState>()
+            .view
+            .clone()
+            .and_then(|w| w.upgrade())
+        {
+            view.update(cx, |view, cx| view.on_tab_select(PanelTab::Files, cx));
+        }
+    });
     div()
         .size_full()
         .flex()
         .flex_col()
         .items_center()
         .justify_center()
-        .gap(px(8.))
+        .gap(px(10.))
         .px(px(24.))
+        .child(
+            svg()
+                .path("icons/folder.svg")
+                .size(px(40.))
+                .text_color(theme.text.muted),
+        )
         .child(
             div()
                 .text_size(px(13.))
@@ -1243,7 +1267,17 @@ fn render_empty(theme: &Theme) -> AnyElement {
                 .text_size(px(12.))
                 .text_color(theme.text.muted)
                 .text_center()
-                .child("Open the Files tab and click any file to preview it here."),
+                .child("Open the ")
+                .child(
+                    div()
+                        .id("preview-empty-files-link")
+                        .cursor_pointer()
+                        .text_color(theme.text.muted)
+                        .hover(|s| s.text_color(theme.text.primary))
+                        .on_click(open_files)
+                        .child("Files"),
+                )
+                .child(" tab and click any file to preview it here."),
         )
         .into_any_element()
 }
