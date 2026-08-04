@@ -381,12 +381,22 @@ mod tests {
     }
 
     #[test]
-    fn system_preferred_width_is_410() {
-        // User-confirmed width (2026-08-05, exact live screenshot) — System
-        // opens on the narrow 1-column layout, not the wide grid. Do not
-        // "fix" this back to clearing GRID_BREAKPOINT without a fresh
+    fn system_preferred_width_is_400() {
+        assert_eq!(PanelTab::System.preferred_content_width(), 400.);
+    }
+
+    #[test]
+    fn editor_settings_preferred_width_is_410_and_not_resizable() {
+        // User-confirmed width (2026-08-05, exact live screenshot of the
+        // "Bar" appearance page, which `PanelTab::EditorSettings` hosts as
+        // `BarSettingsTab` — see `tab/mod.rs::create`). Two earlier passes
+        // on 2026-08-04/05 mistakenly edited `PanelTab::System` instead
+        // (that variant renders the unrelated CPU/RAM/GPU `SystemTab`
+        // dashboard) — this tab was never actually touched by either of
+        // those edits. Do not re-widen or re-enable drag without a fresh,
         // explicit ask.
-        assert_eq!(PanelTab::System.preferred_content_width(), 410.);
+        assert_eq!(PanelTab::EditorSettings.preferred_content_width(), 410.);
+        assert!(!PanelTab::EditorSettings.resizable());
     }
 
     #[test]
@@ -411,7 +421,6 @@ mod tests {
             PanelTab::McpSettings,
             PanelTab::LspSettings,
             PanelTab::ApiProviders,
-            PanelTab::EditorSettings,
             PanelTab::HyprlandBinds,
         ] {
             assert_eq!(
@@ -672,14 +681,7 @@ impl PanelTab {
     /// for any tab that does not override this.
     pub fn preferred_content_width(self) -> f32 {
         match self {
-            // 410 — the exact width the user asked for (2026-08-05 live
-            // screenshot, narrow single-column layout). Not resizable (see
-            // `resizable()` below), so this is the only width the tab is
-            // ever seen at. An earlier pass on 2026-08-04 misread the same
-            // ask as "make it open on the wide grid layout" and pushed this
-            // to 800 — the opposite of what was wanted. Do not re-widen
-            // this without a fresh, explicit ask.
-            PanelTab::System => 410.,
+            PanelTab::System => 400.,
             PanelTab::Editor | PanelTab::Terminal => super::DEFAULT_CONTENT_WIDTH,
             PanelTab::Files | PanelTab::SourceControl => 440.,
             // Build/Logs: cargo diagnostics need ~82 mono cols (640/7.8).
@@ -705,20 +707,26 @@ impl PanelTab {
             | PanelTab::McpSettings
             | PanelTab::LspSettings
             | PanelTab::ApiProviders
-            | PanelTab::EditorSettings
             | PanelTab::HyprlandBinds => 320.,
+            // 410 — the exact width the user asked for (2026-08-05 live
+            // screenshot of the "Bar" appearance page this tab hosts as
+            // `BarSettingsTab`, see `tab/mod.rs::create`). Not resizable
+            // (see `resizable()` below). Two earlier passes on
+            // 2026-08-04/05 edited `PanelTab::System` instead by mistake —
+            // that variant is the unrelated CPU/RAM/GPU dashboard tab, and
+            // was never the tab shown in the screenshot.
+            PanelTab::EditorSettings => 410.,
         }
     }
 
     /// May the user drag this tab's width? (T218)
     ///
-    /// Only the two surfaces whose useful width is a matter of taste stay
-    /// draggable: Preview (line length is personal) and EditorSettings.
-    /// Everything else — including `System` (fixed at the width the user
-    /// asked for, not draggable) — is laid out for its content and gets
-    /// exactly `preferred_content_width`, so no tab can be dragged narrow
-    /// enough to clip its own controls.
+    /// Only Preview stays draggable (line length is personal taste).
+    /// Everything else — including `EditorSettings` (fixed at the width
+    /// the user asked for, 2026-08-05) — is laid out for its content and
+    /// gets exactly `preferred_content_width`, so no tab can be dragged
+    /// narrow enough to clip its own controls.
     pub fn resizable(self) -> bool {
-        matches!(self, PanelTab::Preview | PanelTab::EditorSettings)
+        matches!(self, PanelTab::Preview)
     }
 }
