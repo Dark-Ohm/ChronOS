@@ -8,7 +8,7 @@ Target: ChronOS gpui-ce fork (`../Source/gpui`).
 → only legal path is REWRITE-BY-PATTERN (our code, their architecture).
 README.md DOES exist (don't claim "no README" — that sub-claim is false).
 
-**gpui dep drift (critical):** donor `Cargo.toml:6` pins nothing
+**gpui dep drift (critical):** donor `reference/gpui-shell-main/Cargo.toml:6` pins nothing
 (`git = ".../zed", branch = "main"`). Anything touching upstream-`main` gpui
 API (`cx.theme()`, `canvas()`, `on_drag`, `EntityId`, div-builder,
 `ActiveTheme`) will NOT compile against gpui-ce without rewrite. Treat all
@@ -17,24 +17,24 @@ donor UI as rewrite-by-pattern, never vendored.
 ## Reusable techniques (gpui-ce-safe)
 
 ### 1. Layer-shell focus hygiene (partial fix for our Critical launcher focus bug)
-Donor `crates/app/src/launcher/mod.rs:336-338` re-asserts focus every frame:
+Donor `reference/gpui-shell-main/crates/app/src/launcher/mod.rs:336-338` re-asserts focus every frame:
 ```rust
 // first line of Render::render:
 if !self.focus_handle.is_focused(window) {
     self.focus_handle.focus(window, cx);
 }
 ```
-plus `.track_focus(&self.focus_handle)` on the root div (mod.rs:376) and
+plus `.track_focus(&self.focus_handle)` on the root div (reference/gpui-shell-main/crates/app/src/launcher/mod.rs:376) and
 `.key_context("Launcher")`. OUR `crates/app/src/launcher/view.rs` does
 NEITHER — it only stores a `FocusHandle` and handles raw `on_key_down`.
 Steal #1+#2 as an **S-cost hygiene** patch.
 CAVEAT: mitigation only, not the real fix. Root cause is compositor-level
 (layer-shell `OnDemand` + `activate_window()`→`xdg_activation_v1` rejected for
 layer-shell). Real fix = XDG-toplevel migration (XL, undecided in docs/DECISIONS.log).
-NEVER copy donor's `KeyboardInteractivity::Exclusive` (mod.rs:642) — our MEMORY
+NEVER copy donor's `KeyboardInteractivity::Exclusive` (reference/gpui-shell-main/crates/app/src/launcher/mod.rs:642) — our MEMORY
 proves that crashes Hyprland/Niri.
 
-### 2. In-app keybinds (donor `crates/app/src/keybinds.rs`, 84 LOC)
+### 2. In-app keybinds (donor `reference/gpui-shell-main/crates/app/src/keybinds.rs`, 84 LOC)
 Pure GPUI, NO global daemon/evdev/compositor-IPC:
 ```rust
 actions!(keybinds, [Cancel, Confirm, CursorUp, CursorDown, /* … */]);
@@ -44,10 +44,10 @@ consumed via `.key_context("Launcher")` + `.on_action(cx.listener(|this, _: &Can
 Steal as our input model (cleaner than raw `on_key_down` string matching).
 gpui-ce has `actions!` / `KeyBinding` / `bind_keys`.
 
-### 3. TOML config + inotify hot-reload (donor `crates/app/src/config/mod.rs`)
+### 3. TOML config + inotify hot-reload (donor `reference/gpui-shell-main/crates/app/src/config/mod.rs`)
 `Config` is a `#[serde(default)]` GPUI Global; `start_hot_reload()` spawns a
 `FileWatcher::watch(path)` per file (config.toml + theme.toml); the inotify
-thread (`crates/services/src/watcher.rs`, 200 ms debounce) sends `()` over an
+thread (`reference/gpui-shell-main/crates/services/src/watcher.rs`, 200 ms debounce) sends `()` over an
 `mpsc` channel; a `cx.spawn` loop does `reload()` + `cx.refresh_windows()`.
 Better than ours: per-file `watch_config` / `watch_theme` booleans.
 FLAG: ChronOS app-level config/theme hot-reload does NOT exist yet (only luau
@@ -69,5 +69,5 @@ docs/ARCHITECTURE.md:81/218 confirm "NOT YET" for app config.
 - Donor `traits/` is negligible (1 + 20 LOC).
 - Donor `panel.rs` (claimed in their AGENTS.md) EXISTS — confirmed.
 - Donor AGENTS.md implies "no README" — FALSE; README.md present (3846 B).
-- Donor `launcher/mod.rs:642` uses `KeyboardInteractivity::Exclusive` — our
+- Donor `reference/gpui-shell-main/crates/app/src/launcher/mod.rs:642` uses `KeyboardInteractivity::Exclusive` — our
   MEMORY proves this crashes Hyprland/Niri. Do not copy.

@@ -131,9 +131,9 @@ is a **silent no-op**. That is intentional (a click on a dying view should
 do nothing), but it means a listener that never fires is a symptom of a
 dead entity, not necessarily of bad wiring.
 
-**Live proof, in ChronOS itself:** `crates/app/src/volume_popup/view.rs:199`
+**Live proof, in ChronOS itself:** `crates/app/src/volume_popup/view.rs:531`
 mutates view-local state (`this.expanded`) from an `on_click` this way;
-`launcher/view.rs:160` and `desktop_terminal/view.rs:343` do it for
+`launcher/view.rs:161` and `desktop_terminal/view.rs:204` do it for
 `on_key_down`. In the fork, 15 examples use it —
 `Source/gpui/examples/opacity.rs:92` (`on_click(cx.listener(Self::start_animation))`)
 is the shortest read, and shows a **method reference** works directly, no
@@ -173,7 +173,7 @@ pub struct Task<T>(TaskState<T>);
 pub fn detach(self) { /* task.detach() for Spawned */ }
 ```
 
-- **`#[must_use]`** at `executor.rs:288` (and `FallibleTask` at `:378`).
+- **`#[must_use]`** at `gpui_scheduler/src/executor.rs:288` (and `FallibleTask` at `:378`).
 - **Drop = cancel** — documented on the struct; `detach()` opts out.
 - `TaskExt::detach_and_log_err` (`gpui/src/executor.rs:31-58`) — for
   `Task<Result<T,E>>`: re-spawns on foreground with `log_tracked_err`, then
@@ -189,7 +189,7 @@ Platform test explicitly names cancel-on-drop:
 |---|---|---|---|---|
 | `App::spawn` / `Context::spawn` | **foreground** (main) | `AsyncFnOnce(&mut AsyncApp) -> R` | R: `'static` only | `app.rs:1810`, `context.rs:237` |
 | `AppContext::background_spawn` | **background** pool | `Future + Send` | R: `Send + 'static` | `app.rs:2660` |
-| `background_executor().spawn` | same | same | same | `executor.rs:89` |
+| `background_executor().spawn` | same | same | same | `gpui_scheduler/src/executor.rs:189` |
 | `Window::spawn` | foreground via `App::spawn` | `AsyncFnOnce(&mut AsyncWindowContext)` | — | `window.rs:2252` |
 | `Context::spawn_in` | foreground + window | window-bound async | — | `context.rs:676` |
 
@@ -225,7 +225,7 @@ cancels on drop of the temporary — ChronOS blood fact (fixed e.g. battery
 
 | Mechanism | API | Notes |
 |---|---|---|
-| One-shot timer | `background_executor().timer(Duration)` | `executor.rs:162-167`; zero duration → `Task::ready(())` |
+| One-shot timer | `background_executor().timer(Duration)` | `gpui_scheduler/src/executor.rs:248`; zero duration → `Task::ready(())` |
 | Foreground loop | `cx.spawn` + `timer().await` in a loop | ChronOS bar tick pattern |
 | Next frame | `Window::request_animation_frame` | `window.rs:2229-2231` → `on_next_frame` + `notify` current view |
 | Decorative animation | `AnimationExt::with_animation` | auto-respects `App::reduce_motion` (doc at `animation.rs:52-56`, `window.rs:2224-2228`) |
@@ -375,14 +375,14 @@ behavior, not for day-to-day bar widgets.
 |---|---|---|
 | `global_mut` creates the global | No — panics if missing; use `set_global` first | `app.rs:1884-1890` |
 | Nested `handle.update` on same window is fine | Slot is `.take()`'d — nested update → `window not found` | `app.rs:1733` |
-| `let _ = cx.background_spawn(…)` is fire-and-forget | Drop cancels; need `.detach()` | `gpui_scheduler/.../executor.rs:287-288` |
+| `let _ = cx.background_spawn(…)` is fire-and-forget | Drop cancels; need `.detach()` | `Source/gpui_scheduler/src/executor.rs:287-288` |
 | Fork has no easing / must port Kael | `EasingCurve` already ported from Kael | `easing.rs:1-71` |
 | Fork has no `requestAnimationFrame` | `Window::request_animation_frame` | `window.rs:2229` |
 | `observe_global` doesn't exist / theme hot-reload impossible | Exists on App, Context, Window | `app.rs:1931`, `context.rs:176` |
 | `async_*` examples ship in the fork | **They do not** — only image_loading / move_entity / … | `ls examples/` |
 | `tokio::spawn_blocking` just works next to GPUI | Needs Tokio runtime; use `gpui_tokio::init` + handle | `gpui_tokio.rs:12-25, 98-99` |
-| There is a built-in interval timer | Only one-shot `timer`; loop yourself | `executor.rs:162` |
-| `on_click` gives `&mut App`, so view state needs a `Global` | `cx.listener` adapts `Fn(&mut T, &E, &mut Window, &mut Context<T>)` → the `&mut App` shape | `context.rs:252`, live at `volume_popup/view.rs:199` |
+| There is a built-in interval timer | Only one-shot `timer`; loop yourself | `gpui_scheduler/src/executor.rs:248` |
+| `on_click` gives `&mut App`, so view state needs a `Global` | `cx.listener` adapts `Fn(&mut T, &E, &mut Window, &mut Context<T>)` → the `&mut App` shape | `context.rs:252`, live at `volume_popup/view.rs:531` |
 | `on_hover` can be attached twice to refine behavior | `debug_assert!` — second call panics in debug builds | `div.rs:622-625` |
 
 ---

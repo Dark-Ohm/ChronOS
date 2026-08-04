@@ -19,8 +19,8 @@
 # be the *sibling* `../Source` of the repo (ChronOS worktree rule — see
 # skills/chronos-shell/SKILL.md). Runs from any cwd. Notes:
 #   - `Source/…` refs resolve against the fork root.
-#   - `crates/…`, `docs/…`, `packaging/…`, `scripts/…`, `skills/…` resolve
-#     against the repo root.
+#   - `crates/…`, `docs/…`, `packaging/…`, `scripts/…`, `skills/…`,
+#     `reference/…` (donor/upstream snapshots) resolve against the repo root.
 #   - Short refs (e.g. `div.rs:1429`) are tried against known fork/repo
 #     prefixes in order; the first hit wins.
 #   - References to OUT-OF-TREE code (e.g. Zed-upstream paths in `zed-*`
@@ -65,18 +65,18 @@ PREFIXES = [
     'crates/app/src/launcher/', 'crates/app/src/notifications/',
     'crates/app/src/osd/', 'crates/app/src/bar/', 'crates/app/src/ipc/',
     'crates/app/src/', 'crates/ui/', 'crates/services/', 'crates/',
-    'docs/', 'packaging/', 'scripts/', 'skills/',
+    'docs/', 'packaging/', 'scripts/', 'skills/', 'reference/',
 ]
 
 def resolve(ref):
     if ref.startswith('Source/'):          # explicit fork path
         cand = os.path.join(SRC, ref[len('Source/'):])
         return cand if os.path.isfile(cand) else None
-    if re.match(r'^(crates|docs|packaging|scripts|skills)/', ref):  # explicit repo path
+    if re.match(r'^(crates|docs|packaging|scripts|skills|reference)/', ref):  # explicit repo path
         cand = os.path.join(REPO, ref)
         return cand if os.path.isfile(cand) else None
     for pfx in PREFIXES + ['']:
-        root = REPO if pfx.startswith(('crates', 'docs', 'packaging', 'scripts', 'skills')) else SRC
+        root = REPO if pfx.startswith(('crates', 'docs', 'packaging', 'scripts', 'skills', 'reference')) else SRC
         cand = os.path.join(root, pfx + ref)
         if os.path.isfile(cand):
             return cand
