@@ -69,7 +69,7 @@ Zed, not crates.io. Path-deps from ChronOS point here.
 | Examples grouped by topic (task → example) | [examples-by-topic.md](references/examples-by-topic.md) |
 | Run/check any example | `scripts/run-example.sh --list` / `--check <name>` |
 | Eval per reference (8-10 questions) | `evals/*.eval.md` |
-| Validate eval proof links (`file:line` resolve) | `evals/check-proofs.sh` — run after any SKILL.md/eval edit |
+| Validate proof links repo-wide (`file:line` resolve) | `skills/check-proofs.sh` — run after any SKILL.md/reference/eval edit |
 
 ## Fast answers to the questions that keep getting asked wrong
 
