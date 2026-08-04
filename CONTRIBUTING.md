@@ -46,8 +46,12 @@ git config core.hooksPath scripts/git-hooks
 ```
 
 Отключить: `git config --unset core.hooksPath`. Проверить вручную весь vault:
-`./skills/check-proofs.sh` (exit 0 = чисто). В CI форка `../Source` нет — форк-ссылки
-деградируют в informational, repo-локальные (`crates/…`, `docs/…`, `reference/…`) строгие всегда.
+`./skills/check-proofs.sh` (exit 0 = чисто). В CI форк `Chronos-GPUI` клонируется
+в sibling `../Source` (best-effort): при успехе fork-ссылки проверяются строго,
+при провале — деградируют в informational. Корни, которых нет на свежем раннере,
+тоже informational: `reference/` (gitignored снапшоты) и `Source-wt-component/`
+(worktree gpui-component). Коммитящиеся корни (`crates/…`, `docs/…`, `skills/…`)
+строгие всегда.
 
 ## Plugins
 

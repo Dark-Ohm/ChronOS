@@ -58,16 +58,28 @@ import re, os, sys
 
 SRC, REPO, FILES = sys.argv[1], sys.argv[2], sys.argv[3:]
 
-# When SRC is missing (CI), references that can only resolve against the fork
-# degrade to EXT(fork-missing) instead of failing — repo-local proofs stay
-# strict. A "fork-style" ref is any ref that is NOT repo-local (repo-local =
-# explicit `crates/…`/`docs/…`/`packaging/…`/`scripts/…`/`skills/…`/`reference/…`
-# or a short ref that resolves against one of those roots).
+# Environment degradation (CI): some roots are simply not present on the
+# runner, and references to them degrade to informational EXT instead of
+# failing — repo-local proofs stay strict.
+#   - SRC (the gpui fork `../Source`): when missing, any ref that is NOT
+#     repo-local (i.e. not an explicit `crates/…`/`docs/…`/`packaging/…`/
+#     `scripts/…`/`skills/…`/`reference/…` path) is fork-style and degrades.
+#   - `reference/` (donor/upstream snapshots) is gitignored and never
+#     committed — absent in a fresh CI checkout.
+#   - `Source-wt-component/` (gpui-component worktree) is a dev-machine
+#     sibling — absent in CI.
 FORK_MISSING = not os.path.isdir(SRC)
 REPO_PREFIX_RE = re.compile(r'^(crates|docs|packaging|scripts|skills|reference)/')
 
 def is_fork_style(ref):
     return not REPO_PREFIX_RE.match(ref)
+
+def env_missing(ref):
+    if ref.startswith('reference/'):
+        return not os.path.isdir(os.path.join(REPO, 'reference'))
+    if ref.startswith('Source-wt-component/'):
+        return not os.path.isdir(os.path.join(os.path.dirname(REPO), 'Source-wt-component'))
+    return False
 
 # Short-ref prefixes, fork-first. `crates/…`-style prefixes come last because
 # full-path refs are handled by their own branch below.
@@ -145,6 +157,10 @@ for f in FILES:
             if found is None:
                 if is_external(ref):
                     print(f'EXT   {os.path.relpath(f, REPO)}:{ln}: {ref}')
+                    ext += 1
+                    continue
+                if env_missing(ref):
+                    print(f'EXT(env-missing) {os.path.relpath(f, REPO)}:{ln}: {ref}')
                     ext += 1
                     continue
                 if FORK_MISSING and is_fork_style(ref):
