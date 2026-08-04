@@ -496,6 +496,24 @@ bus truth): filter unidentifiable items → dedupe by bus owner → cap at
 - `select_tab()` деферит фокус на 50ms через `cx.spawn` + `background_executor().timer()` — этого достаточно для первого рендера и материализации editor'а
 - `preview_target()` использует `PreviewIntent::Edit` чтобы файл открылся сразу в Edit mode (view-only не создаёт `InputState`)
 
+**T231 (2026-08-04): правые вкладки — общий визуальный паттерн** в
+`crates/app/src/side_panel_right/tab/ui.rs` (консолидация `section_header`,
+который до этого был продублирован в трёх файлах):
+
+- `elevated_card(theme)` — `bg.elevated`-подложка с elevation-тенями темы
+  (`elevation_popup()` + `elevation_apply_light_chrome`). `.id()` ДОЛЖЕН
+  идти ПОСЛЕ вызова: helper отдаёт голый `Div`, `.id()` → `Stateful<Div>`.
+- `section_header(theme, title, subtitle)` — акцентный тик + semibold + mono;
+  `setting_label`/`setting_row` — label+path пара.
+- `is_wide(&Window)` / `GRID_BREAKPOINT = 720.0` — резиновый grid: дефолтная
+  ширина 560 остаётся 1-колоночной, 960 (`MAX_WIDTH`) → 2 колонки.
+- Вкладки Files / Hyprland binds / ACP settings переведены на паттерн
+  (bar_settings — первая, T231). Бинды и агенты — `grid_cols(2)` на широкой
+  панели; Files — сознательно список (файловый браузер ≠ сетка). Новые
+  Settings-вкладки: переиспользовать `ui.rs`, не плодить свои `section_header`.
+- `select-tab` id вкладок: `files`, `hyprland_binds`, `acp_settings`,
+  `editor_settings` (Bar), `system`, `preview`, `library`, `terminal`.
+
 ## Related skills
 
 | Need | Skill |

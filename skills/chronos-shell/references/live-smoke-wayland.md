@@ -9,6 +9,17 @@ daemon look like it crashed.
 - Confirm no live instance (zombies don't count): `ps -eo pid,comm | grep chronos`
   — ignore `<defunct>`. If a REAL one is owned by you and you must restart it,
   `kill <that-pid>` (never a pattern kill).
+- `$!` after `nohup chronos >log 2>&1 &` can be the PID of a subshell wrapper,
+  NOT chronos itself — track the real process with `pgrep -x chronos`.
+- If a PARALLEL session (another agent / the user) owns the shell, never
+  `pkill` it from test commands: a restart cycle that kills and re-launches
+  every minute looks exactly like "the shell keeps crashing" (T231
+  2026-08-04 — the whole "process dies every 1-2 min" scare was self-inflicted
+  this way). Before blaming a suspected crash on a diff, watch the real PID for
+  60s with ZERO commands.
+- A `can't render at a zero size` burst right after launch is documented infra
+  noise (T233), not proof your tab code regressed — survival over 60s with
+  layers up is the signal.
 - Stale IPC socket self-heals: `crates/app/src/ipc/service.rs::acquire_at` removes
   a dead `/run/user/1000/chronos.sock` and binds. Just launch; don't `rm` first.
 - Know the layout: `hyprctl monitors -j` → here `DP-1` 2560x1440 at (0,0),
@@ -55,13 +66,29 @@ sleep 1
 hyprctl layers -j | ...   # GONE -> close wiring proven
 ```
 
-## 5. Action button (no click injection available)
-There is NO Wayland input tool installed (ydotool/dotool absent; xdotool is
-X11-only), so a literal mouse click on the action button can't be injected.
-Verify the `dispatch(InvokeAction)` path with a UNIT TEST instead — the button
-closure is structurally identical to X. See `crates/services/src/notification/
-mod.rs::invoke_action_closes_notification` for the pattern (bogus key ignored,
-matching key closes).
+## 5. Synthetic input (clicks / drags) — ydotool broken, uinput works (T231)
+
+`ydotool` IS installed but non-functional on this host (kernel-module
+mismatch — HANDOFF). A small C helper via `/dev/uinput` WORKS and is the only
+proven injection path (2026-08-04, T231): it resized the right panel 320→960
+and clicked the bar-settings `+` so `bar.toml` actually changed.
+
+- Build once: `/tmp/t231/mouse_drag.c` — open `/dev/uinput`, `ABS_X max=2560`,
+  `ABS_Y max=1440`, `BTN_LEFT` press → interpolated move → release. Usage:
+  `./mouse_drag <x1> <y1> <x2> <y2> [steps] [step_ms]`; a click = same coords
+  twice, `steps=1`.
+- **Coordinate mapping:** the uinput ABS range maps onto the WHOLE desktop
+  (both monitors, 4480 px wide), so screen → uinput is `uinput_x = screen_x /
+  1.75`, `uinput_y = screen_y` (1:1). An undivided `x` lands the cursor on the
+  wrong monitor — the classic "miss".
+- Confirm the cursor landed with `hyprctl cursorpos` before trusting the click.
+- If `hyprctl layers` is empty entirely (no bar, no panel), that is a
+  different signal (no layer surfaces at all) — not an input problem.
+
+If no input injection is possible, verify the `dispatch(InvokeAction)` path
+with a UNIT TEST instead — the button closure is structurally identical to X.
+See `crates/services/src/notification/mod.rs::invoke_action_closes_notification`
+for the pattern (bogus key ignored, matching key closes).
 
 ## 6. Benign noise — do NOT chase
 - `ERROR: window not found` pairs correlate with `network`-subscriber reconnect

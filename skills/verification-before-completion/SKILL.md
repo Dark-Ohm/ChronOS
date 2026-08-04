@@ -142,6 +142,11 @@ Window / OSD / bar / tray UI claims additionally need:
 2. `pkill -x chronos` then run the release binary (`RUST_LOG=info`)
 3. Live action + **grim** (or log line that can fail) — unit green alone is
    **nothing** for layer-shell UX (HANDOFF / `chronos-shell`)
+4. If a parallel session owns the shell, do NOT `pkill` it from test commands
+   — confirm a suspected crash by watching `pgrep -x chronos` for 60s with
+   zero commands first (T231 2026-08-04: a self-inflicted kill/restart cycle
+   masqueraded as "the shell keeps crashing"; `$!` after `nohup … &` may be a
+   subshell PID, not chronos).
 
 ## The Bottom Line
 
