@@ -129,6 +129,35 @@ Fixed height + unbounded children = content clipped at the bottom
 - `f32::from(pixels)` — never `.0` on `Pixels` (private).
 - `.max_h` / `.max_w` exist for **elements**; surface size is still resize-only.
 
+### Async resize — gate re-issue on LIVE geometry, not state (T243, 2026-08-05)
+
+`window.resize()` is **async on Wayland**: the configure can be lost by the
+compositor. If your resize guard is a state-vs-state comparison
+(`last_resized_width != target_width`), a lost configure leaves the guard
+reading "already resized" (both state copies equal) while the surface sits
+at the old width — **the window sticks forever** (T243 caught live:
+`last=320 panel=320 actual=40` for seconds, panel stuck at rail width
+while state claimed 320).
+
+```rust
+// Correct: compare the compositor's ACTUAL width to the target.
+// Re-issues resize every render until acked, then self-stops.
+let actual = window.bounds().size.width.as_f32();
+if needs_width_resize(actual, panel_width) {  // |actual-target| > 1.0
+    window.resize(Size::new(px(panel_width), px(panel_h)));
+}
+```
+
+Same principle as `update_resize` (T216: "state runs ahead of the
+compositor between configure acks"). Symptom pattern that points here:
+**surface stuck at an old width that matches the PREVIOUS state, while
+current state is wider** — not a layout bug, an un-retried lost resize.
+Left panel hit the identical bug (`expand-left` stuck at 40px with
+state=352, fixed the same way). Related: gate `content_open` flips on
+live `window.bounds()` too, not the state target — otherwise the rail
+reflows a frame before the compositor commits the new width (close
+"wobble").
+
 ### Scroll pitfall
 
 `overflow_y_scroll()` needs `.id(...)` first — it lives on

@@ -83,8 +83,10 @@ Zed, not crates.io. Path-deps from ChronOS point here.
 | Responsive 2-col → 1-col for right-panel tabs? | Breakpoint pattern in `tab/ui.rs`: `GRID_BREAKPOINT = 720.0`, `is_wide(&Window)` via `window.bounds().size.width.as_f32()`. Default docked width (560) stays 1-col; 960 (`MAX_WIDTH`) → 2-col. | `tab/ui.rs`, T231 2026-08-04 |
 | Does `.gap_1()` (etc.) exist? | **No.** The fork only has `gap(px(n))`. `gap_1`/`gap_xl` from upstream Zed are absent — using them breaks the whole builder chain with a cascade of "method not found" errors. | `Source/gpui/src/styled.rs` (only `flex_col`/`flex_wrap`/`gap(px)`), T237 session 2026-08-04 |
 | Two `on_hover` on one element? | No — `debug_assert` panics; one slot | `div.rs:622-625`, `:1995` |
+| Is `window.resize()` synchronous? | **No — async on Wayland.** A `configure` ack can be lost; gate any resize re-issue on the compositor's ACTUAL geometry (`window.bounds()`), not on a state-vs-state comparison. `last_resized_width != panel_width` compares two state copies and reads "already resized" after a lost configure → surface stuck at old width forever (T243: `last=320 panel=320 actual=40` for seconds). Helper `needs_width_resize(actual, target) = (actual-target).abs() > 1.0` re-issues every render until acked, then self-stops. Same principle as `update_resize` (T216). | `crates/app/src/side_panel_right/view.rs` (`needs_width_resize`, T243 2026-08-05), T216 `update_resize` |
 | Is there an interval timer? | No — one-shot `timer`, loop it yourself | `executor.rs:162` |
 | Must Kael easing be ported? | Already ported | `easing.rs:1-71` |
+| Gate `content_open` / layout flips on what? | Live `window.bounds()`, not the state target. Gating a content-column vanish/appear on `panel_width` (state) lets the rail reflow inside a still-stale window for a frame or two (the "wobble" on close); gating on actual width keeps the layout flip in lockstep with the compositor. | T243 2026-08-05, `view.rs` `content_open` computed from live bounds |
 
 ## Related skills
 
