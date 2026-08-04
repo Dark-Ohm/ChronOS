@@ -1,9 +1,12 @@
 //! Hyprland binds tab — read-only list of keybinds from the modular Lua config.
 //!
-//! Source: `~/.config/hypr/modules/25-binds-chronos.lua` + `20-binds-kitchen.lua`
-//! (Hyprland 0.55+ Lua). Read-only: no writes, no hyprctl (§13). Fallback: when
-//! `modules/` is missing, try `~/.config/hypr/hyprland.lua` (monolith, noted in
-//! UI); if still empty → honest empty state, never a panic.
+//! Source: every `*.lua` under `~/.config/hypr/modules/` (Hyprland 0.55+ Lua).
+//! Read-only: no writes, no hyprctl (§13). Each module contributes a **group**
+//! named by an optional metadata comment — `-- # group = "Apps"` — falling back
+//! to `"Custom"` (never the raw filename; PRODUCT.md §1: binds are an onboarding
+//! surface, not a verbatim config dump). Fallback: when `modules/` is missing,
+//! try `~/.config/hypr/hyprland.lua` (monolith, noted in UI); if still empty →
+//! honest empty state, never a panic.
 //!
 //! Parser is a targeted line scan for `hl.bind(...)` — not a full Lua AST.
 //! The `mainMod` variable is tracked so `mainMod .. " + L"` renders as `SUPER + L`.
@@ -27,7 +30,9 @@ pub struct BindRow {
     pub action: String,
     /// 1-based line in the source file.
     pub line: usize,
-    /// Source label: `ChronOS`, `Kitchen`, or `hyprland.lua`.
+    /// Human-readable group label from the module's metadata comment
+    /// (`-- # group = "..."`), or `"Custom"` when the module has none.
+    /// Never the raw module filename.
     pub source: String,
     /// Absolute path of the source file (for click-to-open).
     pub path: PathBuf,
@@ -198,14 +203,26 @@ fn load_all() -> (Vec<BindRow>, LoadState, bool) {
     let mut using_monolith = false;
 
     if modules.is_dir() {
-        for (label, name) in [
-            ("ChronOS", "25-binds-chronos.lua"),
-            ("Kitchen", "20-binds-kitchen.lua"),
-        ] {
-            let p = modules.join(name);
+        // Read every *.lua module — groups come from each module's metadata
+        // comment (`-- # group = "..."`), falling back to "Custom". Sorting by
+        // name keeps module order stable across reloads. Non-bind helpers
+        // (monitors, autostart, windowrules…) naturally yield zero rows.
+        let mut files: Vec<PathBuf> = std::fs::read_dir(&modules)
+            .ok()
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.is_file())
+            .filter(|p| p.extension().map(|x| x == "lua").unwrap_or(false))
+            .collect();
+        files.sort();
+
+        for p in files {
             match std::fs::read_to_string(&p) {
                 Ok(src) => {
-                    let parsed = parse_binds(&src, label, &p);
+                    let group = parse_group(&src);
+                    let parsed = parse_binds(&src, &group, &p);
                     if !parsed.is_empty() {
                         binds.extend(parsed);
                     }
@@ -218,7 +235,7 @@ fn load_all() -> (Vec<BindRow>, LoadState, bool) {
         let mono = config_dir.join("hypr/hyprland.lua");
         if mono.is_file() {
             if let Ok(src) = std::fs::read_to_string(&mono) {
-                binds = parse_binds(&src, "hyprland.lua", &mono);
+                binds = parse_binds(&src, "Custom", &mono);
                 using_monolith = !binds.is_empty();
             }
         }
@@ -232,6 +249,26 @@ fn load_all() -> (Vec<BindRow>, LoadState, bool) {
         LoadState::Ready
     };
     (binds, load, using_monolith)
+}
+
+/// Resolve a module's human-readable group from its metadata comment.
+///
+/// Looks for a `--` comment line containing `# group = "Label"` (the `#` is
+/// illustrative — any `--` comment with `group = "..."` matches). Returns the
+/// quoted label, or `"Custom"` when the module has no metadata.
+fn parse_group(source: &str) -> String {
+    for line in source.lines() {
+        let t = line.trim_start();
+        if !t.starts_with("--") {
+            continue; // only metadata in comments, never in code
+        }
+        if let Some(eq) = t.find("group =") {
+            if let Some(g) = quoted(&t[eq + "group =".len()..]) {
+                return g;
+            }
+        }
+    }
+    "Custom".to_string()
 }
 
 /// Parse every `hl.bind(...)` in a Lua source, tracking the `mainMod` value.
@@ -482,5 +519,41 @@ hl.bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd("chronos-ipc toggle-theme")) 
     fn empty_source_yields_empty() {
         assert!(parse_binds("", "X", &p()).is_empty());
         assert!(parse_binds("-- nothing here\nlocal x = 1\n", "X", &p()).is_empty());
+    }
+
+    #[test]
+    fn group_metadata_comment_is_used_as_source_label() {
+        let src = "-- # group = \"Apps & Media\"\nhl.bind(mainMod .. \" + E\", app(thunar))\n";
+        let rows = parse_binds(src, &parse_group(src), &p());
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].source, "Apps & Media");
+    }
+
+    #[test]
+    fn missing_metadata_falls_back_to_custom() {
+        // Real-shaped module: no `group =` comment anywhere → "Custom", and the
+        // raw filename/stem must NOT leak into the UI label.
+        let src = KITCHEN_SNIPPET; // starts with `local M = ...`, no metadata
+        assert_eq!(parse_group(src), "Custom");
+        assert!(!parse_group(src).contains("kitchen"));
+
+        let rows = parse_binds(src, &parse_group(src), &p());
+        assert!(!rows.is_empty());
+        for r in &rows {
+            assert_eq!(r.source, "Custom", "no metadata → Custom, not a filename");
+        }
+    }
+
+    #[test]
+    fn group_ignored_in_code_but_read_in_comment() {
+        // A `group =` outside a comment must be ignored.
+        let src = "group = \"NotThis\"\n-- group = \"This\"\nhl.bind(mainMod .. \" + A\", app(x))\n";
+        assert_eq!(parse_group(src), "This");
+    }
+
+    #[test]
+    fn group_missing_when_unquoted() {
+        let src = "-- group = unquoted\nhl.bind(mainMod .. \" + A\", app(x))\n";
+        assert_eq!(parse_group(src), "Custom");
     }
 }
