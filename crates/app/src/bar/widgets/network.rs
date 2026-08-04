@@ -184,7 +184,9 @@ impl BarWidget for NetworkWidget {
         let speed_color = if view.disconnected {
             theme.text.disabled
         } else {
-            theme.text.secondary
+            // Secondary numeric counter (down/up KB/s): recolor to muted so it
+            // doesn't compete with the clock for attention (T234).
+            theme.text.muted
         };
 
         #[cfg(feature = "hot-reload")]

@@ -92,10 +92,14 @@ impl Render for Bar {
             .enumerate()
             .map(|(i, w)| render_widget_slot(w, BarSection::Center, i, editing, window, cx))
             .collect();
-        let right: Vec<AnyElement> = registry
+        let right: Vec<(String, AnyElement)> = registry
             .widgets_for(BarSection::Right)
             .enumerate()
-            .map(|(i, w)| render_widget_slot(w, BarSection::Right, i, editing, window, cx))
+            .map(|(i, w)| {
+                let name = w.name().to_string();
+                let el = render_widget_slot(w, BarSection::Right, i, editing, window, cx);
+                (name, el)
+            })
             .collect();
 
         let theme = Theme::global(cx);
@@ -146,7 +150,7 @@ impl Render for Bar {
 
         root.child(section_div(BarSection::Left, left))
             .child(section_div(BarSection::Center, center))
-            .child(section_div(BarSection::Right, right))
+            .child(right_section_div(right))
     }
 }
 
@@ -243,6 +247,91 @@ fn section_div(section: BarSection, widgets: Vec<AnyElement>) -> AnyElement {
             .children(widgets)
             .into_any_element(),
     }
+}
+
+/// Spacing inside one semantic group of the right tray cluster.
+const RIGHT_INNER_GAP: f32 = 4.0;
+/// Spacing between semantic groups of the right tray cluster (T234):
+/// time | status(net/battery/sound) | keyboard layout | mode | project.
+const RIGHT_GROUP_GAP: f32 = 14.0;
+
+/// Semantic group id for a right-section widget name. Drives two-level
+/// spacing: 4px within a group, 14px between groups. `separator` (0) is a
+/// forced break and is dropped from layout — T234 replaces dividers with
+/// spacing. Everything not explicitly a stand-alone group falls into the
+/// status cluster (1).
+fn right_widget_group(name: &str) -> u8 {
+    match name {
+        "separator" => 0,
+        "project" => 2,
+        "workspace_mode" => 3,
+        "keyboard_layout" => 4,
+        "clock" => 5,
+        _ => 1,
+    }
+}
+
+/// Pure grouping of right-section widget names into semantic clusters,
+/// preserving order. `separator` forces a break and is dropped. Testable
+/// without a GPUI render context.
+fn group_right_names(names: &[String]) -> Vec<Vec<String>> {
+    let mut groups: Vec<Vec<String>> = Vec::new();
+    let mut current: Option<(u8, Vec<String>)> = None;
+    for name in names {
+        let gid = right_widget_group(name);
+        if gid == 0 {
+            if let Some((_, g)) = current.take() {
+                groups.push(g);
+            }
+            continue;
+        }
+        match &mut current {
+            Some((cgid, g)) if *cgid == gid => g.push(name.clone()),
+            Some((cgid, g)) => {
+                let taken = std::mem::replace(g, vec![name.clone()]);
+                *cgid = gid;
+                groups.push(taken);
+            }
+            None => current = Some((gid, vec![name.clone()])),
+        }
+    }
+    if let Some((_, g)) = current.take() {
+        groups.push(g);
+    }
+    groups
+}
+
+/// Build the right-section container: inner groups (4px) laid out with 14px
+/// between groups, pushed to the end. `separator` widgets are dropped.
+fn right_section_div(widgets: Vec<(String, AnyElement)>) -> AnyElement {
+    let filtered: Vec<(String, AnyElement)> = widgets
+        .into_iter()
+        .filter(|(n, _)| right_widget_group(n) != 0)
+        .collect();
+    let names: Vec<String> = filtered.iter().map(|(n, _)| n.clone()).collect();
+    let groups = group_right_names(&names);
+    let mut it = filtered.into_iter();
+    div()
+        .flex()
+        .flex_1()
+        .items_center()
+        .justify_end()
+        .gap(px(RIGHT_GROUP_GAP))
+        .children(groups.into_iter().map(|g| {
+            let mut els = Vec::with_capacity(g.len());
+            for _ in &g {
+                if let Some((_, el)) = it.next() {
+                    els.push(el);
+                }
+            }
+            div()
+                .flex()
+                .items_center()
+                .gap(px(RIGHT_INNER_GAP))
+                .children(els)
+                .into_any_element()
+        }))
+        .into_any_element()
 }
 
 /// Returns window options for the bar on the given display.
@@ -659,5 +748,60 @@ use chronos_ui::{Theme, WindowRootExt};
         };
         // leftover = 128, half = 64 ≥ 12 → still 64.
         assert_eq!(bar_screen_x_extent(2560.0, &a), (64.0, 2496.0));
+    }
+
+    // -- T234 right tray cluster grouping ------------------------------------
+
+    fn names(s: &[&str]) -> Vec<String> {
+        s.iter().map(|n| n.to_string()).collect()
+    }
+
+    #[test]
+    fn group_right_breaks_on_semantic_change() {
+        // Default config order: project | workspace_mode | volume | network |
+        // keyboard_layout | tray | updates | system | notification_bell |
+        // battery | clock (separators dropped).
+        let g = group_right_names(&names(&[
+            "project",
+            "workspace_mode",
+            "separator",
+            "volume",
+            "network",
+            "keyboard_layout",
+            "tray",
+            "updates",
+            "system",
+            "notification_bell",
+            "separator",
+            "battery",
+            "clock",
+        ]));
+        // 7 clusters: project / mode / net / layout / status / battery / clock.
+        assert_eq!(g.len(), 7);
+        assert_eq!(g[0], vec!["project"]);
+        assert_eq!(g[1], vec!["workspace_mode"]);
+        assert_eq!(g[2], vec!["volume", "network"]);
+        assert_eq!(g[3], vec!["keyboard_layout"]);
+        assert_eq!(
+            g[4],
+            vec!["tray", "updates", "system", "notification_bell"]
+        );
+        assert_eq!(g[5], vec!["battery"]);
+        assert_eq!(g[6], vec!["clock"]);
+    }
+
+    #[test]
+    fn group_right_drops_separators() {
+        let g = group_right_names(&names(&["clock", "separator", "network"]));
+        assert_eq!(g.len(), 2);
+        assert_eq!(g[0], vec!["clock"]);
+        assert_eq!(g[1], vec!["network"]);
+    }
+
+    #[test]
+    fn group_right_merges_same_group_across_runs() {
+        let g = group_right_names(&names(&["volume", "network", "battery"]));
+        assert_eq!(g.len(), 1);
+        assert_eq!(g[0], vec!["volume", "network", "battery"]);
     }
 }
