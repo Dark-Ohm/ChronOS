@@ -178,13 +178,25 @@ impl Render for SidePanelLeft {
             self.state.last_exclusive_zone = Some(new_zone);
         }
 
-        if self.last_resized_width != Some(self.state.width) {
+        // T243 (mirrored): gate the resize on the compositor's ACTUAL width
+        // (`window.bounds()`), not on `last_resized_width` vs `state.width`
+        // (two state copies). `window.resize()` is async on Wayland — a
+        // configure that never lands leaves last==target while the surface
+        // sits at the rail width, and the old guard read "already resized"
+        // and never retried (the compose_and_send / expand-left surface
+        // stuck at 40px while state said 352 — caught live in T226). Gating
+        // on live geometry re-issues the resize every render until the
+        // compositor acks — self-healing, same principle as T216
+        // `update_resize` and the right panel's T243 fix.
+        let actual_width = window.bounds().size.width.as_f32();
+        if crate::side_panel_right::view::needs_width_resize(actual_width, self.state.width) {
             let display_id = crate::monitor::pult_display_id_or_primary(cx);
             let display_h = display_height(display_id, cx);
             let panel_h = (display_h - panel_edge_gap()).max(100.);
             self.state.height = panel_h;
             tracing::debug!(
                 state_width = self.state.width,
+                actual_width,
                 last_resized = ?self.last_resized_width,
                 dock_chat = self.state.dock_chat,
                 "render: issuing window.resize"

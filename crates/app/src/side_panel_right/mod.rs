@@ -421,6 +421,35 @@ pub fn preview_target(path: std::path::PathBuf, cx: &mut App) {
         generation,
         intent: PreviewIntent::Edit,
     });
+    // T226 tooling: keyboard-focus the editor — mirror of `select_tab`'s
+    // focus defer. `set_global` fires the view's PreviewTarget observer
+    // synchronously, so by the time this spawn runs the Preview tab exists
+    // and `active_tab_focus` can resolve its editor. Without this, wtype /
+    // synthetic input after `preview-target` lands nowhere (no seat focus
+    // on GPUI layer-shell windows), which is exactly the infra gap that
+    // blocked Editor capture in T226 attempts #2/#3.
+    if let Some(handle) = cx.global::<SidePanelRightState>().handle.clone() {
+        let focus_view = cx
+            .global::<SidePanelRightState>()
+            .view
+            .clone()
+            .and_then(|w| w.upgrade());
+        if let Some(focus_view) = focus_view {
+            cx.spawn(async move |cx| {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(50))
+                    .await;
+                cx.update(|cx| {
+                    let _ = handle.update(cx, |_, window, cx| {
+                        if let Some(focus) = focus_view.read(cx).active_tab_focus(cx) {
+                            window.focus(&focus, cx);
+                        }
+                    });
+                })
+            })
+            .detach();
+        }
+    }
     tracing::info!(?path, "side_panel_right: preview_target set");
 }
 
