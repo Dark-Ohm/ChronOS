@@ -21,12 +21,16 @@
 #   - `Source/…` refs resolve against the fork root.
 #   - `crates/…`, `docs/…`, `packaging/…`, `scripts/…`, `skills/…`,
 #     `reference/…` (donor/upstream snapshots) resolve against the repo root.
+#   - `Source-wt-component/…` refs resolve against the sibling gpui-component
+#     worktree (Longbridge toolkit wired into ChronOS).
 #   - Short refs (e.g. `div.rs:1429`) are tried against known fork/repo
 #     prefixes in order; the first hit wins.
-#   - References to OUT-OF-TREE code (e.g. Zed-upstream paths in `zed-*`
-#     skills) legitimately do not resolve here — the script reports them as
-#     MISS-FILE, which is the expected signal for "this points outside our
-#     tree", not necessarily a defect.
+#   - References to OUT-OF-TREE code (Zed upstream, Hermes checkout, philip,
+#     fable worked-examples, writing-plans placeholders) legitimately do not
+#     resolve here — the EXTERNAL allowlist below reports them as `EXT`
+#     (informational) and does NOT fail the run. A `MISS-FILE`/`BAD-LINE` is
+#     therefore a genuine defect: a stale line or a path that should resolve
+#     against one of the known roots.
 
 set -u
 
@@ -72,6 +76,9 @@ def resolve(ref):
     if ref.startswith('Source/'):          # explicit fork path
         cand = os.path.join(SRC, ref[len('Source/'):])
         return cand if os.path.isfile(cand) else None
+    if ref.startswith('Source-wt-component/'):  # gpui-component worktree (sibling of Source/)
+        cand = os.path.join(os.path.dirname(REPO), ref)
+        return cand if os.path.isfile(cand) else None
     if re.match(r'^(crates|docs|packaging|scripts|skills|reference)/', ref):  # explicit repo path
         cand = os.path.join(REPO, ref)
         return cand if os.path.isfile(cand) else None
@@ -82,8 +89,32 @@ def resolve(ref):
             return cand
     return None
 
+# Known-external references — legitimately do not resolve in this tree, but
+# are NOT defects. Reported as `EXT` (informational); never fail the run.
+# Grouped by the external tree each belongs to:
+#   - Zed upstream source (documentation-investigation/zed-ai-assistant-*):
+#     crates/agent, crates/agent_ui, crates/language_model(_core), crates/acp_thread
+#   - Hermes checkout (~/.hermes/hermes-agent): agent/tool_executor.py,
+#     acp_adapter/, server.py
+#   - philip project checkout: trajectory_compressor.py, registry.py,
+#     agent/context_compressor.py
+#   - fable-method worked examples (fictional files): useDashboard.ts, dates.ts
+#   - writing-plans templates/placeholders: exact/path/to/…,
+#     docs/brief/IMPLEMENTATION-PLAN.md
+EXTERNAL = [
+    'crates/agent/', 'crates/agent_ui/', 'crates/language_model/',
+    'crates/language_model_core/', 'crates/acp_thread/',
+    'agent/tool_executor.py', 'agent/context_compressor.py', 'acp_adapter/',
+    'server.py', 'trajectory_compressor.py', 'registry.py',
+    'useDashboard.ts', 'dates.ts',
+    'exact/path/to/', 'docs/brief/IMPLEMENTATION-PLAN.md',
+]
+
+def is_external(ref):
+    return any(ref.startswith(p) or ref == p for p in EXTERNAL)
+
 pat = re.compile(r'`([^`]+?):(\d+)(?:-(\d+))?`')
-ok = bad = 0
+ok = bad = ext = 0
 for f in FILES:
     if not os.path.isfile(f):
         print(f'MISS-EVAL-FILE {f}')
@@ -99,6 +130,10 @@ for f in FILES:
                 continue
             found = resolve(ref)
             if found is None:
+                if is_external(ref):
+                    print(f'EXT   {os.path.relpath(f, REPO)}:{ln}: {ref}')
+                    ext += 1
+                    continue
                 print(f'MISS-FILE {os.path.relpath(f, REPO)}:{ln}: {ref}')
                 bad += 1
                 continue
@@ -111,6 +146,6 @@ for f in FILES:
             ok += 1
 
 print('=' * 66)
-print(f'files: {len(FILES)}, proofs checked: {ok}, BROKEN: {bad}')
+print(f'files: {len(FILES)}, proofs checked: {ok}, external (by design): {ext}, BROKEN: {bad}')
 sys.exit(1 if bad else 0)
 PYEOF

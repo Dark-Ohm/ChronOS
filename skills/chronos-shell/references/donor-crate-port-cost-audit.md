@@ -34,11 +34,12 @@ report before any port.
 - `kael_icons/Cargo.toml`: **NO `[dependencies]`** (23-line file, workspace
   inherited only). Confirmed standalone.
 - `build.rs` codegens `OUT_DIR/generated_icon_catalog.rs`: an `IconName` enum +
-  `include_str!("<abs svg path>")` per icon (`build.rs:157-167`). SVGs are
+  `include_str!("<abs svg path>")` per icon
+  (`reference/kael-main/crates/kael_icons/build.rs:157-167`). SVGs are
   compiled into the binary, not loaded at runtime.
 - Only **4 Lucide SVGs** ship today: `check`, `chevron_left`, `chevron_right`,
   `close` (icons/*.svg). Each uses `fill="currentColor"` + `viewBox`
-  (validated in `build.rs:85-106`).
+  (validated in `reference/kael-main/crates/kael_icons/build.rs:85-106`).
 - `weight.rs` `IconWeight` is a stroke-width enum only (no per-weight SVG) — the
   fork's `paint_svg` has no stroke-width param, so the weight knob can't be
   honored as-is.
@@ -72,14 +73,15 @@ report before any port.
 |---|---|
 | `ElementInputHandler`, `EntityInputHandler`, IME methods | `input.rs:100-117`; `platform.rs:1366,1494,1577` |
 | `read/write_from_clipboard` | `app.rs:1334,1349`; `platform.rs:259-260` |
-| `WrappedLine` + `wrap_boundaries()` | `text_system/line.rs:257`; `line_layout.rs:266` |
+| `WrappedLine` + `wrap_boundaries()` | `text_system/line.rs:257`; `text_system/line_layout.rs:280` |
 | `unicode-segmentation` | `Cargo.toml:122` (`unicode-segmentation = "1.10"`), `gpui/Cargo.toml:155` |
 | `with_element_state` / `current_view` | `window.rs:3562` / `window.rs:4394` |
 | `paint_svg` (inline bytes) | `window.rs:4102` |
 
 ### Fork primitives — MISSING
 - `Window::undo_manager()` — no declaration in `Source/gpui/src`.
-- `WindowValueHistory` / `local_history` — kael-internal (`kael/src/elements/local_history.rs:243`);
+- `WindowValueHistory` / `local_history` — kael-internal
+  (`reference/kael-main/crates/kael/src/elements/local_history.rs:243`);
   not in the fork.
 
 ## Launcher hand-rolled input (the comparison target)

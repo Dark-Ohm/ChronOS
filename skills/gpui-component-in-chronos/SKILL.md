@@ -46,8 +46,10 @@ gpui_web = { path = "../Source/gpui_web" }
    клавиатурные события вовсе.
 
 Типы: виджет — `gpui_component::input::Input`
-(`crates/ui/src/input/input.rs:37`), состояние — `InputState`
-(`state.rs:342`), создаётся через `cx.new(...)`. **`TextInput` в этой
+(`Source-wt-component/gpui-component/crates/ui/src/input/input.rs:37`),
+состояние — `InputState`
+(`Source-wt-component/gpui-component/crates/ui/src/input/state.rs:342`),
+создаётся через `cx.new(...)`. **`TextInput` в этой
 версии не существует** — писать по памяти не надо, открывать файл надо.
 
 ## Фичи (T156)
