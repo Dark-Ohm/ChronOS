@@ -72,31 +72,19 @@ impl WallpaperSubscriber {
         handle.spawn(async move {
             ensure_daemon().await;
             match query_current().await {
-                Ok(state) if state.current.is_some() || !state.per_monitor.is_empty() => {
+                // We only reflect awww's current state, never drive it. Do
+                // NOT call `awww restore` on an empty read: it reapplies
+                // awww's own on-disk cache (`~/.cache/awww/<ver>/<output>`),
+                // which can drift from what the user's actual wallpaper
+                // manager (waytrogen) currently has selected — caught live
+                // 2026-08-04: awww's cache pointed at
+                // `musely_pixel_art.gif` while waytrogen's own config.json
+                // said `musely_pixel_art-4k.png`, and restoring from the
+                // stale awww cache silently overrode waytrogen's choice on
+                // every chronos restart. Directive: only waytrogen manages
+                // the background.
+                Ok(state) => {
                     data_clone.set(state);
-                    status_clone.set(ServiceStatus::Available);
-                }
-                Ok(_) => {
-                    // Daemon is up but showing nothing — a freshly spawned
-                    // process (post-reboot: the old one died with the
-                    // session) has no image loaded yet, even though awww's
-                    // own on-disk cache (`~/.cache/awww/<ver>/<output>`)
-                    // still remembers the user's last pick. Without this,
-                    // the screen falls back to whatever the compositor/
-                    // other background client shows underneath, which
-                    // reads as "reset to a default I never chose" (live
-                    // report 2026-08-04). `awww restore` reapplies the
-                    // cached image per output — exactly what a fresh
-                    // daemon needs, no new persistence layer required.
-                    info!("WallpaperSubscriber: daemon has no image loaded, restoring from cache");
-                    let _ = tokio::task::spawn_blocking(|| {
-                        Command::new(AWWW_BIN).arg("restore").output()
-                    })
-                    .await;
-                    match query_current().await {
-                        Ok(state) => data_clone.set(state),
-                        Err(e) => warn!("WallpaperSubscriber: re-query after restore failed: {e}"),
-                    }
                     status_clone.set(ServiceStatus::Available);
                 }
                 Err(e) => {
@@ -227,7 +215,16 @@ async fn ensure_daemon() {
     }
     info!("WallpaperSubscriber: starting {AWWW_DAEMON_BIN}");
     // Detach stdio so a stuck daemon cannot hold the caller's pipes open.
+    // `--no-cache`: a fresh daemon spawn otherwise self-restores its
+    // per-output on-disk cache (`~/.cache/awww/<ver>/<output>`) for every
+    // output it has ever painted, including ones waytrogen has since
+    // reassigned to another backend (e.g. DP-1 -> gslapper, see T244).
+    // That auto-restore remaps a background layer-shell surface on top of
+    // the other backend's, and Hyprland gives z-order to whoever mapped
+    // last -> DP-1 goes black. We only ever want awww painting outputs the
+    // UI explicitly targets via `dispatch`, never from its own cache.
     let _ = Command::new(AWWW_DAEMON_BIN)
+        .arg("--no-cache")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
