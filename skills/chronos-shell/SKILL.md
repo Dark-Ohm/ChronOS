@@ -77,7 +77,7 @@ like `net_stats` get **only** `pub mod` — never a field on `Services`.
 | `wallpaper_ctl.rs` | IPC wallpaper-next / wallpaper-set — scan `~/Pictures/Wallpapers`, round-robin |
 | `state.rs` | `AppState` global + `watch()` signal bridge |
 | `plugin_bridge.rs` | Lua → `BarWidget` |
-| `side_panel_right/` | right overlay skeleton (`da744a2`); meters/power still open tasks |
+| `side_panel_right/` | right overlay skeleton (`da744a2`); meters/power still open tasks. `tab/hypr_binds.rs` — read-only Hyprland binds tab (модульный Lua-конфиг, группы из метаданных, см. `references/hyprland-binds-tab.md`) |
 
 ### Bar widgets + watches
 
@@ -516,6 +516,7 @@ bus truth): filter unidentifiable items → dedupe by bus owner → cap at
 | `crates-app-api-surface.md` | Exhaustive pub-symbol audit of `crates/app` (line ranges, tests, startup sequence) |
 | `bar-widget-contract.md` | Live `mod X; X::register(cx)` widget registration contract + isolation verify |
 | `compositor-lua-dispatch.md` | Compositor→Lua event dispatch path |
+| **`hyprland-binds-tab.md`** | Right-panel Hyprland binds tab: модульный `.lua`-конфиг, группы `-- # group = "..."`, фолбэк `Custom`; gpui-ce gotcha `.on_click` требует stateful `.id()` (T236) |
 | `popup-lifecycle-patterns.md`, `tray-menu-popup-patterns.md`, `tray-widget-patterns.md`, `notifications-module-patterns.md` | Surface lifecycle patterns per module |
 | **`slow-service-dispatch.md`** | Audio/brightness drag: optimistic + latest-wins + DDC debounce (T123/T125) |
 | `gpui-fork-api-surface.md`, `gpui-shell-donor-audit.md`, `donor-crate-port-cost-audit.md`, `kael-patches.md` | Fork/donor audits (Kael content historical) |
