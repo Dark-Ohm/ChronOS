@@ -32,6 +32,23 @@ CLI: `./scripts/install-dev-cli.sh` → `chronos-rebuild && chronos-stop && chro
 
 `area : what` · named `git add` · `git diff --staged` · без AI-trailer · `reference/` gpui-shell не коммитить.
 
+## Skills
+
+Proof-ссылки (`file:line`) в скиллах — гейт, не пожелание. `./skills/check-proofs.sh`
+гоняется в CI (job `skill-proofs`, push/PR) и pre-commit хуком локально; битый реф =
+фейл. Ссылки на внешние деревья (Zed upstream, Hermes checkout, philip, fable-примеры,
+плейсхолдеры writing-plans) — в allowlist скрипта, отчитываются как `EXT`, прогон не валят.
+
+Pre-commit хук (проверяет staged `SKILL.md` / `*.eval.md` / `references/*.md`), активация один раз на клон:
+
+```sh
+git config core.hooksPath scripts/git-hooks
+```
+
+Отключить: `git config --unset core.hooksPath`. Проверить вручную весь vault:
+`./skills/check-proofs.sh` (exit 0 = чисто). В CI форка `../Source` нет — форк-ссылки
+деградируют в informational, repo-локальные (`crates/…`, `docs/…`, `reference/…`) строгие всегда.
+
 ## Plugins
 
 `crates/plugins/<name>/{manifest.toml,init.luau}` · id = путь каталога.
