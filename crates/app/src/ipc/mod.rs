@@ -23,6 +23,7 @@ impl IpcSubscriber {
             mut select_tab_receiver,
             mut preview_target_receiver,
             mut expand_left_receiver,
+            mut compose_and_send_receiver,
         ) = self.start_listener();
 
         cx.spawn(async move |cx| {
@@ -198,6 +199,17 @@ impl IpcSubscriber {
                                     crate::side_panel_left::expand_with_composer(cx);
                                 });
                             }
+                        } else {
+                            break;
+                        }
+                    }
+                    compose_and_send = compose_and_send_receiver.recv() => {
+                        if let Some(text) = compose_and_send {
+                            // No debounce — explicit send command, not a toggle.
+                            tracing::info!("IPC compose-and-send received");
+                            let _ = cx.update(|cx| {
+                                crate::side_panel_left::compose_and_send(text, cx);
+                            });
                         } else {
                             break;
                         }

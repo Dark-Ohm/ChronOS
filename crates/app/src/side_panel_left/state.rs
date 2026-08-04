@@ -146,8 +146,18 @@ impl SidePanelLeftState {
             .unwrap_or(Self::DEFAULT_CHAT_WIDTH)
             .max(need)
             .min(self.max_width);
+        tracing::debug!(
+            width = self.width,
+            target,
+            remembered = ?self.remembered_chat_width,
+            need,
+            "ensure_chat_width: before"
+        );
         if self.width < target {
             self.width = target;
+            tracing::debug!(new_width = self.width, "ensure_chat_width: expanded");
+        } else {
+            tracing::debug!(width = self.width, "ensure_chat_width: already wide enough (no-op)");
         }
         self.remembered_chat_width = Some(self.width);
     }

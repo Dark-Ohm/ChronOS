@@ -51,6 +51,9 @@ pub const SELECT_TAB_PREFIX: &str = "select-tab:";
 pub const PREVIEW_TARGET_PREFIX: &str = "preview-target:";
 /// T226 tooling: open the left agent panel docked and focus the composer.
 pub const EXPAND_LEFT_PAYLOAD: &str = "expand-left";
+/// T241 tooling: send text directly to the left panel composer and dispatch
+/// to the agent — bypasses Wayland seat focus for automated captures/tests.
+pub const COMPOSE_AND_SEND_PREFIX: &str = "compose-and-send:";
 
 // Same contract as `encode_toggle_launcher` above — external keybind
 // daemons trigger the right agent panel (pinned-only, no hover-peek).
@@ -149,6 +152,21 @@ pub fn is_expand_left(payload: &str) -> bool {
 #[allow(dead_code)]
 pub fn encode_expand_left() -> String {
     EXPAND_LEFT_PAYLOAD.to_string()
+}
+
+/// Encode a `compose-and-send:<text>` payload for an out-of-tree client.
+#[allow(dead_code)]
+pub fn encode_compose_and_send(text: &str) -> String {
+    format!("{COMPOSE_AND_SEND_PREFIX}{text}")
+}
+
+/// Parse `compose-and-send:<text>` — everything after the first `:` is the
+/// message text. Empty text → `None` (don't send empty prompts).
+pub fn parse_compose_and_send(payload: &str) -> Option<String> {
+    let trimmed = payload.trim();
+    let rest = trimmed.strip_prefix(COMPOSE_AND_SEND_PREFIX)?;
+    let text = rest.trim();
+    if text.is_empty() { None } else { Some(text.to_string()) }
 }
 
 pub fn is_wallpaper_next(payload: &str) -> bool {
@@ -440,5 +458,30 @@ mod tests {
         let payload = encode_expand_left();
         assert!(is_expand_left(&payload));
         assert!(!is_expand_left("toggle-side-panel-left"));
+    }
+
+    #[test]
+    fn parse_compose_and_send_extracts_text() {
+        let parsed = parse_compose_and_send("compose-and-send:hello world");
+        assert_eq!(parsed, Some("hello world".to_string()));
+    }
+
+    #[test]
+    fn parse_compose_and_send_rejects_empty() {
+        assert!(parse_compose_and_send("compose-and-send:").is_none());
+        assert!(parse_compose_and_send("compose-and-send:   ").is_none());
+        assert!(parse_compose_and_send("compose-and-send").is_none());
+    }
+
+    #[test]
+    fn parse_compose_and_send_trims_whitespace() {
+        let parsed = parse_compose_and_send("  compose-and-send:  hello \n");
+        assert_eq!(parsed, Some("hello".to_string()));
+    }
+
+    #[test]
+    fn encodes_compose_and_send_roundtrips() {
+        let payload = encode_compose_and_send("test 123");
+        assert_eq!(parse_compose_and_send(&payload), Some("test 123".to_string()));
     }
 }

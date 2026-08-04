@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use super::transport::HermesConfig;
@@ -18,7 +18,7 @@ pub struct AgentDescriptor {
 }
 
 /// TOML schema for a single agent entry.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct AgentToml {
     id: String,
     display_name: String,
@@ -28,7 +28,7 @@ struct AgentToml {
 }
 
 /// TOML root schema: `[[agents]]` array.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct AgentsConfig {
     #[serde(default)]
     agents: Vec<AgentToml>,
@@ -115,6 +115,71 @@ fn load_config_agents() -> Vec<AgentToml> {
             Vec::new()
         }
     }
+}
+
+/// Path to `~/.config/chronos/agents.toml`.
+pub fn agents_config_path() -> std::path::PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("~/.config"))
+        .join("chronos/agents.toml")
+}
+
+/// Add an agent entry to `agents.toml`. If the file doesn't exist, it's created.
+/// If an agent with the same `id` already exists, it's overwritten (upsert).
+pub fn add_agent(id: &str, display_name: &str, command: &str, args: &[String]) -> Result<(), String> {
+    let path = agents_config_path();
+    let mut config: AgentsConfig = match fs::read_to_string(&path) {
+        Ok(content) => toml::from_str(&content).map_err(|e| format!("Parse error: {e}"))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => AgentsConfig { agents: Vec::new() },
+        Err(e) => return Err(format!("Read error: {e}")),
+    };
+
+    let entry = AgentToml {
+        id: id.to_string(),
+        display_name: display_name.to_string(),
+        command: command.to_string(),
+        args: args.to_vec(),
+    };
+
+    // Upsert: replace existing entry with same id, or push.
+    if let Some(pos) = config.agents.iter().position(|a| a.id == entry.id) {
+        config.agents[pos] = entry;
+    } else {
+        config.agents.push(entry);
+    }
+
+    // Ensure parent directory exists.
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Create dir error: {e}"))?;
+    }
+
+    let serialized = toml::to_string_pretty(&config).map_err(|e| format!("Serialize error: {e}"))?;
+    fs::write(&path, serialized).map_err(|e| format!("Write error: {e}"))?;
+    tracing::info!(%id, "agents.toml: agent added/updated");
+    Ok(())
+}
+
+/// Remove an agent entry from `agents.toml` by id.
+/// Returns `Ok(true)` if the entry was found and removed, `Ok(false)` if
+/// it wasn't in the file, or `Err` on I/O/parse errors.
+pub fn remove_agent(id: &str) -> Result<bool, String> {
+    let path = agents_config_path();
+    let mut config: AgentsConfig = match fs::read_to_string(&path) {
+        Ok(content) => toml::from_str(&content).map_err(|e| format!("Parse error: {e}"))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(format!("Read error: {e}")),
+    };
+
+    let len_before = config.agents.len();
+    config.agents.retain(|a| a.id != id);
+    if config.agents.len() == len_before {
+        return Ok(false); // Not found.
+    }
+
+    let serialized = toml::to_string_pretty(&config).map_err(|e| format!("Serialize error: {e}"))?;
+    fs::write(&path, serialized).map_err(|e| format!("Write error: {e}"))?;
+    tracing::info!(%id, "agents.toml: agent removed");
+    Ok(true)
 }
 
 /// Returns the final list of known ACP-compatible agent backends.

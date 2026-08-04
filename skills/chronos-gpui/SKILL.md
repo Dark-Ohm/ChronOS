@@ -65,7 +65,7 @@ Zed, not crates.io. Path-deps from ChronOS point here.
 | Question | Answer | Evidence |
 |---|---|---|
 | Can a bare `div()` scroll? | No — `.id()` it first; `overflow_y_scroll` is on `StatefulInteractiveElement` | `div.rs:1429`, `:3752` |
-| Can an `on_click` mutate the view's own state? | Yes — `cx.listener`, no `Global` needed | `context.rs:252`, `volume_popup/view.rs:199` |
+| Can an `on_click` mutate the view's own state? | Yes — `cx.listener`, no `Global` needed. **But:** pre-build the listener as a variable before the render chain (pattern: `let l = cx.listener(...);` then `.on_click(l)`). Inline `cx.listener` inside `.when()`, for-loops, or nested `.child()` chains may fail with E0599 — the closure type doesn't resolve to `Stateful<Div>::on_click`'s expected signature in those contexts. | `context.rs:252`, `volume_popup/view.rs:199`, T235 session 2026-08-04 |
 | Two `on_hover` on one element? | No — `debug_assert` panics; one slot | `div.rs:622-625`, `:1995` |
 | Is there an interval timer? | No — one-shot `timer`, loop it yourself | `executor.rs:162` |
 | Must Kael easing be ported? | Already ported | `easing.rs:1-71` |

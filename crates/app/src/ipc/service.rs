@@ -9,7 +9,7 @@ use super::messages::{
     WallpaperIpcCmd, WorkspaceModeIpcCmd, classify_select_tab, classify_set_workspace_mode,
     classify_wallpaper, encode_ping, is_expand_left, is_ping, is_toggle_edit_mode,
     is_toggle_launcher, is_toggle_side_panel_left, is_toggle_side_panel_right, is_toggle_theme,
-    is_toggle_workspace_mode, parse_preview_target,
+    is_toggle_workspace_mode, parse_compose_and_send, parse_preview_target,
 };
 use crate::side_panel_right::tabs::PanelTab;
 
@@ -24,6 +24,7 @@ pub type IpcWorkspaceModeReceiver = mpsc::UnboundedReceiver<WorkspaceModeIpcCmd>
 pub type IpcSelectTabReceiver = mpsc::UnboundedReceiver<PanelTab>;
 pub type IpcPreviewTargetReceiver = mpsc::UnboundedReceiver<std::path::PathBuf>;
 pub type IpcExpandLeftReceiver = mpsc::UnboundedReceiver<()>;
+pub type IpcComposeAndSendReceiver = mpsc::UnboundedReceiver<String>;
 
 pub enum AcquireResult {
     Primary(IpcSubscriber),
@@ -73,6 +74,7 @@ impl IpcSubscriber {
         IpcSelectTabReceiver,
         IpcPreviewTargetReceiver,
         IpcExpandLeftReceiver,
+        IpcComposeAndSendReceiver,
     ) {
         let (ping_sender, ping_receiver) = mpsc::unbounded_channel();
         let (toggle_sender, toggle_receiver) = mpsc::unbounded_channel();
@@ -86,6 +88,7 @@ impl IpcSubscriber {
         let (select_tab_sender, select_tab_receiver) = mpsc::unbounded_channel();
         let (preview_target_sender, preview_target_receiver) = mpsc::unbounded_channel();
         let (expand_left_sender, expand_left_receiver) = mpsc::unbounded_channel();
+        let (compose_and_send_sender, compose_and_send_receiver) = mpsc::unbounded_channel();
 
         if let Some(std_listener) = self.listener.take() {
             // `from_std` requires a running tokio reactor, which is active here.
@@ -102,10 +105,11 @@ impl IpcSubscriber {
                             theme_toggle_sender,
                             edit_mode_toggle_sender,
                             workspace_mode_sender,
-                            select_tab_sender,
-                            preview_target_sender,
-                            expand_left_sender,
-                        )
+                    select_tab_sender,
+                    preview_target_sender,
+                    expand_left_sender,
+                    compose_and_send_sender,
+                )
                         .await;
                     });
                 }
@@ -125,6 +129,7 @@ impl IpcSubscriber {
             select_tab_receiver,
             preview_target_receiver,
             expand_left_receiver,
+            compose_and_send_receiver,
         )
     }
 }
@@ -207,6 +212,7 @@ async fn accept_loop(
     select_tab_sender: mpsc::UnboundedSender<PanelTab>,
     preview_target_sender: mpsc::UnboundedSender<std::path::PathBuf>,
     expand_left_sender: mpsc::UnboundedSender<()>,
+    compose_and_send_sender: mpsc::UnboundedSender<String>,
 ) {
     use tokio::io::AsyncReadExt;
 
@@ -224,6 +230,7 @@ async fn accept_loop(
                 let select_tab_sender = select_tab_sender.clone();
                 let preview_target_sender = preview_target_sender.clone();
                 let expand_left_sender = expand_left_sender.clone();
+                let compose_and_send_sender = compose_and_send_sender.clone();
                 tokio::spawn(async move {
                     let mut buffer = Vec::with_capacity(64);
                     let read = tokio::time::timeout(
@@ -270,6 +277,9 @@ async fn accept_loop(
                         } else if is_expand_left(&payload) {
                             let _ = expand_left_sender.send(());
                             tracing::info!("IPC expand-left received");
+                        } else if let Some(text) = parse_compose_and_send(&payload) {
+                            let _ = compose_and_send_sender.send(text);
+                            tracing::info!("IPC compose-and-send received");
                         } else if let Some(cmd) = classify_wallpaper(&payload) {
                             let _ = wallpaper_sender.send(cmd);
                             tracing::info!("IPC wallpaper command received");

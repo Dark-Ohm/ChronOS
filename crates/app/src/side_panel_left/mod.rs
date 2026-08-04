@@ -183,6 +183,12 @@ impl Render for SidePanelLeft {
             let display_h = display_height(display_id, cx);
             let panel_h = (display_h - panel_edge_gap()).max(100.);
             self.state.height = panel_h;
+            tracing::debug!(
+                state_width = self.state.width,
+                last_resized = ?self.last_resized_width,
+                dock_chat = self.state.dock_chat,
+                "render: issuing window.resize"
+            );
             window.resize(Size::new(px(self.state.width), px(panel_h)));
             self.last_resized_width = Some(self.state.width);
         }
@@ -1259,6 +1265,14 @@ pub fn expand_with_composer(cx: &mut App) {
         return;
     };
     if let Err(e) = handle.update(cx, |this, window, cx| {
+        // T242: reset the resize throttle so render() always issues a
+        // window.resize(), even if state.width happens to already equal
+        // the target. Without this, a previous close/resize cycle can
+        // leave last_resized_width == state.width, the ensure_chat_width
+        // no-op below would keep it that way, and the physical Wayland
+        // surface stays at rail-only (40px) while the state model thinks
+        // it's wide — the desync that T242 reproduces intermittently.
+        this.last_resized_width = None;
         this.state.dock_chat = true;
         this.state.ensure_chat_width();
         this.composer_focused = true;
@@ -1267,6 +1281,36 @@ pub fn expand_with_composer(cx: &mut App) {
         cx.notify();
     }) {
         tracing::warn!("side_panel_left: expand_with_composer update failed: {e}");
+    }
+}
+
+/// T241 tooling: open the left panel, write `text` into the composer, and
+/// send it to the agent — all in one IPC command. Bypasses Wayland seat focus
+/// entirely (same class of tool as `preview-target`). The text is logged only
+/// at `debug!` level (user-input hygiene).
+pub fn compose_and_send(text: String, cx: &mut App) {
+    open_pinned(cx);
+    let Some(handle) = cx.global::<SidePanelLeftState_>().handle.clone() else {
+        tracing::warn!("side_panel_left: compose_and_send has no window");
+        return;
+    };
+    if let Err(e) = handle.update(cx, |this, window, cx| {
+        this.last_resized_width = None;
+        this.state.dock_chat = true;
+        this.state.ensure_chat_width();
+        this.composer_focused = true;
+        window.focus(&this.composer_focus, cx);
+        // Clear any leftover text, write the payload.
+        this.composer_input.clear();
+        this.composer_input.content = text.into();
+        // Reset cursor position to end-of-text so send_composer reads
+        // the full content (selected_range covers 0..0 by default,
+        // which is correct — `clear()` already resets it).
+        this.composer_input.selected_range = this.composer_input.content.len()..this.composer_input.content.len();
+        tracing::debug!("compose_and_send: dispatching to agent (len={})", this.composer_input.content.len());
+        this.send_composer(window, cx);
+    }) {
+        tracing::warn!("side_panel_left: compose_and_send update failed: {e}");
     }
 }
 
