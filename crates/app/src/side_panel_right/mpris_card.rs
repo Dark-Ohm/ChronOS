@@ -155,11 +155,46 @@ fn render_progress_bar(ratio: Option<f32>, theme: &Theme) -> impl IntoElement {
         )
 }
 
+/// Compact placeholder when no media player is present (T248): a single
+/// muted row, NOT the ~220px art-frame block. The System tab default screen
+/// was half permission-mock + half empty black art well — both showed
+/// nothing working. Once a real player appears the full card renders; the
+/// switch is a plain conditional render (no animation — a slide would read
+/// as a bug on every play/pause).
+fn render_no_player_card(state: &MprisState, theme: &Theme) -> gpui::Div {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .px(px(11.))
+        .py(px(8.))
+        .rounded(px(9.))
+        .bg(surfaces::card(&theme))
+        .border_1()
+        .border_color(theme.border.subtle)
+        .child(
+            img("icons/play.svg")
+                .w(px(14.))
+                .h(px(14.))
+                .text_color(theme.text.muted)
+                .opacity(0.7),
+        )
+        .child(
+            div()
+                .text_size(px(11.5))
+                .text_color(theme.text.secondary)
+                .child(display_title(state).to_string()),
+        )
+}
+
 pub fn render_mpris_card(
     state: &MprisState,
     cx: &App,
 ) -> impl IntoElement {
     let theme = *Theme::global(cx);
+    if !state.has_player {
+        return render_no_player_card(state, &theme);
+    }
     let player_id_for_mute = state.player_id.clone();
     let playing = state.playing;
     let has_player = state.has_player;
