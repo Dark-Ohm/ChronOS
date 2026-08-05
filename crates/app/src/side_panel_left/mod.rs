@@ -156,6 +156,11 @@ pub struct SidePanelLeft {
     pub(crate) composer_blink_task: Option<gpui::Task<()>>,
     /// Streaming state for the current ACP prompt turn.
     pub(crate) streaming: state::StreamingState,
+    /// T247: a message that arrived while the ACP client was still connecting
+    /// (agent_status Thinking). The user message is pushed immediately; the
+    /// ACP turn fires once the client connects (SidePanelLeft::new spawn) or
+    /// is dropped honestly if connect fails / the agent is switched.
+    pending_send: Option<String>,
     resize_start_x: Option<f32>,
     resize_start_width: Option<f32>,
     /// Width the platform window was last physically resized to. `render`
@@ -401,7 +406,7 @@ impl SidePanelLeft {
                     // messaged yet (live smoke, 2026-07-23: composer showed
                     // only attach/send, no indicators, on a fresh thread).
                     let session = client.create_session().await;
-                    let _ = this.update(cx, |this, _cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.clients.insert(agent_id, client);
                         this.state.agent_status = state::AgentStatus::Connected;
                         tracing::info!("side_panel_left: ACP client connected");
@@ -421,12 +426,34 @@ impl SidePanelLeft {
                                 "side_panel_left: create_session after connect failed: {e}"
                             );
                         }
+                        // T247: fire any message queued while the client was
+                        // still connecting (user message already pushed by
+                        // send_composer's Thinking branch).
+                        if let Some(text) = this.pending_send.take() {
+                            this.start_acp_turn(text, cx);
+                        }
+                        cx.notify();
                     });
                 }
                 Err(e) => {
                     tracing::warn!("side_panel_left: ACP client init failed: {e}");
-                    let _ = this.update(cx, |this, _cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.state.agent_status = state::AgentStatus::Disconnected;
+                        // T247: the queued message can never be delivered —
+                        // close the thread honestly instead of leaving a
+                        // dangling promise.
+                        if this.pending_send.take().is_some() {
+                            this.chat.push_message(chat_view::ChatMessage {
+                                role: chat_view::MessageRole::Agent,
+                                segments: vec![chat_view::Segment::Response {
+                                    content: format!(
+                                        "Не удалось подключиться к агенту ({e}) — сообщение не отправлено."
+                                    ),
+                                }],
+                            });
+                            this.chat.scroll_to_bottom();
+                        }
+                        cx.notify();
                     });
                 }
             }
@@ -468,6 +495,7 @@ impl SidePanelLeft {
             composer_model_search: String::new(),
             composer_focused: false,
             streaming: state::StreamingState::new(),
+            pending_send: None,
             resize_start_x: None,
             resize_start_width: None,
             last_resized_width: None,
@@ -536,6 +564,8 @@ impl SidePanelLeft {
         // Clear local transcript; mint a fresh ACP session on the agent.
         self.chat = chat_view::ChatView::new();
         self.streaming.reset();
+        // T247: a queued message belongs to the old thread — drop it.
+        self.pending_send = None;
         self.state.session_id = None;
         if let Some(client) = self.clients.get(&self.active_agent_id).cloned() {
             self.state.agent_status = state::AgentStatus::Thinking;
@@ -1054,6 +1084,8 @@ impl SidePanelLeft {
         self.sessions.clear();
         self.state.active_session_id = None;
         self.streaming.reset();
+        // T247: a message queued for the previous agent is stale now.
+        self.pending_send = None;
         self.thread_menu_open = None;
 
         // If client already exists, just mark connected.

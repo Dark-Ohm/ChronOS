@@ -916,39 +916,94 @@ impl SidePanelLeft {
     }
 
     pub(crate) fn send_composer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        // Don't send if agent is thinking
-        if self.state.agent_status == AgentStatus::Thinking {
-            return;
-        }
-
         let text = self.composer_input.content.trim().to_string();
         if text.is_empty() {
             return;
         }
+        self.composer_input.clear();
 
+        // The client is only ever absent during the initial connect (first
+        // HermesClient::new + create_session can take seconds). `agent_status`
+        // is Thinking then AND mid-turn, so gate on the client map, not the
+        // status: a message sent while the previous turn is still streaming
+        // must NOT be queued — `pending_send` drains only on connect, so it
+        // would sit forever with a false "отправлено автоматически" promise.
+        let connecting = !self.clients.contains_key(&self.active_agent_id)
+            && self.state.agent_status == AgentStatus::Thinking;
+        let mid_turn = self.state.agent_status == AgentStatus::Thinking && !connecting;
+
+        if connecting {
+            // T247: while the client connects, don't drop the message silently
+            // (the old `return` left the thread at "No messages yet" with the
+            // text stranded in the composer — the exact audit symptom: the IPC
+            // landed 4s before the client connected). Push the user message
+            // now, show an honest note, and defer the ACP turn until the
+            // connect handler drains `pending_send`.
+            self.push_user_message(&text, cx);
+            self.chat.push_message(ChatMessage {
+                role: MessageRole::Agent,
+                segments: vec![Segment::Response {
+                    content: "Агент ещё подключается — сообщение будет отправлено автоматически."
+                        .to_string(),
+                }],
+            });
+            self.chat.scroll_to_bottom();
+            self.pending_send = Some(text);
+            cx.notify();
+            return;
+        }
+
+        if mid_turn {
+            // Agent is busy with an earlier prompt. Honest note — the message
+            // is shown so nothing is silently lost, but it is not auto-queued
+            // (a second ACP turn mid-stream would corrupt the active turn).
+            self.push_user_message(&text, cx);
+            self.chat.push_message(ChatMessage {
+                role: MessageRole::Agent,
+                segments: vec![Segment::Response {
+                    content: "Агент ещё отвечает — дождись окончания хода и отправь сообщение снова."
+                        .to_string(),
+                }],
+            });
+            self.chat.scroll_to_bottom();
+            cx.notify();
+            return;
+        }
+
+        self.push_user_message(&text, cx);
+        self.start_acp_turn(text, cx);
+        cx.notify();
+    }
+
+    /// Push a user message to the thread + auto-title on the first one (T151).
+    /// Shared by direct sends and the deferred-until-connect path so a queued
+    /// message is never double-pushed when the client finally connects.
+    fn push_user_message(&mut self, text: &str, cx: &mut Context<Self>) {
+        let is_first_user_message = !self.chat.messages.iter().any(|m| m.role == MessageRole::User);
+        if is_first_user_message {
+            if let Some(thread_id) = self.state.active_session_id.clone() {
+                self.set_auto_title(&thread_id, text, cx);
+            }
+        }
+        self.chat.push_message(ChatMessage {
+            role: MessageRole::User,
+            segments: vec![Segment::Response { content: text.to_string() }],
+        });
+        self.chat.scroll_to_bottom();
+    }
+
+    /// Run the ACP turn for `text` (the user message is already pushed by
+    /// the caller via [`Self::push_user_message`]). Called directly from
+    /// `send_composer`, or — after the client connects — for a message that
+    /// was queued while it was still connecting (T247). `pub(crate)` for the
+    /// SidePanelLeft::new connect handler in `mod.rs`.
+    pub(crate) fn start_acp_turn(&mut self, text: String, cx: &mut Context<Self>) {
         tracing::info!(
             "composer: send model={} mode={} text={:?}",
             self.composer_selected_model,
             self.composer_selected_mode,
             text
         );
-
-        self.composer_input.clear();
-
-        // Set auto-title from the first user message (T151).
-        let is_first_user_message = !self.chat.messages.iter().any(|m| m.role == MessageRole::User);
-        if is_first_user_message {
-            let thread_id = self.state.active_session_id.clone();
-            if let Some(thread_id) = thread_id {
-                self.set_auto_title(&thread_id, &text, cx);
-            }
-        }
-
-        self.chat.push_message(ChatMessage {
-            role: MessageRole::User,
-            segments: vec![Segment::Response { content: text.clone() }],
-        });
-        self.chat.scroll_to_bottom();
 
         if let Some(client) = self.clients.get(&self.active_agent_id).cloned() {
             self.state.agent_status = AgentStatus::Thinking;
@@ -1365,8 +1420,6 @@ impl SidePanelLeft {
             });
             self.chat.scroll_to_bottom();
         }
-
-        cx.notify();
     }
 
     /// D1: any tool call still marked non-terminal (pending/running/unknown)
