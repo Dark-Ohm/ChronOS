@@ -130,3 +130,13 @@ kitty.conf (T258 — если ещё не слит к твоему старту,
 ## Отчёт
 
 `docs/orchestration/tasks/report/T259-desktop-terminal-edit-mode-ui-report.md`.
+
+## Статус (2026-08-05) — DONE
+
+Код закоммичен (`9d7b060`, вместе с T257-review фиксом `close_one`):
+drag/resize/add/remove, отчёт в `report-log/T259-…-report.md`. Юнит-тесты
+и сборка зелёные (12 desktop_terminal + 171 side_panel_right). Живой смоук
+**заблокирован** системным NVML driver/library mismatch (NVIDIA драйвер
+сломан до ребута — Vulkan не видит GPU, wgpu падает на llvmpipe) — это
+окружение, не код. Повторная приёмка по пунктам «Верификация» — после
+ребута.
