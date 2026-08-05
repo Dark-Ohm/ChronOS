@@ -139,3 +139,15 @@ impl TerminalRegistry {
 ## Отчёт
 
 `docs/orchestration/tasks/report/T257-desktop-terminal-registry-and-persistence-report.md`.
+
+## Статус (2026-08-05) — код в дереве, отчёта нет
+
+`config.rs`/`registry.rs` уже закоммичены (`fe7261f`, вместе с T258 —
+файлы `desktop_terminal/{mod,view}.rs` переплетены между T257/T258, не
+разделить чисто). Тесты реестра зелёные (`get_or_spawn_returns_same_
+handle_on_repeat`, `distinct_ids_get_distinct_sessions`,
+`kill_removes_session_and_allows_fresh_respawn`, `kill_unknown_id_is_noop`,
+`handle_drives_terminal_through_mutex` — все 5). Но своего T257-отчёта
+исполнитель не подал — не закрывать, пока он не придёт и не пройдёт
+отдельную приёмку (живой прогон с 2 spec-ами в конфиге, см. «Верификация»
+выше).
