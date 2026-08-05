@@ -25,6 +25,18 @@
 //! Hotplug: periodic check detects when the configured display disappears
 //! and surfaces a notification via the existing notification service.
 //! Shell continues on fallback display; scene state is preserved.
+//!
+//! Stability (T245, 2026-08-05): `uuid` is STABLE. The fork derives it as
+//! `UUIDv5(NAMESPACE_DNS, wl_output name)`, i.e. a pure function of the
+//! connector name ("DP-1"/"HDMI-A-1" on Hyprland) — NOT a session-order
+//! or hotplug-sequence index. The 2026-08-05 incident (shell permanently
+//! on the smaller HDMI-A-1) was an auto-designate ratchet: a transiently
+//! absent DP-1 (DPMS sleep at night / late `wl_output` Done past the
+//! 100 ms bar-init call) made the largest-area fallback pick HDMI-A-1 and
+//! the then-current code rewrote the config to it forever. Fixed by gating
+//! auto-designate to a true first run — an existing config is
+//! authoritative and never overwritten. To change the pult display, edit
+//! `monitor.toml`; delete it to re-designate on the next boot.
 
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -92,6 +104,15 @@ pub fn largest_display_index(
         .map(|(i, _)| i)
 }
 
+/// Pure gate: may `pult_display` write a new designation to `monitor.toml`?
+///
+/// Only a true first run (no configured uuid) may auto-designate. Once a
+/// uuid exists it is the source of truth; a transiently incomplete display
+/// set must never overwrite it (see module docs — T245 ratchet).
+fn should_auto_designate(existing: Option<&str>, winner_uuid: Option<&str>) -> bool {
+    existing.is_none() && winner_uuid.is_some()
+}
+
 /// Pure resolver: pick the index of the chrome monitor from a precomputed
 /// summary list. The caller owns `cx.displays()` and pre-extracts uuid +
 /// area; this function only does the decision, no side effects.
@@ -153,16 +174,44 @@ pub fn pult_display(cx: &App) -> Option<DisplayId> {
         .map(|(u, a)| (u.as_deref(), *a))
         .collect();
 
+    for (i, (d, (uuid, area))) in displays.iter().zip(&summaries).enumerate() {
+        tracing::debug!(
+            "monitor: display[{i}] id={:?} uuid={uuid:?} bounds={:?} area={area}",
+            d.id(),
+            d.bounds(),
+        );
+    }
+
     let Some(idx) = resolve_pult_index(&summary_refs, cfg.chrome_monitor.as_deref()) else {
         return None;
     };
     let best = &displays[idx];
     let best_uuid_str = best.uuid().ok().map(|u| u.to_string());
 
+    // How was the winner chosen? Distinguishes "no config yet" (first run)
+    // from "configured uuid present but not live" — both fall back to
+    // largest-by-area, but only the latter deserves a warning.
+    let configured_expected = cfg.chrome_monitor.as_deref();
+    let matched_configured = configured_expected
+        .is_some_and(|expected| best_uuid_str.as_deref() == Some(expected));
+    let resolution = match configured_expected {
+        Some(_) if matched_configured => "configured-uuid",
+        Some(_) => "fallback-config-mismatch",
+        None => "fallback-no-config",
+    };
+    tracing::info!(
+        "monitor: pult display resolved id={:?} uuid={:?} area={} via {} ({} live displays)",
+        best.id(),
+        best_uuid_str,
+        summaries[idx].1,
+        resolution,
+        displays.len()
+    );
+
     // Surface a single warning when we expected a specific uuid but
     // couldn't find it (helps debug "shell landed on the wrong monitor").
-    if let Some(expected) = cfg.chrome_monitor.as_deref() {
-        if Some(expected) != best_uuid_str.as_deref() {
+    if let Some(expected) = configured_expected {
+        if !matched_configured {
             tracing::warn!(
                 "monitor: configured uuid {} not found among {} displays, using fallback",
                 expected,
@@ -171,12 +220,17 @@ pub fn pult_display(cx: &App) -> Option<DisplayId> {
         }
     }
 
-    // Auto-designate: write the winner to config whenever the configured
-    // uuid is missing OR points at a different display. Idempotent — once
-    // config matches, this branch is dead on every subsequent call.
+    // Auto-designate: write the winner to config ONLY on a true first run
+    // (no config yet). Once a uuid is configured it is authoritative and is
+    // never overwritten — a transiently incomplete display set must not
+    // ratchet the shell onto the wrong monitor (T245: config flipped to
+    // HDMI-A-1 at 02:52 when DP-1 was momentarily absent).
     if let Some(uuid_str) = best_uuid_str {
-        if cfg.chrome_monitor.as_deref() != Some(uuid_str.as_str()) {
-            tracing::info!("monitor: auto-designating {} as pult display", uuid_str);
+        if should_auto_designate(cfg.chrome_monitor.as_deref(), Some(uuid_str.as_str())) {
+            tracing::info!(
+                "monitor: first run — auto-designating {} as pult display",
+                uuid_str
+            );
             save_config(&MonitorConfig {
                 chrome_monitor: Some(uuid_str),
             });
@@ -354,6 +408,21 @@ mod tests {
             .zip(areas.iter().copied())
             .map(|(u, a)| (Some(*u), a))
             .collect()
+    }
+
+    // -------- should_auto_designate --------
+
+    #[test]
+    fn should_auto_designate_only_on_first_run() {
+        // No config + resolvable winner: first run, may designate.
+        assert!(should_auto_designate(None, Some("winner")));
+        // No config + no uuid: nothing to write.
+        assert!(!should_auto_designate(None, None));
+        // Existing config is authoritative — never rewritten, even if the
+        // live winner differs (T245 ratchet: HDMI-A-1 over DP-1).
+        assert!(!should_auto_designate(Some("dp-1"), Some("hdmi-a-1")));
+        assert!(!should_auto_designate(Some("dp-1"), Some("dp-1")));
+        assert!(!should_auto_designate(Some("dp-1"), None));
     }
 
     #[test]
