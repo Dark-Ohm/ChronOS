@@ -37,7 +37,10 @@ pub use tasks::{
     ActiveProject, TaskDef, TaskSession, TaskSource, detect_cargo_tasks, load_active_project,
     parse_tasks_toml, resolve_tasks,
 };
-pub use terminal::{GridSnapshot, TermSize, Terminal, compute_grid};
+pub use terminal::{
+    compute_grid, GridSnapshot, TermSize, Terminal,
+};
+pub use terminal::registry::{TerminalHandle, TerminalRegistry};
 pub use audio::{AudioCommand, AudioDevice, AudioState, AudioSubscriber, EndpointState};
 pub use aur::{AurCommand, AurSubscriber, PackageUpdate, UpdateSource, UpgradeProgress, UpgradeState, UpdatesState};
 pub use brightness::{

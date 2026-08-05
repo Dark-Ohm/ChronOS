@@ -50,6 +50,7 @@ markdown = ["gpui-component/markdown"]
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
+tempfile = "3"
 
 [lints]
 workspace = true

@@ -22,28 +22,13 @@ use alacritty_terminal::term::{Config, Term};
 use alacritty_terminal::vte::ansi::Processor;
 use portable_pty::{CommandBuilder, MasterPty, NativePtySystem, PtySize, PtySystem};
 
+pub mod registry;
+
+pub mod kitty_theme;
+
 /// Smallest grid alacritty accepts (it refuses a 0-column terminal).
 pub const MIN_COLS: usize = 2;
 pub const MIN_ROWS: usize = 1;
-
-/// Empty ZDOTDIR so an interactive zsh starts bare when `SHELL` is zsh
-/// (the prompt-noise p10k/oh-my-zsh hooks never load). [`ensure_empty_zdotdir`]
-/// also touches a `.zshrc` inside so zsh does not show its
-/// `zsh-newuser-install` first-run wizard.
-const ZDOTDIR: &str = "/tmp/chronos-terminal-empty-zdot";
-
-/// Create `$zdotdir` and touch `$zdotdir/.zshrc` (even an empty file is
-/// enough — zsh only shows its `zsh-newuser-install` wizard when ZDOTDIR
-/// contains no `.zshrc`, i.e. it thinks this is a brand-new user).
-///
-/// Idempotent: `OpenOptions::create(true)` without `truncate` keeps an
-/// existing `.zshrc` untouched, so a user-supplied file in ZDOTDIR survives.
-pub fn ensure_empty_zdotdir(zdotdir: &str) -> std::io::Result<()> {
-    std::fs::create_dir_all(zdotdir)?;
-    let rc = std::path::Path::new(zdotdir).join(".zshrc");
-    std::fs::OpenOptions::new().create(true).write(true).open(rc)?;
-    Ok(())
-}
 
 /// Terminal grid dimensions in cells.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -162,13 +147,8 @@ impl Terminal {
         let mut cmd = CommandBuilder::new(&shell);
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
-        // Keep PATH from the parent so basic commands resolve.
-        cmd.env("ZDOTDIR", ZDOTDIR);
         if let Some(home) = dirs::home_dir() {
             cmd.cwd(home);
-        }
-        if let Err(err) = ensure_empty_zdotdir(ZDOTDIR) {
-            tracing::warn!("terminal: could not prepare ZDOTDIR {ZDOTDIR}: {err}");
         }
 
         let child = pair.slave.spawn_command(cmd)?;
@@ -526,20 +506,6 @@ mod tests {
             .expect("writer lock")
             .write_all(b"ls")
             .expect("dummy write must succeed");
-    }
-
-    #[test]
-    fn ensure_zdotdir_creates_zshrc_idempotently() {
-        let dir = std::env::temp_dir().join(format!("chronos-zdot-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        ensure_empty_zdotdir(dir.to_str().unwrap()).expect("first run must create dir + .zshrc");
-        assert!(dir.join(".zshrc").exists(), ".zshrc must be touched");
-        // Seed content, then re-run: must be idempotent and NOT truncate.
-        std::fs::write(dir.join(".zshrc"), "export CHRONOS_SEED=1\n").expect("seed");
-        ensure_empty_zdotdir(dir.to_str().unwrap()).expect("second run must be idempotent");
-        let content = std::fs::read_to_string(dir.join(".zshrc")).unwrap();
-        assert_eq!(content, "export CHRONOS_SEED=1\n", "existing .zshrc must not be overwritten");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Real-spawn smoke: forks a shell, so it runs only when explicitly

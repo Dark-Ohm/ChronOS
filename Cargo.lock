@@ -1154,6 +1154,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
+ "tempfile",
  "tokio",
  "toml 0.8.23",
  "tracing",

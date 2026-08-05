@@ -97,6 +97,14 @@ fn main() {
         system_popup::init(cx);
         side_panel_right::init(cx);
         side_panel_left::init(cx);
+        // Register the PTY registry global *before* desktop_terminal::init so
+        // the first widget can acquire its session (T257).
+        cx.set_global(crate::desktop_terminal::TerminalRegistryGlobal {
+            registry: std::sync::Arc::new(std::sync::Mutex::new(
+                chronos_services::TerminalRegistry::new(),
+            )),
+            windows: std::sync::Mutex::new(std::collections::HashMap::new()),
+        });
         desktop_terminal::init(cx);
 
         // Initialize launcher global state (desktop entries come from AppState::applications)

@@ -1,18 +1,27 @@
-//! PTY session + VT100 grid view for the desktop terminal spike.
+//! PTY session + VT100 grid view for the desktop terminal widget.
 //!
 //! The engine (PTY spawn, VT100 grid, snapshots, sizing) lives in
 //! `chronos_services::terminal` (T177) — shared with the side-panel
-//! Terminal tab. This file only owns the view, its poll loop and the fixed
-//! spike geometry (background surface, not resizable).
+//! Terminal tab. This file only owns the view, its poll loop and the grid
+//! geometry.
+//!
+//! The actual shell is owned by the [`TerminalRegistry`] (a GPUI Global
+//! set up in `main.rs`), keyed by widget id. This view only borrows a
+//! shared `TerminalHandle` (`Arc<Mutex<Terminal>>`) — so closing the window
+//! does NOT kill the PTY (T257): the registry keeps it alive for re-open /
+//! drag (T259).
 
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use chronos_services::terminal::{TermSize, Terminal};
+use chronos_services::{TerminalHandle, terminal::TermSize};
 use chronos_ui::{Theme, WindowRootExt};
 use gpui::{
     App, Context, Focusable, FontWeight, InteractiveElement, KeyDownEvent, MouseButton, Render,
     SharedString, Window, div, prelude::*, px,
 };
+
+use crate::desktop_terminal::{TerminalRegistryGlobal, registry};
 
 /// Grid geometry for the spike (matches ~600×400 at ~7.5×16 cell).
 const COLS: usize = 80;
@@ -27,8 +36,11 @@ const POLL_MS: u64 = 16;
 
 /// Desktop terminal view: grid text + keyboard → PTY.
 pub struct DesktopTerminalView {
+    /// Stable widget identity; key into the PTY registry.
+    widget_id: String,
     focus: gpui::FocusHandle,
-    terminal: Option<Terminal>,
+    /// Shared handle to the registry-owned PTY. `None` only on spawn failure.
+    terminal: Option<TerminalHandle>,
     /// Honest error when the PTY could not be spawned (§13).
     error: Option<SharedString>,
     /// Cached line strings for render (rebuilt on PTY data).
@@ -39,8 +51,13 @@ pub struct DesktopTerminalView {
 }
 
 impl DesktopTerminalView {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    /// Create the view for `widget_id`, acquiring its PTY from the registry
+    /// (idempotent — re-opening the same id reuses the live shell). On a
+    /// test build the registry-backed spawn is bypassed (returns an error)
+    /// so unit tests never raise a real shell.
+    pub fn new(widget_id: String, cx: &mut Context<Self>) -> Self {
         let mut view = Self {
+            widget_id,
             focus: cx.focus_handle(),
             terminal: None,
             error: None,
@@ -53,12 +70,19 @@ impl DesktopTerminalView {
         view
     }
 
-    /// Spawn the shared engine. `cfg(test)` skips the launch so unit tests
-    /// never raise a real shell (the spike's live smoke covers the real path).
+    /// Widget identity — used by `close_one` to match the right window and by
+    /// `open_one` to keep the `WindowHandle` map in sync.
+    pub fn widget_id(&self) -> &str {
+        &self.widget_id
+    }
+
+    /// Acquire the shared PTY from the registry. `cfg(test)` skips the real
+    /// spawn so unit tests never raise a shell (the spike's live smoke covers
+    /// the real path).
     fn launch(&mut self, cx: &mut Context<Self>) {
-        match spawn_terminal() {
-            Ok(term) => {
-                self.terminal = Some(term);
+        match spawn_terminal(self.widget_id.clone(), cx) {
+            Ok(handle) => {
+                self.terminal = Some(handle);
                 self.show_cursor = true;
                 self.refresh();
                 self.start_poll_loop(cx);
@@ -78,12 +102,14 @@ impl DesktopTerminalView {
                     .await;
                 let cont = this
                     .update(cx, |view, cx| {
-                        let Some(term) = view.terminal.as_mut() else {
+                        let Some(term) = view.terminal.as_ref() else {
                             return false;
                         };
-                        let dirty = term.drain();
-                        let alive = term.is_alive();
-                        // `term` borrow ends here.
+                        let mut guard = term.lock().expect("pty lock");
+                        let dirty = guard.drain();
+                        let alive = guard.is_alive();
+                        // `guard` borrow ends here.
+                        drop(guard);
                         if dirty {
                             view.refresh();
                             cx.notify();
@@ -106,7 +132,8 @@ impl DesktopTerminalView {
         let Some(term) = self.terminal.as_ref() else {
             return;
         };
-        let snap = term.snapshot();
+        let mut guard = term.lock().expect("pty lock");
+        let snap = guard.snapshot();
         self.lines = snap.lines.into_iter().map(SharedString::from).collect();
         self.cursor_row = snap.cursor_row;
         self.cursor_col = snap.cursor_col;
@@ -115,7 +142,7 @@ impl DesktopTerminalView {
 
     fn write_pty(&self, bytes: &[u8]) {
         if let Some(term) = self.terminal.as_ref() {
-            term.write(bytes);
+            term.lock().expect("pty lock").write(bytes);
         }
     }
 
@@ -159,7 +186,7 @@ impl DesktopTerminalView {
         }
         // Immediate drain after input helps prompt feel snappy (still poll-driven for bulk out).
         if let Some(term) = self.terminal.as_mut()
-            && term.drain()
+            && term.lock().expect("pty lock").drain()
         {
             self.refresh();
             cx.notify();
@@ -182,6 +209,7 @@ impl Render for DesktopTerminalView {
         let show_cursor = self.show_cursor;
         let focus = self.focus.clone();
         let error = self.error.clone();
+        let id = self.widget_id.clone();
 
         div()
             .track_focus(&self.focus)
@@ -216,7 +244,7 @@ impl Render for DesktopTerminalView {
                             .text_color(muted)
                             .text_size(px(11.))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child("desktop-terminal (spike)"),
+                            .child(format!("desktop-terminal · {id}")),
                     ),
             )
             .child({
@@ -291,19 +319,27 @@ impl Focusable for DesktopTerminalView {
     }
 }
 
-/// Spawn the shared engine. `cfg(test)` returns an error so unit tests never
-/// raise a real shell — the laziness contract is verified live (pgrep), not
-/// in tests (T177 report).
-fn spawn_terminal() -> Result<Terminal, SharedString> {
+/// Acquire the shared engine for `widget_id` from the PTY registry. `cfg(test)`
+/// returns an error so unit tests never raise a real shell — the laziness
+/// contract is verified live (pgrep), not in tests (T177 report).
+fn spawn_terminal(widget_id: String, cx: &App) -> Result<TerminalHandle, SharedString> {
     #[cfg(test)]
     {
         // Keep the geometry constants referenced in test builds.
         let _ = (TermSize::new(COLS, ROWS), CELL_W, CELL_H);
+        let _ = cx; // registry is unavailable in unit tests; we never use it.
         Err(SharedString::from("PTY disabled in unit tests"))
     }
     #[cfg(not(test))]
     {
-        Terminal::launch(TermSize::new(COLS, ROWS), CELL_W, CELL_H)
-            .map_err(|e| SharedString::from(format!("PTY error: {e:#}")))
+        let global: &TerminalRegistryGlobal = registry(cx);
+        let mut reg = global.registry.lock().expect("registry lock");
+        reg.get_or_spawn(
+            &widget_id,
+            TermSize::new(COLS, ROWS),
+            CELL_W,
+            CELL_H,
+        )
+        .map_err(|e| SharedString::from(format!("PTY error: {e:#}")))
     }
 }
