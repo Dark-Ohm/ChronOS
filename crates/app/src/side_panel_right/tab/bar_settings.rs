@@ -660,6 +660,24 @@ impl Render for BarSettingsTab {
                                     .font_family(theme.font_mono)
                                     .child("LuauJIT"),
                             ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_color(theme.text.muted)
+                                    .text_xs()
+                                    .child("offline by design"),
+                            )
+                            .child(
+                                div()
+                                    .text_color(theme.text.muted)
+                                    .text_xs()
+                                    .font_family(theme.font_mono)
+                                    .child("no network · no telemetry"),
+                            ),
                     ),
             );
 

@@ -18,11 +18,12 @@ use chronos_ui::Theme;
 use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
 use super::ui;
 
-// T249: the ACP header is `py(12)*2 + 13px title + gap(2) + text_xs
-// subtitle + 1px border` ≈ 62px. Used to floor the card height to the
-// scroll viewport bottom (see `render`). Presumes a single-line header —
-// the subtitle `{n} agent(s) · agents.toml` is short enough at 320px.
-const HEADER_H_PX: f32 = 62.0;
+// T249/T255: the ACP header is `py(12)*2 + 13px title + gap(2) + text_xs
+// subtitle (line 1) + gap(2) + text_xs subtitle (line 2) + 1px border`
+// ≈ 78px. Used to floor the card height to the scroll viewport bottom
+// (see `render`). Two mono subtitle lines: `{n} agent(s) · agents.toml`
+// and `local only · no network · no telemetry`.
+const HEADER_H_PX: f32 = 78.0;
 /// T249: scroll container vertical padding `p(14)*2`.
 const SCROLL_PADDING_TOTAL: f32 = 28.0;
 
@@ -134,7 +135,7 @@ impl Render for AcpSettingsTab {
         let agents_snapshot = self.agents.clone();
         let error_snapshot = self.error.clone();
 
-        // T231-pattern header: semibold title + mono subtitle.
+        // T231-pattern header: semibold title + mono subtitle (T255: two lines).
         let header = div()
             .id("acp-settings-header")
             .w_full()
@@ -158,6 +159,13 @@ impl Render for AcpSettingsTab {
                     .text_xs()
                     .font_family(theme.font_mono)
                     .child(format!("{} agent(s) · agents.toml", agents_snapshot.len())),
+            )
+            .child(
+                div()
+                    .text_color(theme.text.muted)
+                    .text_xs()
+                    .font_family(theme.font_mono)
+                    .child("local only · no network · no telemetry"),
             );
 
         // Content — inside the elevated card (T231 §5 pattern).
