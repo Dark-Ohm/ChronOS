@@ -94,3 +94,29 @@ chrome_monitor = "56f01978-2d1e-5e26-bbe4-cc5fd992f8af"
 
 `monitor : <краткое описание найденной причины и фикса> (T245)` —
 формат `область : что сделано`, без AI-трейлеров.
+
+---
+
+## Резолюция (2026-08-05) — корень найден, закрыт
+
+**Корень — НЕ uuid, а auto-designate-крысиный капкан.** `d.uuid()` форка
+стабилен: `UUIDv5(NAMESPACE_DNS, wl_output.name)` — чистая функция имени
+коннектора (`DP-1`/`HDMI-A-1`). Проверено: uuid конфига `56f01978-…` =
+`uuid5(NS_DNS, "HDMI-A-1")`, канонический из шапки `monitor.rs`
+`09e7b298-…` = `uuid5(NS_DNS, "DP-1")`. Конфиг был **переписан** с DP-1
+на HDMI (mtime 02:52:34, ночь инцидента): при временном отсутствии DP-1
+(DPMS-сон / поздний `wl_output Done`) фолбэк выбирал HDMI-A-1, и старый
+код навсегда записывал его uuid в `monitor.toml`.
+
+**Фикс:** `should_auto_designate` — запись конфига только на true first
+run; существующий uuid авторитативен и не перезаписывается. Добавлены
+постоянные `info!`-резолв-лог и `debug!`-по-дисплеям. Конфиг возвращён
+на `09e7b298-…` (DP-1).
+
+**Верификация:** 5/5 живых рестартов — бар на DP-1, резолв
+`via configured-uuid`, конфиг не тронут; анти-капкан с мусорным uuid —
+WARN+fallback без перезаписи; `cargo test --release -p chronos --lib --
+monitor` 12/12; release-сборка чистая.
+
+Отчёт: `docs/orchestration/tasks/report-log/T245-monitor-selection-report.md`.
+DECISIONS.log: запись от 2026-08-05.
