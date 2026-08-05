@@ -8,7 +8,9 @@
 use std::time::Instant;
 
 use chronos_services::net_stats::{self, NetState};
-use chronos_services::{DiskInfo, MprisState, Service, SystemResourcesState};
+use chronos_services::{
+    ActiveWindow, CompositorState, DiskInfo, MprisState, Service, SystemResourcesState,
+};
 use gpui::{Context, IntoElement, Render, ScrollHandle, Window, div, prelude::*, px};
 
 use crate::side_panel_right::disks::render_disks_section;
@@ -28,6 +30,9 @@ pub struct SystemTab {
     system: SystemResourcesState,
     disks: Vec<DiskInfo>,
     wallpaper: chronos_services::WallpaperState,
+    /// T256: real title of the Hyprland active window, fed by the compositor
+    /// service. Rendered in the header instead of a hardcoded string.
+    active_window: Option<ActiveWindow>,
     waytrogen_available: bool,
     cpu_history: SpectrumHistory,
     ram_history: SpectrumHistory,
@@ -81,11 +86,33 @@ impl SystemTab {
             },
         );
 
+        // T256: subscribe to compositor for the header title. The signal
+        // carries the full `CompositorState` (workspaces / keyboard / monitors
+        // / active_window); we ignore every field except active_window and
+        // even re-paint only when that field actually changes — workspace
+        // switches, keyboard layout swaps, monitor hotplugs all carry a
+        // CompositorState signal but produce zero rendered effect here.
+        let compositor_signal = AppState::compositor(cx).subscribe();
+        state::watch(
+            cx,
+            compositor_signal,
+            |this: &mut Self, data: CompositorState, cx| {
+                // Only re-paint on real active-window changes — the full
+                // CompositorState fires on every workspace / keyboard / monitor
+                // event too, and the rest of this tab doesn't read those.
+                if data.active_window != this.active_window {
+                    this.active_window = data.active_window;
+                    cx.notify();
+                }
+            },
+        );
+
         Self {
             mpris: AppState::mpris(cx).get(),
             system: AppState::system_resources(cx).get(),
             disks: AppState::disks(cx).get(),
             wallpaper: AppState::wallpaper(cx).get(),
+            active_window: AppState::compositor(cx).get().active_window,
             waytrogen_available: crate::wallpaper_ctl::waytrogen_available(),
             cpu_history: SpectrumHistory::default(),
             ram_history: SpectrumHistory::default(),
@@ -132,8 +159,9 @@ impl Render for SystemTab {
             .size_full()
             .flex()
             .flex_col()
-            // 1. Header (flex:none)
-            .child(render_header(cx))
+            // 1. Header (flex:none) — title comes from Hyprland active
+            // window (T256); was historically hardcoded "kitty".
+            .child(render_header(cx, self.active_window.as_ref()))
             // 2. Scrollable middle (flex:1)
             .child(
                 div()
