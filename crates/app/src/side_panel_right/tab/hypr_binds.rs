@@ -200,12 +200,28 @@ impl Render for HyprBindsTab {
                             _ => groups.push((row.source.clone(), vec![row])),
                         }
                     }
-                    for (group, rows) in groups {
+                    for (ix, (group, rows)) in groups.into_iter().enumerate() {
                         let file = rows[0]
                             .path
                             .file_name()
                             .map(|s| s.to_string_lossy().into_owned())
                             .unwrap_or_default();
+                        // T251: a full-width hairline between consecutive
+                        // sections. Several modules fall back to the same
+                        // "Custom" label (no `-- # group = "..."` metadata),
+                        // so the header alone does not read as a break — the
+                        // divider keeps groups visually distinct even when
+                        // their titles match. The filename stays in the
+                        // header subtitle (never the raw filename as the
+                        // label — PRODUCT.md §1).
+                        if ix > 0 {
+                            card = card.child(
+                                div()
+                                    .w_full()
+                                    .h(px(1.))
+                                    .bg(theme.border.subtle),
+                            );
+                        }
                         card = card.child(ui::section_header(theme, &group, &file));
                         let grid = div()
                             .grid()
