@@ -11,9 +11,10 @@ use chronos_services::net_stats::{self, NetState};
 use chronos_services::{
     ActiveWindow, CompositorState, DiskInfo, MprisState, Service, SystemResourcesState,
 };
-use gpui::{Context, IntoElement, Render, ScrollHandle, Window, div, prelude::*, px};
+use gpui::{AnyElement, Context, IntoElement, Render, ScrollHandle, Window, div, prelude::*, px};
 
 use crate::side_panel_right::disks::render_disks_section;
+use crate::side_panel_right::tab::ui::{elevated_card, section_header};
 use crate::side_panel_right::header::render_header;
 use crate::side_panel_right::mpris_card::render_mpris_card;
 use crate::side_panel_right::spectrum_row::{
@@ -180,6 +181,11 @@ impl Render for SystemTab {
                         self.waytrogen_available,
                         cx,
                     ))
+                    // T259: «+ Add terminal» — only while edit mode (Super+Shift+E)
+                    // is active, same gating as the bar's reorder affordances.
+                    .when(crate::edit_mode::is_active(cx), |d| {
+                        d.child(render_add_terminal_card(cx))
+                    })
                     .child(
                         div()
                             .flex()
@@ -242,6 +248,51 @@ impl Render for SystemTab {
                     .child(render_disks_section(&self.disks, cx)),
             )
     }
+}
+
+/// T259: edit-mode-only card to spawn a new desktop-terminal widget.
+///
+/// Visual language: the T231 `elevated_card` + `section_header` pattern from
+/// `tab/ui.rs` (the same one bar-settings and sibling tabs use) — no new
+/// design vocabulary. The click creates a spec (offset from the last widget),
+/// persists it to `desktop_terminal.toml`, and opens the window.
+fn render_add_terminal_card(cx: &mut Context<SystemTab>) -> AnyElement {
+    let theme = *Theme::global(cx);
+    let add = cx.listener(|_this, _e: &gpui::ClickEvent, _window, cx| {
+        crate::desktop_terminal::add_widget(cx);
+    });
+    elevated_card(theme)
+        // NOTE: `.id()` must come after `elevated_card` — it upgrades the
+        // bare Div into a Stateful element (see tab/ui.rs doc comment).
+        .id("system-terminal-card")
+        .child(section_header(
+            theme,
+            "Desktop Terminal",
+            "desktop_terminal.toml · widgets",
+        ))
+        .child(
+            div()
+                .id("system-add-terminal")
+                .w_full()
+                .cursor_pointer()
+                .px(px(12.))
+                .py(px(9.))
+                .rounded_md()
+                .border_1()
+                .border_color(theme.border.subtle)
+                .bg(theme.bg.primary)
+                .hover(|s| s.bg(theme.interactive.hover))
+                .flex()
+                .items_center()
+                .justify_center()
+                .gap(px(6.))
+                .text_size(px(12.))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(theme.accent.primary)
+                .on_click(add)
+                .child("＋ Add terminal"),
+        )
+        .into_any_element()
 }
 
 pub(crate) fn format_net_pair(dl: f64, ul: f64) -> String {
