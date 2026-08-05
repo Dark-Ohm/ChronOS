@@ -53,3 +53,21 @@
 ## Коммит
 
 `ui : fill/compact empty ACP agents tab bottom (T249)`.
+
+---
+
+## Резолюция (2026-08-05) — закрыт, вариант Б (layout)
+
+Вариант А отклонён: данных в AppState/сервисе ACP нет (AgentStatus —
+локальный стейт левой панели, не сервисный канал), а тикет запрещает
+выдумывать backend. Выбран Б: elevated-карточка растягивается до низа
+скролл-вьюпорта.
+
+Находка форка: `min_h_full`/flex-grow внутри скролла не работают (GPUI
+меряет контент overflow на unbounded-высоте) — применён явный пол
+`min_h(px(window.bounds().height − HEADER_H_PX − SCROLL_PADDING_TOTAL))`.
+
+Верификация (обе темы, панель 320px): карточка до y=1428 (дно ~1439),
+до фикса ~400. 167/167 тестов, сборка чистая.
+
+Отчёт: `docs/orchestration/tasks/report-log/T249-acp-agents-tab-empty-bottom-report.md`.
