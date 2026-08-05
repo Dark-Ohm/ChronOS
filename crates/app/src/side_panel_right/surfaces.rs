@@ -27,7 +27,7 @@ pub fn chrome(theme: &Theme) -> Hsla {
     }
 }
 
-/// Raised card surface (mpris, disks, wallpaper, permission).
+/// Raised card surface (mpris, disks, wallpaper).
 pub fn card(theme: &Theme) -> Hsla {
     if theme.is_light {
         theme.bg.secondary

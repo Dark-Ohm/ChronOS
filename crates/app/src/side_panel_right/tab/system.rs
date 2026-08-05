@@ -14,7 +14,6 @@ use gpui::{Context, IntoElement, Render, ScrollHandle, Window, div, prelude::*, 
 use crate::side_panel_right::disks::render_disks_section;
 use crate::side_panel_right::header::render_header;
 use crate::side_panel_right::mpris_card::render_mpris_card;
-use crate::side_panel_right::permission::render_permission_card;
 use crate::side_panel_right::spectrum_row::{
     H_CPU, H_GPU, H_NET, H_RAM, SpectrumHistory, color_cpu, color_gpu, color_net, color_ram,
     color_value_default, push_sample, render_spectrum_row,
@@ -135,9 +134,7 @@ impl Render for SystemTab {
             .flex_col()
             // 1. Header (flex:none)
             .child(render_header(cx))
-            // 2. Permission card (flex:none)
-            .child(render_permission_card(cx))
-            // 3. Scrollable middle (flex:1)
+            // 2. Scrollable middle (flex:1)
             .child(
                 div()
                     .id("system-tab-scroll")

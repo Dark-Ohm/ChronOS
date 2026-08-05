@@ -15,7 +15,6 @@ mod header;
 mod hover_strip;
 mod mpris_card;
 pub mod panels_config;
-mod permission;
 mod power_row;
 pub(crate) mod preview_target;
 mod rail;
