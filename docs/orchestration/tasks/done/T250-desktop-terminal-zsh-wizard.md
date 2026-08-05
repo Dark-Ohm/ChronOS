@@ -55,3 +55,19 @@ terminal-empty-zdot` (искать использование константы
 ## Коммит
 
 `services : suppress zsh newuser-install wizard in terminal ZDOTDIR (T250)`.
+
+---
+
+## Резолюция (2026-08-05)
+
+**ЗАКРЫТ.** Фикс в `crates/services/src/terminal/mod.rs`: новая
+`ensure_empty_zdotdir()` (create_dir_all + идемпотентный touch `.zshrc`,
+без truncate) вызывается из `launch()` перед спавном. Замысел пустого
+ZDOTDIR сохранён.
+
+Верификация: негативный контроль — zsh в pty с ZDOTDIR без `.zshrc`
+печатает wizard (подтверждено); живой прогон на чистом `/tmp` — процесс
+создал `.zshrc`, первый PTY chunk = чистый промпт, wizard-текста 0
+вхождений. Тесты `chronos-services --lib -- terminal` 10/10, release-
+сборка чистая. Отчёт:
+`docs/orchestration/tasks/report-log/T250-desktop-terminal-zsh-wizard-report.md`.
