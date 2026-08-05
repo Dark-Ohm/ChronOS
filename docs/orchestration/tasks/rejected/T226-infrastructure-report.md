@@ -1,5 +1,45 @@
 # T226 — Infrastructure for localization attempt #4 (2026-08-04)
 
+> **ОТКЛОНЁН архитектором, 2026-08-04.** Отчёт честный (сам признаёт
+> "живой прогон не сделан"), но "инфраструктура готова" преждевременно —
+> живьём проверил (`chronos-ipc`, grim, лог `chronos.log`) и нашёл, что
+> 2 из 3 фаз собственного скрипта локализации (`/tmp/t226-localize-4.sh`)
+> гарантированно провалятся как написаны:
+>
+> 1. **Фаза 2 (`select-tab:terminal`) никогда не сработает.**
+>    `WorkspaceMode::Developer` (`crates/app/src/side_panel_right/
+>    tabs.rs:565-572`) не включает `PanelTab::Terminal` в rail вообще —
+>    только `[System, Files, Preview, HyprlandBinds, AcpSettings,
+>    EditorSettings]`. IPC парсит команду и на кадр создаёт вкладку, но
+>    `resolve_active_tab` (`view.rs:160-171`) тут же откатывает на
+>    System, потому что Terminal не входит в tab-сет текущего режима.
+>    Живой лог: `side_panel_right: active tab not in mode set → System
+>    was="Terminal"`. Это не баг IPC-механизма — неверная посылка о
+>    существующих вкладках правого панеля. Если T226 нужен «терминал
+>    в записи», это отдельный сюрфейс (`desktop_terminal`, background
+>    layer), не вкладка правой панели.
+> 2. **Фаза 3 сама себя ломает.** `preview-target:$FILE` корректно
+>    открывает Editor (живой лог: `preview: loaded kind=Markdown
+>    bytes=14`, `switched tab → opened at per-tab width tab="Editor"
+>    width=560.0`) — это реально работает. Но следующий по скрипту
+>    `select-tab:preview` попадает на уже-открытую вкладку и триггерит
+>    toggle-в-rail (тот же механизм, что T221 «single affordance»):
+>    живой лог `side_panel_right: same tab → collapsed to rail (memory
+>    preserved)`. Скрипт схлопывает панель прямо перед записью клипа.
+>
+> **Что оставить как есть (не трогать):** IPC-плюмбинг (`expand-left`,
+> `preview-target`, сам механизм `select-tab` для вкладок, которые
+> реально есть в режиме) — работает, живьём подтверждено. Пункты
+> 7-9 отчёта (rail/wallpaper/session-dot фиксы) — уже приняты и
+> закоммичены архитектором отдельно, тут просто корректно
+> задокументированы как «попутно».
+>
+> **Правки перед attempt #5:** убрать фазу 2 из скрипта (заменить целью
+> на реальную вкладку типа `preview`/`files`, либо явно нацелиться на
+> `desktop_terminal`) и убрать лишний `select-tab:preview` после
+> `preview-target` в фазе 3 (preview-target уже переключает и
+> открывает — второй вызов не нужен, только вредит).
+
 **Status:** инфраструктура готова, бинарь собран, скрипт написан, локализация не проведена.
 
 ## Что сделано

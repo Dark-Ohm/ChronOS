@@ -85,3 +85,22 @@ Files.
 
 **Ticket Status**: Code complete & type-checks; blocked on full build/test
 by parallel T231 (not mine). Live UI smoke — architect's call.
+
+---
+
+## Приёмка (архитектор, 2026-08-04)
+
+**ПРИНЯТО.** Проверено независимо от чужого T231-блокера: `git stash`
+на `bar_settings.rs`, изолированная сборка — `cargo build --release -p
+chronos` чистая (только warnings, "Finished... 3m45s"),
+`cargo test --release -p chronos --lib -- side_panel_right` —
+**165/165 passed**. Живой смоук: рестарт на свежем билде, `chronos-ipc
+select-tab:preview`, панель раскрылась на докнутую ширину (`w=560`, не
+залипла на rail — попутно подтверждает, что T242/T243-класс бага здесь
+не сработал). Кадр от архитектора и пользователя подтвердил иконку
+папки + текст «No file selected / Open the Files tab…», «Files» —
+muted в покое, по канону. Клик по «Files» — подтверждён пользователем
+живьём ("worked"), переключает на вкладку Files.
+
+Коммит `b627d18` остаётся как есть. Задание → `done/`, отчёт →
+`report-log/`.
