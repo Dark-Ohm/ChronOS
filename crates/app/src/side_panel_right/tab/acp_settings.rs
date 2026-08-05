@@ -18,6 +18,14 @@ use chronos_ui::Theme;
 use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
 use super::ui;
 
+// T249: the ACP header is `py(12)*2 + 13px title + gap(2) + text_xs
+// subtitle + 1px border` ≈ 62px. Used to floor the card height to the
+// scroll viewport bottom (see `render`). Presumes a single-line header —
+// the subtitle `{n} agent(s) · agents.toml` is short enough at 320px.
+const HEADER_H_PX: f32 = 62.0;
+/// T249: scroll container vertical padding `p(14)*2`.
+const SCROLL_PADDING_TOTAL: f32 = 28.0;
+
 // ---------------------------------------------------------------------------
 // Agent display wrapper
 // ---------------------------------------------------------------------------
@@ -83,6 +91,17 @@ impl Render for AcpSettingsTab {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *Theme::global(cx);
         let is_wide = ui::is_wide(window);
+
+        // T249: stretch the elevated card to the bottom of the scroll
+        // viewport so a short content set (few agents) doesn't leave a
+        // naked void below it. GPUI measures scroll content at unbounded
+        // height, so `relative()`/flex-grow minima don't resolve inside
+        // overflow containers — the floor must be explicit px. Long
+        // content outgrows the floor and scrolls as before.
+        let min_card_h = (window.bounds().size.height.as_f32()
+            - HEADER_H_PX
+            - SCROLL_PADDING_TOTAL)
+            .max(0.0);
 
         let open_file = cx.listener(move |this, _ev, _w, cx| {
             cx.set_global(PreviewTarget {
@@ -373,7 +392,7 @@ impl Render for AcpSettingsTab {
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll)
                     .p(px(14.))
-                    .child(card),
+                    .child(card.min_h(px(min_card_h))),
             )
     }
 }
