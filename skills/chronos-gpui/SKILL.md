@@ -87,6 +87,7 @@ Zed, not crates.io. Path-deps from ChronOS point here.
 | Is there an interval timer? | No — one-shot `timer`, loop it yourself | `executor.rs:162` |
 | Must Kael easing be ported? | Already ported | `easing.rs:1-71` |
 | Gate `content_open` / layout flips on what? | Live `window.bounds()`, not the state target. Gating a content-column vanish/appear on `panel_width` (state) lets the rail reflow inside a still-stale window for a frame or two (the "wobble" on close); gating on actual width keeps the layout flip in lockstep with the compositor. | T243 2026-08-05, `view.rs` `content_open` computed from live bounds |
+| Text/label renders on the first frame then silently disappears (no panic, no log) once the UI settles into an idle repeat pattern? | **Fixed 2026-08-10** — was a fork bug (T014-A frame layout memo skipping `measure()` on memo-hit frames, which also skips populating brand-new `TextLayout` state). If you still see this on a build predating the fix, don't re-diagnose the widget — check `git -C Source log --oneline -1 -- gpui/src/taffy.rs` includes `frame_has_measured_leaf`; if not, that's the actual cause, not your render code. | `gpui-fork-start-here` Common Mistakes #6, `taffy.rs` `frame_has_measured_leaf`, Chronos-FM `docs/DECISIONS.log` 2026-08-10 |
 
 ## Related skills
 
