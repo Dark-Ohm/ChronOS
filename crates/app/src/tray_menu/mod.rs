@@ -46,9 +46,13 @@ const AUTO_CLOSE_AFTER: Duration = Duration::from_secs(15);
 const ROW_H: f32 = 30.;
 /// Floor so a single short menu still has a usable popup height.
 const MIN_MENU_H: f32 = 28.;
-/// Cap so a huge menu can't cover the screen (it scrolls if it somehow hits
-/// this, but the surface itself never grows past it).
+/// Absolute cap when no display is reachable (shouldn't happen live; the
+/// design cap is viewport-relative — `calc(100vh - 16px)` — via the
+/// `display_h` argument, see [`estimate_menu_height`]).
 const MAX_MENU_H: f32 = 480.;
+/// Design `max-height: calc(100vh - 16px)` — breathing margin below the
+/// viewport so a max-height menu never touches the screen edge.
+const DISPLAY_V_MARGIN: f32 = 16.;
 
 /// Count visible menu rows recursively (inline submenus add their children).
 fn count_visible(nodes: &[MenuNode]) -> usize {
@@ -59,14 +63,29 @@ fn count_visible(nodes: &[MenuNode]) -> usize {
         .sum()
 }
 
+/// Height of the pult display, if reachable — drives the design's
+/// viewport-relative menu cap (`calc(100vh - 16px)`).
+fn pult_display_height(cx: &gpui::App) -> Option<f32> {
+    crate::monitor::pult_display_info(cx).map(|d| f32::from(d.bounds().size.height))
+}
+
 /// Estimate the popup height (px) from the current menu tree.
-fn estimate_menu_height(nodes: &[MenuNode]) -> f32 {
+///
+/// Cap is `min(rows * ROW_H, display_h − 16)` per design
+/// `max-height: calc(100vh - 16px)`; the inner scroll-guard takes over past
+/// that. `MAX_MENU_H` only remains as a fallback when the display is
+/// unreachable.
+fn estimate_menu_height(nodes: &[MenuNode], display_h: Option<f32>) -> f32 {
     let rows = count_visible(nodes);
     if rows == 0 {
         // Placeholder ("…") state — keep a small surface.
         return MIN_MENU_H;
     }
-    (rows as f32 * ROW_H).clamp(MIN_MENU_H, MAX_MENU_H)
+    let est = rows as f32 * ROW_H;
+    match display_h {
+        Some(h) => est.clamp(MIN_MENU_H, (h - DISPLAY_V_MARGIN).max(MIN_MENU_H)),
+        None => est.clamp(MIN_MENU_H, MAX_MENU_H),
+    }
 }
 
 /// Global state for the tray context-menu popup.
@@ -154,9 +173,10 @@ pub fn open(cx: &mut App, service: String) {
     drop(state);
 
     let handle = cx.global::<TrayMenuState>().handle.clone();
+    let display_h = pult_display_height(cx);
     match handle {
         Some(existing) => {
-            let height = estimate_menu_height(&cx.global::<TrayMenuState>().nodes);
+            let height = estimate_menu_height(&cx.global::<TrayMenuState>().nodes, display_h);
             let _ = existing.update(cx, |_, window: &mut gpui::Window, _| {
                 window.resize(Size::new(px(MENU_WIDTH), px(height)));
             });
@@ -166,7 +186,7 @@ pub fn open(cx: &mut App, service: String) {
         }
         None => {
             let display_id = pick_display(cx);
-            let height = estimate_menu_height(&cx.global::<TrayMenuState>().nodes);
+            let height = estimate_menu_height(&cx.global::<TrayMenuState>().nodes, display_h);
             match cx.open_window(window_options(display_id, height), |_, app_cx| {
                 app_cx.new(|view_cx| TrayMenuView::new(view_cx))
             }) {
@@ -284,7 +304,9 @@ pub fn init(cx: &mut App) {
                         g.handle.clone()
                     };
                     if let Some(handle) = handle {
-                        let height = estimate_menu_height(&cx.global::<TrayMenuState>().nodes);
+                        let display_h = pult_display_height(cx);
+                        let height =
+                            estimate_menu_height(&cx.global::<TrayMenuState>().nodes, display_h);
                         let _ = handle.update(cx, |_, window: &mut gpui::Window, _| {
                             window.resize(Size::new(px(MENU_WIDTH), px(height)));
                         });

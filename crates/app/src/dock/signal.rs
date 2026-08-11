@@ -25,3 +25,11 @@ impl Global for DockConfigSignal {}
 pub fn notify_config_changed(cx: &mut gpui::App) {
     *cx.global::<DockConfigSignal>().signal.lock_mut() = ();
 }
+
+/// Global hover state for the dock context menu's "Unpin" row.
+/// `on_hover` can only touch globals/`cx.notify()` — not `&mut self` — so the
+/// view writes here and reads it back on the next `render` to toggle the
+/// 2px accent-bar.
+pub struct DockMenuHoverSignal(pub bool);
+
+impl Global for DockMenuHoverSignal {}

@@ -20,6 +20,9 @@ use gpui::{Animation, Context, Styled, px};
 /// Enter duration.
 pub const ENTER_MS: u64 = 260;
 
+/// Context-menu enter duration — reference `@keyframes ctx-in` is `.12s`.
+pub const MENU_ENTER_MS: u64 = 120;
+
 /// Frame step for view-driven enter (~120 Hz).
 const TICK_MS: u64 = 8;
 
@@ -30,6 +33,31 @@ pub const SLIDE_PX: f32 = 14.;
 pub fn ease_enter(t: f32) -> f32 {
     gpui::easing::EasingCurve::EaseOutBack(1.5).sample(t.clamp(0.0, 1.0))
 }
+
+/// Context-menu enter easing — `cubic-bezier(.2,.8,.2,1)` from the reference
+/// (`Chronos-Context-Menu.dc.html` `@keyframes ctx-in`). Distinct from
+/// `ease_enter` (EaseOutBack) — menus rise gently, not with the overshoot
+/// popups use.
+pub fn ease_menu_enter(t: f32) -> f32 {
+    gpui::easing::EasingCurve::CubicBezier(0.2, 0.8, 0.2, 1.0).sample(t.clamp(0.0, 1.0))
+}
+
+/// The same `cubic-bezier(.2,.8,.2,1)` curve as a `gpui_animation`
+/// [`Transition`] — for `transition_when_else` morphs (accent-bar fade/grow,
+/// row hover wash) in context menus. `ease_menu_enter` is a plain fn and
+/// can't be passed where the crate wants a `Transition`.
+#[derive(Clone, Copy)]
+pub struct MenuEase;
+
+impl gpui_animation::transition::Transition for MenuEase {
+    fn calculate(&self, t: f32) -> f32 {
+        ease_menu_enter(t)
+    }
+}
+
+/// Rise distance (px) for context-menu enter — matches the reference
+/// `translateY(-4px)` at delta=0.
+pub const MENU_RISE_PX: f32 = 4.;
 
 /// Oneshot enter for layer-shell panels (`with_animation`).
 pub fn enter_animation() -> Animation {
@@ -54,20 +82,43 @@ pub fn apply_enter_rise<E: Styled>(el: E, delta: f32) -> E {
     el.opacity(d).top(px(SLIDE_PX * (1.0 - d)))
 }
 
+/// Opacity + rise for context-menu enter (reference `@keyframes ctx-in`:
+/// fade + `translateY(-4px)`, 0.12s, `cubic-bezier(.2,.8,.2,1)`). Scale is
+/// omitted — the fork has no compositing `scale()` on elements; the rise +
+/// fade reads as the same gentle lift.
+pub fn apply_enter_menu<E: Styled>(el: E, delta: f32) -> E {
+    let d = delta.clamp(0.0, 1.0);
+    el.opacity(d).top(px(MENU_RISE_PX * (1.0 - d)))
+}
+
 /// Drive `enter_t` 0→1 with easing via background ticks + `cx.notify`.
 ///
 /// Call once from `View::new` (or first render). `set_t` writes the eased
-/// progress into the view.
+/// progress into the view. Uses the default popup easing ([`ease_enter`]) and
+/// duration ([`ENTER_MS`]); context menus pass their own via
+/// [`arm_enter_progress_with`].
 pub fn arm_enter_progress<V: 'static>(
     cx: &mut Context<V>,
     set_t: impl Fn(&mut V, f32) + Send + 'static,
 ) {
+    arm_enter_progress_with(cx, Duration::from_millis(ENTER_MS), ease_enter, set_t);
+}
+
+/// [`arm_enter_progress`] with an explicit duration + easing — context menus
+/// run the reference `@keyframes ctx-in` curve (`ease_menu_enter`, 120 ms)
+/// instead of the popups' EaseOutBack.
+pub fn arm_enter_progress_with<V: 'static>(
+    cx: &mut Context<V>,
+    duration: Duration,
+    ease: fn(f32) -> f32,
+    set_t: impl Fn(&mut V, f32) + Send + 'static,
+) {
     cx.spawn(async move |this, cx| {
         let start = Instant::now();
-        let dur = Duration::from_millis(ENTER_MS);
+        let dur = duration;
         loop {
             let raw = (start.elapsed().as_secs_f32() / dur.as_secs_f32()).min(1.0);
-            let eased = ease_enter(raw);
+            let eased = ease(raw);
             let ok = this.update(cx, |view, cx| {
                 set_t(view, eased);
                 cx.notify();
@@ -115,5 +166,26 @@ mod tests {
     fn ease_enter_endpoints() {
         assert!((ease_enter(0.0) - 0.0).abs() < 1e-5);
         assert!((ease_enter(1.0) - 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn menu_ease_endpoints_and_monotonic() {
+        // Cubic-bezier(.2,.8,.2,1) — the reference `ctx-in` curve.
+        let e = MenuEase;
+        assert!((e.calculate(0.0) - 0.0).abs() < 1e-5);
+        assert!((e.calculate(1.0) - 1.0).abs() < 1e-4);
+        // Gentle rise — no EaseOutBack overshoot (sample > 1.0 would break
+        // the menu's opacity/rise math).
+        for t in [0.25, 0.5, 0.75] {
+            let v = e.calculate(t);
+            assert!(v >= 0.0 && v <= 1.0, "t={t} → {v} must stay in 0..=1");
+        }
+        // Monotonic: later samples never go below earlier ones.
+        let mut prev = 0.0_f32;
+        for i in 1..=20 {
+            let v = e.calculate(i as f32 / 20.0);
+            assert!(v >= prev, "must be monotonic at t={}", i as f32 / 20.0);
+            prev = v;
+        }
     }
 }

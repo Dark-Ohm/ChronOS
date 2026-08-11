@@ -10,17 +10,25 @@ use gpui::{
     WindowBounds, WindowHandle, WindowKind, WindowOptions, div, layer_shell::*, point, prelude::*,
     px,
 };
+use gpui_animation::animation::TransitionExt;
 
 use chronos_ui::{Theme, WindowRootExt, elevation_apply_light_chrome, elevation_blur_layer};
 
 use crate::dock::config::DockConfig;
 use crate::dock::signal::notify_config_changed;
+use crate::motion;
 
 /// Context menu dimensions (px).
 const MENU_WIDTH: f32 = 140.;
-const MENU_HEIGHT: f32 = 40.;
+/// Fixed row height (px) — design `.ci { height: 34px }`.
+const ROW_H: f32 = 34.;
 /// Top margin — bar height + small gap so popup sits below the bar.
 const MENU_MARGIN_TOP: f32 = 36.;
+/// Accent-bar geometry — design `.ci::before { top:7px; bottom:7px; width:2px;
+/// border-radius:0 2px 2px 0 }`; rest inset (12px → half-height) is the
+/// scaleY(.5) stand-in (fork has no element `scale()`).
+const BAR_TOP: f32 = 7.;
+const BAR_REST_INSET: f32 = 12.;
 
 /// Global state for the dock context menu popup.
 #[derive(Default)]
@@ -47,11 +55,26 @@ impl DockMenuState {
     }
 }
 
-pub struct DockMenuView;
+pub struct DockMenuView {
+    /// View-driven enter progress 0..=1 (anchored popups — `with_animation`
+    /// is invisible on live Hyprland; see `motion::arm_enter_progress`).
+    enter_t: f32,
+}
 
 impl DockMenuView {
-    pub fn new(_cx: &mut App) -> Self {
-        Self
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        // Menu enter follows the reference `ctx-in` curve (`cubic-bezier(.2,.8,.2,1)`,
+        // `.12s`) — the popups' EaseOutBack overshoot would feel out of place here.
+        motion::arm_enter_progress_with(
+            cx,
+            Duration::from_millis(motion::MENU_ENTER_MS),
+            motion::ease_menu_enter,
+            |view, t| {
+                view.enter_t = t;
+            },
+        );
+        cx.set_global(crate::dock::signal::DockMenuHoverSignal(false));
+        Self { enter_t: 0.0 }
     }
 }
 
@@ -74,6 +97,8 @@ impl Render for DockMenuView {
         let radius = theme.radius;
         let radius_lg = theme.radius_lg;
         let border_subtle = theme.border.subtle;
+        let accent = theme.accent.primary;
+        let hovered = cx.global::<crate::dock::signal::DockMenuHoverSignal>().0;
 
         let elev = theme.elevation_popup();
         let blur_layer = elevation_blur_layer(&elev, radius_lg);
@@ -83,7 +108,6 @@ impl Render for DockMenuView {
             .relative()
             .flex_col()
             .w(px(MENU_WIDTH))
-            .h(px(MENU_HEIGHT))
             .rounded(radius_lg)
             .bg(bg.alpha(0.94))
             .border_1()
@@ -92,18 +116,73 @@ impl Render for DockMenuView {
             .overflow_hidden();
         card = elevation_apply_light_chrome(&elev, card);
 
-        card.child(blur_layer)
-            .child(
+        // Enter-animation (view-driven — anchored popups don't animate on map).
+        //
+        // Row: the 2px accent-bar is ALWAYS present (hidden rest state in the
+        // base chain — no flash) and morphs via `transition_when_else`; the
+        // hover wash morphs the same way (design `.ci` `transition: background
+        // .12s ease`). Hover state lives in the `DockMenuHoverSignal` global:
+        // `on_hover` here only gets `&mut App`, so it writes the global and
+        // marks this window's view dirty to flip the condition.
+        motion::apply_enter_menu(
+            card.child(blur_layer).child(
                 div()
                     .id("dock-menu-unpin")
                     .w_full()
-                    .h_full()
+                    .h(px(ROW_H))
                     .flex()
                     .items_center()
+                    .gap(px(10.))
                     .px(px(10.))
                     .rounded(radius)
+                    .relative()
+                    .child(
+                        div()
+                            .id("dock-menu-bar")
+                            .absolute()
+                            .left(px(0.))
+                            .w(px(2.))
+                            .rounded_tr(px(2.))
+                            .rounded_br(px(2.))
+                            .bg(accent)
+                            .opacity(0.0)
+                            .top(px(BAR_REST_INSET))
+                            .bottom(px(BAR_REST_INSET))
+                            .with_transition("dock-menu-bar")
+                            .transition_when_else(
+                                hovered,
+                                Duration::from_millis(motion::MENU_ENTER_MS),
+                                motion::MenuEase,
+                                |s| s.opacity(1.0).top(px(BAR_TOP)).bottom(px(BAR_TOP)),
+                                |s| {
+                                    s.opacity(0.0)
+                                        .top(px(BAR_REST_INSET))
+                                        .bottom(px(BAR_REST_INSET))
+                                },
+                            ),
+                    )
+                    .child(div().text_sm().text_color(text).child("Unpin"))
                     .cursor_pointer()
-                    .hover(|s| s.bg(hover_bg))
+                    .bg(gpui::transparent_black())
+                    .with_transition("dock-menu-unpin")
+                    .on_hover(|hovered, _window, cx: &mut App| {
+                        cx.set_global(crate::dock::signal::DockMenuHoverSignal(*hovered));
+                        // Flip the accent-bar condition. `on_hover` here only
+                        // gets `&mut App`, and `window.current_view()` panics
+                        // outside paint/prepaint — so we use the same
+                        // `refresh_windows` the gpui_animation tick uses to
+                        // drive re-renders: the next draw re-renders this
+                        // window's root view, `render` reads the flipped
+                        // global, and `transition_when_else` can animate.
+                        cx.refresh_windows();
+                    })
+                    .transition_when_else(
+                        hovered,
+                        Duration::from_millis(motion::MENU_ENTER_MS),
+                        motion::MenuEase,
+                        move |s| s.bg(hover_bg),
+                        |s| s.bg(gpui::transparent_black()),
+                    )
                     .on_click(move |_event, window, cx: &mut App| {
                         // Read entry_id from global before clearing.
                         let id = cx
@@ -134,10 +213,11 @@ impl Render for DockMenuView {
 
                         // Close popup.
                         window.remove_window();
-                    })
-                    .child(div().text_sm().text_color(text).child("Unpin")),
-            )
-            .into_any_element()
+                    }),
+            ),
+            self.enter_t,
+        )
+        .into_any_element()
     }
 }
 
@@ -161,7 +241,7 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
                 (display_size.width - px(MENU_WIDTH)) / 2.,
                 px(MENU_MARGIN_TOP),
             ),
-            size: Size::new(px(MENU_WIDTH), px(MENU_HEIGHT)),
+            size: Size::new(px(MENU_WIDTH), px(ROW_H)),
         })),
         app_id: Some("chronos-dock-menu".to_string()),
         window_background: WindowBackgroundAppearance::Transparent,
