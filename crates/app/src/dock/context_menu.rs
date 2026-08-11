@@ -11,7 +11,7 @@ use gpui::{
     px,
 };
 
-use chronos_ui::{Theme, WindowRootExt};
+use chronos_ui::{Theme, WindowRootExt, elevation_apply_light_chrome, elevation_blur_layer};
 
 use crate::dock::config::DockConfig;
 use crate::dock::signal::notify_config_changed;
@@ -64,18 +64,35 @@ impl Render for DockMenuView {
             return div().into_any_element();
         };
 
-        let bg = theme.bg.elevated;
+        // One popup component with the tray menu: same elevated-surface shell
+        // (same bg, radius, border, depth blur/shadow, Light-C chrome) so the
+        // dock context menu doesn't read as a different widget. Content stays a
+        // single "Unpin" item.
+        let bg = theme.bg.primary;
         let text = theme.text.primary;
         let hover_bg = theme.interactive.hover;
         let radius = theme.radius;
+        let radius_lg = theme.radius_lg;
+        let border_subtle = theme.border.subtle;
 
-        div()
+        let elev = theme.elevation_popup();
+        let blur_layer = elevation_blur_layer(&elev, radius_lg);
+
+        let mut card = div()
             .window_font(theme)
+            .relative()
             .flex_col()
             .w(px(MENU_WIDTH))
             .h(px(MENU_HEIGHT))
-            .rounded(radius)
-            .bg(bg)
+            .rounded(radius_lg)
+            .bg(bg.alpha(0.94))
+            .border_1()
+            .border_color(border_subtle)
+            .shadow(elev.shadows.to_vec())
+            .overflow_hidden();
+        card = elevation_apply_light_chrome(&elev, card);
+
+        card.child(blur_layer)
             .child(
                 div()
                     .id("dock-menu-unpin")
@@ -83,7 +100,7 @@ impl Render for DockMenuView {
                     .h_full()
                     .flex()
                     .items_center()
-                    .px(px(12.))
+                    .px(px(10.))
                     .rounded(radius)
                     .cursor_pointer()
                     .hover(|s| s.bg(hover_bg))

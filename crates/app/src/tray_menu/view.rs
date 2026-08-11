@@ -20,11 +20,14 @@ use crate::state::AppState;
 use crate::tray_menu::TrayMenuState;
 use crate::tray_menu::{click_item, close};
 
-use chronos_ui::{Theme, WindowRootExt};
+use chronos_ui::{
+    Theme, WindowRootExt, elevation_apply_light_chrome, elevation_blur_layer,
+};
 
 /// Padding applied to each menu row (px).
 const ROW_PAD_Y: f32 = 6.;
-const ROW_PAD_X: f32 = 12.;
+/// Row horizontal padding — design `.ci { padding: 0 10px }`.
+const ROW_PAD_X: f32 = 10.;
 /// Indentation per submenu nesting level (px).
 const SUBMENU_INDENT: f32 = 16.;
 
@@ -51,7 +54,14 @@ impl Render for TrayMenuView {
         let radius = theme.radius;
         let radius_lg = theme.radius_lg;
         let hover = theme.interactive.hover;
+        let accent = theme.accent.primary;
         let border_subtle = theme.border.subtle;
+
+        // Elevated-surface shell (T128 depth language): blur + drop shadow +
+        // Light-C glow/watermark — the shared "one popup component" recipe that
+        // ties the tray menu and the dock context menu together.
+        let elev = theme.elevation_popup();
+        let blur_layer = elevation_blur_layer(&elev, radius_lg);
 
         let Some(service) = service else {
             // No menu open — empty surface.
@@ -61,12 +71,18 @@ impl Render for TrayMenuView {
         if nodes.is_empty() {
             // Menu requested but not yet fetched (or empty). Show a tiny
             // placeholder so the surface isn't a zero-size transparent void.
-            return div()
+            let mut card = div()
+                .window_font(theme)
+                .relative()
                 .flex_col()
                 .rounded(radius_lg)
-                .bg(bg)
+                .bg(bg.alpha(0.94))
                 .border_1()
                 .border_color(border_subtle)
+                .shadow(elev.shadows.to_vec())
+                .overflow_hidden();
+            card = elevation_apply_light_chrome(&elev, card);
+            return card
                 .p(px(ROW_PAD_X))
                 .text_color(text_muted)
                 .child("…".to_string())
@@ -86,21 +102,41 @@ impl Render for TrayMenuView {
                     &divider,
                     radius,
                     hover,
+                    accent,
                     0,
                 )
             })
             .collect();
 
-        div()
+        // Menu root: elevated card shell (blur + shadow + Light-C chrome) with an
+        // inner bounded scroll column. Design caps the menu at `viewport − 16px`
+        // and scrolls rows past it; `mod.rs` already caps the window height, this
+        // `.flex_1().min_h(0).overflow_y_scroll()` column takes that bounded
+        // height and scrolls on overflow. `p(6)` + row `px(10)` ≈ design `.ctx-menu`
+        // 6px padding + `.ci` `0 10px` content inset.
+        let mut card = div()
             .window_font(theme)
+            .relative()
             .flex_col()
             .rounded(radius_lg)
-            .bg(bg)
+            .bg(bg.alpha(0.94))
             .border_1()
             .border_color(border_subtle)
-            .overflow_hidden()
-            .children(rows)
-            .into_any_element()
+            .shadow(elev.shadows.to_vec())
+            .overflow_hidden();
+        card = elevation_apply_light_chrome(&elev, card);
+        card = card
+            .child(blur_layer)
+            .child(
+                div()
+                    .id("tray-menu-list")
+                    .flex_1()
+                    .min_h(px(0.))
+                    .overflow_y_scroll()
+                    .p(px(6.))
+                    .children(rows),
+            );
+        card.into_any_element()
     }
 }
 
@@ -115,6 +151,7 @@ fn render_node(
     divider: &gpui::Hsla,
     radius: gpui::Pixels,
     hover: gpui::Hsla,
+    accent: gpui::Hsla,
     depth: u32,
 ) -> AnyElement {
     let indent = px(SUBMENU_INDENT * depth as f32);
@@ -135,28 +172,28 @@ fn render_node(
         node.label.clone()
     };
 
-    // Toggle prefix.
-    let prefix = match &node.toggle {
-        Some((kind, checked)) => {
-            let mark = match kind {
-                chronos_services::MenuToggleType::Radio => {
-                    if *checked {
-                        "◉ "
-                    } else {
-                        "○ "
-                    }
+    // Toggle glyph. Design renders the check in the accent (`.ci-check`) and
+    // only when checked; Radio keeps a persistent ○/◉ so the group state is
+    // always visible. Rendered in a fixed 16px gutter below so all rows share
+    // one left edge (design `.ci-check`/`.ci-ic` width).
+    let (mark, mark_color) = match &node.toggle {
+        Some((kind, checked)) => match kind {
+            chronos_services::MenuToggleType::Radio => {
+                if *checked {
+                    (Some("◉".to_string()), accent)
+                } else {
+                    (Some("○".to_string()), *text_muted)
                 }
-                chronos_services::MenuToggleType::Checkmark => {
-                    if *checked {
-                        "✓ "
-                    } else {
-                        "☐ "
-                    }
+            }
+            chronos_services::MenuToggleType::Checkmark => {
+                if *checked {
+                    (Some("✓".to_string()), accent)
+                } else {
+                    (None, *text_muted)
                 }
-            };
-            mark.to_string()
-        }
-        None => String::new(),
+            }
+        },
+        None => (None, *text_muted),
     };
 
     let text_color = if node.enabled {
@@ -167,51 +204,51 @@ fn render_node(
 
     let has_children = !node.children.is_empty();
 
-    // Build the row. Applying `on_click` flips `Div` into `Stateful<Div>`, so
-    // we keep the builder as a trait object (`impl IntoElement`) only at the
-    // point we stop chaining — here we build the leaf row then fold to
-    // `AnyElement` exactly once.
-    // Build the row. Applying `on_click` flips `Div` into `Stateful<Div>`, so
-    // we compute the whole row as a single `AnyElement` (with or without the
-    // click handler) rather than trying to reassign one `Div`.
+    // Row chrome: 16px mark gutter + flex-1 label with ellipsis. `hover`
+    // stays a no-op for disabled rows (design `.ci.disabled` has no wash),
+    // and clicking only arms for enabled leaf items.
+    let mut row = div()
+        .w_full()
+        .flex()
+        .items_center()
+        .gap(px(10.))
+        .px(px(ROW_PAD_X))
+        .py(px(ROW_PAD_Y))
+        .rounded(radius)
+        .ml(indent)
+        .child(
+            div()
+                .w(px(16.))
+                .flex()
+                .items_center()
+                .children(mark.iter().map(|m| div().text_color(mark_color).child(m.clone()))),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.))
+                .whitespace_nowrap()
+                .overflow_hidden()
+                .text_color(text_color)
+                .child(label),
+        );
+
+    if node.enabled {
+        row = row.hover(|s| s.bg(hover));
+    }
+
+    // Applying `on_click` folds `Div` into `Stateful<Div>`; we drop to
+    // `AnyElement` exactly once at the end.
     let row_elem: AnyElement = if node.enabled && !has_children {
         let id = node.id;
-        div()
-            .w_full()
-            .flex()
-            .items_center()
-            .px(px(ROW_PAD_X))
-            .py(px(ROW_PAD_Y))
-            .rounded(radius)
-            .ml(indent)
-            .cursor_pointer()
-            .hover(|s| s.bg(hover))
+        row.cursor_pointer()
             .id(format!("tray-menu-item-{id}"))
             .on_click(move |_event, window, cx: &mut App| {
                 click_item(window, cx, id);
             })
-            .child(
-                div()
-                    .text_color(text_color)
-                    .child(format!("{prefix}{label}")),
-            )
             .into_any_element()
     } else {
-        div()
-            .w_full()
-            .flex()
-            .items_center()
-            .px(px(ROW_PAD_X))
-            .py(px(ROW_PAD_Y))
-            .rounded(radius)
-            .ml(indent)
-            .hover(|s| s.bg(hover))
-            .child(
-                div()
-                    .text_color(text_color)
-                    .child(format!("{prefix}{label}")),
-            )
-            .into_any_element()
+        row.into_any_element()
     };
 
     // Inline submenu expansion (no nested windows in MVP).
@@ -230,6 +267,7 @@ fn render_node(
                     divider,
                     radius,
                     hover,
+                    accent,
                     depth + 1,
                 )
             })
