@@ -9,6 +9,7 @@ pub mod bar_settings;
 pub(crate) mod desktop_terminal;
 pub mod edit_mode;
 pub mod games_config;
+pub mod icon_resolution;
 pub mod launcher;
 pub mod monitor;
 pub mod motion;

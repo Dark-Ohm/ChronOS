@@ -11,8 +11,8 @@ use gpui::{
 
 use crate::launcher::view::LauncherView;
 
-const LAUNCHER_WIDTH: f32 = 600.;
-const LAUNCHER_HEIGHT: f32 = 400.;
+const LAUNCHER_WIDTH: f32 = 720.;
+const LAUNCHER_HEIGHT: f32 = 560.;
 
 /// Tracks the open launcher window so `toggle` can open/close it.
 #[derive(Default)]

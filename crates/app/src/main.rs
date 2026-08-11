@@ -6,6 +6,7 @@ mod desktop_terminal;
 mod dock;
 mod edit_mode;
 mod games_config;
+mod icon_resolution;
 mod workspace_mode;
 mod scene;
 mod ipc;

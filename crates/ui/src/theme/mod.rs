@@ -72,6 +72,8 @@ pub struct BgColors {
     pub secondary: Hsla,
     pub tertiary: Hsla,
     pub elevated: Hsla,
+    /// Фон выбранного элемента (строка в лаунчера, активный чип).
+    pub selection: Hsla,
 }
 
 /// Текстовые цвета.
@@ -82,6 +84,8 @@ pub struct TextColors {
     pub muted: Hsla,
     pub disabled: Hsla,
     pub placeholder: Hsla,
+    /// Совсем приглушённый (подсказки, хоткеи, разделители текста).
+    pub faint: Hsla,
 }
 
 /// Границы/разделители.
@@ -98,6 +102,8 @@ pub struct AccentColors {
     pub primary: Hsla,
     pub selection: Hsla,
     pub hover: Hsla,
+    /// Вторичный акцент (mauve) — luau badge, recent tag, toast, reload dot.
+    pub secondary: Hsla,
 }
 
 /// Цвета статусов/ургентности (нотификации, OSD).
@@ -183,6 +189,7 @@ impl Default for Theme {
                 secondary: parse_hex("25253b").unwrap(),
                 tertiary: parse_hex("181825").unwrap(),
                 elevated: parse_hex("313244").unwrap(),
+                selection: rgba(0x007acc24).into(), // rgba(0,122,204,0.14)
             },
             text: TextColors {
                 primary: rgba(0xffffffff).into(),
@@ -190,6 +197,7 @@ impl Default for Theme {
                 muted: text_muted,
                 disabled: parse_hex("45475a").unwrap(),
                 placeholder: text_muted,
+                faint: rgba(0xcdd6f457).into(), // rgba(205,214,244,0.34)
             },
             border: BorderColors {
                 default: border_default,
@@ -200,6 +208,7 @@ impl Default for Theme {
                 primary: parse_hex("007acc").unwrap(),
                 selection: parse_hex("007acc").unwrap(),
                 hover: parse_hex("1f9bdc").unwrap(),
+                secondary: parse_hex("cba6f7").unwrap(), // mauve
             },
             status: StatusColors {
                 success: parse_hex("a6e3a1").unwrap(),

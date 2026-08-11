@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use super::{Base16Colors, Theme};
+use super::{parse_hex, Base16Colors, Theme};
 
 /// Описание одной схемы: имя, краткое описание и готовая [`Theme`].
 pub struct ThemeScheme {
@@ -85,8 +85,13 @@ fn light_scheme() -> ThemeScheme {
     theme.border.focused = hex("007acc"); // accent — glow-ребро/фокус-контур
 
     // Акцент НЕ переопределяется — правило design.md/DECISIONS.
-    // accent.primary/selection/hover остаются из Theme::default (#007acc/
-    // #007acc/#1f9bdc) — на светлом фоне читаются, MVP.
+    // accent.primary/selection/hover/secondary остаются из Theme::default
+    // (#007acc/#007acc/#1f9bdc/#cba6f7) — на светлом фоне читаются, MVP.
+
+    // bg.selection / text.faint — переопределены для светлого фона
+    // (дефолтные rgba(205,214,244,*) на светлом #dde0f2 не читаются).
+    theme.bg.selection = hex("b8c6f5"); // лавандовый подклад выбранной строки
+    theme.text.faint = parse_hex("2c2e4a57").expect("faint hex valid"); // rgba(44,46,74,0.34)
 
     // Interactive — из палитры Light C по ролям.
     theme.interactive.default = hex("c4c8e6"); // cardBorder — контур контрола
