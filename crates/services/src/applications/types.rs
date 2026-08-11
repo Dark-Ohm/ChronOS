@@ -85,9 +85,22 @@ pub fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
         }
     });
 
+    // Only fields inside `[Desktop Entry]` count. `.desktop` files may carry
+    // extra groups (`[Desktop Action NewWorkspace]`, …) with their own
+    // `Name=`/`Exec=` — those must not leak into the main entry (see
+    // `desktop_action_section_does_not_override_main_name` regression test).
+    let mut in_main_section = false;
+
     for line in content.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') || line.starts_with('[') {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if line.starts_with('[') {
+            in_main_section = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_main_section {
             continue;
         }
         if let Some((key, value)) = line.split_once('=') {
@@ -273,6 +286,27 @@ mod tests {
         );
         let entry = parse_desktop_file(&path).unwrap();
         assert!(entry.categories.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn desktop_action_section_does_not_override_main_name() {
+        // Regression: Zed's real .desktop file has a `[Desktop Action
+        // NewWorkspace]` group with its own `Name=`/`Exec=` — the parser
+        // didn't track sections, so that group's `Name=` silently
+        // overwrote the main entry's name ("Zed" -> "Open a new
+        // workspace"), making the launcher's fuzzy search (which only
+        // indexes `entry.name`) unable to find it by typing "zed".
+        let dir = std::env::temp_dir().join("app-service-test-action-section");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = write_desktop_file(
+            &dir,
+            "dev.zed.Zed",
+            "[Desktop Entry]\nType=Application\nName=Zed\nExec=/usr/bin/zed %U\nActions=NewWorkspace;\n\n[Desktop Action NewWorkspace]\nExec=/usr/bin/zed --new %U\nName=Open a new workspace\n",
+        );
+        let entry = parse_desktop_file(&path).unwrap();
+        assert_eq!(entry.name, "Zed", "Name from [Desktop Action] group must not leak into the main entry");
+        assert_eq!(entry.exec, "/usr/bin/zed");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
