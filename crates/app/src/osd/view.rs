@@ -95,12 +95,16 @@ impl Render for OsdView {
 
         let bg = theme.bg.elevated;
         let bar_track = theme.bg.secondary;
-        let text_primary = if muted {
+        // По эталону (`.osd-v4` Muted) краснеет строка %/mute — в коде это
+        // `text_secondary` (`color:#f38ba8` на `Mute` в `Volume-OSD.dc.html`).
+        // `kind_label` («Громкость»/«Микрофон») — живое дополнение, в эталоне
+        // отсутствует; остаётся обычным текстом всегда.
+        let text_primary = theme.text.primary;
+        let text_secondary = if muted {
             theme.status.error
         } else {
-            theme.text.primary
+            theme.text.secondary
         };
-        let text_secondary = theme.text.secondary;
         let radius = theme.radius_lg;
         // Трек/заливка — небольшое скругление (эталон 2px на 4px-треке;
         // здесь 8px-трек → 4px читается пропорционально).
