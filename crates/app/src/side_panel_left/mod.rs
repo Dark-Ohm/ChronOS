@@ -1532,6 +1532,46 @@ pub fn toggle(cx: &mut App) {
     }
 }
 
+/// T278 architect round 4: dock-toggle reducer exposed as a free
+/// function so it can be unit-tested without instantiating
+/// `WorkspaceView` (which needs `SidePanelLeft`, which spawns an async
+/// ACP-connect that requires a live Tokio runtime — unconstructable
+/// in `TestAppContext`). `WorkspaceView::on_dock_toggle` is a thin
+/// wrapper around this; rail clicks and tests share the same source
+/// of truth (`tabs::dock_transition`).
+///
+/// Mutates `SidePanelLeftState_` in place: applies the pure transition,
+/// invalidates `last_exclusive_zone` when the computed `exclusive_px`
+/// changes (so the rail re-pushes on the next paint).
+pub fn apply_dock_toggle(cx: &mut App) {
+    let (next_width, next_dock) = {
+        let state = cx.global::<SidePanelLeftState_>();
+        tabs::dock_transition(
+            state.panel_width,
+            state.dock_content,
+            state.active_tab,
+            &state.remembered_widths,
+        )
+    };
+    let state = cx.global_mut::<SidePanelLeftState_>();
+    let was_docked = state.dock_content;
+    let was_width = state.panel_width;
+    state.panel_width = next_width;
+    state.dock_content = next_dock;
+    let new_zone = state.exclusive_px();
+    if state.last_exclusive_zone != Some(new_zone) {
+        state.last_exclusive_zone = None;
+    }
+    tracing::info!(
+        was_docked,
+        was_width,
+        now_dock = state.dock_content,
+        now_width = state.panel_width,
+        exclusive_px = new_zone,
+        "side_panel_left: dock toggle"
+    );
+}
+
 /// T226 tooling: open the left agent panel pinned, dock the chat column
 /// (full panel width, not overlay) and focus the composer so typed input
 /// lands in the message box. `App` context — IPC handler has no `Window`,
@@ -2224,42 +2264,106 @@ mod tests {
         assert_eq!(icon_for(true), "⊟", "docked shows the disable icon");
     }
 
-    /// T278 architect round 3 integration: `WorkspaceView::on_dock_toggle`
-    /// calls the pure helper and applies its result. Drives the same
-    /// transitions through the integration path so the wiring can't
-    /// drift from the helper.
+    /// T278 architect round 4 integration: the production reducer
+    /// `apply_dock_toggle(cx)` is invoked on a real `App` (in
+    /// `TestAppContext`) and the SoT must match what the pure helper
+    /// `tabs::dock_transition` produced for the same inputs. The
+    /// round-3 `on_dock_toggle_uses_pure_helper` test was a tautology
+    /// (it assigned and read back without ever calling the reducer);
+    /// this one actually exercises the production code path.
+    ///
+    /// Three branches (spec §4.1):
+    /// - rail-only + dock on → expand to `width_for_open(active, remembered)`.
+    /// - overlay    + dock on → preserve width, flip flag.
+    /// - docked     + dock off → preserve width, flip flag.
+    ///
+    /// `apply_dock_toggle` is a free function on `&mut App` (not an
+    /// entity method) precisely so the test harness can drive it
+    /// without instantiating `WorkspaceView` — which requires a live
+    /// `SidePanelLeft`, which spawns an async ACP-connect that
+    /// requires a Tokio runtime (unconstructable in `TestAppContext`).
+    /// `WorkspaceView::on_dock_toggle` is now a thin dispatcher.
     #[gpui::test]
-    async fn on_dock_toggle_uses_pure_helper(cx: &mut gpui::TestAppContext) {
-        use gpui::TestAppContext;
+    async fn apply_dock_toggle_matches_helper_in_real_app(
+        cx: &mut gpui::TestAppContext,
+    ) {
         cx.update(|cx| crate::side_panel_left::init(cx));
-        // Seed a workspace entity so on_dock_toggle has something to
-        // update. We don't open real windows (TestAppContext forces
-        // first paint synchronously and SidePanelLeft::new spawns an
-        // async ACP connect); we just verify the reducer reaches the
-        // same conclusion the helper does.
-        let helper_rail_only = tabs::dock_transition(
+
+        let run_branch = |cx: &mut gpui::TestAppContext,
+                          panel_w: f32,
+                          dock: bool,
+                          tab: tabs::LeftTab,
+                          remembered: tabs::ResizableWidths| {
+            cx.update(|cx| {
+                let state = cx.global_mut::<SidePanelLeftState_>();
+                state.panel_width = panel_w;
+                state.dock_content = dock;
+                state.active_tab = tab;
+                state.remembered_widths = remembered;
+            });
+            let expected = tabs::dock_transition(
+                panel_w,
+                dock,
+                tab,
+                &cx.update(|cx| {
+                    cx.global::<SidePanelLeftState_>().remembered_widths.clone()
+                }),
+            );
+            cx.update(|cx| apply_dock_toggle(cx));
+            let actual = cx.update(|cx| {
+                let state = cx.global::<SidePanelLeftState_>();
+                (state.panel_width, state.dock_content)
+            });
+            assert_eq!(
+                actual, expected,
+                "apply_dock_toggle must match dock_transition \
+                 for (panel_w={panel_w}, dock={dock}, tab={tab:?})"
+            );
+        };
+
+        // Branch 1: rail-only + dock on → expand (Chat default 560).
+        run_branch(
+            cx,
             tabs::RAIL_WIDTH,
             false,
             tabs::LeftTab::Chat,
-            &tabs::ResizableWidths::default(),
+            tabs::ResizableWidths::default(),
         );
-        cx.update(|cx| {
-            // Mimic the on_dock_toggle effect via direct SoT mutation
-            // (the helper is the source of truth; this just confirms
-            // the SoT accepts the result without surprises).
-            let state = cx.global_mut::<SidePanelLeftState_>();
-            state.panel_width = helper_rail_only.0;
-            state.dock_content = helper_rail_only.1;
-        });
-        cx.update(|cx| {
-            let state = cx.global::<SidePanelLeftState_>();
-            assert!(state.dock_content);
-            assert!(
-                state.panel_width > tabs::RAIL_WIDTH,
-                "rail-only + dock on must expand past rail-only"
-            );
-            // Spot-check the helper output and the SoT agree.
-            assert_eq!(state.panel_width, helper_rail_only.0);
-        });
+
+        // Branch 2: overlay + dock on → preserve width.
+        run_branch(
+            cx,
+            612.0,
+            false,
+            tabs::LeftTab::Chat,
+            tabs::ResizableWidths::default(),
+        );
+
+        // Branch 3: docked + dock off → preserve width.
+        run_branch(
+            cx,
+            612.0,
+            true,
+            tabs::LeftTab::Chat,
+            tabs::ResizableWidths::default(),
+        );
+
+        // Branch 4: rail-only + dock on with a remembered Chat width
+        // — proves the production path reads `state.remembered_widths`
+        // and not just the static default.
+        let mut remembered = tabs::ResizableWidths::default();
+        remembered.chat = 700.0;
+        run_branch(cx, tabs::RAIL_WIDTH, false, tabs::LeftTab::Chat, remembered);
+
+        // Branch 5: rail-only + dock on with a fixed-width tab
+        // (Sessions = 400) — proves the production path uses
+        // `active_tab.preferred_panel_width()` for non-resizable tabs.
+        run_branch(
+            cx,
+            tabs::RAIL_WIDTH,
+            false,
+            tabs::LeftTab::Sessions,
+            tabs::ResizableWidths::default(),
+        );
     }
 }

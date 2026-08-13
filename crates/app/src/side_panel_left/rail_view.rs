@@ -276,47 +276,12 @@ impl WorkspaceView {
         cx.notify();
     }
 
-    /// Called by `RailView`'s dock toggle button. T278 architect round 3:
-    /// the reducer is a pure `tabs::dock_transition` (spec §4.1):
-    /// - rail-only + dock on → expand to `width_for_open(active, remembered)`.
-    /// - overlay + dock on → preserve width, flip flag.
-    /// - docked + dock off → preserve width, flip flag.
-    ///
-    /// The next regular tab switch applies the new tab's policy — dock
-    /// toggle never pre-bakes a future tab's width.
+    /// Called by `RailView`'s dock toggle button. Thin dispatcher — the
+    /// real reducer lives in `crate::side_panel_left::apply_dock_toggle`
+    /// (a free function on `&mut App`) so tests don't need a live
+    /// `SidePanelLeft` entity to exercise it.
     pub fn on_dock_toggle(&mut self, cx: &mut Context<Self>) {
-        // Compute the next state via the pure helper BEFORE taking the
-        // global mutably, so the helper stays a pure function and we
-        // get the same answer as a unit test would.
-        let (next_width, next_dock) = {
-            let state = cx.global::<crate::side_panel_left::SidePanelLeftState_>();
-            crate::side_panel_left::tabs::dock_transition(
-                state.panel_width,
-                state.dock_content,
-                state.active_tab,
-                &state.remembered_widths,
-            )
-        };
-        let state = cx.global_mut::<crate::side_panel_left::SidePanelLeftState_>();
-        let was_docked = state.dock_content;
-        let was_width = state.panel_width;
-        state.panel_width = next_width;
-        state.dock_content = next_dock;
-        // Invalidate the rail's exclusive_zone cache only if the value
-        // actually moved (the rail re-pushes whenever the cached value
-        // differs from `exclusive_px()`).
-        let new_zone = state.exclusive_px();
-        if state.last_exclusive_zone != Some(new_zone) {
-            state.last_exclusive_zone = None;
-        }
-        tracing::info!(
-            was_docked,
-            was_width,
-            now_dock = state.dock_content,
-            now_width = state.panel_width,
-            exclusive_px = new_zone,
-            "side_panel_left: dock toggle"
-        );
+        crate::side_panel_left::apply_dock_toggle(cx);
         cx.notify();
     }
 }
