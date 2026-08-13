@@ -7,12 +7,17 @@
 //! Left cluster layout (per `Top Bar.dc.html`):
 //!   [Start] | [app icons...] | (then workspaces further right)
 
-use std::collections::HashSet;
+use std::cell::Cell;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::{Mutex, OnceLock};
 
 use gpui::ImageSource;
-use gpui::{AnyElement, App, InteractiveElement, MouseButton, Window, div, img, prelude::*, px};
+use gpui::{
+    AnyElement, App, Bounds, InteractiveElement, MouseButton, Pixels, Window, canvas, div, img,
+    prelude::*, px,
+};
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{AppEntry, Service};
@@ -32,7 +37,19 @@ fn skip_warned() -> &'static Mutex<HashSet<String>> {
 
 const ICON_PX: f32 = 18.0;
 
-pub struct DockWidget;
+pub struct DockWidget {
+    /// Captured on-screen bounds per dock entry id — the anchor rect for the
+    /// context menu (canon `positionRoot`: menu opens at the click point).
+    bounds: Rc<std::cell::RefCell<HashMap<String, Rc<Cell<Bounds<Pixels>>>>>>,
+}
+
+impl DockWidget {
+    pub fn new() -> Self {
+        Self {
+            bounds: Rc::new(std::cell::RefCell::new(HashMap::new())),
+        }
+    }
+}
 
 impl BarWidget for DockWidget {
     fn name(&self) -> &str {
@@ -112,7 +129,18 @@ impl BarWidget for DockWidget {
                     }
                 };
 
-                div()
+                // Per-entry bounds cell — the context menu anchors to THIS
+                // icon (canon: menu follows the right-clicked icon).
+                let bounds_cell = self
+                    .bounds
+                    .borrow_mut()
+                    .entry(entry_id.clone())
+                    .or_insert_with(|| Rc::new(Cell::new(Bounds::default())))
+                    .clone();
+                let bounds_cell_right = bounds_cell.clone();
+                let entry_id_right = entry_id.clone();
+
+                let icon_btn = div()
                     .id(format!("dock-icon-{}", entry.id))
                     .h(px(24.))
                     .w(px(24.))
@@ -127,10 +155,33 @@ impl BarWidget for DockWidget {
                             tracing::error!("dock: failed to launch {}: {e:#}", entry.name);
                         }
                     })
-                    .on_mouse_down(MouseButton::Right, move |_event, _window, cx: &mut App| {
-                        crate::dock::context_menu::open(cx, entry_id.clone());
+                    .on_mouse_down(MouseButton::Right, move |_event, window, cx: &mut App| {
+                        let anchor_rect = bounds_cell_right.get();
+                        let parent = window.window_handle();
+                        crate::dock::context_menu::open(
+                            cx,
+                            anchor_rect,
+                            parent,
+                            entry_id_right.clone(),
+                        );
                     })
-                    .child(icon_elem)
+                    .child(icon_elem);
+
+                // Canvas captures this icon's live bounds into `bounds_cell`
+                // every prepaint (same pattern as `bar/widgets/volume.rs`).
+                div()
+                    .relative()
+                    .child(
+                        canvas(
+                            move |bounds, _window, _cx| bounds,
+                            move |_bounds, captured, _window, _cx| {
+                                bounds_cell.set(captured);
+                            },
+                        )
+                        .absolute()
+                        .size_full(),
+                    )
+                    .child(icon_btn)
                     .into_any_element()
             })
             .collect();

@@ -145,6 +145,13 @@ pub struct MenuNode {
     pub separator: bool,
     /// Toggle state for checkable items: `(toggle_type, checked)`.
     pub toggle: Option<(MenuToggleType, bool)>,
+    /// Freedesktop icon-theme name for the row's leading glyph (`.ci-ic`).
+    /// `None` when the item carries no icon (or is a separator).
+    pub icon_name: Option<String>,
+    /// Raw DBusMenu shortcut: array of key-combination arrays, e.g.
+    /// `[["Control","X"]]` / `[["F2"]]`. The view converts to display
+    /// glyphs (`⌃X`) at render time — never pre-rendered in the service.
+    pub shortcut: Option<Vec<Vec<String>>>,
     /// Child items (empty for leaf nodes).
     pub children: Vec<MenuNode>,
 }

@@ -123,7 +123,12 @@ fn window_options(
             constraint_adjustment: PopupConstraintAdjustment::SLIDE_X
                 | PopupConstraintAdjustment::FLIP_X,
             offset: point(px(0.), px(4.)),
-            grab: true,
+            // T264 A2: Hyprland 0.56.x can retain this xdg-popup's seat grab
+            // after client-side destruction and then drop compositor-wide
+            // pointer input — the whole session loses mouse until relogin.
+            // Dismissal is ours (click-away / Escape / re-toggle), so no bar
+            // popup asks the compositor for a grab.
+            grab: false,
         }),
         ..Default::default()
     }

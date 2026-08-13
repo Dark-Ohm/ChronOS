@@ -132,7 +132,9 @@ fn window_options(
             constraint_adjustment: PopupConstraintAdjustment::SLIDE_X
                 | PopupConstraintAdjustment::FLIP_X,
             offset: point(px(0.), px(4.)),
-            grab: true,
+            // T264 A2: no compositor grab — see the note in
+            // `volume_popup::window_options`.
+            grab: false,
         }),
         ..Default::default()
     }

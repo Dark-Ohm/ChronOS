@@ -45,7 +45,7 @@ impl BarWidget for ForcedSection {
 /// Build a widget instance for `name` into `section` (no register).
 fn instantiate(name: &str, section: BarSection) -> Option<Box<dyn BarWidget>> {
     let inner: Box<dyn BarWidget> = match name {
-        "dock" => Box::new(dock::DockWidget),
+        "dock" => Box::new(dock::DockWidget::new()),
         "separator" => Box::new(separator::Separator { section }),
         "workspaces" => Box::new(workspaces::WorkspacesWidget),
         "mpris" => Box::new(mpris::MprisWidget),
@@ -53,7 +53,7 @@ fn instantiate(name: &str, section: BarSection) -> Option<Box<dyn BarWidget>> {
         "project" => Box::new(project::ProjectWidget),
         "volume" => Box::new(volume::VolumeWidget::new()),
         "network" => Box::new(network::NetworkWidget::new()),
-        "tray" => Box::new(tray::TrayWidget),
+        "tray" => Box::new(tray::TrayWidget::new()),
         "updates" => Box::new(updates::UpdatesWidget::new()),
         "system" => Box::new(system::SystemWidget::new()),
         "notification_bell" => Box::new(notification_bell::NotificationBellWidget::new()),

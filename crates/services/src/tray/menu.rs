@@ -34,6 +34,10 @@ pub async fn fetch_tree(
     let names: Vec<&str> = vec![
         "label", "enabled", "visible", "type",
         "toggle-type", "toggle-state", "children-display",
+        // T263: icons + shortcuts — the canon menu model carries both
+        // (`.ci-ic` / `.ci-short`), and DBusMenu supports `icon-name` and
+        // `shortcut` as standard properties.
+        "icon-name", "shortcut",
     ];
 
     let msg = conn
@@ -59,7 +63,13 @@ pub async fn fetch_tree(
         .collect();
 
     let node = build_node(raw.0, props, children);
-    Ok(vec![node])
+    Ok(top_level_nodes(node))
+}
+
+/// `GetLayout(0, …)` returns a synthetic root node whose children are the
+/// actual top-level menu items. Do not render that empty root as a submenu.
+fn top_level_nodes(root: MenuNode) -> Vec<MenuNode> {
+    root.children
 }
 
 fn flatten_children(values: Vec<Value<'static>>) -> Vec<MenuNode> {
@@ -105,13 +115,14 @@ fn flatten_children(values: Vec<Value<'static>>) -> Vec<MenuNode> {
         .collect()
 }
 
-/// Unwrap a single-layer `Value::Value(boxed)` variant wrapper.
-/// D-Bus `av` (array of variants) wraps each child in a variant (`v`).
-fn unwrap_variant(v: Value<'static>) -> Value<'static> {
-    match v {
-        Value::Value(boxed) => *boxed,
-        other => other,
+/// Unwrap nested `Value::Value(boxed)` variant wrappers.
+/// D-Bus `av` arrays wrap children in variants, and an `a{sv}` property may
+/// add another variant around the array value itself.
+fn unwrap_variant(mut value: Value<'static>) -> Value<'static> {
+    while let Value::Value(boxed) = value {
+        value = *boxed;
     }
+    value
 }
 
 fn build_node(id: i32, properties: Vec<(String, Value<'static>)>, child_values: Vec<Value<'static>>) -> MenuNode {
@@ -164,6 +175,63 @@ fn build_node(id: i32, properties: Vec<(String, Value<'static>)>, child_values: 
         })
         .unwrap_or(false);
 
+    // `icon-name` — freedesktop icon-theme name for the row's leading glyph.
+    // Rendered in the 16px `.ci-ic` gutter; resolved at render time by the
+    // shared `icon_resolution` (not stored as a path in the service).
+    let icon_name = if separator {
+        None
+    } else {
+        props
+            .get("icon-name")
+            .and_then(|v| {
+                if let Value::Str(s) = unwrap_variant((*v).clone()) {
+                    Some(s.to_string())
+                } else {
+                    None
+                }
+            })
+            .filter(|s| !s.is_empty())
+    };
+
+    // `shortcut` — DBusMenu format `av` of `as`: e.g. `[["Control","X"]]`
+    // or `[["F2"]]`. Stored raw (array of key arrays); the view converts to
+    // display glyphs (`⌃X`) at render time, never in the service.
+    let shortcut = if separator {
+        None
+    } else {
+        props.get("shortcut").and_then(|v| {
+            let v = unwrap_variant((*v).clone());
+            match v {
+                Value::Array(combos) => {
+                    let combos: Vec<Vec<String>> = combos
+                        .iter()
+                        .filter_map(|combo| {
+                            let combo = unwrap_variant(combo.clone());
+                            match combo {
+                                Value::Array(keys) => {
+                                    let keys: Vec<String> = keys
+                                        .iter()
+                                        .filter_map(|k| {
+                                            if let Value::Str(s) = unwrap_variant(k.clone()) {
+                                                Some(s.to_string())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect();
+                                    (!keys.is_empty()).then_some(keys)
+                                }
+                                _ => None,
+                            }
+                        })
+                        .collect();
+                    (!combos.is_empty()).then_some(combos)
+                }
+                _ => None,
+            }
+        })
+    };
+
     let toggle = if separator {
         None
     } else {
@@ -187,10 +255,11 @@ fn build_node(id: i32, properties: Vec<(String, Value<'static>)>, child_values: 
                 let checked = props
                     .get("toggle-state")
                     .and_then(|v| {
-                        if let Value::Bool(b) = unwrap_variant((*v).clone()) {
-                            Some(b)
-                        } else {
-                            None
+                        match unwrap_variant((*v).clone()) {
+                            Value::I32(state) => Some(state > 0),
+                            // Be permissive with non-conforming exporters.
+                            Value::Bool(state) => Some(state),
+                            _ => None,
                         }
                     })
                     .unwrap_or(false);
@@ -208,6 +277,8 @@ fn build_node(id: i32, properties: Vec<(String, Value<'static>)>, child_values: 
         visible,
         separator,
         toggle,
+        icon_name,
+        shortcut,
         children,
     }
 }
@@ -282,6 +353,97 @@ mod tests {
         assert_eq!(node.label, "Browse /dev/sdb1");
         assert!(node.enabled);
         assert!(node.visible);
+    }
+
+    /// T263: `icon-name` and `shortcut` properties are parsed into the node.
+    #[test]
+    fn parse_icon_name_and_shortcut() {
+        let props = vec![
+            ("label".into(), Value::Value(Box::new(Value::Str("Copy".into())))),
+            ("icon-name".into(), Value::Value(Box::new(Value::Str("edit-copy".into())))),
+            ("shortcut".into(), Value::Value(Box::new(Value::Array(Array::from(vec![
+                Value::Value(Box::new(Value::Array(Array::from(vec![
+                    Value::Str(Str::from("Control")),
+                    Value::Str(Str::from("C")),
+                ])))),
+            ]))))),
+        ];
+        let node = build_node(7, props, vec![]);
+        assert_eq!(node.icon_name.as_deref(), Some("edit-copy"));
+        assert_eq!(
+            node.shortcut,
+            Some(vec![vec!["Control".to_string(), "C".to_string()]])
+        );
+    }
+
+    #[test]
+    fn root_layout_exposes_top_level_children() {
+        let child = build_node(
+            1,
+            vec![("label".into(), Value::Str("Open".into()))],
+            vec![],
+        );
+        let root = MenuNode {
+            id: 0,
+            label: String::new(),
+            enabled: true,
+            visible: true,
+            separator: false,
+            toggle: None,
+            icon_name: None,
+            shortcut: None,
+            children: vec![child],
+        };
+
+        let nodes = top_level_nodes(root);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].label, "Open");
+    }
+
+    #[test]
+    fn integer_toggle_state_one_is_checked() {
+        let node = build_node(
+            2,
+            vec![
+                ("toggle-type".into(), Value::Str("radio".into())),
+                ("toggle-state".into(), Value::I32(1)),
+            ],
+            vec![],
+        );
+        assert_eq!(node.toggle, Some((MenuToggleType::Radio, true)));
+    }
+
+    /// T263: shortcut with no modifiers (plain `F2`) still parses.
+    #[test]
+    fn parse_shortcut_plain_key() {
+        let props = vec![
+            ("label".into(), Value::Value(Box::new(Value::Str("Rename".into())))),
+            ("shortcut".into(), Value::Value(Box::new(Value::Array(Array::from(vec![
+                Value::Value(Box::new(Value::Array(Array::from(vec![Value::Str(
+                    Str::from("F2"),
+                )])))),
+            ]))))),
+        ];
+        let node = build_node(8, props, vec![]);
+        assert_eq!(node.shortcut, Some(vec![vec!["F2".to_string()]]));
+        assert!(node.icon_name.is_none());
+    }
+
+    /// T263: missing/empty `icon-name` stays `None`; separator keeps both `None`.
+    #[test]
+    fn parse_icon_name_missing_and_separator() {
+        let no_icon = build_node(9, vec![("label".into(), Value::Value(Box::new(Value::Str("x".into()))))], vec![]);
+        assert!(no_icon.icon_name.is_none());
+        assert!(no_icon.shortcut.is_none());
+
+        let sep = build_node(
+            10,
+            vec![("type".into(), Value::Value(Box::new(Value::Str("separator".into()))))],
+            vec![],
+        );
+        assert!(sep.separator);
+        assert!(sep.icon_name.is_none());
+        assert!(sep.shortcut.is_none());
     }
 
     #[test]

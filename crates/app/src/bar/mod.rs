@@ -13,7 +13,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use gpui::{
-    AnyElement, App, BoxShadow, Bounds, Context, DisplayId, Render, Size, Window,
+    AnyElement, App, BoxShadow, Bounds, Context, DisplayId, MouseButton, Render, Size, Window,
     WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div,
     layer_shell::*, point, prelude::*, px,
 };
@@ -110,7 +110,16 @@ impl Render for Bar {
             .bg(theme.bg.tertiary)
             .px(px(10.))
             .flex()
-            .items_center();
+            .items_center()
+            // Anchored popups deliberately use `grab: false` (T264), so a
+            // click outside them cannot be delivered to the popup surface.
+            // The parent bar remains interactive; close menu surfaces here
+            // before the clicked bar action runs. External-app click-away is
+            // still a compositor-level limitation of the no-grab path.
+            .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+                crate::tray_menu::close(cx);
+                crate::dock::context_menu::close(cx);
+            });
         // Border side follows the edge (top bar → bottom border, bottom bar →
         // top border). Vertical edges are not applied yet (T200 v1).
         if appearance.edge == BarEdge::Bottom {

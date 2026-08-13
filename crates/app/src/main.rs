@@ -17,6 +17,7 @@ mod notifications;
 mod osd;
 mod plugin_bridge;
 mod project_switcher;
+mod popup_click_catcher;
 mod side_panel_left;
 mod side_panel_right;
 pub mod state;

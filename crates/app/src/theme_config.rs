@@ -102,10 +102,15 @@ pub fn resolve_active_theme() -> Theme {
 /// `chronos_ui::Theme` (T205). gpui-component renders the editor gutter /
 /// input internals from ITS global theme — if it stayed on the Light default
 /// (`gpui_component::init`), CodeEditor gutter numbers (`muted_foreground`)
-/// and internal fills would be light even in dark shell. We don't map tokens
-/// 1:1 (that's a separate concern); syncing mode gives a dark/light theme
-/// whose neutrals sit visually with the shell. Safe before `Theme` global
-/// exists (`Theme::change` set-globals defensively).
+/// and internal fills would be light even in dark shell.
+///
+/// T263: mode alone was not enough — component popups (tray/dock
+/// `PopupMenu`) rendered the STOCK palette next to ChronOS popups (live
+/// catch by the architect, 2026-08-12). The popup-relevant tokens are now
+/// mapped from the shell theme below. Still not a 1:1 map — only the
+/// tokens component widgets actually read on our surfaces.
+/// Safe before `Theme` global exists (`Theme::change` set-globals
+/// defensively).
 ///
 /// `pub` because `main.rs` re-syncs AFTER `gpui_component::init` — that init
 /// overwrites the mode with Light default, so theme_config::init (earlier)
@@ -127,6 +132,19 @@ pub fn sync_gpui_component_theme(cx: &mut App) {
         shell.text.primary
     };
     let gpui_theme = gpui_component::theme::Theme::global_mut(cx);
+    // T263: component popups (`PopupMenu` in tray/dock context menus) render
+    // from THESE tokens, not ours — the stock palette made the tray menu a
+    // flat near-black rectangle next to ChronOS-token popups. Component
+    // `accent` is the MenuItem/ListItem HOVER background, so it maps to our
+    // hover wash, not to the saturated `accent.primary`. Must re-apply after
+    // `Theme::change` (it reloads stock colors), same as the font lock.
+    gpui_theme.popover = shell.bg.elevated;
+    gpui_theme.popover_foreground = shell.text.primary;
+    gpui_theme.accent = shell.interactive.hover;
+    gpui_theme.accent_foreground = shell.text.primary;
+    gpui_theme.border = shell.border.subtle;
+    gpui_theme.muted_foreground = shell.text.muted;
+    gpui_theme.selection = shell.bg.selection;
     // Font lock: gpui-component defaults mono to "DejaVu Sans Mono" on Linux
     // (Menlo/Consolas elsewhere). ChronOS canon is JetBrains Mono everywhere —
     // editor gutter/body use mono_font_family; UI chrome uses font_family.
@@ -434,5 +452,48 @@ scheme = "Light""#;
         let accent = parse_hex("007acc").unwrap();
         assert_eq!(Theme::default().accent.primary, accent);
         assert_eq!(light_theme().accent.primary, accent);
+    }
+
+    /// T263: the component theme must carry our popup tokens, not the stock
+    /// palette — otherwise tray/dock `PopupMenu` renders foreign colors next
+    /// to ChronOS popups. The mapping is scheme-agnostic (it reads whatever
+    /// the shell global holds), so assert both schemes.
+    fn assert_component_theme_mapped(cx: &gpui::App, shell: &Theme) {
+        let gt = gpui_component::theme::Theme::global(cx);
+        assert_eq!(gt.popover, shell.bg.elevated, "popover");
+        assert_eq!(
+            gt.popover_foreground, shell.text.primary,
+            "popover_foreground"
+        );
+        assert_eq!(gt.accent, shell.interactive.hover, "accent (row hover)");
+        assert_eq!(gt.accent_foreground, shell.text.primary, "accent_foreground");
+        assert_eq!(gt.border, shell.border.subtle, "border");
+        assert_eq!(gt.muted_foreground, shell.text.muted, "muted_foreground");
+        assert_eq!(gt.selection, shell.bg.selection, "selection");
+    }
+
+    #[gpui::test]
+    fn sync_maps_shell_tokens_into_component_theme_dark(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            // `Theme::change` reads `ThemeRegistry` when the component Theme
+            // global is absent — init first (same pattern as dock context-menu
+            // tests).
+            gpui_component::init(cx);
+            cx.set_global(Theme::default());
+            sync_gpui_component_theme(cx);
+            let shell = *Theme::global(cx);
+            assert_component_theme_mapped(cx, &shell);
+        });
+    }
+
+    #[gpui::test]
+    fn sync_maps_shell_tokens_into_component_theme_light(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            cx.set_global(light_theme());
+            sync_gpui_component_theme(cx);
+            let shell = *Theme::global(cx);
+            assert_component_theme_mapped(cx, &shell);
+        });
     }
 }
