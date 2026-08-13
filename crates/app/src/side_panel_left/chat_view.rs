@@ -3,7 +3,7 @@ use super::is_rtl_text;
 use chronos_ui::Theme;
 use serde::{Deserialize, Serialize};
 
-use super::SidePanelLeft;
+use crate::side_panel_left::ChatTab;
 use super::tool_card::ToolCard;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -70,9 +70,9 @@ impl ChatView {
 
     pub fn render(
         &self,
-        panel: &SidePanelLeft,
+        panel: &ChatTab,
         _window: &mut Window,
-        cx: &mut Context<SidePanelLeft>,
+        cx: &mut Context<ChatTab>,
     ) -> impl IntoElement {
         let theme = *Theme::global(cx);
         let has_messages = !self.messages.is_empty();
@@ -143,7 +143,7 @@ fn render_thinking_block(
     streaming_active: bool,
     is_last_msg_and_seg: bool,
     theme: &Theme,
-    cx: &mut Context<SidePanelLeft>,
+    cx: &mut Context<ChatTab>,
 ) -> impl IntoElement + use<> {
     let reasoning_collapsed = {
         let user_collapsed = collapsed_reasoning.contains(&(msg_idx, seg_idx));
@@ -213,7 +213,7 @@ fn render_tool_card_segment(
     seg_idx: usize,
     expanded: &std::collections::HashSet<(usize, usize)>,
     theme: &Theme,
-    cx: &mut Context<SidePanelLeft>,
+    cx: &mut Context<ChatTab>,
 ) -> impl IntoElement + use<> {
     let is_expanded = expanded.contains(&(msg_idx, seg_idx));
     ToolCard {
@@ -244,7 +244,7 @@ fn render_message(
     streaming_active: bool,
     is_last: bool,
     theme: &Theme,
-    cx: &mut Context<SidePanelLeft>,
+    cx: &mut Context<ChatTab>,
 ) -> impl IntoElement + use<> {
     let is_user = msg.role == MessageRole::User;
 

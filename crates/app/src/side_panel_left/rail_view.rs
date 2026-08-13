@@ -279,7 +279,7 @@ impl WorkspaceView {
     /// Called by `RailView`'s dock toggle button. Thin dispatcher — the
     /// real reducer lives in `crate::side_panel_left::apply_dock_toggle`
     /// (a free function on `&mut App`) so tests don't need a live
-    /// `SidePanelLeft` entity to exercise it.
+    /// `ChatTab` entity to exercise it.
     pub fn on_dock_toggle(&mut self, cx: &mut Context<Self>) {
         crate::side_panel_left::apply_dock_toggle(cx);
         cx.notify();

@@ -7,7 +7,7 @@ use gpui::{
     Style, TextRun, UnderlineStyle, Window, fill, point, prelude::*, px, relative, size,
 };
 
-use super::SidePanelLeft;
+use crate::side_panel_left::ChatTab;
 
 pub const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(530);
 const CURSOR_WIDTH: f32 = 1.5;
@@ -180,14 +180,14 @@ impl TextInputState {
         self.insert_char("");
     }
 
-    pub fn copy_selection(&self, cx: &mut Context<SidePanelLeft>) {
+    pub fn copy_selection(&self, cx: &mut Context<ChatTab>) {
         if !self.selected_range.is_empty() {
             let text = self.content[self.selected_range.clone()].to_string();
             cx.write_to_clipboard(ClipboardItem::new_string(text));
         }
     }
 
-    pub fn cut_selection(&mut self, cx: &mut Context<SidePanelLeft>) {
+    pub fn cut_selection(&mut self, cx: &mut Context<ChatTab>) {
         if !self.selected_range.is_empty() {
             let text = self.content[self.selected_range.clone()].to_string();
             cx.write_to_clipboard(ClipboardItem::new_string(text));
@@ -195,7 +195,7 @@ impl TextInputState {
         }
     }
 
-    pub fn paste(&mut self, cx: &mut Context<SidePanelLeft>) {
+    pub fn paste(&mut self, cx: &mut Context<ChatTab>) {
         if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
             self.replace_range(self.effective_range(), &text);
         }
@@ -324,7 +324,7 @@ pub struct TextInputElement {
     pub selection_reversed: bool,
     pub cursor_visible: bool,
     pub is_focused: bool,
-    pub entity: gpui::WeakEntity<SidePanelLeft>,
+    pub entity: gpui::WeakEntity<ChatTab>,
 }
 
 pub struct PrepaintState {

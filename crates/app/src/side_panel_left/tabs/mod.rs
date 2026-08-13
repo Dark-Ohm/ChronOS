@@ -1,5 +1,7 @@
 //! T278 / Slice A1 — left workspace tab catalog and width policy.
 //!
+//! T279 / Slice A2: tab view modules live as submodules here.
+//!
 //! Pure metadata only. No rendering, no stores, no `Window`/`App`/`Context`.
 //! Mirrors the shape of `side_panel_right::tabs::PanelTab` so the rail
 //! composes the same way on both sides, but the catalog is product-specific
@@ -9,6 +11,8 @@
 //! Width policy lives next to the variant so a future render call cannot
 //! drift from "Chat is resizable, Archive is fixed at 440" — both pieces
 //! of the rule travel together.
+
+pub(crate) mod chat;
 
 use crate::side_panel_left::state::geometry;
 

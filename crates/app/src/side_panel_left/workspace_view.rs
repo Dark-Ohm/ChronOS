@@ -21,7 +21,7 @@ use gpui::{
 
 use chronos_ui::Theme;
 
-use crate::side_panel_left::SidePanelLeft;
+use crate::side_panel_left::ChatTab;
 use crate::side_panel_left::sessions_list::SIDEBAR_MIN_WIDTH;
 use crate::side_panel_left::state::geometry;
 use crate::side_panel_left::tabs::{
@@ -29,7 +29,7 @@ use crate::side_panel_left::tabs::{
 };
 use crate::side_panel_left::LeftPanelResize;
 
-/// The content window's root view. Hosts the legacy `SidePanelLeft`
+/// The content window's root view. Hosts the legacy `ChatTab`
 /// product body as a child entity; that body still owns chat history,
 /// composer state, ACP/Hermes client, etc.
 pub struct WorkspaceView {
@@ -37,7 +37,7 @@ pub struct WorkspaceView {
     /// `WindowHandle`, width, dock, exclusive zone, or resize — it is
     /// rendered as a sub-element of this view, with state mirrored from
     /// `SidePanelLeftState_` on every render.
-    pub(crate) content: Entity<SidePanelLeft>,
+    pub(crate) content: Entity<ChatTab>,
     /// Cache of the last `interactive_w` pushed to `set_input_region`.
     /// Only re-issues when it changes — avoids a Wayland round-trip per
     /// paint (T276 pattern).
@@ -56,7 +56,7 @@ pub struct WorkspaceView {
 }
 
 impl WorkspaceView {
-    pub fn new(content: Entity<SidePanelLeft>, cx: &mut Context<Self>) -> Self {
+    pub fn new(content: Entity<ChatTab>, cx: &mut Context<Self>) -> Self {
         // Mirror SoT → product child whenever either side changes. Side
         // updates (dock toggle, width change, project switch) fire
         // `cx.notify()`; the subscription here repaints content + this

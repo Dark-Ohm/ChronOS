@@ -5,7 +5,7 @@ use gpui::{
     MouseMoveEvent, MouseUpEvent, Point, SharedString, Window, div, prelude::*, px,
 };
 
-use super::SidePanelLeft;
+use crate::side_panel_left::ChatTab;
 use super::chat_view::{ChatMessage, MessageRole, Segment};
 use super::is_rtl_text;
 use super::text_input::{TextInputElement, next_word_boundary, prev_word_boundary};
@@ -26,7 +26,7 @@ fn mouse_offset(
     line.closest_index_for_x(position.x - bounds.left()).min(actual_content.len())
 }
 
-impl SidePanelLeft {
+impl ChatTab {
     /// Scan available_modes for a mode whose `id` contains "bypass", "dont",
     /// or "yolo" (case-insensitive). Cache result in `composer_yolo_bypass_id`.
     pub(crate) fn detect_yolo_bypass_mode(&mut self) -> Option<String> {
@@ -61,9 +61,9 @@ impl SidePanelLeft {
 }
 
 pub fn render_composer(
-    panel: &SidePanelLeft,
+    panel: &ChatTab,
     _window: &mut Window,
-    cx: &mut Context<SidePanelLeft>,
+    cx: &mut Context<ChatTab>,
 ) -> impl IntoElement {
     let theme = *Theme::global(cx);
     let text = &panel.composer_input.content;
@@ -254,7 +254,7 @@ pub fn render_composer(
 }
 
 // ── Attach button ──────────────────────────────────────────────────────
-fn attach_button(_panel: &SidePanelLeft, _cx: &mut Context<SidePanelLeft>) -> impl IntoElement {
+fn attach_button(_panel: &ChatTab, _cx: &mut Context<ChatTab>) -> impl IntoElement {
     let theme = *Theme::global(_cx);
     div()
         .id("composer-attach")
@@ -273,10 +273,10 @@ fn attach_button(_panel: &SidePanelLeft, _cx: &mut Context<SidePanelLeft>) -> im
 
 // ── YOLO button ────────────────────────────────────────────────────────
 fn yolo_button(
-    panel: &SidePanelLeft,
+    panel: &ChatTab,
     is_yolo_active: bool,
     has_modes: bool,
-    cx: &mut Context<SidePanelLeft>,
+    cx: &mut Context<ChatTab>,
 ) -> Option<impl IntoElement> {
     let theme = *Theme::global(cx);
     // YOLO only renders if there are modes at all
@@ -320,8 +320,8 @@ fn yolo_button(
 
 // ── Model picker ───────────────────────────────────────────────────────
 fn model_picker(
-    panel: &SidePanelLeft,
-    cx: &mut Context<SidePanelLeft>,
+    panel: &ChatTab,
+    cx: &mut Context<ChatTab>,
 ) -> Option<impl IntoElement> {
     let theme = *Theme::global(cx);
     // Show a muted, inert "Model" placeholder pill instead of hiding when
@@ -546,7 +546,7 @@ fn model_picker(
 }
 
 // ── Mode picker ────────────────────────────────────────────────────────
-fn mode_picker(panel: &SidePanelLeft, cx: &mut Context<SidePanelLeft>) -> Option<impl IntoElement> {
+fn mode_picker(panel: &ChatTab, cx: &mut Context<ChatTab>) -> Option<impl IntoElement> {
     let theme = *Theme::global(cx);
     // Same "muted placeholder, not hidden" reasoning as model_picker above.
     let has_data = !panel.available_modes.is_empty();
@@ -653,9 +653,9 @@ fn mode_picker(panel: &SidePanelLeft, cx: &mut Context<SidePanelLeft>) -> Option
 
 // ── Send / Stop button (dark style) ────────────────────────────────────
 fn send_button(
-    panel: &SidePanelLeft,
+    panel: &ChatTab,
     active: bool,
-    cx: &mut Context<SidePanelLeft>,
+    cx: &mut Context<ChatTab>,
 ) -> impl IntoElement {
     let theme = *Theme::global(cx);
     let is_connected = panel.state.agent_status != AgentStatus::Disconnected;
@@ -711,7 +711,7 @@ fn send_button(
 }
 
 // ── Existing helper methods (unchanged) ─────────────────────────────────
-impl SidePanelLeft {
+impl ChatTab {
     pub(crate) fn start_blink(&mut self, cx: &mut gpui::Context<Self>) {
         self.composer_input.cursor_visible = true;
         self.composer_blink_task.take();
@@ -996,7 +996,7 @@ impl SidePanelLeft {
     /// the caller via [`Self::push_user_message`]). Called directly from
     /// `send_composer`, or — after the client connects — for a message that
     /// was queued while it was still connecting (T247). `pub(crate)` for the
-    /// SidePanelLeft::new connect handler in `mod.rs`.
+    /// ChatTab::new connect handler in `mod.rs`.
     pub(crate) fn start_acp_turn(&mut self, text: String, cx: &mut Context<Self>) {
         tracing::info!(
             "composer: send model={} mode={} text={:?}",
