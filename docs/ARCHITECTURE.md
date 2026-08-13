@@ -202,6 +202,24 @@ Compositor abstraction: `enum CompositorBackend { Hyprland, Niri }` + free
 functions per backend (gpui-shell style). Hyprland via `hyprland` crate; Niri
 via `niri-ipc`.
 
+**Niri is a deliberate scaffold, not unfinished work (2026-08-13).**
+`crates/services/src/compositor/niri.rs` has no real IPC — `is_available()`
+returns `false`, the listener is a no-op — and it stays that way until the
+Hyprland track is finished. The `Niri` enum variant exists to keep the
+backend seam honest, NOT as an invitation to fill it in "for symmetry".
+
+Consequences, so nobody rediscovers them per feature:
+
+- A feature is never held back, redesigned, or scoped up to serve Niri.
+  Rejected under this rule: extending the fork with `ext-background-effect`
+  for T266 blur — no protocol in `wayland-protocols 0.32.9`, no live
+  compositor to verify against, and window code is only ever proven by a
+  live frame.
+- "It would lie on the other compositor" is not an argument while that
+  compositor runs none of the shell.
+- When Hyprland is done, the owner says so explicitly; Niri work starts
+  from that word, not from a gap in a match arm.
+
 **Not every module under `crates/services` is a `Service`.** Pure helpers that
 share state between surfaces live as free functions. Example (2026-07-21,
 `dbce8ac`): `crates/services/src/net_stats.rs` — time-gated procfs
