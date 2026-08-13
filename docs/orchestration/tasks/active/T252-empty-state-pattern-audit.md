@@ -51,3 +51,49 @@ Files/Editor settings (плотно, честно, к месту) — **три �
 Нет обязательного — если решение только записано, коммитится только
 документ. Если материализуется в код — `ui : unify empty-state pattern
 across right panel tabs (T252)`.
+
+---
+
+## Решение (2026-08-13) — зафиксировано, ждёт согласования архитектора
+
+Зависимость закрыта: T246/T248/T249 слиты, паттерн выведен из исправленных
+примеров. Решение записано в `docs/DECISIONS.log` (запись от 2026-08-13);
+здесь — полный аудит, на который та запись ссылается.
+
+### Аудит: что показывает каждая вкладка, когда нечего показывать
+
+| Вкладка | Состояние | Приём | Оценка |
+| --- | --- | --- | --- |
+| System | нет плеера | compact-collapse: mpris ~56px «No player», без art/controls (T248) | эталон свёртки |
+| System | нет GPU | секция скрыта (`when_some`, system.rs:212) | ок — отсутствие не информативно |
+| System | нет дисков | inline «нет дисков» (disks.rs:170) | приём верный, **строка на русском — дрейф языка** |
+| Files | loading / error / пустая папка / truncated | inline-строки в карточке: «Loading…», честный `Cannot read '…'`, «Directory is empty», баннер «Showing N of M (limit X)» (files.rs:245-291) | эталон inline |
+| Preview/Editor | файл не выбран | hero: иконка 40px muted + «No file selected» + живая ссылка на Files (preview.rs:1233) | эталон hero с действием |
+| Terminal | spawn failed / shell exited | hero-error «Terminal is unavailable» + текст ошибки; exited — dimmed экран + баннер + restart (terminal.rs:408-493) | эталон §13 (capability + recovery) |
+| Build | нет активного проекта / нет задач / нет вывода | inline: «No active project. Set `active` in projects.toml», «No tasks found. Looked in: …», «Output will appear here when a task runs.» (build.rs:184-241, 352-357) | эталон «объясни, где искать» |
+| Library | игр нет | hero без иконки: «No games detected» + откуда берутся игры (library.rs:292) | ок, параметры hero свои (py40, gap8) — дрейф |
+| HyprBinds | 0 биндов | **рендерится как Error**: «No Hyprland binds found — check ~/.config/hypr/modules/» (hypr_binds.rs:307-313) | осознанное исключение: пустота = сломанный конфиг; зафиксировано в правилах |
+| BarSettings | нет hypr-модулей | inline bordered «No modules found in ~/.config/hypr/modules/» (bar_settings.rs:551-565) | ок, оформление своё (bordered xs) — дрейф |
+| ACP agents | агентов нет | error-баннер в карточке; карточка растянута до низа вьюпорта (T249, min_h) | ок |
+| Scenes/Captures/Inspector/… | не реализовано | EmptyTab: иконка 40px muted-0.55 + label + уникальное описание без сроков (tab/mod.rs:105-163) | эталон placeholder |
+
+### Вывод
+
+Шесть легитимных приёмов (hero / inline / compact-collapse / скрытие /
+растягивание до низа / placeholder) — код разный **по разумной причине**,
+единый виджет был бы ошибкой. Решение = матрица выбора + планки-запреты,
+дословно в `DECISIONS.log` 2026-08-13.
+
+Найденный дрейф, который закрывает материализация: hero размножён вручную
+4 раза (иконка 40 vs 32px, gap 12/10/8, opacity 0.55 через раз),
+inline — 5+ раз с тремя разными оформлениями; «нет дисков» — единственная
+русская строка панели.
+
+### Дальше
+
+- Решение читает и согласует архитектор (верификация этого тикета).
+- После согласования — follow-up тикет (номер T269): хелперы
+  `empty_state_hero` + `empty_state_note` в `tab/ui.rs`, замена всех
+  вхождений из таблицы, фикс «нет дисков» → англ., юнит-тесты. Коммит
+  `ui : unify empty-state pattern across right panel tabs (T252)` —
+  в том follow-up.
