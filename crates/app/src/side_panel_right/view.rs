@@ -818,7 +818,6 @@ impl Render for SidePanelRightView {
                             on_select,
                             dock_content,
                             on_dock_toggle,
-                            content_open,
                             editing,
                             on_move,
                         )

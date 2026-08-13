@@ -175,7 +175,6 @@ pub fn render_rail(
     on_select: Rc<dyn Fn(PanelTab, &mut Window, &mut App) + 'static>,
     dock_content: bool,
     on_dock_toggle: Rc<dyn Fn(&mut Window, &mut App) + 'static>,
-    content_open: bool,
     editing: bool,
     on_move: Rc<dyn Fn(PanelTab, isize, &mut App) + 'static>,
 ) -> impl IntoElement {
@@ -197,11 +196,14 @@ pub fn render_rail(
         .w(px(RAIL_WIDTH))
         .h_full()
         .bg(surfaces::chrome(theme))
-        // Border only when content is visible — no hairline in rail-only
-        // mode (the body div handles the border between handle and content).
-        .when(content_open, |r| {
-            r.border_l_1().border_color(theme.border.default)
-        })
+        // T267 errata (2026-08-13): the border is UNCONDITIONAL. Open, it is
+        // the divider between content and rail; collapsed, it is the panel's
+        // only outer edge — the body div drops its own border together with
+        // its background when `content_open` is false, so gating this one on
+        // the same flag left rail-only mode with no separator at all.
+        // Token is `border.subtle`, same as bar and left panel (T267).
+        .border_l_1()
+        .border_color(theme.border.subtle)
         // Top group
         .children(top_tabs.iter().map(move |&tab| {
             render_rail_button(
