@@ -165,6 +165,11 @@ pub fn render_rail(
                     }
                 }
             };
+            // Icon convention: the icon shows the ACTION that the click
+            // performs. `⊞` enables dock (shown when currently undocked),
+            // `⊟` disables dock (shown when currently docked). This is
+            // Material Design's affordance-shows-action convention and
+            // matches the spec wording `⊞ включает dock, ⊟ выключает`.
             div()
                 .id("dock-toggle-left")
                 .w(px(28.))
@@ -182,7 +187,7 @@ pub fn render_rail(
                 .cursor_pointer()
                 .hover(|s| s.bg(theme.border.subtle))
                 .on_mouse_up(gpui::MouseButton::Left, on_click_dock)
-                .child(if dock_content { "⊞" } else { "⊟" })
+                .child(if dock_content { "⊟" } else { "⊞" })
         })
 }
 
@@ -271,17 +276,34 @@ impl WorkspaceView {
         cx.notify();
     }
 
-    /// Called by `RailView`'s dock toggle button. Same shape as
-    /// `side_panel_right::SidePanelRightView::toggle_dock`.
+    /// Called by `RailView`'s dock toggle button. T278 architect round 2:
+    /// preserve `panel_width` on both directions — dock is a flag, not a
+    /// resize. The previous impl called `ensure_content_width(target)` on
+    /// every toggle, which silently reset the user's drag width on
+    /// every dock state change. Width now only changes via tab switch
+    /// (apply new tab's policy) or active drag.
+    ///
+    /// Spec §4.1 row "rail-only | dock toggle" wants content expansion
+    /// when toggling dock on from rail-only, but the architect
+    /// overruled that in favor of strict preservation. If a future
+    /// round reintroduces the rail-only expansion, gate it explicitly:
+    /// `if !was_docked && visible_w <= 0.0 { expand }`.
     pub fn on_dock_toggle(&mut self, cx: &mut Context<Self>) {
         let state = cx.global_mut::<crate::side_panel_left::SidePanelLeftState_>();
-        let active = state.active_tab;
-        let target = width_for_open(active, &state.remembered_widths);
+        let was_docked = state.dock_content;
         state.dock_content = !state.dock_content;
-        state.ensure_content_width(target);
+        // Invalidate the rail's exclusive_zone cache — the new flag
+        // changes exclusive_px() but the rail only re-pushes when the
+        // computed value actually moves, so we must not clear the
+        // cache when the value didn't change.
+        let new_zone = state.exclusive_px();
+        if state.last_exclusive_zone == Some(new_zone) {
+            state.last_exclusive_zone = None;
+        }
         tracing::info!(
-            dock = state.dock_content,
-            width = state.panel_width,
+            was_docked,
+            now_dock = state.dock_content,
+            panel_width = state.panel_width,
             "side_panel_left: dock toggle"
         );
         cx.notify();

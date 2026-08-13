@@ -22,6 +22,7 @@ use gpui::{
 use chronos_ui::Theme;
 
 use crate::side_panel_left::SidePanelLeft;
+use crate::side_panel_left::sessions_list::SIDEBAR_MIN_WIDTH;
 use crate::side_panel_left::state::geometry;
 use crate::side_panel_left::tabs::{
     CONTENT_CANVAS_WIDTH, MAX_PANEL_WIDTH, RAIL_WIDTH, RESIZE_HANDLE_WIDTH,
@@ -190,28 +191,38 @@ fn resizable_active(tab: crate::side_panel_left::tabs::LeftTab) -> Option<crate:
 
 impl Render for WorkspaceView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Mirror SoT → legacy child. Both reads happen here so the
-        // legacy render path's `chat_open`/`dock_chat` checks see the
-        // latest values without needing to know about the SoT.
+        // T278 architect round 2: the legacy child must mirror the
+        // VISIBLE slice width (not the logical panel_width). Otherwise
+        // the legacy sidebar strip bleeds 40 px past the visible slice
+        // at every width, and paints a 40 px opaque band even when
+        // visible_w == 0 (rail-only). Mirroring visible_w keeps the
+        // child inside the input region exactly; the legacy `chat_open`
+        // threshold (`width > sidebar + handle + 1`) still fires
+        // correctly because visible_w > 1 ⇒ the threshold is met.
+        //
+        // We also wrap the child in a div sized to visible_w with
+        // overflow_hidden, so any internal flex overflow (a 36 px
+        // sidebar in a 0 px wrapper, etc.) cannot paint past the
+        // visible slice. When visible_w == 0 we render an empty
+        // wrapper — the legacy child stays alive (its ACP/Hermes
+        // clients, composer state, chat history) but never paints.
         let so = cx.global::<crate::side_panel_left::SidePanelLeftState_>();
         let panel_w = so.panel_width;
         let dock = so.dock_content;
         let resizing = so.resizing;
         let active_tab = so.active_tab;
-        let remembered = so.remembered_widths;
         drop(so);
+
+        let visible_w = geometry::visible_content_width(panel_w);
         self.content.update(cx, |child, _cx| {
-            child.state.width = panel_w;
+            child.state.width = visible_w.max(crate::side_panel_left::sessions_list::SIDEBAR_MIN_WIDTH);
             child.state.dock_chat = dock;
-            child.state.remembered_chat_width = Some(panel_w);
+            child.state.remembered_chat_width = Some(child.state.width);
         });
 
         // Drain any pending focus request — only fires once per request.
         self.perform_focus_composer(window, cx);
 
-        // Visible slice + input region (LEFT axis: starts at x = 0).
-        let visible_w = geometry::visible_content_width(panel_w);
-        let content_open = dock || visible_w > 1.0;
         let interactive_w = geometry::content_interactive_width(visible_w, resizing);
 
         if self.last_visible_width != Some(interactive_w) {
@@ -223,10 +234,6 @@ impl Render for WorkspaceView {
 
         let handle_x = geometry::resize_handle_x(visible_w);
         let show_handle = active_tab.is_resizable() && (visible_w > 1.0 || resizing);
-
-        let theme = *Theme::global(cx);
-        let _ = remembered;
-        let _ = theme;
 
         // Resize mouse-down/up/drag handlers — built here because Rust
         // 2024 RPIT capture rules would conflict if any other RPIT-returning
@@ -258,10 +265,23 @@ impl Render for WorkspaceView {
                     crate::side_panel_left::schedule_release_peek(cx);
                 }
             })
-            // The legacy SidePanelLeft renders its product body inside
-            // the visible slice. Empty area to the right is left
-            // transparent (Wayland input region already excludes it).
-            .child(self.content.clone())
+            // The legacy child is rendered inside a sized clip wrapper.
+            // At visible_w == 0 the wrapper is 0 px wide and the child
+            // is omitted entirely (no painting, no input region).
+            // The product-state child itself stays alive — its chat
+            // history, ACP client, composer state all persist between
+            // open/close cycles.
+            .when(visible_w > 0.0, |root| {
+                root.child(
+                    div()
+                        .id("side-panel-left-product-clip")
+                        .w(px(visible_w))
+                        .h_full()
+                        .overflow_hidden()
+                        .flex_none()
+                        .child(self.content.clone()),
+                )
+            })
             .when(show_handle, |root| {
                 root.child(
                     div()
