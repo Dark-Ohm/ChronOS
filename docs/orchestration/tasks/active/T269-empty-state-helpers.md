@@ -12,11 +12,12 @@
 ### 1. Два хелпера в `crates/app/src/side_panel_right/tab/ui.rs`
 
 **`empty_state_hero`** — вся поверхность пуста. Канонические параметры
-(из сложившихся эталонов, дрейф которых этот тикет и убирает):
-иконка 40px `text.muted.opacity(0.55)`, заголовок semibold 13px
-`text.primary`, подсказка 12px `text.muted` по центру, gap 10px,
-опциональное действие-ссылка (muted → primary на hover, образец — «Files»
-в empty-стейте Preview). Сигнатура ориентировочно:
+(эталон — `EmptyTab` в `tab/mod.rs`, решение архитектора 2026-08-13;
+дрейф от него этот тикет и убирает): иконка 40px
+`text.muted.opacity(0.55)`, заголовок 13px SEMIBOLD `text.primary`,
+подсказка 11.5px `text.muted` по центру, gap 12px, опциональное
+действие-ссылка (muted → primary на hover, образец — «Files» в
+empty-стейте Preview). Сигнатура ориентировочно:
 
 ```rust
 pub(crate) fn empty_state_hero(
@@ -32,6 +33,15 @@ pub(crate) fn empty_state_hero(
 — вероятно, generic `impl Fn` или boxed; не тащить `Context<КонкретнаяВкладка>`
 в сигнатуру). `debug_assert!(!title.is_empty())` — hero без заголовка
 бессмысленен.
+
+**Иконка — готовый путь параметром, не внутри хелпера** (решение
+архитектора 2026-08-13): вызывающий подставляет `tab.icon_path()` своей
+вкладки — тогда «пустой Library» и «нереализованный Scenes» читаются как
+одна семья, а не два разных экрана. `PanelTab::icon_path()` уже покрывает
+все вкладки (`tabs.rs`, ассеты зарегистрированы в `assets.rs`) — новые
+иконки не рисуем, в `assets.rs` не лезем. Preview («No file selected»)
+и Terminal Failed — контекстные иконки (`folder.svg`, `rail-terminal.svg`),
+не табовые; оставляем как есть, это осмысленная вариация, не дрейф.
 
 **`empty_state_note`** — пустая секция/список внутри живой вкладки.
 Канон: `px(10)`/`py(16)`, текст 12px, цвет по severity:
@@ -53,10 +63,17 @@ Hero → `empty_state_hero`:
 - `tab/preview.rs` — «No file selected» (+ ссылка на Files — она же
   канон для action-параметра).
 - `tab/terminal.rs` — Failed-ветка, «Terminal is unavailable».
-- `tab/library.rs` — «No games detected» (без иконки — у hero иконка
-  обязательна по канону: либо подобрать иконку, либо явно обосновать
-  исключение в отчёте).
-- `tab/mod.rs` — `EmptyTab` (иконка таба + label + placeholder_description).
+- `tab/library.rs` — «No games detected». Иконка —
+  `PanelTab::Library.icon_path()` → `icons/rail-library.svg` (однозначное
+  решение архитектора 2026-08-13; ассет на месте, ничего нового не
+  добавлять). Текущие gap 8 / hint 11px — дрейф, съезжают на канон;
+  `py(40)` допустимо оставить как параметр внешнего контейнера, но не как
+  второй набор типографики.
+- `tab/mod.rs` — `EmptyTab::render` **схлопывается в один вызов
+  `empty_state_hero`** (обязательный пункт, решение архитектора: иначе
+  канон опять размножится копипастой — ровно с этого T252 и начался).
+  Иконка — `tab.icon_path()`, заголовок — `tab.label()`, подсказка —
+  `placeholder_description(tab)`; без action.
 
 Inline → `empty_state_note`:
 - `tab/files.rs` — «Loading…», «Directory is empty», «Cannot read '…'»
