@@ -157,3 +157,25 @@ T244), `hyprctl dispatch` мёртв (диспатчи только через `
 
 Ссылки: layer/window rules — https://wiki.hypr.land/Configuring/Basics/Window-Rules/ ,
 `hyprctl eval` — https://wiki.hypr.land/Configuring/Advanced-and-Cool/Using-hyprctl/
+
+## Зона: что можно начинать сейчас, а что ждёт T263 (2026-08-13)
+
+Работать **в отдельном worktree на чистом `master`**, не в основном дереве:
+там лежит непринятая работа T263/T264/T265-0.
+
+**Свободно сейчас:**
+
+- живая проверка Lua API (условие А выше) — ни от чего не зависит, идёт
+  ПЕРВОЙ, до любого кода;
+- токены темы (`surface_alpha`), чтение из конфига, ползунок на
+  `slider_control`, тумблер блюра;
+- бар, левая и правая панели + hover-strip, попапы бара (volume, system,
+  updates, notifications), OSD, лаунчер, desktop-terminal.
+
+**НЕ ТРОГАТЬ до коммита T263:** контекст-меню трея и дока
+(`crates/app/src/tray_menu/**`, `crates/app/src/dock/context_menu.rs`,
+`crates/app/src/theme_config.rs`). Они в охвате T266, но прямо сейчас
+содержат непринятые правки T263 — вторая волна изменений в тех же файлах
+даст неразделимый диф поверх работы, которая ещё не прошла приёмку.
+Меню добираются одним отдельным проходом после того, как T263 уедет в
+историю.
