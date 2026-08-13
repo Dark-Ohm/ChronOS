@@ -4,6 +4,7 @@ mod hover_strip;
 mod panel;
 pub mod sessions_list;
 mod state;
+pub mod tabs;
 pub mod text_input;
 mod tool_card;
 
