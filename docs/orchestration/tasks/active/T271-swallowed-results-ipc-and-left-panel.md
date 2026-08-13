@@ -24,7 +24,11 @@ launcher/tray_menu был именно `let _ = handle.update(cx, ...)` —
 | --- | --- | --- |
 | `crates/app/src/ipc/mod.rs` | 15 | **все — `let _ = cx.update(...)`**, тот самый класс |
 | `crates/app/src/ipc/service.rs` | 17 | смесь: cleanup файлов сокета, `set_write_timeout`/`flush`/`shutdown`, отправка в каналы |
-| `crates/app/src/side_panel_left/mod.rs` | 9 | разобрать по месту |
+| `crates/app/src/side_panel_left/**` | 14 | `mod.rs` 9, `composer.rs` 4, `text_input.rs` 1 — разобрать по месту |
+
+Зона левой панели расширена с `mod.rs` до каталога 2026-08-13: внешний
+аудит показал, что случаи есть ещё в `composer.rs` и `text_input.rs`,
+перепроверено замером.
 
 Остальные ~90 случаев по дереву — НЕ в этой задаче. Чистим по мере
 касания файлов, а не разом; попытка снести всё одним заходом даст
