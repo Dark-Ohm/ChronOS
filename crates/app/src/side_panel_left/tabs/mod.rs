@@ -201,6 +201,49 @@ pub fn width_for_open(tab: LeftTab, remembered: &ResizableWidths) -> f32 {
     }
 }
 
+/// T278 architect round 3: pure dock reducer. Given the current
+/// `panel_width`, `dock_content`, `active_tab`, and `remembered_widths`,
+/// returns the next `(panel_width, dock_content)` pair after a single
+/// dock-toggle click. No `App`/`Window`/`Context` — testable directly.
+///
+/// Spec §4.1 dock reducer rules:
+///
+/// - **rail-only + dock on** (`!dock_content && visible_w == 0`):
+///   expand to `width_for_open(active_tab, remembered)` so the panel
+///   leaves the rail-only state on dock enable. Without this, the user
+///   could land in a deadlock: dock=true, panel_width=40, content
+///   invisible, every rail-click on the active tab a no-op (dock-wins),
+///   and `Super+A`/`close` cycle reset to rail-only — stuck.
+/// - **overlay + dock on** (`!dock_content && visible_w > 0`): preserve
+///   the current width, just flip the flag. The dock flag changes the
+///   rail's exclusive zone from `RAIL_WIDTH` to `panel_width`.
+/// - **docked + dock off** (`dock_content`): preserve the current width,
+///   just flip the flag. The dock flag changes the rail's exclusive zone
+///   from `panel_width` back to `RAIL_WIDTH`; the visible slice stays open.
+///
+/// The next regular `on_rail_tab_select` (different tab) applies the new
+/// tab's `width_for_open` policy — dock toggle does NOT pre-bake width for
+/// the current active tab, it only expands on the rail-only edge case.
+pub fn dock_transition(
+    panel_width: f32,
+    dock_content: bool,
+    active_tab: LeftTab,
+    remembered: &ResizableWidths,
+) -> (f32, bool) {
+    let next_dock = !dock_content;
+    let next_width = if !dock_content && geometry::visible_content_width(panel_width) <= 0.0 {
+        // rail-only → dock on: expand to active tab's preferred/remembered.
+        width_for_open(active_tab, remembered)
+    } else {
+        // overlay ↔ docked transitions preserve the user's drag width.
+        // Round 3 deliberately reverts the round 2 "always preserve" fix
+        // back to the spec table — the rail-only edge case is the only
+        // branch that must expand.
+        panel_width
+    };
+    (next_width, next_dock)
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────────────────────────────────
