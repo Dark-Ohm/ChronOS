@@ -1416,17 +1416,11 @@ mod tests {
 
     #[test]
     fn rails_and_handles_match_right_panel() {
-        // T204: collapsed left icon strip == right rail == 36, handle == 4.
-        // `side_panel_left` lives in the bin tree while `side_panel_right` is in
-        // the lib tree — both resolve here, so this is the single place that
-        // asserts they cannot drift.
+        // T276: the standalone right rail owns the full collapsed footprint;
+        // the untouched left panel still splits the same 40px into rail+handle.
         assert_eq!(
-            crate::side_panel_right::RAIL_WIDTH,
-            sessions_list::SIDEBAR_COLLAPSED_WIDTH
-        );
-        assert_eq!(
-            crate::side_panel_right::HANDLE_WIDTH,
-            sessions_list::SIDEBAR_HANDLE_WIDTH
+            crate::side_panel_right::RAIL_ONLY_WIDTH,
+            sessions_list::SIDEBAR_COLLAPSED_WIDTH + sessions_list::SIDEBAR_HANDLE_WIDTH
         );
         // T220: summon width must equal the right panel's rail-only width.
         assert_eq!(

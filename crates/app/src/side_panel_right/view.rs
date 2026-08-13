@@ -1,4 +1,9 @@
-//! Right side panel view — sidebar v2 (mockup → layout, flagship rsx sections).
+//! Right side panel content view — lives in the fixed-canvas `content`
+//! window (T276). Renders the active tab plus the (right-aligned) visible
+//! slice of the canvas; the icon rail itself lives in a separate window
+//! (`rail_view::RailView`) and reaches this view through the shared weak
+//! entity in `SidePanelRightState`, the same pattern `mod.rs::select_tab`
+//! already used from an `App`-only IPC context.
 //!
 //! ## `on_hover` / animation split (fork rule)
 //! Our gpui fork stores a **single** `Option` hover handler per element and
@@ -6,6 +11,16 @@
 //! - Root node: **only** the peek close-debounce `on_hover` (this file).
 //! - Children: **no** extra root hover.
 //! - Peek motion: state-driven `.transition_when` on an **inner** wrapper.
+//!
+//! ## T276 — no window resize left in this file
+//! The `content` window's `WindowBounds` are fixed at open
+//! (`CONTENT_CANVAS_WIDTH` px) and never change again — `render()` never
+//! calls `window.resize()`. The only per-frame work here is (a) which
+//! right-aligned rectangle of the canvas is painted (`visible_w`) and (b)
+//! keeping `Window::set_input_region` in sync with it, so the empty part of
+//! the canvas passes clicks through to whatever is behind it. This retires
+//! the entire T210/T214/T216/T243 family of async-resize-race bugs — there
+//! is no configure to race against anymore.
 
 use std::{
     collections::HashMap,
@@ -13,13 +28,9 @@ use std::{
 };
 
 use chronos_services::net_stats::{self, NetState};
-use gpui::{
-    AnimationExt, AsyncApp, IntoElement, Render,
-    Window, div, prelude::*, px,
-};
+use gpui::{AnimationExt, AsyncApp, IntoElement, Render, Window, div, prelude::*, px};
 
 use crate::agent_follow::AgentFollowState;
-use crate::edit_mode;
 use crate::motion;
 use crate::side_panel_right::power_row::{
     ARM_TIMEOUT, ArmState, PowerAction, is_confirming_click, on_click as arm_on_click, on_timeout,
@@ -32,10 +43,12 @@ use crate::side_panel_right::tab::system::format_net_pair;
 use crate::side_panel_right::panels_config;
 use crate::side_panel_right::tabs::PanelTab;
 use crate::side_panel_right::{
-    HANDLE_WIDTH, MAX_WIDTH, RAIL_ONLY_WIDTH, RightPanelResize, SidePanelRightState,
+    CONTENT_CANVAS_WIDTH, HANDLE_WIDTH, MAX_WIDTH, RAIL_ONLY_WIDTH, RightPanelResize,
+    SidePanelRightState, content_input_region, content_interactive_width,
+    content_resize_handle_x, visible_content_width,
 };
 use crate::state::AppState;
-use crate::{scene, workspace_mode};
+use crate::workspace_mode;
 
 use chronos_ui::{Theme, WindowRootExt, elevation_glow_bar};
 
@@ -48,15 +61,16 @@ pub struct SidePanelRightView {
     net_dl_history: crate::side_panel_right::spectrum_row::SpectrumHistory,
     net_ul_history: crate::side_panel_right::spectrum_row::SpectrumHistory,
     active_tab: PanelTab,
-    /// Width the platform window was last physically resized to. `render`
-    /// only issues `window.resize()` when `state.width` has drifted from
-    /// this, avoiding redundant Wayland round-trips.
-    last_resized_width: f32,
-    /// Last exclusive zone value we pushed to the compositor. Only
-    /// `window.set_exclusive_zone()` when it changes.
-    last_exclusive_zone: Option<f32>,
+    /// T276: last visible-width value pushed to `Window::set_input_region`.
+    /// Only re-issued when it changes, avoiding a Wayland round-trip on
+    /// every render (mirrors the old `last_exclusive_zone` cache, now on
+    /// the rail side).
+    last_visible_width: Option<f32>,
+    /// Pointer x in the fixed content-canvas frame at drag start.
     resize_start_x: Option<f32>,
-    /// Width at drag start (T214: anchor model, not frame-to-frame).
+    /// Panel width at drag start (T276: pure delta model — the drag no
+    /// longer chases a resizing surface, so this plus `resize_start_x` is
+    /// the entire state needed to compute the target on every move).
     resize_start_width: Option<f32>,
     /// Lazy, cached tab views — one per visited tab. Created on first
     /// activation, retained across switches and mode changes.
@@ -103,8 +117,7 @@ impl SidePanelRightView {
             net_dl_history: Default::default(),
             net_ul_history: Default::default(),
             active_tab: PanelTab::default(),
-            last_resized_width: RAIL_ONLY_WIDTH,
-            last_exclusive_zone: None,
+            last_visible_width: None,
             resize_start_x: None,
             resize_start_width: None,
             tab_views: HashMap::new(),
@@ -112,6 +125,12 @@ impl SidePanelRightView {
             _preview_target_subscription: preview_target_subscription,
             _follow_subscription: cx.observe_global::<AgentFollowState>(|_, cx| cx.notify()),
         }
+    }
+
+    /// T276: currently active tab. Read by `rail_view::RailView` (a
+    /// different window) to highlight the matching rail icon.
+    pub(crate) fn active_tab(&self) -> PanelTab {
+        self.active_tab
     }
 
     /// Return the effective width for `tab`: user-resized width if the tab is
@@ -140,13 +159,7 @@ impl SidePanelRightView {
         let before = state.width;
         let content_open = state.dock_content || state.width > RAIL_ONLY_WIDTH + 1.0;
         if content_open {
-            let changed = state.width != target;
             state.ensure_content_width(target);
-            if changed {
-                self.last_resized_width = f32::NAN;
-            }
-        } else {
-            state.last_exclusive_zone = None;
         }
         tracing::info!(
             before,
@@ -170,28 +183,23 @@ impl SidePanelRightView {
         true
     }
 
-    fn start_resize(&mut self, start_x: f32, cx: &mut Context<Self>) {
+    /// T276: called by the transparent handle on the screen-inward left edge
+    /// of this fixed content canvas. All resize bookkeeping stays here, the
+    /// single owner of `tab_resize_memory`.
+    pub(crate) fn start_resize(&mut self, start_x: f32, cx: &mut Context<Self>) {
         // T210: suppress peek-close for the press lifetime.
         cx.global_mut::<SidePanelRightState>().resizing = true;
         let w = cx.global::<SidePanelRightState>().width;
         let tab = self.active_tab;
         let resizable = tab.resizable();
 
-        // Pressing the handle rail-only opens the tab at its natural width. This
-        // happens for EVERY tab, fixed-width ones included — it is the affordance
-        // that opens content, not a resize.
-        //
-        // It is also what makes a drag possible at all: rail-only the window is
-        // 40px wide, so the first pointer motion leaves the surface before GPUI
-        // has started a drag session and `on_drag_move` never fires (measured:
-        // `resize drag started` with zero `resize drag move` when the expand was
-        // removed). Expanding first gives the gesture a surface to be born on.
+        // Defensive rail-only path: an in-flight drag may reach the clamp while
+        // the pointer is still captured. A fresh open normally comes from the
+        // standalone rail icon, not from this content-owned handle.
         if w <= RAIL_ONLY_WIDTH + 1.0 {
             let target = self.active_tab_width(tab, cx);
             let state = cx.global_mut::<SidePanelRightState>();
             state.width = target;
-            state.last_exclusive_zone = None;
-            self.last_resized_width = f32::NAN;
             if resizable {
                 self.tab_resize_memory.insert(tab, target);
             }
@@ -200,7 +208,7 @@ impl SidePanelRightView {
                 tab = tab.label(),
                 "side_panel_right: handle grab expanded rail → content"
             );
-            cx.notify();
+            cx.refresh_windows();
         }
 
         // T218: arm the drag only for tabs the user may resize. Fixed-width tabs
@@ -213,48 +221,71 @@ impl SidePanelRightView {
             return;
         }
 
-        // T216 grab offset. After a rail→content expand the left edge slid left by
-        // (target - w) while the cursor stayed put, so the same physical point now
-        // sits that much deeper into the window; without re-expressing it the first
-        // event would read the cursor as deep in the body and snap back to rail.
+        // T276: the content window frame is immobile (it is never resized),
+        // so unlike the old T216 grab-offset fixup there is no
+        // edge sliding out from under the cursor to compensate for — the
+        // handle-local press point IS the anchor for the whole drag.
         let width_now = cx.global::<SidePanelRightState>().width;
-        self.resize_start_x = Some(start_x + (width_now - w));
+        self.resize_start_x = Some(start_x);
         self.resize_start_width = Some(width_now);
         tracing::debug!(
             grab_x = ?self.resize_start_x,
-            start_w = w,
+            start_w = width_now,
             tab = tab.label(),
             "side_panel_right: resize drag started"
         );
     }
 
-    fn update_resize(&mut self, current_x: f32, window: &Window, cx: &mut Context<Self>) {
-        let Some(grab) = self.resize_start_x else {
+    /// T276: pure delta from `resize_start_x`/`resize_start_width` — no
+    /// `Window` parameter needed anymore since neither surface this drag
+    /// touches is ever resized. See `resize_target_width`'s doc for the
+    /// coordinate-frame reasoning.
+    pub(crate) fn update_resize(&mut self, current_x: f32, cx: &mut Context<Self>) {
+        let (Some(start_x), Some(start_width)) = (self.resize_start_x, self.resize_start_width)
+        else {
             return;
         };
-        // T216 — self-correcting absolute model. The panel is anchored to the RIGHT
-        // screen edge, so width growth drags the window's LEFT edge leftward, and
-        // `current_x` (window-local) is measured from that moving edge.
-        //
-        //   pointer_screen = window_left + current_x,  window_left = screen_right - actual_w
-        //   keep the grabbed point under the cursor  =>  desired_left = pointer_screen - grab
-        //   desired_w = screen_right - desired_left  =  actual_w - current_x + grab
-        //
-        // `actual_w` MUST come from the surface the pointer coords are relative to
-        // (window.bounds()), not from our own state: `window.resize()` is async on
-        // Wayland, so state runs ahead of the compositor between configure acks.
-        // Feeding state width back in is what made T210/T214 accumulate error and
-        // thrash to both clamps; reading live geometry makes a stale frame merely
-        // repeat the same target instead of compounding it.
-        let actual_w = window.bounds().size.width.as_f32();
-        let new_w = crate::side_panel_right::resize_target_width(actual_w, current_x, grab);
+        let new_w =
+            crate::side_panel_right::resize_target_width(start_width, start_x, current_x);
         let state = cx.global_mut::<SidePanelRightState>();
+        let old_w = state.width;
         state.resize(new_w);
-        state.last_exclusive_zone = None;
         self.tab_resize_memory.insert(self.active_tab, state.width);
         crate::side_panel_right::hold_peek(cx);
-        tracing::trace!(current_x, actual_w, new_w, "side_panel_right: resize drag move");
-        cx.notify();
+        tracing::trace!(
+            current_x,
+            start_x,
+            start_width,
+            old_w,
+            new_w,
+            "side_panel_right: resize drag move"
+        );
+        cx.refresh_windows();
+    }
+
+    /// T210: mouse-up on the handle means the drag ended. Expansion already
+    /// happened on mouse-down (see `start_resize`), so this is pure cleanup.
+    pub(crate) fn end_resize(&mut self, cx: &mut Context<Self>) {
+        cx.global_mut::<SidePanelRightState>().resizing = false;
+        self.resize_start_x = None;
+        self.resize_start_width = None;
+        tracing::info!("side_panel_right: resize drag ended (mouse-up)");
+        cx.refresh_windows();
+    }
+
+    /// T276: dock ⊞/⊟ toggle, called from `rail_view::RailView` via the
+    /// shared weak entity (the button itself renders in the rail window).
+    pub(crate) fn toggle_dock(&mut self, cx: &mut Context<Self>) {
+        let target = self.active_tab_width(self.active_tab, cx);
+        let state = cx.global_mut::<SidePanelRightState>();
+        state.dock_content = !state.dock_content;
+        state.ensure_content_width(target);
+        tracing::info!(
+            dock = state.dock_content,
+            width = state.width,
+            "side_panel_right: dock toggle"
+        );
+        cx.refresh_windows();
     }
 
     /// Sample network speed on every render. Time-gated by
@@ -343,6 +374,13 @@ impl SidePanelRightView {
         // T171/T218 wired. We deliberately bypass `apply_active_tab_width`'s
         // «skip when collapsed» optimisation in the re-open branch, because
         // that branch IS the act of opening.
+        //
+        // T276: every branch calls `cx.refresh_windows()` instead of plain
+        // `cx.notify()` — the rail's active-tab highlight and dock icon live
+        // in a *different* window (`rail_view::RailView`) that only repaints
+        // when something marks it dirty explicitly. `refresh_windows()` is
+        // the same idiom `workspace_mode::set`/`edit_mode::toggle` already
+        // use for cross-window state changes.
 
         let (dock_content, content_open) = {
             let state = cx.global::<SidePanelRightState>();
@@ -358,24 +396,14 @@ impl SidePanelRightView {
             // Under dock: only switch `active_tab`. The dock button ⊞/⊟
             // and the resize handle are the only knobs for width when
             // content is always-visible; switching tabs in dock mode must
-            // not undo a pinned width. (Otherwise clicking another icon
-            // would collapse from 700 to 440 — surprising for any tab
-            // whose `preferred_content_width` differs from the docked
-            // panel width.)
+            // not undo a pinned width.
             //
             // Off dock: switch AND force-open at the new tab's natural /
-            // remembered width. We bypass `apply_active_tab_width` because
-            // it is a no-op when content is collapsed (the T171 "trap #3"
-            // — only mode-fallback needs to re-cover the width silently).
-            // A user clicking a *different* rail icon requires the new
-            // tab to be visible — that's the whole affordance, and a click
-            // while collapsed that only updates `active_tab` would be
-            // invisible.
+            // remembered width.
             self.active_tab = tab;
             self.ensure_tab_view(self.active_tab, cx);
             if dock_content {
-                self.last_resized_width = f32::NAN;
-                cx.notify();
+                cx.refresh_windows();
                 tracing::info!(
                     tab = tab.label(),
                     "side_panel_right: switched tab under dock (width pinned)"
@@ -384,8 +412,7 @@ impl SidePanelRightView {
             }
             let target = self.active_tab_width(self.active_tab, cx);
             cx.global_mut::<SidePanelRightState>().ensure_content_width(target);
-            self.last_resized_width = f32::NAN;
-            cx.notify();
+            cx.refresh_windows();
             tracing::info!(
                 tab = tab.label(),
                 width = target,
@@ -406,11 +433,9 @@ impl SidePanelRightView {
 
         if content_open {
             // Branch 2 — collapse. `tab_resize_memory` stays intact because
-            // we only touch `state.width` and `state.last_exclusive_zone`.
+            // we only touch `state.width`.
             cx.global_mut::<SidePanelRightState>().width = RAIL_ONLY_WIDTH;
-            cx.global_mut::<SidePanelRightState>().last_exclusive_zone = None;
-            self.last_resized_width = f32::NAN;
-            cx.notify();
+            cx.refresh_windows();
             tracing::info!(
                 tab = tab.label(),
                 "side_panel_right: same tab → collapsed to rail (memory preserved)"
@@ -419,8 +444,7 @@ impl SidePanelRightView {
             // Branch 3 — re-open at the tab's stored width.
             let target = self.active_tab_width(self.active_tab, cx);
             cx.global_mut::<SidePanelRightState>().ensure_content_width(target);
-            self.last_resized_width = f32::NAN;
-            cx.notify();
+            cx.refresh_windows();
             tracing::info!(
                 tab = tab.label(),
                 width = target,
@@ -476,8 +500,6 @@ impl Render for SidePanelRightView {
         all_tabs.dedup();
         // Active tab left the set after a mode switch — land on System, keep
         // the panel open (§5: must not discard panel state / close on mode change).
-        // Resolve the fallback and apply System's per-tab width. The resolver
-        // is a no-op on the next render once the active tab belongs to the rail.
         if self.resolve_active_tab(&all_tabs, cx) {
             // System may not have been visited yet — ensure the entry exists
             // before the render path reads it via get().
@@ -489,158 +511,82 @@ impl Render for SidePanelRightView {
         let ul = format_net_pair(0.0, self.net_state.cached_ul);
         let net_summary = format!("↓ {dl}  ↑ {ul}");
 
-        // --- Exclusive zone & width sync (mirror T126 left panel) ---
         let panel_state = cx.global::<SidePanelRightState>();
         let dock_content = panel_state.dock_content;
         let panel_width = panel_state.width;
+        let resizing = panel_state.resizing;
 
-        // Calculate exclusive zone: dock ON → full width, dock OFF → rail only
-        let rail_only_width = RAIL_ONLY_WIDTH;
-        let new_zone = if dock_content {
-            panel_width
-        } else {
-            rail_only_width
-        };
+        // T276: `content`'s WindowBounds are fixed forever — `visible_w` is
+        // the only thing that moves. It drives both the painted rectangle
+        // below and the Wayland input region (so the empty part of the
+        // canvas passes clicks through instead of eating them).
+        let visible_w = visible_content_width(panel_width);
+        let content_open = dock_content || visible_w > 1.0;
+        let interactive_w = content_interactive_width(visible_w, resizing);
 
-        // Update exclusive zone only when it changes (avoid redundant syscalls)
-        if self.last_exclusive_zone != Some(new_zone) {
-            window.set_exclusive_edge(gpui::layer_shell::Anchor::RIGHT);
-            window.set_exclusive_zone(px(new_zone));
-            self.last_exclusive_zone = Some(new_zone);
+        if self.last_visible_width != Some(interactive_w) {
+            let canvas_h = f32::from(window.bounds().size.height);
+            let regions = content_input_region(CONTENT_CANVAS_WIDTH, canvas_h, interactive_w);
+            window.set_input_region(Some(&regions));
+            self.last_visible_width = Some(interactive_w);
         }
 
-        // T243 trace: record the width-sync inputs on EVERY render so a live
-        // repro (toggle/select-tab ×10) can be read frame-by-frame. Key
-        // questions the log must answer: does `window.resize()` fire at all,
-        // and does `actual_width` ever converge to `panel_width` (compositor
-        // ack) or stay at the rail width (async resize never committing).
-        let actual_width_pre = window.bounds().size.width.as_f32();
-        tracing::debug!(
-            last_resized_width = self.last_resized_width,
-            panel_width,
-            actual_width = actual_width_pre,
-            dock_content,
-            "T243 render: width sync check"
-        );
-
-        // Resize window if the compositor's ACTUAL width hasn't caught up to
-        // the target (`panel_width`). T243: `window.resize()` is async on
-        // Wayland — the old guard compared `last_resized_width` (a state
-        // copy) against `panel_width` (also state), so a configure that
-        // never landed left last==target while the surface sat at rail
-        // width: the guard read "already resized" and never retried (the
-        // w=40 stick, caught live in the T243 trace: last=320 panel=320
-        // actual=40 for seconds). Gating on `window.bounds()` (live
-        // geometry) re-issues the resize on every render until the
-        // compositor acks — self-healing, same principle as `update_resize`
-        // (T216: "state runs ahead of the compositor between configure
-        // acks"). Once acked, actual==target and the re-issue stops.
-        let actual_width = window.bounds().size.width.as_f32();
-        if needs_width_resize(actual_width, panel_width) {
-            let display_h = crate::monitor::pult_display_info(cx)
-                .map(|d| f32::from(d.bounds().size.height))
-                .or_else(|| window.display(cx).map(|d| f32::from(d.bounds().size.height)))
-                .unwrap_or(1080.);
-            let panel_h =
-                (display_h - crate::side_panel_right::panel_edge_gap()).max(100.);
-            window.resize(gpui::Size::new(px(panel_width), px(panel_h)));
-            self.last_resized_width = panel_width;
-            // T216: no drag-anchor fixup here. `update_resize` re-derives the target
-            // from live window geometry each event, so shifting the grab offset by Δw
-            // (T214) would double-count the very same edge movement.
-            tracing::debug!(
-                panel_width,
-                panel_h,
-                actual_width,
-                "T243 render: window.resize after width change"
-            );
-        }
-
-        // Content open when dock is ON OR the panel is past rail+handle
-        // threshold. Gated on the ACTUAL window width (`window.bounds()`),
-        // not `panel_width` (the target state) — `window.resize()` is
-        // async on Wayland (T216, see `update_resize` above: "state runs
-        // ahead of the compositor between configure acks"). Gating on the
-        // target let the content column vanish/appear a frame or two
-        // before the compositor actually committed the new width: the
-        // rail visibly reflowed inside a still-stale-sized window (the
-        // "wobble" on close), and the old content's hit-test region
-        // could still catch a click meant for the rail during that gap.
-        let actual_width = window.bounds().size.width.as_f32();
-        let content_open = dock_content || actual_width > rail_only_width + 1.0;
-        // T243 trace: content_open transition (wobble symptom on close).
-        tracing::debug!(
-            content_open,
-            actual_width,
-            panel_width,
-            dock_content,
-            "T243 render: content_open computed from live bounds"
-        );
-
-        // T217 — top-corner radius where the panel meets the bar. Each corner
-        // is decided independently: one the bar sits above stays square (the
-        // panel tucks under the bar's bottom edge — rounding would seam), a
-        // free one rhymes with the bar's pill radius. Re-evaluated every
-        // render, so bar hot-reload (radius / extent) and panel resizes take
-        // effect live without a window recreate.
+        // T217 — top-left corner radius where the visible content column
+        // meets the bar. The rail's own top-right (display) corner is
+        // rounded independently in `rail_view::RailView::render`.
         let display_w = crate::monitor::pult_display_info(cx)
             .map(|d| f32::from(d.bounds().size.width))
             .or_else(|| window.display(cx).map(|d| f32::from(d.bounds().size.width)))
             .unwrap_or(1920.);
         let corner_tl = crate::state::panel_corner_radius(display_w - panel_width);
-        let corner_tr = crate::state::panel_corner_radius(display_w);
 
         // Elevated chrome на content-колонке (не rail-only) — общий язык
         // глубины из `theme.elevation_popup()` (T128).
         let theme = *Theme::global(cx);
         let elev = theme.elevation_popup();
 
-        // Resize handlers before any RPIT that captures cx (Rust 2024).
-        let resize_drag_handler = cx.listener(
-            |this, ev: &gpui::DragMoveEvent<RightPanelResize>, window, cx| {
-                this.update_resize(f32::from(ev.event.position.x), window, cx);
+        let active = self.active_tab;
+        let resize_mouse_down = cx.listener(
+            |this, ev: &gpui::MouseDownEvent, _window, cx| {
+                this.start_resize(f32::from(ev.position.x), cx);
             },
         );
-        let resize_mouse_handler = cx.listener(|this, ev: &gpui::MouseDownEvent, _w, cx| {
-            this.start_resize(f32::from(ev.position.x), cx);
-        });
-        // T210: mouse-up on the handle means the drag ended. Expansion already
-        // happened on mouse-down (see `start_resize`), so this is pure cleanup.
-        let resize_mouse_up_handler = cx.listener(|this, _ev: &gpui::MouseUpEvent, _w, cx| {
-            cx.global_mut::<SidePanelRightState>().resizing = false;
-            this.resize_start_x = None;
-            this.resize_start_width = None;
-            tracing::info!("side_panel_right: resize drag ended (mouse-up)");
-            cx.notify();
-        });
+        let resize_drag_move = cx.listener(
+            |this, ev: &gpui::DragMoveEvent<RightPanelResize>, _window, cx| {
+                this.update_resize(f32::from(ev.event.position.x), cx);
+            },
+        );
+        let resize_mouse_up = cx.listener(
+            |this, _ev: &gpui::MouseUpEvent, _window, cx| this.end_resize(cx),
+        );
 
         // Lazy tab view — created on first paint, cached thereafter.
         // ensure_tab_view() avoids expect-panic on the very first render
         // (before any on_tab_select has fired). T168 errata 3.
-        let active = self.active_tab;
         let tab_entry = self.ensure_tab_view(active, cx);
+        let handle_x = content_resize_handle_x(CONTENT_CANVAS_WIDTH, visible_w);
 
-        // OUTER: sole window-level `on_hover` (debounce). No transition_on_hover.
-        // Layout: [handle | content? | rail] — flex handle so drag hits work
-        // (absolute overlay was unhittable / broke resize entirely).
-        //
-        // T217: round the top corners + clip when either corner is free (bar
-        // does not reach it). Root's own background is transparent (the
-        // gpui-component Root base was overridden to transparent in
-        // `open_window`), so the rounded cutouts show the desktop behind, not
-        // a square chrome corner. When both corners are covered (full-width
-        // bar) no rounding and no clip — keeps the elevation shadows intact.
+        // ROOT: the whole fixed canvas. `on_hover` here still matters for
+        // peek even while collapsed (regions is empty, but GPUI delivers
+        // hover to the *element tree*, not gated on the Wayland input
+        // region — the input region only decides who receives pointer
+        // *events*, not who observes hover state changes from this
+        // process's own compositor-agnostic hit testing... T276 note:
+        // this must be verified live, since a fully input-transparent
+        // window CANNOT receive a real pointer enter/leave from the
+        // compositor either. If peek-open regresses when the panel starts
+        // collapsed, this is the first place to look — the strip window
+        // (`hover_strip.rs`) is the actual peek trigger in that state, so
+        // it should be unaffected, but the panel's own re-collapse debounce
+        // (`on_hover` below) depends on this surface catching mouse-leave
+        // while it still has *some* visible width.
         div()
-            .id("side-panel-right-root")
+            .id("side-panel-right-content-root")
             .window_font(&theme)
             .size_full()
+            .relative()
             .flex()
             .flex_row()
-            .when(corner_tl > 0.0 || corner_tr > 0.0, |d| {
-                d.rounded_tl(px(corner_tl))
-                    .rounded_tr(px(corner_tr))
-                    .overflow_hidden()
-            })
             .on_hover(|hovered, _window, cx| {
                 if *hovered {
                     crate::side_panel_right::hold_peek(cx);
@@ -649,184 +595,85 @@ impl Render for SidePanelRightView {
                 }
             })
             .child(
-                // 4px ghost hit strip — transparent (no gray lip). Real flex
-                // column so on_drag receives events.
-                //
-                // T218: the strip stays in the layout for every tab (rail-only
-                // width is rail + handle, and mouse-down here is what opens the
-                // content), but on a fixed-width tab it advertises no resize —
-                // no col-resize cursor, no drag session to start.
-                div()
-                    .id("side-panel-right-resize-handle")
-                    .flex_none()
-                    .w(px(HANDLE_WIDTH))
-                    .h_full()
-                    .bg(gpui::transparent_black())
-                    .on_mouse_down(gpui::MouseButton::Left, resize_mouse_handler)
-                    .on_mouse_up(gpui::MouseButton::Left, resize_mouse_up_handler)
-                    .when(active.resizable(), |h| {
-                        h.cursor_col_resize()
-                            .on_drag(RightPanelResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
-                            .on_drag_move(resize_drag_handler)
-                    }),
+                // Empty, transparent slice of the fixed canvas to the left
+                // of the visible content — never painted, never receives
+                // input (excluded from the Wayland input region above).
+                div().id("side-panel-content-void").flex_1().min_w(px(0.)).h_full(),
             )
-            .child(
-                div()
-                    .id("side-panel-body")
-                    .relative()
-                    .flex_1()
-                    .min_w(px(0.))
-                    .h_full()
-                    // Chrome bg only when content is open — in rail-only mode
-                    // the rail provides its own background. Transparent body
-                    // eliminates the gray lip next to the handle.
-                    .when(content_open, |b| {
-                        b.bg(surfaces::chrome(&theme))
-                            .border_l_1()
-                            .border_color(theme.border.subtle)
-                    })
-                    .flex()
-                    .flex_row() // content first, rail last — rail flush against the screen's right edge
-                    .overflow_hidden()
-                    .when(content_open, |body| {
-                        body.child({
-                            let col = div()
-                                .id("side-panel-content-column")
-                                .flex_1()
-                                .min_w(px(0.))
-                                .flex()
-                                .flex_col()
-                                .overflow_hidden()
-                                .bg(surfaces::content(&theme))
-                                .shadow(elev.shadows.to_vec());
-                            // Light-C glow-ребро на верхней кромке content-колонки.
-                            let col = match elev.glow {
-                                Some(glow) => col.child(elevation_glow_bar(glow)),
-                                None => col,
-                            };
-                            // --- Tab content ---
-                            let content_el = match tab_entry {
-                                TabContent::System(entity) => {
-                                    col.child(entity.clone())
-                                        // Footer: power + net summary (stays on
-                                        // SidePanelRightView because render_footer
-                                        // takes Context<SidePanelRightView>).
-                                        .child(render_footer(
-                                            &net_summary,
-                                            power_arm,
-                                            cx,
-                                        ))
-                                }
-                                TabContent::Files(entity) => {
-                                    col.child(entity.clone())
-                                }
-                                TabContent::Terminal(entity) => {
-                                    col.child(entity.clone())
-                                }
-                                TabContent::Build(entity) => {
-                                    col.child(entity.clone())
-                                }
-                                // T179: minimum addition to keep the enum
-                                // exhaustive; pairs with the same one-line match
-                                // arm in `tab_entity_id` below. View body itself
-                                // stays outside T179's zone.
-                                TabContent::Preview(entity) => {
-                                    col.child(entity.clone())
-                                }
-                                // T188: Library is a real entity (Gamer hub).
-                                TabContent::Library(entity) => {
-                                    col.child(entity.clone())
-                                }
-                                // T193: Hyprland binds (read-only list).
-                                TabContent::HyprBinds(entity) => {
-                                    col.child(entity.clone())
-                                }
-                                // T202: System settings «Bar» page.
-                                TabContent::BarSettings(entity) => {
-                                    col.child(entity.clone())
-                                }
-                                TabContent::AcpSettings(entity) => {
-                                    col.child(entity.clone())
-                                }
-                                TabContent::Placeholder(entity) => {
-                                    col.child(entity.clone())
-                                }
-                            };
-                            // Enter animation belongs to the content column
-                            // alone — it must NOT wrap the rail (rail is a
-                            // permanent sibling, not something that enters).
-                            // Previously `.with_animation` sat on the outer
-                            // `side-panel-body` div below, which included the
-                            // rail as a child; every content_open toggle (e.g.
-                            // closing a tab) replayed the EaseOutBack
-                            // slide-and-overshoot on the rail too, reading as
-                            // an unwanted "wobbly stretch" on close.
-                            content_el.with_animation(
-                                "side-panel-content-enter",
-                                motion::enter_animation(),
-                                motion::apply_enter_from_right,
-                            )
-                        })
-                    })
-                    .child({
-                        let active = self.active_tab;
-                        let this = cx.entity();
-                        let editing = edit_mode::is_active(cx);
-                        let this_for_select = this.clone();
-                        let on_select = std::rc::Rc::new(
-                            move |tab: PanelTab, _window: &mut Window, cx: &mut gpui::App| {
-                                this_for_select.update(cx, |this, cx| {
-                                    this.on_tab_select(tab, cx);
-                                });
-                            },
-                        );
-                        let this_for_dock = this.clone();
-                        let on_dock_toggle =
-                            std::rc::Rc::new(move |_window: &mut Window, cx: &mut gpui::App| {
-                                this_for_dock.update(cx, |this, cx| {
-                                    let target = this.active_tab_width(this.active_tab, cx);
-                                    let state = cx.global_mut::<SidePanelRightState>();
-                                    state.dock_content = !state.dock_content;
-                                    state.ensure_content_width(target);
-                                    this.last_resized_width = f32::NAN;
-                                    tracing::info!(
-                                        dock = state.dock_content,
-                                        width = state.width,
-                                        "side_panel_right: dock toggle"
-                                    );
-                                    cx.notify();
-                                });
-                            });
-                        // T219: on_move callback. The closure is intentionally
-                        // trivial: it looks up the current workspace mode and
-                        // delegates to `panels_config::move_tab`, which owns
-                        // the cache → disk → refresh_windows pipeline. Putting
-                        // all the IO in one place means the unit tests in
-                        // `panels_config::tests` exercise *the* code that ships
-                        // — re-writing the same glue inside a test (the T164
-                        // anti-pattern) is no longer a temptation.
-                        let on_move: std::rc::Rc<dyn Fn(PanelTab, isize, &mut gpui::App)> =
-                            std::rc::Rc::new(move |tab: PanelTab, delta: isize, cx: &mut gpui::App| {
-                                let mode = workspace_mode::current(cx);
-                                panels_config::move_tab(cx, mode, tab, delta);
-                            });
-                        crate::side_panel_right::rail::render_rail(
-                            cx,
-                            &top_tabs,
-                            &bottom_tabs,
-                            active,
-                            on_select,
-                            dock_content,
-                            on_dock_toggle,
-                            editing,
-                            on_move,
-                        )
-                    }),
-            )
+            .when(content_open, |root| {
+                root.child({
+                    let col = div()
+                        .id("side-panel-content-column")
+                        .flex_none()
+                        .w(px(visible_w))
+                        .h_full()
+                        .flex()
+                        .flex_col()
+                        .overflow_hidden()
+                        .bg(surfaces::content(&theme))
+                        .border_l_1()
+                        .border_color(theme.border.subtle)
+                        .shadow(elev.shadows.to_vec())
+                        .when(corner_tl > 0.0, |d| d.rounded_tl(px(corner_tl)));
+                    // Light-C glow-ребро на верхней кромке content-колонки.
+                    let col = match elev.glow {
+                        Some(glow) => col.child(elevation_glow_bar(glow)),
+                        None => col,
+                    };
+                    // --- Tab content ---
+                    let content_el = match tab_entry {
+                        TabContent::System(entity) => {
+                            col.child(entity.clone())
+                                // Footer: power + net summary (stays on
+                                // SidePanelRightView because render_footer
+                                // takes Context<SidePanelRightView>).
+                                .child(render_footer(&net_summary, power_arm, cx))
+                        }
+                        TabContent::Files(entity) => col.child(entity.clone()),
+                        TabContent::Terminal(entity) => col.child(entity.clone()),
+                        TabContent::Build(entity) => col.child(entity.clone()),
+                        // T179: minimum addition to keep the enum
+                        // exhaustive; pairs with the same one-line match
+                        // arm in `tab_entity_id` below.
+                        TabContent::Preview(entity) => col.child(entity.clone()),
+                        // T188: Library is a real entity (Gamer hub).
+                        TabContent::Library(entity) => col.child(entity.clone()),
+                        // T193: Hyprland binds (read-only list).
+                        TabContent::HyprBinds(entity) => col.child(entity.clone()),
+                        // T202: System settings «Bar» page.
+                        TabContent::BarSettings(entity) => col.child(entity.clone()),
+                        TabContent::AcpSettings(entity) => col.child(entity.clone()),
+                        TabContent::Placeholder(entity) => col.child(entity.clone()),
+                    };
+                    // Enter animation belongs to the content column alone.
+                    content_el.with_animation(
+                        "side-panel-content-enter",
+                        motion::enter_animation(),
+                        motion::apply_enter_from_right,
+                    )
+                })
+            })
+            .when((visible_w > 1.0 || resizing) && active.resizable(), |root| {
+                root.child(
+                    // A right panel resizes from its screen-inward LEFT
+                    // edge. The hit strip moves inside the fixed content
+                    // canvas; it never belongs to the standalone rail.
+                    div()
+                        .id("side-panel-right-resize-handle")
+                        .absolute()
+                        .left(px(handle_x))
+                        .top(px(0.))
+                        .w(px(HANDLE_WIDTH))
+                        .h_full()
+                        .cursor_col_resize()
+                        .on_mouse_down(gpui::MouseButton::Left, resize_mouse_down)
+                        .on_mouse_up(gpui::MouseButton::Left, resize_mouse_up)
+                        .on_drag(RightPanelResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
+                        .on_drag_move(resize_drag_move),
+                )
+            })
     }
 }
-
-
 
 #[cfg(test)]
 impl SidePanelRightView {
@@ -957,24 +804,7 @@ mod tests {
     //
     // Bonus: visiting `panels_config::move_tab` directly from the test side
     // confirms the helper is independently callable, not just accidentally
-    // correct via its single caller in `view.rs`.
-
-    #[test]
-    fn width_resize_guard_retries_until_compositor_acks() {
-        // T243: the old guard compared state-to-state (last_resized_width vs
-        // panel_width) and never retried a lost async configure. The new guard
-        // compares live geometry: it re-issues while actual != target and
-        // stops once acked.
-        // Stuck state caught live: last=320 panel=320 actual=40 — must retry.
-        assert!(needs_width_resize(40.0, 320.0));
-        // Acked: actual caught up — stop.
-        assert!(!needs_width_resize(320.0, 320.0));
-        // Sub-pixel drift — don't thrash set_size.
-        assert!(!needs_width_resize(320.4, 320.0));
-        // Shrink direction (close): window still wide, target rail — retry.
-        assert!(needs_width_resize(320.0, 40.0));
-        assert!(!needs_width_resize(40.0, 40.0));
-    }
+    // correct via its single caller (now `rail_view.rs`, not this file).
 
     #[gpui::test]
     async fn move_tab_helper_persists_reorder_and_updates_cache(cx: &mut TestAppContext) {
@@ -1048,8 +878,8 @@ mod tests {
     //
     // State is constructed directly (not via render) so the assertions aren't
     // coupled to layer-shell geometry, width rounding, or platform-window
-    // resize — `state.width` is the truth under test, the Wayland surface
-    // tracks it on the next paint (T216/T218 already cover that contract).
+    // surface size — `state.width` is the truth under test; T276 removed the
+    // platform-resize step this contract used to depend on entirely.
 
     /// Helper: stand up view + a given initial `SidePanelRightState`.
     fn boot_view(
@@ -1257,13 +1087,121 @@ mod tests {
             );
         });
     }
+
+    // ── T276: resize bookkeeping moved to plain methods (rail window calls
+    // these through the shared weak entity — see rail_view.rs) ──
+
+    #[gpui::test]
+    async fn start_resize_arms_the_drag_for_a_resizable_tab(cx: &mut TestAppContext) {
+        let mut state = SidePanelRightState::default();
+        state.width = 400.0;
+        let view = boot_view(cx, state, WorkspaceMode::Developer);
+        cx.update_entity(&view, |this, cx| {
+            this.active_tab = PanelTab::Preview; // resizable (T218)
+            this.start_resize(2.0, cx);
+        });
+        cx.update_entity(&view, |this, _| {
+            assert_eq!(this.resize_start_x, Some(2.0));
+            assert_eq!(this.resize_start_width, Some(400.0));
+        });
+        cx.update(|cx| {
+            assert!(cx.global::<SidePanelRightState>().resizing);
+        });
+    }
+
+    #[gpui::test]
+    async fn start_resize_from_rail_only_expands_first(cx: &mut TestAppContext) {
+        let view = boot_view(cx, SidePanelRightState::default(), WorkspaceMode::Developer);
+        cx.update_entity(&view, |this, cx| {
+            this.active_tab = PanelTab::Preview; // preferred 560 (DEFAULT_CONTENT_WIDTH)
+            this.start_resize(2.0, cx);
+        });
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelRightState>().width,
+                PanelTab::Preview.preferred_content_width(),
+                "handle press at rail-only must expand to the tab's natural width first"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn start_resize_ignores_a_fixed_width_tab(cx: &mut TestAppContext) {
+        let view = boot_view(cx, SidePanelRightState::default(), WorkspaceMode::Developer);
+        cx.update_entity(&view, |this, cx| {
+            this.active_tab = PanelTab::System; // fixed-width (T218)
+            this.start_resize(2.0, cx);
+        });
+        cx.update_entity(&view, |this, _| {
+            assert_eq!(this.resize_start_x, None, "fixed-width tab must not arm a drag");
+        });
+    }
+
+    #[gpui::test]
+    async fn update_resize_moves_width_by_the_drag_delta(cx: &mut TestAppContext) {
+        let mut state = SidePanelRightState::default();
+        state.width = 400.0;
+        let view = boot_view(cx, state, WorkspaceMode::Developer);
+        cx.update_entity(&view, |this, cx| {
+            this.active_tab = PanelTab::Preview;
+            this.start_resize(2.0, cx);
+            this.update_resize(2.0 - 50.0, cx); // moved 50px left → grow
+        });
+        cx.update(|cx| {
+            assert_eq!(cx.global::<SidePanelRightState>().width, 450.0);
+        });
+    }
+
+    #[gpui::test]
+    async fn end_resize_clears_bookkeeping_and_resizing_flag(cx: &mut TestAppContext) {
+        let mut state = SidePanelRightState::default();
+        state.width = 400.0;
+        let view = boot_view(cx, state, WorkspaceMode::Developer);
+        cx.update_entity(&view, |this, cx| {
+            this.active_tab = PanelTab::Preview;
+            this.start_resize(2.0, cx);
+            this.end_resize(cx);
+        });
+        cx.update_entity(&view, |this, _| {
+            assert_eq!(this.resize_start_x, None);
+            assert_eq!(this.resize_start_width, None);
+        });
+        cx.update(|cx| {
+            assert!(!cx.global::<SidePanelRightState>().resizing);
+        });
+    }
+
+    #[test]
+    fn needs_width_resize_still_serves_side_panel_left() {
+        // T276 retired this panel's own use of the guard (fixed-size
+        // surfaces), but `side_panel_left::mod::render` still calls it —
+        // regression coverage kept alive here.
+        assert!(needs_width_resize(40.0, 320.0));
+        assert!(!needs_width_resize(320.0, 320.0));
+        assert!(!needs_width_resize(320.4, 320.0));
+    }
+
+    #[gpui::test]
+    async fn toggle_dock_flips_flag_and_applies_active_tab_width(cx: &mut TestAppContext) {
+        let view = boot_view(cx, SidePanelRightState::default(), WorkspaceMode::Developer);
+        cx.update_entity(&view, |this, cx| {
+            this.active_tab = PanelTab::Files; // preferred 440
+            this.toggle_dock(cx);
+        });
+        cx.update(|cx| {
+            let state = cx.global::<SidePanelRightState>();
+            assert!(state.dock_content);
+            assert_eq!(state.width, PanelTab::Files.preferred_content_width());
+        });
+    }
 }
 
-/// T243: pure decision for the render resize guard — re-issue `window.resize`
-/// while the compositor's actual width has not caught up to the target
-/// (`panel_width`). Comparing state-to-state (`last_resized_width` vs
-/// `panel_width`) let a lost async configure stick the surface at rail width
-/// forever; comparing live geometry makes the guard self-healing.
+/// Pure decision: re-issue `window.resize` while the compositor's actual
+/// width has not caught up to the target. T276 removed this panel's own
+/// need for it (`content`/`rail` are fixed-size surfaces now — see the
+/// module doc), but `side_panel_left::mod::render` still calls it for its
+/// own (unrelated, still-resizing) surface — kept here rather than deleted
+/// out from under that caller.
 pub(crate) fn needs_width_resize(actual: f32, target: f32) -> bool {
     (actual - target).abs() > 1.0
 }

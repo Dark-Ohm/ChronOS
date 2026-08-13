@@ -94,7 +94,7 @@ impl Render for HyprBindsTab {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *Theme::global(cx);
         let count = self.binds.len();
-        let is_wide = ui::is_wide(window);
+        let is_wide = ui::is_wide(cx);
 
         // T231-pattern header: title + Reload on one line, source path as the
         // mono subtitle.

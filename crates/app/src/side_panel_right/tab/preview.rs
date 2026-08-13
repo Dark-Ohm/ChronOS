@@ -1236,7 +1236,7 @@ fn render_empty(theme: &Theme, _window: &mut Window, cx: &mut Context<PreviewTab
     let open_files = cx.listener(|_this, _e: &gpui::ClickEvent, _window, cx| {
         if let Some(view) = cx
             .global::<SidePanelRightState>()
-            .view
+            .content_view
             .clone()
             .and_then(|w| w.upgrade())
         {

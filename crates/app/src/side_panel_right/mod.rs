@@ -1,9 +1,25 @@
-//! Right side panel — lazy layer-shell overlay, hover-peek (task 8) or
-//! pinned (bar-widget click / hotkey, this task). Window lifecycle
-//! mirrors `system_popup/`/`volume_popup/`: `Layer::Overlay`,
-//! `KeyboardInteractivity::None`, `close_this` reentrancy guard
-//! (`ARCHITECTURE.md §4.1` — never re-entrant `handle.update` for
-//! `remove_window()` from inside that window's own callback).
+//! Right side panel — two independently-living layer-shell surfaces (T276):
+//! `rail` (fixed 40px, owns the exclusive zone) and `content` (fixed
+//! `MAX_WIDTH - RAIL_ONLY_WIDTH` canvas, never resized). Lazy, hover-peek
+//! (task 8) or pinned (bar-widget click / hotkey). Window lifecycle mirrors
+//! `system_popup/`/`volume_popup/`: `Layer::Overlay`, `close_this`
+//! reentrancy guard (`ARCHITECTURE.md §4.1` — never re-entrant
+//! `handle.update` for `remove_window()` from inside that window's own
+//! callback).
+//!
+//! ## T276 — why two surfaces
+//! T273 proved right-anchored `window.resize()` mid-drag is asymmetric on
+//! Hyprland: the compositor moves the surface's origin ahead of an acked
+//! buffer, producing a visible wobble that survived every attempt to
+//! synchronize `set_size`/configure/Scene/buffer in the fork. The fix
+//! removes window resize from the drag path entirely: `rail` never
+//! resizes (its exclusive zone is a *value*, independent from its own
+//! pixel footprint — legal per wlr-layer-shell), and `content` is a
+//! fixed-size canvas whose only per-frame changes are (a) which rectangle
+//! of it is painted and (b) `Window::set_input_region` on that rectangle.
+//! Dragging the handle only ever mutates `SidePanelRightState.width`
+//! (`view::SidePanelRightView::update_resize`) — no Wayland/WGPU surface
+//! reconfiguration, so there is nothing left to desync.
 //!
 //! **No Esc-to-close** — matches the real convention already in this
 //! codebase (`volume_popup`/`system_popup` have no Esc handler either,
@@ -18,6 +34,7 @@ pub mod panels_config;
 mod power_row;
 pub(crate) mod preview_target;
 mod rail;
+mod rail_view;
 mod spectrum_row;
 mod surfaces;
 pub mod tab;
@@ -25,27 +42,30 @@ pub(crate) mod tabs;
 pub mod view;
 mod wallpaper_card;
 
-
 use gpui::{
     App, Bounds, DisplayId, Global, Size, Window, WindowBackgroundAppearance, WindowBounds,
     WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
 };
 use gpui_component::Root;
 
+use crate::side_panel_right::rail_view::RailView;
 use crate::side_panel_right::tabs::PanelTab;
 use crate::side_panel_right::view::SidePanelRightView;
 
-// Width constants — mirror left panel's SIDEBAR_COLLAPSED_WIDTH / HANDLE_WIDTH pattern.
-// T204: rails 36/36, ghost handle 4px. Handle is a flex hit strip (must receive
-// drag); paint transparent so it does not read as a gray lip. Rail-only
-// window = rail + handle (hit needs a real column — overlay was unhittable).
-// Left SIDEBAR_* stay equal — `rails_and_handles_match_right_panel`.
-pub(crate) const RAIL_WIDTH: f32 = 36.;
+// T276: standalone rail is the full fixed 40px surface. The resize handle is
+// a 4px overlay on the moving LEFT edge of visible content; it is not part of
+// rail geometry and consumes no extra width.
+pub(crate) const RAIL_WIDTH: f32 = 40.;
 pub(crate) const HANDLE_WIDTH: f32 = 4.;
-pub(crate) const RAIL_ONLY_WIDTH: f32 = RAIL_WIDTH + HANDLE_WIDTH; // 40
+pub(crate) const RAIL_ONLY_WIDTH: f32 = RAIL_WIDTH;
 /// Default full-content width when docked or user-resized.
 pub(crate) const DEFAULT_CONTENT_WIDTH: f32 = 560.;
 pub(crate) const MAX_WIDTH: f32 = 960.;
+/// T276: fixed pixel width of the `content` window's canvas. Never resized —
+/// only the visible rectangle painted inside it (and its input region)
+/// change as `SidePanelRightState.width` moves within
+/// `RAIL_ONLY_WIDTH..=MAX_WIDTH`.
+pub(crate) const CONTENT_CANVAS_WIDTH: f32 = MAX_WIDTH - RAIL_ONLY_WIDTH; // 920
 
 /// Drag marker — own type so left panel's `LeftPanelResize` never cross-fires.
 pub struct RightPanelResize;
@@ -63,12 +83,16 @@ pub(crate) fn panel_edge_gap() -> f32 {
 }
 
 pub struct SidePanelRightState {
-    handle: Option<WindowHandle<Root>>,
-    /// T230: weak handle to the live `SidePanelRightView`, so `select_tab` /
-    /// `preview_target` IPC (App context, no window) can reach the view and
-    /// call `on_tab_select`. Filled at open time, dropped by the window when
-    /// the view dies — `None`/dead ⇒ panel is closed.
-    view: Option<gpui::WeakEntity<SidePanelRightView>>,
+    /// T276: the permanent 40px icon-rail surface. Owns the exclusive zone.
+    rail_handle: Option<WindowHandle<Root>>,
+    /// T276: the fixed-canvas content surface, immediately left of `rail`.
+    content_handle: Option<WindowHandle<Root>>,
+    /// T230/T276: weak handle to the live `SidePanelRightView` (lives in the
+    /// `content` window), so `select_tab` / `preview_target` IPC (App
+    /// context, no window) and `rail_view::RailView` (a *different* window)
+    /// can reach it. Filled at open time, dropped when the content window
+    /// dies — `None`/dead ⇒ the logical panel is closed.
+    content_view: Option<gpui::WeakEntity<SidePanelRightView>>,
     /// `true` when opened by hotkey/bar-click (`toggle` / `open_pinned`) —
     /// stays open until re-toggled. `false` when opened by hover — closes
     /// on mouse-leave debounce unless a pin request arrives while peeked.
@@ -76,27 +100,30 @@ pub struct SidePanelRightState {
     /// Bumped on hover-enter (strip or panel). Leave schedules a close
     /// only if this value is still unchanged after the debounce window.
     peek_generation: u64,
-    /// Current window width (px). Starts at `RAIL_ONLY_WIDTH`, grows to
-    /// `DEFAULT_CONTENT_WIDTH` when docked or user-resized.
+    /// Current *logical* panel width (px), `RAIL_ONLY_WIDTH..=MAX_WIDTH`.
+    /// T276: no surface is ever resized to this value directly — `rail`
+    /// stays `RAIL_ONLY_WIDTH` px, `content` stays `CONTENT_CANVAS_WIDTH`
+    /// px; this number only drives the visible rectangle inside the
+    /// content canvas (`visible_content_width`) and the rail's exclusive
+    /// zone (`exclusive_px`).
     pub width: f32,
     /// Dock mode: when true, content is always visible (full width).
     /// When false (default), only the rail shows until content is opened.
     pub dock_content: bool,
     /// T210: true while a resize drag is active. Suppresses peek-close so
-    /// the 280ms debounce cannot close the panel mid-drag — destroying the
-    /// Wayland surface while the implicit grab is still held permanently
-    /// kills the hover strip's enter events.
+    /// the 280ms debounce cannot close the panel mid-drag.
     pub(crate) resizing: bool,
-    /// Last exclusive_zone value sent to compositor (avoids redundant
-    /// Wayland round-trips, mirrors left panel pattern).
+    /// Last exclusive_zone value sent to the compositor (avoids redundant
+    /// Wayland round-trips, mirrors left panel pattern). Set on `rail`.
     pub last_exclusive_zone: Option<f32>,
 }
 
 impl Default for SidePanelRightState {
     fn default() -> Self {
         Self {
-            handle: None,
-            view: None,
+            rail_handle: None,
+            content_handle: None,
+            content_view: None,
             pinned: false,
             peek_generation: 0,
             width: RAIL_ONLY_WIDTH,
@@ -109,7 +136,9 @@ impl Default for SidePanelRightState {
 
 impl SidePanelRightState {
     /// Exclusive zone px: full panel when docked, rail-only when overlay.
-    /// Mirrors `SidePanelLeftState::exclusive_px()`.
+    /// T276: this value is set on the **rail** surface only — the content
+    /// canvas never reserves space itself, regardless of how much of it is
+    /// visible.
     pub fn exclusive_px(&self) -> f32 {
         if self.dock_content {
             self.width
@@ -123,8 +152,6 @@ impl SidePanelRightState {
         self.width = new_width.clamp(RAIL_ONLY_WIDTH, MAX_WIDTH);
     }
 
-    /// Expand from rail-only to the given target width.
-    /// Called when content becomes visible (tab open / dock toggle).
     /// Expand or contract to the given target width.
     /// Called when content becomes visible (tab open / dock toggle)
     /// or when switching tabs with content already visible.
@@ -144,16 +171,66 @@ fn should_close_on_peek_leave(state: &SidePanelRightState) -> bool {
     !state.pinned && !state.resizing
 }
 
-/// Pure geometry: target width for one right-anchored drag event (T216).
-///
-/// The panel is anchored to the RIGHT screen edge, so `current_x` (window-local)
-/// is measured from the LEFT edge that the resize itself moves. Deriving the
-/// target from live geometry (`actual_w`, i.e. `window.bounds()`) keeps the
-/// grabbed point glued under the cursor and makes the result idempotent: a frame
-/// where the compositor has not yet acked the resize repeats the same target
-/// instead of compounding the error, which is what made T210/T214 thrash.
-pub(crate) fn resize_target_width(actual_w: f32, current_x: f32, grab: f32) -> f32 {
-    (actual_w - current_x + grab).clamp(RAIL_ONLY_WIDTH, MAX_WIDTH)
+/// T276 pure geometry: how much of the fixed `content` canvas is actually
+/// painted/interactive, given the logical panel width. `0` at rail-only,
+/// `CONTENT_CANVAS_WIDTH` at `MAX_WIDTH`. Floored at 0 defensively even
+/// though `SidePanelRightState::resize` already clamps its input at
+/// `RAIL_ONLY_WIDTH`.
+pub(crate) fn visible_content_width(state_width: f32) -> f32 {
+    (state_width - RAIL_ONLY_WIDTH).max(0.)
+}
+
+/// T276 pure geometry: the content canvas's Wayland input region — a
+/// single rectangle covering the visible (right-aligned) slice, or empty
+/// when the panel is collapsed to rail-only. `canvas_w`/`canvas_h` are the
+/// content window's own (fixed) pixel size; `visible_w` is
+/// `visible_content_width(state.width)`.
+pub(crate) fn content_input_region(
+    canvas_w: f32,
+    canvas_h: f32,
+    visible_w: f32,
+) -> Vec<Bounds<gpui::Pixels>> {
+    if visible_w <= 0. {
+        return Vec::new();
+    }
+    let x = (canvas_w - visible_w).max(0.);
+    vec![Bounds::new(
+        point(px(x), px(0.)),
+        Size::new(px(visible_w.min(canvas_w)), px(canvas_h.max(0.))),
+    )]
+}
+
+/// X coordinate of the resize hit strip inside the fixed content canvas.
+/// It follows the screen-inward (left) edge of the visible slice without
+/// resizing or moving either Wayland surface.
+pub(crate) fn content_resize_handle_x(canvas_w: f32, visible_w: f32) -> f32 {
+    (canvas_w - visible_w.clamp(0., canvas_w))
+        .max(0.)
+        .min((canvas_w - HANDLE_WIDTH).max(0.))
+}
+
+/// Width of the right-aligned input slice while rendering the content canvas.
+/// During an active drag the transparent handle must survive even when the
+/// visible content reaches zero, otherwise GPUI drops the drag target at the
+/// rail-only clamp and the pointer cannot pull the panel back in one gesture.
+pub(crate) fn content_interactive_width(visible_w: f32, resizing: bool) -> f32 {
+    if resizing {
+        visible_w.max(HANDLE_WIDTH)
+    } else {
+        visible_w
+    }
+}
+
+/// T276 pure geometry: absolute-delta resize target. Both `rail` and
+/// `content` are fixed-size surfaces now — there is no compositor
+/// configure to race against (the T210/T214/T216/T243 family of bugs was
+/// entirely about a surface resizing mid-drag; that surface no longer
+/// exists). `start_x`/`current_x` are pointer coordinates inside the fixed
+/// content canvas frame: as the cursor moves left of the
+/// press point, `current_x` decreases and the panel grows by exactly that
+/// delta.
+pub(crate) fn resize_target_width(start_width: f32, start_x: f32, current_x: f32) -> f32 {
+    (start_width + (start_x - current_x)).clamp(RAIL_ONLY_WIDTH, MAX_WIDTH)
 }
 
 /// Cursor entered strip or panel — cancel any pending peek-close.
@@ -176,32 +253,93 @@ fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
         .unwrap_or(1080.)
 }
 
-fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
+fn panel_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
     let display_h = display_height(display_id, cx);
-    // Only the top gap: bar exclusive zone pushes the TOP-anchored overlay to
-    // y=BAR_HEIGHT; height = display − that one gap makes the panel reach the
-    // display bottom (no bottom void).
-    let panel_h = (display_h - panel_edge_gap()).max(100.);
-    let current_width = cx.global::<SidePanelRightState>().width;
+    (display_h - panel_edge_gap()).max(100.)
+}
+
+/// T276: the `rail` surface — fixed `RAIL_ONLY_WIDTH` px, owns the
+/// exclusive zone. Never resized after open; `exclusive_zone` is a value
+/// updated live via `Window::set_exclusive_zone`, independent from the
+/// surface's own pixel footprint (legal per wlr-layer-shell — see
+/// `gpui-layer-shell` skill Part D).
+fn rail_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
+    let panel_h = panel_height(display_id, cx);
+    let zone = cx.global::<SidePanelRightState>().exclusive_px();
     WindowOptions {
         display_id,
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: point(px(0.), px(0.)),
-            size: Size::new(px(current_width), px(panel_h)),
+            size: Size::new(px(RAIL_ONLY_WIDTH), px(panel_h)),
         })),
-        app_id: Some("chronos-side-panel-right".to_string()),
+        app_id: Some("chronos-side-panel-right-rail".to_string()),
         window_background: WindowBackgroundAppearance::Transparent,
         kind: WindowKind::LayerShell(LayerShellOptions {
-            namespace: "side_panel_right".to_string(),
+            namespace: "side_panel_right_rail".to_string(),
             layer: Layer::Overlay,
             anchor: Anchor::TOP | Anchor::RIGHT,
-            exclusive_zone: Some(px(current_width)),
+            exclusive_zone: Some(px(zone)),
             exclusive_edge: Some(Anchor::RIGHT),
             margin: None,
-            // OnDemand is required for gpui-component `Input` to receive keyboard
-            // events. The panel's dismissal contract (spec §7) is enforced in code
-            // by never calling `close()` on focus loss or pointer-leave.
+            // Rail has no focusable input (buttons/svg only) — None matches
+            // the OSD/tray_menu convention for surfaces that never take text.
+            keyboard_interactivity: KeyboardInteractivity::None,
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+/// T276: the `content` surface — fixed `CONTENT_CANVAS_WIDTH` px canvas,
+/// positioned immediately left of `rail` via a constant `margin-right =
+/// RAIL_ONLY_WIDTH`. **Never resized** for the surface's lifetime; only the
+/// visible rectangle inside it (right-aligned) and its input region change.
+///
+/// `exclusive_zone: -1` opts content out of every foreign reservation,
+/// including the top bar. The margin therefore restores both placements
+/// explicitly: top gap below the bar and the fixed rail width on the right.
+fn content_window_margin(top_gap: f32) -> (gpui::Pixels, gpui::Pixels, gpui::Pixels, gpui::Pixels) {
+    (px(top_gap), px(RAIL_ONLY_WIDTH), px(0.), px(0.))
+}
+
+fn content_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
+    let panel_h = panel_height(display_id, cx);
+    WindowOptions {
+        display_id,
+        titlebar: None,
+        window_bounds: Some(WindowBounds::Windowed(Bounds {
+            origin: point(px(0.), px(0.)),
+            size: Size::new(px(CONTENT_CANVAS_WIDTH), px(panel_h)),
+        })),
+        app_id: Some("chronos-side-panel-right-content".to_string()),
+        window_background: WindowBackgroundAppearance::Transparent,
+        kind: WindowKind::LayerShell(LayerShellOptions {
+            namespace: "side_panel_right_content".to_string(),
+            layer: Layer::Overlay,
+            anchor: Anchor::TOP | Anchor::RIGHT,
+            // Content never reserves space — that is rail's job (spec §
+            // "Contract геометрии"). `-1` is the wlr-layer-shell escape
+            // hatch (wayland.app/protocols/wlr-layer-shell-unstable-v1,
+            // `set_exclusive_zone`): it opts this surface OUT of being
+            // pushed by *other* surfaces' exclusive zones on the same
+            // edge. `None` here would map to the protocol default of `0`
+            // (per `gpui_linux`'s `WaylandWindow` — `set_exclusive_zone`
+            // is simply never called), which does NOT opt out — the
+            // compositor still auto-offsets a same-edge Overlay surface by
+            // whatever `rail` is reserving (documented cross-surface
+            // behavior in `gpui-layer-shell` Part A: bar → popup). Without
+            // `-1`, that auto-offset stacks ON TOP of the explicit
+            // `margin-right` below — a double offset that grows with
+            // `rail`'s exclusive zone (up to 920px in dock mode) instead
+            // of staying a constant 40px.
+            exclusive_zone: Some(px(-1.)),
+            // CSS order: (top, right, bottom, left). `-1` also disables the
+            // bar's automatic top offset, so both offsets must be explicit.
+            margin: Some(content_window_margin(panel_edge_gap())),
+            // OnDemand is required for gpui-component `Input` to receive
+            // keyboard events (Editor/Terminal tabs live here). The panel's
+            // dismissal contract is enforced in code, not by focus loss.
             keyboard_interactivity: KeyboardInteractivity::OnDemand,
             ..Default::default()
         }),
@@ -209,8 +347,11 @@ fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
     }
 }
 
+/// Open both surfaces as one logical panel. Partial-open is refused: if
+/// `content` fails after `rail` already opened, `rail` is rolled back (and
+/// vice versa) so the state can never observe one handle without the other.
 fn open_window(cx: &mut App, pinned: bool) {
-    if cx.global::<SidePanelRightState>().handle.is_some() {
+    if cx.global::<SidePanelRightState>().rail_handle.is_some() {
         if pinned {
             // Already open as peek → upgrade to pin without re-open.
             cx.global_mut::<SidePanelRightState>().pinned = true;
@@ -224,42 +365,104 @@ fn open_window(cx: &mut App, pinned: bool) {
     if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL").is_none() {
         cx.global_mut::<SidePanelRightState>().width = RAIL_ONLY_WIDTH;
     }
-    let mut opened_view: Option<gpui::WeakEntity<SidePanelRightView>> = None;
-    match cx.open_window(window_options(display_id, cx), |window, view_cx| {
+
+    let mut opened_content_entity: Option<gpui::Entity<SidePanelRightView>> = None;
+    let content_result = cx.open_window(content_window_options(display_id, cx), |window, view_cx| {
         let view = view_cx.new(|cx| SidePanelRightView::new(cx));
-        opened_view = Some(view.downgrade());
-        // Wrap the panel view in gpui_component::Root.
-        //
-        // Component widgets such as Input expect the window root to be a component Root;
-        // without it, Input panics on `window.root()` because the root element is not a
-        // component-managed node. This is not a ChronOS choice but a hard requirement of
-        // gpui-component.
-        //
-        // Root paints `tokens.background` across the whole window, which would keep the
-        // top corners square no matter how the view rounds them (T217). Overriding that
-        // base fill with transparent moves all visible chrome to the view's own divs, so
-        // the rounded top corners expose the desktop behind instead of Root's solid color.
+        opened_content_entity = Some(view.clone());
+        // See `open_window`'s doc on gpui-component `Root` requirement below.
         view_cx.new(|cx| {
             Root::new(view, window, cx)
                 .bordered(false)
                 .bg(gpui::transparent_black())
         })
-    }) {
-        Ok(handle) => {
+    });
+
+    let content_handle = match content_result {
+        Ok(handle) => handle,
+        Err(err) => {
+            tracing::warn!("side_panel_right: content surface failed to open: {err}");
+            return;
+        }
+    };
+    let Some(content_entity) = opened_content_entity else {
+        tracing::warn!("side_panel_right: content window opened without a view — rolling back");
+        if let Err(e) = content_handle.update(cx, |_, window: &mut Window, _| window.remove_window())
+        {
+            tracing::warn!("side_panel_right: rollback could not close content ({e})");
+        }
+        return;
+    };
+
+    let rail_result = cx.open_window(rail_window_options(display_id, cx), {
+        let content_entity = content_entity.clone();
+        move |window, view_cx| {
+            let rail = view_cx.new(|cx| RailView::new(content_entity, cx));
+            view_cx.new(|cx| {
+                Root::new(rail, window, cx)
+                    .bordered(false)
+                    .bg(gpui::transparent_black())
+            })
+        }
+    });
+
+    // Pure decision, not a duplicated re-implementation of the branch below —
+    // `two_surface_open_outcome` is the actual thing this `match` dispatches
+    // on. Isolating the decision (not the `WindowHandle`/`cx.open_window`
+    // side effects) is what makes the "partial-open is refused" contract
+    // testable at all: `TestAppContext::open_window` forces a synchronous
+    // first paint, and this panel's default `System` tab eagerly reads five
+    // live `AppState` services (mpris/system_resources/disks/wallpaper/
+    // compositor) with zero test-double precedent in this crate — actually
+    // opening both real windows in a unit test is out of proportion to this
+    // one invariant.
+    match two_surface_open_outcome(rail_result.is_ok()) {
+        TwoSurfaceOpen::RollbackContent => {
+            let err = rail_result.err().expect("Err branch");
+            tracing::warn!(
+                "side_panel_right: rail surface failed to open ({err}) — rolling back content"
+            );
+            if let Err(e) =
+                content_handle.update(cx, |_, window: &mut Window, _| window.remove_window())
+            {
+                tracing::warn!("side_panel_right: rollback could not close content ({e})");
+            }
+        }
+        TwoSurfaceOpen::CommitBoth => {
+            let rail_handle = rail_result.expect("checked Ok above");
             let state = cx.global_mut::<SidePanelRightState>();
-            state.handle = Some(handle);
-            state.view = opened_view;
+            state.content_handle = Some(content_handle);
+            state.rail_handle = Some(rail_handle);
+            state.content_view = Some(content_entity.downgrade());
             state.pinned = pinned;
 
             tracing::info!(
-                "side_panel_right: opened ({})",
+                "side_panel_right: opened both surfaces ({})",
                 if pinned { "pinned" } else { "peek" }
             );
         }
-        Err(err) => tracing::warn!(
-            "side_panel_right: failed to open ({}): {err}",
-            if pinned { "pinned" } else { "peek" }
-        ),
+    }
+}
+
+/// T276 pure lifecycle decision: `open_window` calls this directly (not a
+/// parallel reimplementation) once `content` is confirmed open and `rail`
+/// has just been attempted. Kept as a two-variant enum rather than a bool
+/// so a third state (e.g. a future retry) has somewhere to go without
+/// silently falling through an `if`.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum TwoSurfaceOpen {
+    /// `rail` opened too — commit both handles as one logical panel.
+    CommitBoth,
+    /// `rail` failed — `content` (already open) must be rolled back. Never
+    /// leaves the state with one handle set and the other absent.
+    RollbackContent,
+}
+
+pub(crate) fn two_surface_open_outcome(rail_opened: bool) -> TwoSurfaceOpen {
+    if rail_opened {
+        TwoSurfaceOpen::CommitBoth
+    } else {
+        TwoSurfaceOpen::RollbackContent
     }
 }
 
@@ -282,64 +485,112 @@ pub fn close_peek_if_not_pinned(cx: &mut App) {
     close(cx);
 }
 
-/// Close from outside (bar toggle / hotkey).
+/// Close both surfaces from outside (bar toggle / hotkey). Closes as one
+/// unit — a partial close (one handle gone, one lingering) is exactly the
+/// invariant `open_window`'s rollback exists to prevent on the open side;
+/// here we simply attempt both and log independently, since a ghost on
+/// either one is equally a bug.
 ///
-/// Note the `match` instead of `let _ =`: `system_popup`/`volume_popup`
-/// swallow this Err today, and a swallowed `handle.update` Err is exactly
-/// what hid the ghost-window bug for a full session (HANDOFF.md
-/// 2026-07-18). New code does not inherit that wart — an Err here means
-/// the handle was taken but the window never closed, i.e. a ghost.
+/// Note the `match`/`if let Err` instead of `let _ =`: `system_popup`/
+/// `volume_popup` swallow this Err today, and a swallowed `handle.update`
+/// Err is exactly what hid the ghost-window bug for a full session
+/// (HANDOFF.md 2026-07-18). New code does not inherit that wart — an Err
+/// here means the handle was taken but the window never closed, i.e. a
+/// ghost.
 pub fn close(cx: &mut App) {
-    if let Some(handle) = cx.global_mut::<SidePanelRightState>().handle.take() {
-        let state = cx.global_mut::<SidePanelRightState>();
-        state.view = None;
-        state.pinned = false;
-        state.resizing = false;
+    let state = cx.global_mut::<SidePanelRightState>();
+    let rail_handle = state.rail_handle.take();
+    let content_handle = state.content_handle.take();
+    if rail_handle.is_none() && content_handle.is_none() {
+        cx.global_mut::<SidePanelRightState>().pinned = false;
+        return;
+    }
+    let state = cx.global_mut::<SidePanelRightState>();
+    state.content_view = None;
+    state.pinned = false;
+    state.resizing = false;
+    state.last_exclusive_zone = None;
+
+    if let Some(handle) = rail_handle {
         // Clear exclusive zone before destroying the surface so the
         // compositor reclaims reserved space (mirrors left panel).
         match handle.update(cx, |_, window: &mut Window, _| {
             window.set_exclusive_zone(px(0.));
             window.remove_window()
         }) {
-            Ok(()) => {
-                tracing::info!("side_panel_right: closed");
-            }
+            Ok(()) => tracing::info!("side_panel_right: rail closed"),
             Err(e) => tracing::warn!(
-                "side_panel_right: close() could not reach the window ({e}) — possible ghost"
+                "side_panel_right: rail close() could not reach the window ({e}) — possible ghost"
             ),
         }
-    } else {
-        cx.global_mut::<SidePanelRightState>().pinned = false;
+    }
+    if let Some(handle) = content_handle {
+        match handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
+            Ok(()) => tracing::info!("side_panel_right: content closed"),
+            Err(e) => tracing::warn!(
+                "side_panel_right: content close() could not reach the window ({e}) — possible ghost"
+            ),
+        }
     }
 }
 
-/// Close from inside a callback that already holds `&mut Window` for this
-/// panel. Must not re-enter `handle.update` on the same id (ghost-window
-/// guard, `ARCHITECTURE.md §4.1`).
-#[allow(dead_code)] // used by tasks 8–11 (peek leave, dismiss controls)
+/// Close from inside a callback that already holds `&mut Window` for one of
+/// the two panel surfaces. Must not re-enter `handle.update` on that same
+/// window id (ghost-window guard, `ARCHITECTURE.md §4.1`) — the *other*
+/// surface is closed via its own handle instead.
+#[allow(dead_code)] // reserved for a future click-away / dismiss control
 pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
     let this = window.window_handle();
-    let tracked = cx
-        .global::<SidePanelRightState>()
-        .handle
+    let state = cx.global::<SidePanelRightState>();
+    let is_rail = state.rail_handle.as_ref().map(|h| **h == this).unwrap_or(false);
+    let is_content = state
+        .content_handle
         .as_ref()
         .map(|h| **h == this)
         .unwrap_or(false);
-    if tracked {
+    if !is_rail && !is_content {
+        return;
+    }
+    let other = if is_rail {
+        state.content_handle.clone()
+    } else {
+        state.rail_handle.clone()
+    };
+    {
         let state = cx.global_mut::<SidePanelRightState>();
-        state.handle.take();
-        state.view = None;
+        state.rail_handle = None;
+        state.content_handle = None;
+        state.content_view = None;
         state.pinned = false;
         state.resizing = false;
     }
-    window.set_exclusive_zone(px(0.));
+    if is_rail {
+        window.set_exclusive_zone(px(0.));
+    }
     window.remove_window();
-    tracing::info!("side_panel_right: close_this");
+    if let Some(other) = other {
+        let result = other.update(cx, |_, w: &mut Window, _| {
+            if is_content {
+                // `other` is rail in this branch.
+                w.set_exclusive_zone(px(0.));
+            }
+            w.remove_window();
+        });
+        if let Err(e) = result {
+            tracing::warn!(
+                "side_panel_right: close_this could not reach the other surface ({e}) — possible ghost"
+            );
+        }
+    }
+    tracing::info!(
+        "side_panel_right: close_this ({})",
+        if is_rail { "rail" } else { "content" }
+    );
 }
 
 /// Bar-widget click / hotkey target.
 pub fn toggle(cx: &mut App) {
-    if cx.global::<SidePanelRightState>().handle.is_some() {
+    if cx.global::<SidePanelRightState>().rail_handle.is_some() {
         close(cx);
     } else {
         open_pinned(cx);
@@ -348,11 +599,11 @@ pub fn toggle(cx: &mut App) {
 
 /// T230 task B: switch the right panel to `tab` from an `App` context
 /// (IPC handler — no `Window` in scope). Opens the panel pinned first if it
-/// is not already open, then calls `on_tab_select` on the live view.
+/// is not already open, then calls `on_tab_select` on the live content view.
 pub fn select_tab(tab: PanelTab, cx: &mut App) {
     let view_live = cx
         .global::<SidePanelRightState>()
-        .view
+        .content_view
         .as_ref()
         .map(|w| w.upgrade().is_some())
         .unwrap_or(false);
@@ -361,7 +612,7 @@ pub fn select_tab(tab: PanelTab, cx: &mut App) {
     }
     let Some(view) = cx
         .global::<SidePanelRightState>()
-        .view
+        .content_view
         .clone()
         .and_then(|w| w.upgrade())
     else {
@@ -376,7 +627,7 @@ pub fn select_tab(tab: PanelTab, cx: &mut App) {
     // only. The focus handle is not registered in the window until the
     // tab's first render, so the focus is deferred a frame after the tab
     // switch; focusing synchronously would be a silent no-op.
-    if let Some(handle) = cx.global::<SidePanelRightState>().handle.clone() {
+    if let Some(handle) = cx.global::<SidePanelRightState>().content_handle.clone() {
         let focus_view = view.clone();
         cx.spawn(async move |cx| {
             cx.background_executor()
@@ -404,7 +655,7 @@ pub fn preview_target(path: std::path::PathBuf, cx: &mut App) {
 
     let view_live = cx
         .global::<SidePanelRightState>()
-        .view
+        .content_view
         .as_ref()
         .map(|w| w.upgrade().is_some())
         .unwrap_or(false);
@@ -427,10 +678,10 @@ pub fn preview_target(path: std::path::PathBuf, cx: &mut App) {
     // synthetic input after `preview-target` lands nowhere (no seat focus
     // on GPUI layer-shell windows), which is exactly the infra gap that
     // blocked Editor capture in T226 attempts #2/#3.
-    if let Some(handle) = cx.global::<SidePanelRightState>().handle.clone() {
+    if let Some(handle) = cx.global::<SidePanelRightState>().content_handle.clone() {
         let focus_view = cx
             .global::<SidePanelRightState>()
-            .view
+            .content_view
             .clone()
             .and_then(|w| w.upgrade());
         if let Some(focus_view) = focus_view {
@@ -488,6 +739,36 @@ pub fn init(cx: &mut App) {
 mod tests {
     use super::*;
 
+    // --- T276: lifecycle — both handles open/close as one unit ---
+    //
+    // Driving the REAL `open_pinned`/`close` end-to-end through
+    // `TestAppContext` was attempted first and rejected: GPUI's test
+    // platform forces a synchronous first paint on `cx.open_window`, and
+    // this panel's default `System` tab eagerly reads five live `AppState`
+    // services (mpris/system_resources/disks/wallpaper/compositor) at
+    // construction — this crate has no precedent anywhere for faking that
+    // in a unit test, and building one just for this would be
+    // disproportionate to the invariant being checked. `two_surface_open_
+    // outcome` is the actual decision `open_window` branches on (see the
+    // `match` there) — not a parallel reimplementation — so this proves
+    // the "never one handle without the other" contract without needing a
+    // real window or a fake `AppState`. Real lifecycle (ghost/orphan
+    // surfaces) is the task's own live-smoke checklist item 7
+    // (`hyprctl layers`).
+
+    #[test]
+    fn both_surfaces_open_commits_both_handles() {
+        assert_eq!(two_surface_open_outcome(true), TwoSurfaceOpen::CommitBoth);
+    }
+
+    #[test]
+    fn rail_failing_after_content_opened_rolls_content_back() {
+        assert_eq!(
+            two_surface_open_outcome(false),
+            TwoSurfaceOpen::RollbackContent
+        );
+    }
+
     #[test]
     fn peek_close_request_is_noop_while_pinned() {
         let mut state = SidePanelRightState::default();
@@ -513,8 +794,20 @@ mod tests {
     #[test]
     fn rail_only_default_width() {
         assert_eq!(RAIL_ONLY_WIDTH, 40.0);
-        assert_eq!(RAIL_ONLY_WIDTH, RAIL_WIDTH + HANDLE_WIDTH);
+        assert_eq!(RAIL_ONLY_WIDTH, RAIL_WIDTH);
         assert_eq!(SidePanelRightState::default().width, RAIL_ONLY_WIDTH);
+    }
+
+    #[test]
+    fn content_canvas_width_is_max_minus_rail() {
+        assert_eq!(CONTENT_CANVAS_WIDTH, MAX_WIDTH - RAIL_ONLY_WIDTH);
+        assert_eq!(CONTENT_CANVAS_WIDTH, 920.0);
+    }
+
+    #[test]
+    fn content_margin_restores_bar_gap_while_ignoring_exclusive_zones() {
+        let margin = content_window_margin(32.0);
+        assert_eq!(margin, (px(32.0), px(RAIL_ONLY_WIDTH), px(0.0), px(0.0)));
     }
 
     #[test]
@@ -547,68 +840,127 @@ mod tests {
         assert_eq!(state.width, DEFAULT_CONTENT_WIDTH);
     }
 
+    // --- T276: visible content width (fixed canvas geometry) ---
+
     #[test]
-    fn drag_left_grows_right_anchored_width() {
-        // Cursor 20px left of the grabbed point → panel 20px wider.
-        let grab = 2.0_f32; // grabbed mid-handle
-        let actual_w = 200.0_f32;
-        let current_x = grab - 20.0; // moved left 20px
-        assert_eq!(resize_target_width(actual_w, current_x, grab), 220.0);
+    fn visible_width_is_zero_at_rail_only() {
+        assert_eq!(visible_content_width(RAIL_ONLY_WIDTH), 0.0);
     }
 
     #[test]
-    fn drag_target_is_idempotent_across_a_stale_frame() {
-        // The regression guard for T210/T214: `window.resize()` is async, so the
-        // same pointer position is re-delivered against geometry that has not
-        // caught up yet. An accumulating model compounds that into runaway width;
-        // the absolute model must return the SAME target for the same input, and
-        // must land on that target once the compositor catches up.
-        let grab = 2.0_f32;
-        let current_x = grab - 20.0;
-
-        let first = resize_target_width(200.0, current_x, grab);
-        let stale_repeat = resize_target_width(200.0, current_x, grab);
-        assert_eq!(first, stale_repeat, "stale frame must not compound");
-
-        // Compositor acked: geometry is now the target, and the pointer has not
-        // moved (local x shifted by the same Δw the edge moved) → width holds.
-        let settled = resize_target_width(first, current_x + (first - 200.0), grab);
-        assert_eq!(settled, first, "settled frame must hold the width");
+    fn visible_width_is_full_canvas_at_max_width() {
+        assert_eq!(visible_content_width(MAX_WIDTH), CONTENT_CANVAS_WIDTH);
     }
 
     #[test]
-    fn grab_offset_survives_the_rail_to_content_expand() {
-        // Pressing the handle rail-only expands first (the drag needs a surface
-        // wide enough for GPUI to start a drag session on). The left edge slides
-        // left by Δw while the cursor stays put, so the grab offset must be
-        // re-expressed in the post-expand frame — otherwise the first event reads
-        // the cursor as deep in the body and snaps the panel straight back.
-        let press_x = 2.0_f32; // mid-handle, rail-only window
-        let rail_w = RAIL_ONLY_WIDTH;
-        let target = 400.0_f32;
-        let grab = press_x + (target - rail_w); // what start_resize stores
+    fn visible_width_tracks_state_width_above_rail_only() {
+        assert_eq!(visible_content_width(500.0), 460.0);
+    }
 
-        // Cursor has not moved: its local x is now press_x + Δw — the same value.
-        let local_after_expand = press_x + (target - rail_w);
-        assert_eq!(
-            resize_target_width(target, local_after_expand, grab),
-            target,
-            "expand must not snap back"
-        );
+    #[test]
+    fn visible_width_never_negative_even_below_rail_only() {
+        // Defensive: SidePanelRightState::resize already clamps its input,
+        // but the pure fn itself must not go negative if ever called with
+        // an out-of-range value directly.
+        assert_eq!(visible_content_width(0.0), 0.0);
+    }
 
-        // Now drag 100px further left → 100px wider.
+    // --- T276: content input region ---
+
+    #[test]
+    fn input_region_is_empty_when_collapsed() {
+        assert!(content_input_region(CONTENT_CANVAS_WIDTH, 1000.0, 0.0).is_empty());
+    }
+
+    #[test]
+    fn input_region_covers_right_aligned_visible_rect() {
+        let regions = content_input_region(CONTENT_CANVAS_WIDTH, 1000.0, 460.0);
+        assert_eq!(regions.len(), 1);
+        assert_eq!(regions[0].origin.x, px(CONTENT_CANVAS_WIDTH - 460.0));
+        assert_eq!(regions[0].origin.y, px(0.0));
+        assert_eq!(regions[0].size.width, px(460.0));
+        assert_eq!(regions[0].size.height, px(1000.0));
+    }
+
+    #[test]
+    fn input_region_covers_full_canvas_when_fully_open() {
+        let regions = content_input_region(CONTENT_CANVAS_WIDTH, 1000.0, CONTENT_CANVAS_WIDTH);
+        assert_eq!(regions[0].origin.x, px(0.0));
+        assert_eq!(regions[0].size.width, px(CONTENT_CANVAS_WIDTH));
+    }
+
+    #[test]
+    fn resize_handle_tracks_left_edge_of_visible_content() {
+        assert_eq!(content_resize_handle_x(CONTENT_CANVAS_WIDTH, 370.0), 550.0);
         assert_eq!(
-            resize_target_width(target, local_after_expand - 100.0, grab),
-            target + 100.0
+            content_resize_handle_x(CONTENT_CANVAS_WIDTH, CONTENT_CANVAS_WIDTH),
+            0.0
         );
+        assert_eq!(
+            content_resize_handle_x(CONTENT_CANVAS_WIDTH, 0.0),
+            CONTENT_CANVAS_WIDTH - HANDLE_WIDTH
+        );
+    }
+
+    #[test]
+    fn active_drag_keeps_handle_interactive_at_rail_only_clamp() {
+        assert_eq!(content_interactive_width(0.0, false), 0.0);
+        assert_eq!(content_interactive_width(0.0, true), HANDLE_WIDTH);
+        assert_eq!(content_interactive_width(370.0, true), 370.0);
+    }
+
+    // --- T276: pure-delta resize (no compositor race left to model) ---
+
+    #[test]
+    fn drag_left_grows_width_by_exact_delta() {
+        let start_width = 400.0_f32;
+        let start_x = 2.0_f32;
+        let current_x = start_x - 50.0; // moved 50px left of the press point
+        assert_eq!(
+            resize_target_width(start_width, start_x, current_x),
+            450.0
+        );
+    }
+
+    #[test]
+    fn drag_right_shrinks_width_by_exact_delta() {
+        let start_width = 400.0_f32;
+        let start_x = 2.0_f32;
+        let current_x = start_x + 50.0;
+        assert_eq!(
+            resize_target_width(start_width, start_x, current_x),
+            350.0
+        );
+    }
+
+    #[test]
+    fn drag_is_deterministic_for_repeated_identical_input() {
+        // No surface resize left to race against: unlike the old
+        // window.bounds()-driven model (T210/T214/T216/T243), the same
+        // (start_width, start_x, current_x) always produces the same
+        // target — there is no "stale frame" concept anymore.
+        let a = resize_target_width(400.0, 2.0, -18.0);
+        let b = resize_target_width(400.0, 2.0, -18.0);
+        assert_eq!(a, b);
     }
 
     #[test]
     fn drag_target_clamps_to_both_bounds() {
-        let grab = 2.0_f32;
-        // Yanked far right past the rail-only floor.
-        assert_eq!(resize_target_width(200.0, 400.0, grab), RAIL_ONLY_WIDTH);
-        // Yanked far left past the max.
-        assert_eq!(resize_target_width(900.0, -400.0, grab), MAX_WIDTH);
+        assert_eq!(resize_target_width(400.0, 0.0, 10_000.0), RAIL_ONLY_WIDTH);
+        assert_eq!(resize_target_width(400.0, 0.0, -10_000.0), MAX_WIDTH);
+    }
+
+    #[test]
+    fn drag_from_rail_only_press_point_expands_by_delta() {
+        // start_resize() expands rail→content to the tab's natural width
+        // before arming the drag; this test only covers the pure delta math
+        // once that expansion has already set start_width.
+        let start_width = 400.0_f32; // post-expand natural width
+        let start_x = 2.0_f32; // mid-handle
+        let current_x = start_x - 100.0;
+        assert_eq!(
+            resize_target_width(start_width, start_x, current_x),
+            500.0
+        );
     }
 }

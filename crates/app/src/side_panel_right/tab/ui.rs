@@ -7,8 +7,8 @@
 //!   the section-vs-setting hierarchy introduced in T231.
 //! - `setting_label` / `setting_row` — the label (primary) + mono path
 //!   (muted) pair and its one-baseline row.
-//! - `GRID_BREAKPOINT` / `is_wide` — the responsive switch the T231 grids use:
-//!   default docked width stays 1 column, stretched panels go 2+.
+//! - `GRID_BREAKPOINT` / `is_wide` — the responsive switch the T231 grids use.
+//!   It reads the visible slice of T276's fixed canvas, never Wayland bounds.
 //! - `empty_state_hero` / `empty_state_note` — the T252 empty-state canon
 //!   (DECISIONS.log 2026-08-13, materialized in T269): hero for a fully empty
 //!   surface, note for one empty section inside a live tab.
@@ -24,9 +24,23 @@ use gpui::{
 /// comfortably above the breakpoint (T231 §1).
 pub(crate) const GRID_BREAKPOINT: f32 = 720.0;
 
-/// `true` when the panel is stretched past `GRID_BREAKPOINT`.
-pub(crate) fn is_wide(window: &Window) -> bool {
-    window.bounds().size.width.as_f32() >= GRID_BREAKPOINT
+pub(crate) fn is_wide_content_width(visible_width: f32) -> bool {
+    visible_width >= GRID_BREAKPOINT
+}
+
+/// `true` when the visible content slice is stretched past `GRID_BREAKPOINT`.
+/// T276 keeps the Wayland content surface permanently at 920px, so
+/// `window.bounds()` is not the responsive viewport anymore.
+pub(crate) fn is_wide(cx: &App) -> bool {
+    let visible_width = cx
+        .try_global::<crate::side_panel_right::SidePanelRightState>()
+        .map(|state| crate::side_panel_right::visible_content_width(state.width))
+        .unwrap_or_else(|| {
+            crate::side_panel_right::visible_content_width(
+                crate::side_panel_right::DEFAULT_CONTENT_WIDTH,
+            )
+        });
+    is_wide_content_width(visible_width)
 }
 
 /// Elevated card underlay wrapping a tab's scrollable content.
@@ -262,6 +276,16 @@ mod tests {
             GRID_BREAKPOINT <= 960.0,
             "breakpoint must be reachable at MAX_WIDTH"
         );
+    }
+
+    #[test]
+    fn breakpoint_uses_visible_slice_not_fixed_wayland_canvas() {
+        let appearance_visible = crate::side_panel_right::visible_content_width(
+            crate::side_panel_right::tabs::PanelTab::EditorSettings.preferred_content_width(),
+        );
+        assert_eq!(appearance_visible, 370.0);
+        assert!(!is_wide_content_width(appearance_visible));
+        assert!(is_wide_content_width(crate::side_panel_right::CONTENT_CANVAS_WIDTH));
     }
 
     // --- T269: empty-state helpers ---

@@ -138,7 +138,7 @@ impl Render for BarSettingsTab {
         let elev = theme.elevation_popup();
 
         // ── Responsive breakpoint (T231) ─────────────────────────────
-        let is_wide = is_wide(window);
+        let is_wide = is_wide(cx);
 
         // ── Drag listeners (pattern: volume_popup, logic unchanged) ──
         let height_drag = cx.listener(

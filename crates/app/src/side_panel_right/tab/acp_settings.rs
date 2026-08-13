@@ -91,7 +91,7 @@ impl AcpSettingsTab {
 impl Render for AcpSettingsTab {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *Theme::global(cx);
-        let is_wide = ui::is_wide(window);
+        let is_wide = ui::is_wide(cx);
 
         // T249: stretch the elevated card to the bottom of the scroll
         // viewport so a short content set (few agents) doesn't leave a
@@ -404,4 +404,3 @@ impl Render for AcpSettingsTab {
             )
     }
 }
-
