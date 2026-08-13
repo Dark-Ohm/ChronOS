@@ -5,8 +5,8 @@
 //! scrollable result list, and a static footer (luau badge + reload dot).
 
 use gpui::{
-    self, linear_color_stop, linear_gradient, svg, App, Focusable, ImageSource, Render,
-    SharedString, Window, div, img, prelude::*, px,
+    self, App, Focusable, ImageSource, Render, ScrollHandle, SharedString, Window, div, img,
+    linear_color_stop, linear_gradient, prelude::*, px, svg,
 };
 
 use chronos_services::{AppEntry, Service};
@@ -19,7 +19,10 @@ use crate::state;
 
 const INPUT_HEIGHT: f32 = 44.;
 const ROW_HEIGHT: f32 = 42.;
-const MAX_VISIBLE_ROWS: usize = 10;
+/// Soft cap on the rendered result set — NOT on visibility. The list scrolls,
+/// so this only bounds per-frame render cost. Was a hard 10-row cap
+/// (`MAX_VISIBLE_ROWS`) which made the scroll container dead (T265-0).
+const MAX_RESULTS: usize = 200;
 
 /// Centered overlay view showing fuzzy search results over desktop entries.
 pub struct LauncherView {
@@ -28,6 +31,7 @@ pub struct LauncherView {
     selected: usize,
     results: Vec<AppEntry>,
     focus: gpui::FocusHandle,
+    scroll: ScrollHandle,
 }
 
 impl LauncherView {
@@ -45,6 +49,7 @@ impl LauncherView {
             selected: 0,
             results: Vec::new(),
             focus: cx.focus_handle(),
+            scroll: ScrollHandle::new(),
         };
         view.refresh_results();
 
@@ -68,13 +73,17 @@ impl LauncherView {
         self.search.update_pattern(&self.pattern);
         self.results = self
             .search
-            .results(MAX_VISIBLE_ROWS)
+            .results(MAX_RESULTS)
             .into_iter()
             .cloned()
             .collect();
         if self.selected >= self.results.len() {
             self.selected = self.results.len().saturating_sub(1);
         }
+        // Keep the selection in view; with a fresh pattern this scrolls back
+        // to the top. Safe before first layout — the scroll request stays
+        // pending until the child exists (see scroll_to_active_item).
+        self.scroll.scroll_to_item(self.selected);
     }
 
     fn handle_key(&mut self, event: &gpui::KeyDownEvent, window: &mut Window, cx: &mut App) {
@@ -95,12 +104,14 @@ impl LauncherView {
             "up" => {
                 if self.selected > 0 {
                     self.selected -= 1;
+                    self.scroll.scroll_to_item(self.selected);
                     window.refresh();
                 }
             }
             "down" | "tab" => {
                 if self.selected + 1 < self.results.len() {
                     self.selected += 1;
+                    self.scroll.scroll_to_item(self.selected);
                     window.refresh();
                 }
             }
@@ -184,6 +195,10 @@ impl LauncherView {
     ) -> impl IntoElement {
         div()
             .w(px(720.))
+            // Bounded height, so the results child has a leftover to flex into.
+            // Without it the card grows with the list and its header slides off
+            // the top of the window (T265-0 raised the row cap to 200).
+            .h_full()
             .bg(theme.bg.primary)
             .border_1()
             .border_color(theme.border.subtle)
@@ -319,7 +334,14 @@ impl LauncherView {
         div()
             .id("launcher-results")
             .flex_1()
+            // A flex child sizes to its content unless it may shrink below it.
+            // With the row cap lifted (T265-0) the 200-row list grew the
+            // container past the window and pushed the header, search field
+            // and footer off-screen. `min_h(0)` is what makes `flex_1` mean
+            // "take the leftover height" instead of "take the content height".
+            .min_h(px(0.))
             .overflow_y_scroll()
+            .track_scroll(&self.scroll)
             .pt(px(4.))
             .pb(px(8.))
             .px(px(8.))
@@ -512,7 +534,12 @@ fn kbd(label: &'static str, theme: &Theme) -> impl IntoElement {
 fn resolve_app_icon(entry: &AppEntry, theme: &Theme) -> gpui::AnyElement {
     if let Some(name) = entry.icon.as_deref() {
         if let Some(path_buf) = resolve_icon(name) {
-            let src: ImageSource = path_buf.to_string_lossy().to_string().into();
+            // `PathBuf`, never a `String`: `impl From<String> for ImageSource`
+            // routes anything that is not a URI into `Resource::Embedded`, so
+            // an absolute path was looked up among the app's bundled assets
+            // and silently rendered as nothing. The dock always did it this
+            // way — that is why its icons showed and the launcher's did not.
+            let src: ImageSource = path_buf.into();
             return img(src).size(px(18.)).into_any_element();
         }
     }
