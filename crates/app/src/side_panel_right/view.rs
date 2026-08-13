@@ -683,7 +683,7 @@ impl Render for SidePanelRightView {
                     .when(content_open, |b| {
                         b.bg(surfaces::chrome(&theme))
                             .border_l_1()
-                            .border_color(theme.border.default)
+                            .border_color(theme.border.subtle)
                     })
                     .flex()
                     .flex_row() // content first, rail last — rail flush against the screen's right edge

@@ -121,7 +121,7 @@ impl Render for Bar {
         root = root.border_color(if editing {
             theme.accent.primary
         } else {
-            theme.bg.elevated
+            theme.border.subtle
         });
         if appearance.radius > 0.0 {
             root = root.rounded(px(appearance.radius)).overflow_hidden();
