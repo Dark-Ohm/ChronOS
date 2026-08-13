@@ -243,10 +243,10 @@ impl Render for FilesTab {
             );
 
         let status = match &self.load {
-            LoadState::Loading => Some(("Loading…".to_string(), theme.text.muted)),
-            LoadState::Error(msg) => Some((msg.clone(), theme.status.error)),
+            LoadState::Loading => Some(("Loading…".to_string(), ui::NoteSeverity::Muted)),
+            LoadState::Error(msg) => Some((msg.clone(), ui::NoteSeverity::Error)),
             LoadState::Ready if self.entries.is_empty() => {
-                Some(("Directory is empty".to_string(), theme.text.muted))
+                Some(("Directory is empty".to_string(), ui::NoteSeverity::Muted))
             }
             LoadState::Ready => None,
         };
@@ -265,17 +265,13 @@ impl Render for FilesTab {
         // Content list — lives inside the elevated card (T231 §5 pattern).
         let mut list = div().w_full().flex().flex_col().gap(px(2.));
 
-        if let Some((msg, color)) = status {
-            list = list.child(
-                div()
-                    .px(px(10.))
-                    .py(px(16.))
-                    .text_size(px(12.))
-                    .text_color(color)
-                    .child(msg),
-            );
+        if let Some((msg, severity)) = status {
+            list = list.child(ui::empty_state_note(theme, &msg, severity));
         }
 
+        // Truncated notice is NOT an empty-state note: the list below it is
+        // live content, so it keeps its own banner look (bg + rounded) —
+        // T252 audit table calls this a separate view.
         if let Some(banner) = truncated_banner {
             list = list.child(
                 div()

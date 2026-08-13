@@ -16,12 +16,14 @@ use chronos_services::{AppEntry, Service};
 use chronos_ui::Theme;
 use gpui::{
     AnyElement, Context, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
-    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::*, px,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 
 use crate::games_config::GamesConfig;
 use crate::launcher::launch::launch;
+use crate::side_panel_right::tabs::PanelTab;
 use crate::state::{self, AppState};
+use super::ui;
 
 pub struct LibraryTab {
     /// All detected games (`is_game_entry == true`), sorted by display name.
@@ -289,28 +291,23 @@ fn section_header(label: &str, theme: &Theme) -> AnyElement {
         .into_any_element()
 }
 
+/// Hero canon via `ui::empty_state_hero` (T269): the tab's own rail icon per
+/// the 2026-08-13 ruling, so an empty Library reads as the same family as an
+/// unimplemented tab. `px(20)`/`py(40)` stay on the wrapper — the state sits
+/// inside the scrollable list, not on a full-size surface.
 fn empty_state(theme: &Theme) -> AnyElement {
     div()
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .gap(px(8.))
+        .w_full()
         .px(px(20.))
         .py(px(40.))
-        .child(
-            div()
-                .text_size(px(13.))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(theme.text.primary)
-                .child("No games detected"),
-        )
-        .child(
-            div()
-                .text_size(px(11.))
-                .text_color(theme.text.muted)
-                .child("Games appear from XDG .desktop files with Categories=Game, or Steam steam://rungameid shortcuts."),
-        )
+        .child(ui::empty_state_hero(
+            *theme,
+            PanelTab::Library.icon_path(),
+            "No games detected",
+            "Games appear from XDG .desktop files with Categories=Game, or Steam steam://rungameid shortcuts.",
+            ui::NoteSeverity::Muted,
+            None,
+        ))
         .into_any_element()
 }
 

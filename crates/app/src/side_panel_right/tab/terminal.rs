@@ -15,6 +15,7 @@ use gpui::{
 };
 
 use crate::side_panel_right::{HANDLE_WIDTH, RAIL_WIDTH, SidePanelRightState};
+use super::ui;
 
 /// Tab font and cell geometry (same cell ratio as the desktop spike).
 const FONT_SIZE: f32 = 13.;
@@ -457,37 +458,22 @@ impl Render for TerminalTab {
                     .into_any_element()
             }
             Status::Failed(msg) => {
-                let msg = msg.clone();
+                // T252 matrix: a refusal is hero + status.error (the hint
+                // carries the exact spawn error). Contextual rail icon is the
+                // sanctioned variation; canon geometry comes from the helper.
                 div()
                     .id("terminal-failed")
                     .flex_1()
                     .min_h(px(0.))
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .justify_center()
-                    .gap(px(10.))
                     .px(px(16.))
-                    .child(
-                        svg()
-                            .path("icons/rail-terminal.svg")
-                            .size(px(32.))
-                            .text_color(muted.opacity(0.55)),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(theme.text.primary)
-                            .child("Terminal is unavailable"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(theme.status.error)
-                            .text_center()
-                            .child(msg),
-                    )
+                    .child(ui::empty_state_hero(
+                        theme,
+                        "icons/rail-terminal.svg",
+                        "Terminal is unavailable",
+                        msg,
+                        ui::NoteSeverity::Error,
+                        None,
+                    ))
                     .into_any_element()
             }
         };

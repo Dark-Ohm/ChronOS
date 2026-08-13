@@ -8,6 +8,7 @@ use gpui::{App, ElementId, IntoElement, SharedString, div, prelude::*, px, relat
 use chronos_ui::Theme;
 
 use crate::side_panel_right::surfaces;
+use crate::side_panel_right::tab::ui::{NoteSeverity, empty_state_note};
 use crate::state::AppState;
 
 fn usage_card(disk: &DiskInfo, theme: &Theme) -> impl IntoElement {
@@ -70,7 +71,7 @@ fn usage_card(disk: &DiskInfo, theme: &Theme) -> impl IntoElement {
                     .child(disk_action(
                         theme,
                         ElementId::Name(format!("disk-mount-{}", disk.block_path).into()),
-                        "монтировать",
+                        "Mount",
                         !mounted,
                         {
                             let block = block.clone();
@@ -85,7 +86,7 @@ fn usage_card(disk: &DiskInfo, theme: &Theme) -> impl IntoElement {
                     .child(disk_action(
                         theme,
                         ElementId::Name(format!("disk-umount-{}", disk.block_path).into()),
-                        "размонт.",
+                        "Unmount",
                         mounted,
                         {
                             let block = block.clone();
@@ -100,7 +101,7 @@ fn usage_card(disk: &DiskInfo, theme: &Theme) -> impl IntoElement {
                     .child(disk_action(
                         theme,
                         ElementId::Name(format!("disk-eject-{}", disk.block_path).into()),
-                        "извлечь",
+                        "Eject",
                         drive.is_some(),
                         {
                             let drive = drive.clone();
@@ -151,7 +152,7 @@ fn disk_action(
         .child(label)
 }
 
-/// Live list from `DisksSubscriber`. Empty → "нет дисков".
+/// Live list from `DisksSubscriber`. Empty → "No disks detected" note.
 pub fn render_disks_section(
     disks: &[DiskInfo],
     cx: &App,
@@ -163,12 +164,11 @@ pub fn render_disks_section(
         .flex_col()
         .gap(px(10.))
         .when(disks.is_empty(), |d| {
-            d.child(
-                div()
-                    .text_size(px(11.))
-                    .text_color(theme.text.muted)
-                    .child("нет дисков"),
-            )
+            d.child(empty_state_note(
+                theme,
+                "No disks detected",
+                NoteSeverity::Muted,
+            ))
         })
         .children(cards)
 }

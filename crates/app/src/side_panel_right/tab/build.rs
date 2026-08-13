@@ -16,6 +16,8 @@ use gpui::{
     SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::*, px,
 };
 
+use super::ui;
+
 const POLL_MS: u64 = 50;
 const TASK_LIST_H: f32 = 160.;
 
@@ -186,14 +188,14 @@ impl Render for BuildTab {
                     .text_size(px(11.))
                     .font_family(theme.font_mono)
                     .text_color(theme.text.muted)
-                    .child(format!("{name} — {}", path.display())),
-                ProjectCtx::None => div()
-                    .text_size(px(12.))
-                    .text_color(theme.status.error)
-                    .child(
-                        "No active project. Set `active` in ~/.config/chronos/projects.toml \
-                         (project switcher).",
-                    ),
+                    .child(format!("{name} — {}", path.display()))
+                    .into_any_element(),
+                ProjectCtx::None => ui::empty_state_note(
+                    theme,
+                    "No active project. Set `active` in ~/.config/chronos/projects.toml \
+                     (project switcher).",
+                    ui::NoteSeverity::Error,
+                ),
             })
             .child(
                 div()
@@ -217,28 +219,22 @@ impl Render for BuildTab {
 
         match (&self.project, self.tasks.is_empty()) {
             (ProjectCtx::None, _) => {
-                task_panel = task_panel.child(
-                    div()
-                        .px(px(8.))
-                        .py(px(6.))
-                        .text_size(px(12.))
-                        .text_color(theme.text.muted)
-                        .child("Tasks unavailable without an active project."),
-                );
+                task_panel = task_panel.child(ui::empty_state_note(
+                    theme,
+                    "Tasks unavailable without an active project.",
+                    ui::NoteSeverity::Muted,
+                ));
             }
             (_, true) => {
                 let looked = match &self.source {
                     TaskSource::Empty { looked_in } => looked_in.clone(),
                     _ => "tasks.toml / Cargo.toml".into(),
                 };
-                task_panel = task_panel.child(
-                    div()
-                        .px(px(8.))
-                        .py(px(6.))
-                        .text_size(px(12.))
-                        .text_color(theme.text.muted)
-                        .child(format!("No tasks found. Looked in: {looked}")),
-                );
+                task_panel = task_panel.child(ui::empty_state_note(
+                    theme,
+                    &format!("No tasks found. Looked in: {looked}"),
+                    ui::NoteSeverity::Muted,
+                ));
             }
             _ => {
                 for task in &self.tasks {
@@ -350,11 +346,11 @@ impl Render for BuildTab {
         }
 
         if self.display_lines.is_empty() && !running {
-            log = log.child(
-                div()
-                    .text_color(theme.text.muted)
-                    .child("Output will appear here when a task runs."),
-            );
+            log = log.child(ui::empty_state_note(
+                theme,
+                "Output will appear here when a task runs.",
+                ui::NoteSeverity::Muted,
+            ));
         }
 
         for (i, (stream, text)) in self.display_lines.iter().enumerate() {

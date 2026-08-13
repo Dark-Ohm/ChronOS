@@ -18,7 +18,7 @@ pub(crate) mod system;
 pub(crate) mod terminal;
 pub(crate) mod ui;
 
-use gpui::{FontWeight, IntoElement, Render, Window, Context, div, prelude::*, px, svg};
+use gpui::{Context, IntoElement, Render, Window, prelude::*};
 
 use chronos_ui::Theme;
 use crate::side_panel_right::tabs::PanelTab;
@@ -116,33 +116,17 @@ impl Render for EmptyTab {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *Theme::global(cx);
         let tab = self.tab;
-
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .gap(px(12.))
-            .child(
-                svg()
-                    .path(tab.icon_path())
-                    .size(px(40.))
-                    .text_color(theme.text.muted.opacity(0.55)),
-            )
-            .child(
-                div()
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(theme.text.primary)
-                    .child(tab.label().to_string()),
-            )
-            .child(
-                div()
-                    .text_size(px(11.5))
-                    .text_color(theme.text.muted)
-                    .child(placeholder_description(tab).to_string()),
-            )
+        // T269: the canonical hero lives in `ui::empty_state_hero` — this is a
+        // single call so the canon can't fork back into hand-rolled copies
+        // (the copy-paste drift T252 was opened against).
+        ui::empty_state_hero(
+            theme,
+            tab.icon_path(),
+            tab.label(),
+            placeholder_description(tab),
+            ui::NoteSeverity::Muted,
+            None,
+        )
     }
 }
 

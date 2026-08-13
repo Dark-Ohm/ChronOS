@@ -31,7 +31,9 @@ use crate::bar_settings::{
     config_path, read_current,
 };
 use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
-use super::ui::{is_wide, section_header, setting_label, setting_row};
+use super::ui::{
+    NoteSeverity, empty_state_note, is_wide, section_header, setting_label, setting_row,
+};
 
 // ── Geometry ────────────────────────────────────────────────────────────────
 
@@ -549,20 +551,13 @@ impl Render for BarSettingsTab {
             .child({
                 let mut rows: Vec<AnyElement> = Vec::new();
                 if self.hypr_modules.is_empty() {
-                    rows.push(
-                        div()
-                            .id("hypr-no-modules")
-                            .w_full()
-                            .px(px(12.))
-                            .py(px(9.))
-                            .rounded_md()
-                            .border_1()
-                            .border_color(theme.border.subtle)
-                            .text_color(theme.text.muted)
-                            .text_xs()
-                            .child("No modules found in ~/.config/hypr/modules/")
-                            .into_any_element(),
-                    );
+                    // T269: the shared note, not a bordered one-off — bordered
+                    // empty states are drift (T252 canon has no such variant).
+                    rows.push(empty_state_note(
+                        theme,
+                        "No modules found in ~/.config/hypr/modules/",
+                        NoteSeverity::Muted,
+                    ));
                 }
                 for (name, path) in &self.hypr_modules {
                     let p = path.clone();

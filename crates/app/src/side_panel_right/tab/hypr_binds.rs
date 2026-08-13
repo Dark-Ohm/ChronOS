@@ -156,14 +156,10 @@ impl Render for HyprBindsTab {
 
         match &self.load {
             LoadState::Error(msg) => {
-                card = card.child(
-                    div()
-                        .px(px(10.))
-                        .py(px(16.))
-                        .text_size(px(12.))
-                        .text_color(theme.status.error)
-                        .child(msg.clone()),
-                );
+                // T252: 0 binds provably means a broken config — the one
+                // sanctioned Error-severity empty state (DECISIONS.log
+                // 2026-08-13).
+                card = card.child(ui::empty_state_note(theme, msg, ui::NoteSeverity::Error));
             }
             LoadState::Ready => {
                 if self.using_monolith {
@@ -179,14 +175,11 @@ impl Render for HyprBindsTab {
                     );
                 }
                 if self.binds.is_empty() {
-                    card = card.child(
-                        div()
-                            .px(px(10.))
-                            .py(px(16.))
-                            .text_size(px(12.))
-                            .text_color(theme.text.muted)
-                            .child("No binds found — see ~/.config/hypr/modules/ (PRODUCT.md)."),
-                    );
+                    card = card.child(ui::empty_state_note(
+                        theme,
+                        "No binds found — see ~/.config/hypr/modules/ (PRODUCT.md).",
+                        ui::NoteSeverity::Muted,
+                    ));
                 } else {
                     // Group binds by their metadata label. Each group gets a
                     // shared T231 section header (accent tick + source file)

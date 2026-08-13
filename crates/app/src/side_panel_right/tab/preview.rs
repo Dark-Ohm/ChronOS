@@ -20,7 +20,7 @@ use gpui::{
     AnyElement, Context, DragMoveEvent, Entity, Focusable, FontWeight, IntoElement,
     InteractiveElement, MouseButton, MouseDownEvent, ObjectFit, ParentElement, Render,
     ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div,
-    img, prelude::*, px, svg,
+    img, prelude::*, px,
 };
 use gpui_component::input::{Input, InputEvent, InputState};
 
@@ -28,6 +28,7 @@ use crate::side_panel_right::preview_target::{PreviewIntent, PreviewTarget};
 use crate::side_panel_right::tab::terminal::TerminalTab;
 use crate::side_panel_right::tabs::PanelTab;
 use crate::side_panel_right::SidePanelRightState;
+use super::ui;
 
 /// Drag marker for the drawer's resize handle — own type so it never
 /// cross-fires with `RightPanelResize` (the panel's own horizontal drag).
@@ -1225,11 +1226,12 @@ impl Render for PreviewTab {
     }
 }
 
-/// Empty state — placeholder, not a call-to-action. The icon and the
-/// secondary line use `theme.text.muted` (T237 canon: this is a
-/// "nothing here yet" state, not an accent button). "Files" in the line
-/// is a real link: clicking it switches the right panel to the Files tab
-/// via the same `select_tab` path the rail and IPC use.
+/// Empty state — placeholder, not a call-to-action (T237). The contextual
+/// `folder.svg` (not the tab icon) is a sanctioned variation (DECISIONS.log
+/// 2026-08-13). The action link is live: clicking it switches the right panel
+/// to the Files tab via the same `select_tab` path the rail and IPC use.
+/// `px(24)` stays on the wrapper so the hint keeps its margins on narrow
+/// panels; the hero itself is the shared T252 canon (`ui::empty_state_hero`).
 fn render_empty(theme: &Theme, _window: &mut Window, cx: &mut Context<PreviewTab>) -> AnyElement {
     let open_files = cx.listener(|_this, _e: &gpui::ClickEvent, _window, cx| {
         if let Some(view) = cx
@@ -1243,42 +1245,15 @@ fn render_empty(theme: &Theme, _window: &mut Window, cx: &mut Context<PreviewTab
     });
     div()
         .size_full()
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .gap(px(10.))
         .px(px(24.))
-        .child(
-            svg()
-                .path("icons/folder.svg")
-                .size(px(40.))
-                .text_color(theme.text.muted),
-        )
-        .child(
-            div()
-                .text_size(px(13.))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(theme.text.primary)
-                .child("No file selected"),
-        )
-        .child(
-            div()
-                .text_size(px(12.))
-                .text_color(theme.text.muted)
-                .text_center()
-                .child("Open the ")
-                .child(
-                    div()
-                        .id("preview-empty-files-link")
-                        .cursor_pointer()
-                        .text_color(theme.text.muted)
-                        .hover(|s| s.text_color(theme.text.primary))
-                        .on_click(open_files)
-                        .child("Files"),
-                )
-                .child(" tab and click any file to preview it here."),
-        )
+        .child(ui::empty_state_hero(
+            *theme,
+            "icons/folder.svg",
+            "No file selected",
+            "Click any file in the Files tab to preview it here.",
+            ui::NoteSeverity::Muted,
+            Some(("Open Files".into(), Box::new(open_files))),
+        ))
         .into_any_element()
 }
 
