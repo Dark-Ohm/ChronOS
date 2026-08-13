@@ -235,8 +235,10 @@ race-fix до остановки работы получить не успели
 
 Целевые файлы T263:
 
+- `crates/app/src/bar/mod.rs`
+- `crates/app/src/popup_click_catcher.rs`
 - `crates/app/src/bar/widgets/{dock,mod,tray}.rs`
-- `crates/app/src/dock/context_menu.rs`
+- `crates/app/src/dock/{config,context_menu}.rs`
 - `crates/app/src/icon_resolution.rs`
 - `crates/app/src/tray_menu/{mod,view}.rs`
 - `crates/services/src/tray/{menu,types}.rs`
@@ -251,6 +253,38 @@ race-fix до остановки работы получить не успели
 должны попадать в T263 commit.
 
 ---
+
+## Follow-up live probe (2026-08-13): exploratory only, acceptance still pending
+
+The current dirty ChronOS tree now contains the previously missing submenu
+widest-reserve implementation: `submenu_chain_reserve` and
+`estimate_menu_width` are present in `crates/app/src/tray_menu/mod.rs`, and the
+release binary used for the probe was newer than those source files.
+
+A release session was started as `chronos-t263-live` (PID `280687`). A
+synthetic right-click sweep found a tray menu around screen `X≈2100`; the
+service log recorded a fetched menu. A second synthetic probe found the dock
+popup around `X≈50`. The anchored XDG popups were intentionally absent from
+`hyprctl layers`; the layer listing showed only the bar and hover strip.
+
+Evidence files:
+
+```text
+/tmp/t263-live-bar-before.png
+/tmp/t263-tray-synthetic-after.png
+/tmp/t263-dock-50.png
+```
+
+The tray crop changed by `230x190` at the local crop origin; the dock crop
+changed by `230x62`. These are exploratory renderer/geometry clues only. They
+are not acceptance evidence because the interactions were synthetic, the
+current session exposed only one useful tray item, and no manual rest/hover/
+disabled set was captured for two tray icons plus dock. The live session was
+stopped after the probe and no ChronOS process or layer remained.
+
+The older rejection below remains valid for the acceptance state it describes;
+the current source change clears its static point-0 objection, but it does not
+turn this exploratory probe into the required manual visual acceptance.
 
 ## Приёмка архитектора (2026-08-13): НЕ ПРИНЯТО — скоуп не выполнен
 
@@ -277,3 +311,108 @@ dark/light. Тесты прогнаны мной: services `tray::menu` 10/10,
 Порядок закрытия: пункт 0 в поле → возврат → статика → ОДИН живой заход
 (submenu, палитра, anchor, две tray-иконки, dock + кадр бара над светлым
 окном для хвоста T267) → коммит T263 (+ T264 в `done/`) → коммит T265-0.
+
+---
+
+## Live follow-up: two defects found by manual smoke (2026-08-13)
+
+Ручной проход подтвердил: меню открывается у нужного anchor. Но обнаружены
+два дефекта, которые статические тесты не ловили:
+
+1. **Dock `Unpin` визуально не работал в Gamer.** На стенде активен
+   `workspace.toml: mode = "gamer"`. `DockMenuState` и callback действия
+   срабатывали, файл `dock.toml` менялся, но `resolve_pinned` в Gamer
+   намеренно игнорировал `pinned` и каждый рендер возвращал
+   `DEFAULT_PINNED_GAMER`; удалённая иконка возвращалась сразу.
+   Исправлено: `DockConfig.excluded` с `#[serde(default)]`, callback Unpin
+   сохраняет явное исключение, а резолвер фильтрует его после mode/scene
+   composition. Старый `dock.toml` остаётся совместимым.
+
+2. **Клик по внешней поверхности не закрывал xdg-popup.** Это не сломанный
+   `DismissEvent`: `PopupMenu::on_mouse_down_out` получает события только
+   внутри собственного окна, а T264 требует `PopupOptions.grab = false`.
+   В форке прямо зафиксировано: без grab родитель сохраняет ввод и может
+   закрыть popup только по клику в собственном окне.
+
+   Исправлено без возврата `grab`: добавлен общий
+   `popup_click_catcher.rs` — прозрачная полноэкранная layer-surface с
+   `set_input_region`. Она получает только четыре зоны вокруг conservative
+   pass-through hole меню; область popup остаётся дыркой, внешний клик
+   вызывает закрытие обеих поверхностей. Левый клик по самому bar также
+   закрывает tray/dock меню до действия виджета. Это требует live-проверки:
+   compositor может по-разному упорядочить overlay-surface и xdg-popup, а
+   hole намеренно шире карточки, чтобы пережить slide/flip.
+
+Проверки после фикса: `popup_click_catcher` 3/3, `dock::config` 14/14,
+`dock::context_menu` 5/5, `tray_menu` 27/27, `chronos-services tray::menu`
+10/10, `cargo check -p chronos --bin chronos` — успешно. Предупреждения —
+существующий шум форка/рабочего дерева, ошибок компиляции нет.
+
+T263 всё ещё **не закрыт**: нужен один live-smoke нового release для
+Unpin и click-catcher (tray/dock, клик по внешнему Wayland-окну, ввод после
+закрытия). `grab` остаётся `false`.
+
+## Live smoke после click-catcher (2026-08-13)
+
+Поднят именно новый бинарь:
+`target-t263-debug/release/chronos`, PID `510425`, unit
+`chronos-t263-clickcatcher.service`. Процесс пережил проверку, свежий журнал
+не содержит `panic`, ошибок popup/grab или Wayland-ошибок. На живом проходе
+подтверждено пользователем:
+
+- `Unpin` теперь действительно убирает dock-иконку в Gamer;
+- внешний клик закрывает xdg-popup через click-catcher;
+- после закрытия ввод остаётся рабочим.
+
+Системный слой после проверки вернулся к штатным поверхностям ChronOS; в
+`hyprctl layers` anchored xdg-popup ожидаемо не виден, fallback-namespace не
+использовался. Это закрывает два последних поведенческих дефекта, но не
+подменяет обязательную визуальную приёмку: в текущей среде нет второго
+полезного tray item, submenu живьём не появилось, а комплект кадров
+rest/hover/disabled и боковая сверка с каноном не сняты. Поэтому общий
+вердикт T263 остаётся **PENDING**, без переноса тикета в `done/`.
+
+`grab` остаётся `false`.
+
+---
+
+## Приёмка архитектора, второй заход (2026-08-13): ПРИНЯТО с оговорками
+
+Первый вердикт («не принято, widest-reserve не реализован») закрыт:
+`submenu_chain_reserve` и `estimate_menu_width` в дереве
+(`tray_menu/mod.rs:216-234`), покрыты тестами с явными числами
+(`230+266+8`, `230+238+274`). Тесты прогнаны мной: services `tray::menu`
+10/10, `tray_menu::` 27/27, `dock::context_menu::` 5/5,
+`side_panel_right` 176/176.
+
+**Живая приёмка — прямым наблюдением владельца продукта**, без кадров.
+Подтверждено им лично на свежем бинаре (`target-t263-debug/release/chronos`):
+
+- меню трея открывается;
+- Unpin в Gamer-режиме реально убирает иконку из дока;
+- клик по десктопу закрывает popup через click-catcher;
+- **ввод после закрытия жив** — тот самый сценарий, который три вечера
+  считался виновником смерти мыши;
+- журнал без panic / Wayland-ошибок / grab-ошибок.
+
+**Почему без кадров.** Захват экрана в этой конфигурации даёт негодные
+кадры (у владельца на дисплее картинка корректна, в `grim`-выводе — нет).
+Тратить его время на борьбу с инструментом ради формальности отказался:
+наблюдение владельца — это и есть приёмка, а не суррогат кадра.
+
+### Что НЕ проверено живьём и куда переехало
+
+1. **Submenu / widest-reserve — проверить было НЕ НА ЧЕМ.** На 2026-08-13
+   ни одно меню в шелле не имеет вложенных пунктов: ни трей, ни док.
+   Механика остаётся доказанной только юнит-тестами. Первое живое
+   подменю появится в **T274** (переключатель проектов, «Switch
+   worktree →»), там же и будет проверено; клиппинг, если всплывёт,
+   чинится в этом коде.
+2. **Anchor у двух разных tray-иконок** (разные X) отдельно не
+   сопоставлялся — меню открывается, позиция владельцем как дефект не
+   названа. Записано как непроверенное, а не как пройденное.
+3. **Палитра рядом с попапом обновлений** — статически закрыта
+   (`sync_gpui_component_theme` + тесты dark/light), парного кадра нет.
+
+Оговорки записаны намеренно: принято то, что наблюдалось, остальное
+названо непроверенным. Подмены наблюдения описанием кода здесь нет.
