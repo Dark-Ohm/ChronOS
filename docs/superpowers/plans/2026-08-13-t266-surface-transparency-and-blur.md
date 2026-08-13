@@ -190,7 +190,7 @@ implement it. Every existing `ThemeConfig { scheme: ... }` test literal gains
 Refactor resolution into two phases: first choose the scheme from env → file →
 default, then call `apply_surface_config(theme, cfg)` exactly once. There must be
 no early return before that second phase. Cover all three scheme sources in
-tests, including live `CHRONOS_THEME=Default` with file alpha.
+unit tests, including `env_value = Some("Default")` with file alpha.
 
 `toggle()` must not call `Theme::select_scheme` and install that raw value. It
 loads the current config, chooses the next scheme, overlays the same surface
@@ -374,10 +374,11 @@ Use the same `slider_control(...)` geometry and visual helper as Height and Radi
 
 On drag: update requested alpha, merge it into `theme.toml`, call `theme_config::apply(cx)`, then notify. The watcher may reapply after debounce; both paths must be idempotent.
 
-Before committing, run the release smoke with `CHRONOS_THEME=Default` and a
-non-opaque `surface_alpha` in an isolated `XDG_CONFIG_HOME`. Drag the slider and
-capture two frames plus the resulting TOML. The pixels and persisted value must
-both change; this is the regression gate against the old env early-return path.
+Task 3 does not require a pixel-change smoke: the committed Task 1 floor remains
+`min_alpha = 1.0`, so pixels are intentionally unchanged here. Verify the env
+early-return regression with focused unit tests plus the persisted TOML value.
+The live `CHRONOS_THEME=Default` slider/pixel gate runs in Task 5 only after its
+temporary uncommitted calibration floor is set to `0.0`.
 
 - [ ] **Step 4: Run tests and commit**
 
@@ -514,6 +515,13 @@ Capture identical geometries before/after the feature with untouched config. Com
 - [ ] **Step 2: Sweep alpha on dark and light wallpapers in both themes**
 
 For each scheme/wallpaper pair, capture the same surfaces at descending alpha values. Measure text/background contrast from pixel samples; minimum accepted contrast is WCAG AA `4.5:1` for ordinary text and `3:1` for large text/UI boundaries.
+
+Start this sweep by setting `min_alpha = 0.0` only in the dirty calibration
+worktree. With `CHRONOS_THEME=Default` and a non-opaque `surface_alpha` in an
+isolated `XDG_CONFIG_HOME`, drag the slider and capture before/after frames plus
+the resulting TOML. Both pixels and persisted value must change; this is the
+live regression gate against the former env early return. Do not commit the
+`0.0` floor.
 
 - [ ] **Step 3: Set per-scheme floor to the first value that passes every covered surface**
 
