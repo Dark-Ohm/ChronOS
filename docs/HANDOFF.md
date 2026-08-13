@@ -8,6 +8,60 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
+**Обновлено: 2026-08-14 (чекпоинт #10, T278 принят).**
+
+**T278 (Slice A1 левой workspace) ПРИНЯТ** после четырёх раундов, HEAD
+исполнителя `19263d3`. Отдано в дерево: `side_panel_left/tabs/mod.rs`
+(`LeftTab`, `PRIMARY_TABS`, `BOTTOM_TAB`, `ResizableWidths`,
+`width_for_open`, `dock_transition`), `state.rs` (чистая геометрия
+`geometry::`), `rail_view.rs` (рельса 40 px), `workspace_view.rs`
+(фикс-канвас 920 px), `apply_dock_toggle(cx: &mut App)` в `mod.rs`.
+Легаси одно-оконный resize-путь удалён, `window.resize(` в
+`side_panel_left` не осталось (только комментарии). Приёмка своя:
+`cargo test -p chronos --lib` → **401/401**, под `side_panel_left::` —
+**71** (72 в подстрочном фильтре — ловится
+`side_panel_right::view::tests::needs_width_resize_still_serves_side_panel_left`).
+Задание → `tasks/done/`, отчёт → `tasks/report-log/`.
+
+**Главный урок T278 (записан в `docs/ARCHITECT.md`, раздел 2026-08-14):**
+round 3 пришёл с тестом `on_dock_toggle_uses_pure_helper`, который не
+вызывал `on_dock_toggle` — присваивал результат хелпера в глобал и
+проверял, что глобал равен результату хелпера. Зелёный при любом
+состоянии прод-функции. Причина, по которой исполнитель туда пошёл,
+реальна и архитектурна: `SidePanelLeft::new` спавнит async ACP-connect,
+поэтому entity не поднимается в `TestAppContext`. Верный вывод (round 4)
+— редьюсер выносится в свободную функцию на `&mut App`, вьюха делегирует
+в одну строку. Нетестируемый редьюсер есть дефект архитектуры, а не
+основание не тестировать.
+
+**Очередь на 2026-08-14:**
+
+- **T279** (Chat/Sessions/Project tabs) — UNBLOCKED, база `19263d3`,
+  тому же исполнителю. Самый рискованный тикет четвёрки: вынуть
+  `ChatTab` из `mod.rs` (2369 строк) и `composer.rs` (1488), снести
+  временный мост на `SidePanelLeft`, удалить `panel.rs`; реальный риск
+  потерять стриминг и отмену задач в `Drop`.
+- **T280** (ThreadStore v2 + миграция бара) → **T281** (IPC + живая
+  приёмка). Строго последовательно, не параллелить.
+- **T282 — новый: packaging.** Вскрыт блокер: `Cargo.toml:39-63` держит
+  два блока `[patch]` на локальный `../Source/*`, у постороннего сборка
+  падает до компиляции. Развязка — вынести `[patch]` в некоммитимый
+  `.cargo/config.toml`, релиз собирается из публичного
+  `github.com/Dark-Ohm/Chronos-GPUI` по пину `rev = 57f582f` (проверить,
+  что репо публичный и пин не отстал от `../Source`). Дальше PKGBUILD
+  `chronos-shell-git` + release tarball + смок в чистом контейнере.
+  Параллелится с чем угодно.
+- **Лаунчер:** волна T265-A конфликтует по зоне с T275 (`launcher/**` +
+  frecency) — сначала закрыть T275. Любая волна T265, трогающая
+  `bar/widgets/`, ждёт T280 (тот же файл `widgets/mod.rs`).
+
+**Решения по релизу (2026-08-14):** ветку `stable` в `Source/` не
+заводим — пин по sha плюс тег `chronos-<version>` на релизном коммите;
+ветка `release/0.x` появится только когда понадобится бэкпорт в живой
+релиз. Публичный показ (r/unixporn, r/hyprland, r/rust; Пикабу — мимо
+аудитории) — после Slice A слева, не после правой панели: одна панель
+поводом не тянет, а первый пост тратится один раз.
+
 **Обновлено: 2026-08-13 (чекпоинт #8, разбор грязного дерева).**
 
 **T252 принят и закрыт** (матрица empty-state приёмов, DECISIONS.log 2026-08-13
@@ -3226,3 +3280,13 @@ FM не удаляет оригинал — иначе «переместил» 
 
 **Hindsight на момент чекпоинта недоступен** (`HTTP 000` на :8888) —
 этот слой не записан, при подъёме стека продублировать.
+## 2026-08-13 — маршрут T273 → T276/T277
+
+- T273 не продолжать как fork-only resize fix: все проверенные кандидаты получили от владельца `-`.
+- Принята архитектура двух поверхностей: standalone rail 40 px + fixed-size content canvas с динамическим input region.
+- Канонический implementation-ticket:
+  `docs/orchestration/tasks/active/T276-standalone-right-rail-and-fixed-content-canvas.md`.
+- Канонический audit-ticket:
+  `docs/orchestration/tasks/active/T277-audit-standalone-right-panel-surfaces.md`.
+- T276 выполняет Sonnet 5; T277 проверяет Qwen 3.8 Max. Lead Architect принимает отчёты, проверяет diff и исправляет/возвращает недоделки. Живой UX принимает владелец знаком `+` или `-`.
+- `wf-recorder` для этой приёмки не запускать: 2026-08-13 Hyprland 0.56.1 получил `SIGBUS` в NVIDIA screencopy path (`CGLFramebuffer::readPixels → ScreenshareFrame::copyShm`) сразу после старта второго recorder, до resize-жеста.
