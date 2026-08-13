@@ -193,16 +193,15 @@ pub struct SidePanelLeftState_ {
     last_exclusive_zone: Option<i32>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TwoSurfaceOpenOutcome {
-    Opened,
-    ContentFailed,
-    RailFailedRollbackContent,
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum TwoSurfaceOpen {
+    CommitBoth,
+    RollbackContent,
 }
 
-fn two_surface_open_outcome(content_opened: bool, rail_opened: bool) -> TwoSurfaceOpenOutcome;
-fn rail_window_options(display: &Display) -> WindowOptions;
-fn content_window_options(display: &Display) -> WindowOptions;
+pub(crate) fn two_surface_open_outcome(rail_opened: bool) -> TwoSurfaceOpen;
+fn rail_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions;
+fn content_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions;
 pub fn open_pinned(cx: &mut App);
 pub fn close(cx: &mut App);
 pub fn toggle(cx: &mut App);
@@ -211,12 +210,12 @@ pub fn toggle(cx: &mut App);
 - `RailView` owns no workspace/product state; it reads/mutates `SidePanelLeftState_` through public coordinator methods.
 - `WorkspaceView` renders a transparent 920 px canvas and sets `window.set_input_region(...)` from the pure helpers.
 - Neither view calls `window.resize()`.
-- Opening order is content → rail. If rail creation fails, close the newly opened content and clear both handles/entity references.
+- Opening order is content → rail, exactly as in T276. Content-open failure returns before `two_surface_open_outcome`; after content succeeds, the one-boolean helper decides `CommitBoth` versus `RollbackContent` from the rail result. If rail creation fails, close the newly opened content and clear both handles/entity references.
 - To keep every commit runnable, A1 temporarily embeds the existing `Entity<SidePanelLeft>` as product content inside `WorkspaceView`. At this point `SidePanelLeft` loses all window handles, open/close, exclusive-zone, width, dock, and resize ownership; it is only the legacy product-state child. A2 splits that child into Chat/Sessions/Project entities and removes the bridge. There is never a second runtime window path.
 
 - [ ] **Step 1: Add failing option/lifecycle tests before opening windows.**
 
-Test the pure open outcome for all four boolean pairs and test an extracted option descriptor for:
+Test `two_surface_open_outcome(true) == CommitBoth` and `two_surface_open_outcome(false) == RollbackContent`. Test the separate early-return branch for content-open failure, then test the window options for:
 
 - rail: `TOP | LEFT`, width 40, exclusive edge LEFT, keyboard NONE;
 - content: `TOP | LEFT`, width 920, left margin 40, exclusive zone `-1`, keyboard ON_DEMAND;
@@ -351,7 +350,8 @@ Expected: existing chat/composer tests and new visible-width tests PASS.
 - Modify: `crates/app/src/side_panel_left/rail_view.rs`
 - Modify: `crates/app/src/side_panel_left/mod.rs`
 - Modify: `crates/app/src/project_switcher/mod.rs`
-- Delete after full-tab wiring: popup-only view/state code in `crates/app/src/project_switcher/mod.rs`
+- Delete after full-tab wiring: `crates/app/src/project_switcher/view.rs`
+- Verify only: `crates/app/src/main.rs`
 
 **Interfaces:**
 
@@ -404,7 +404,7 @@ Test pure transitions for:
 
 - [ ] **Step 2: Extract Project Switcher domain from popup lifecycle.**
 
-Keep `ProjectsConfig::{load, save, active_entry}`, `cached`, `reload_cache`, `current_branch`, and portal/action helpers callable from `ProjectTab`. Remove `ProjectPopupState`, popup window options, and popup toggle only after all callers use the embedded tab.
+Keep `ProjectsConfig::{load, save, active_entry}`, `cached`, `reload_cache`, `current_branch`, and portal/action helpers callable from `ProjectTab`. Remove `ProjectPopupState`, popup window options/toggle, the `mod view` wiring, and `project_switcher/view.rs` only after all callers use the embedded tab. `project_switcher::init(cx)` and its call in `main.rs` remain: `init` must still reload/log `ProjectsConfig`, but stops registering `ProjectPopupState`.
 
 - [ ] **Step 3: Implement Sessions and Project tabs.**
 
@@ -420,11 +420,12 @@ All eight rail buttons must be reachable by pointer, expose stable element IDs, 
 cargo test -p chronos side_panel_left --lib --bins
 cargo test -p chronos project_switcher --lib --bins
 cargo check -p chronos --lib
-git add crates/app/src/side_panel_left crates/app/src/project_switcher/mod.rs
+rg -n 'project_switcher::init\(cx\)' crates/app/src/main.rs
+git add crates/app/src/side_panel_left crates/app/src/project_switcher/mod.rs crates/app/src/project_switcher/view.rs
 git commit -m "feat(left-panel): add project sessions and chat workspace tabs"
 ```
 
-Expected: transition, project, session, and shell tests PASS; existing popup call sites are gone.
+Expected: transition, project, session, and shell tests PASS; popup call sites/view are gone; `main.rs` still contains the project-switcher init call.
 
 ---
 
@@ -462,19 +463,19 @@ pub fn insert_for_project(
     agent_id: &str,
     cwd: &str,
     project_path: &str,
-) -> anyhow::Result<()>;
+) -> anyhow::Result<ThreadRecord>;
 pub fn list_for_project(&self, project_path: &str, archived: bool) -> anyhow::Result<Vec<ThreadRecord>>;
 pub fn set_active_thread(&self, project_path: &str, thread_id: Option<&str>) -> anyhow::Result<()>;
 pub fn active_thread(&self, project_path: &str) -> anyhow::Result<Option<ThreadRecord>>;
 ```
 
 - `ThreadRecord` gains `project_path: String`.
-- Existing `insert(id, agent_id, cwd)` remains as a compatibility wrapper that sets `project_path = cwd` until all non-workspace callers migrate.
+- Existing `insert(id, agent_id, cwd) -> Result<ThreadRecord>` remains as a compatibility wrapper over `insert_for_project` with `project_path = cwd`; both APIs return the inserted record.
 - `active_thread` returns `None` when the stored id is absent, archived, deleted, or belongs to another project; it must not leak another project's chat.
 
 - [ ] **Step 1: Write failing v1→v2 migration tests.**
 
-Create a temporary v1 database with rows whose `cwd` differs across projects. Open it through `ThreadStore::open`, then assert version 2, backfilled `project_path`, index/table existence, and unchanged transcript/session data.
+Create a real v1 database directly with rusqlite: execute the v1 `CREATE TABLE`/indexes, insert representative rows, set `PRAGMA user_version = 1`, close that connection, and only then open the same file through `ThreadStore::open`. Do not create the fixture through `ThreadStore::open`, because that would start from the current schema. Assert version 2, backfilled `project_path`, index/table existence, and unchanged transcript/session data.
 
 - [ ] **Step 2: Write failing isolation/restoration tests.**
 
@@ -488,9 +489,28 @@ cargo test -p chronos-services --lib threads
 
 Expected: FAIL against schema v1.
 
-- [ ] **Step 3: Implement the transactional migration and APIs.**
+- [ ] **Step 3: Implement the explicit transactional migration and APIs.**
 
-Run schema changes in one SQLite transaction. Validate a candidate active thread with both `id` and `project_path`; never load by id alone for workspace restoration.
+Raise `SCHEMA_VERSION` to 2 and make the version branch explicit; never stamp version 2 merely because the constant changed:
+
+```rust
+fn migrate(&self) -> anyhow::Result<()> {
+    let mut conn = self.lock()?;
+    let tx = conn.transaction()?;
+    let version: u32 = tx.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version < 1 {
+        Self::migrate_v1(&tx)?;
+    }
+    if version < 2 {
+        Self::migrate_v1_to_v2(&tx)?;
+    }
+    tx.pragma_update(None, "user_version", Self::SCHEMA_VERSION)?;
+    tx.commit()?;
+    Ok(())
+}
+```
+
+Both migration helpers receive the same transaction; schema changes, data backfill, and `user_version = 2` commit atomically. Validate a candidate active thread with both `id` and `project_path`; never load by id alone for workspace restoration.
 
 - [ ] **Step 4: Wire workspace project/session restoration.**
 
@@ -528,6 +548,8 @@ Expected: service migration/isolation and app restoration tests PASS.
 - [ ] **Step 1: Write failing migration tests.**
 
 Cover `project` in each section, duplicated entries, `known`, default config, and an unrelated unknown widget. Assert the saved TOML no longer contains `project`, while the unrelated unknown survives according to current policy.
+
+The existing `workspace_mode` migration tests around lines 671–774 use `project` as an ordering fixture. Replace that fixture with another surviving builtin such as `tray` or `clock`, and preserve equivalent predecessor/default-position assertions for `workspace_mode`. Do not delete, weaken, or collapse those assertions just to make the retired builtin disappear.
 
 ```bash
 cargo test -p chronos bar::layout_config --lib
@@ -646,7 +668,7 @@ Expected: all tests/build PASS; source search has zero matches; IPC payload and 
 
 **Files:**
 
-- Create: `docs/orchestration/tasks/report-log/T281-left-ai-workspace-slice-a-report.md`
+- Create: `docs/orchestration/tasks/report/T281-left-ai-workspace-slice-a-report.md`
 - Modify after owner acceptance: `docs/ARCHITECTURE.md`
 - Modify after owner acceptance: `docs/DECISIONS.log`
 
@@ -700,11 +722,13 @@ The report must list commit hashes, exact commands/exits, `hyprctl layers` measu
 Document the two-surface left workspace, project ownership migration, ThreadStore v2, hard/soft width distinction, and disabled hover strip. Then run:
 
 ```bash
-git add docs/orchestration/tasks/report-log/T281-left-ai-workspace-slice-a-report.md docs/ARCHITECTURE.md docs/DECISIONS.log
+git add docs/orchestration/tasks/report/T281-left-ai-workspace-slice-a-report.md docs/ARCHITECTURE.md docs/DECISIONS.log
 git commit -m "docs: close left AI workspace slice A"
 ```
 
 Expected: documentation reflects only live-proven behavior; Slice B/C remain explicitly open.
+
+The executor always writes to `tasks/report/` (review inbox). Only the Architect moves an accepted report to `tasks/report-log/`; the implementation agent must never self-archive or self-accept it.
 
 ---
 
