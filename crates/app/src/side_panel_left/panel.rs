@@ -62,22 +62,13 @@ pub fn render_panel(
         .map(|s| s.display_title().to_string())
         .unwrap_or_else(|| "New Agent Thread".to_string());
 
-    // Resize handlers (borrows cx) — must be built before ANY other call
-    // that returns `impl IntoElement` and stays alive past this point
-    // (sidebar/composer/chat): their RPIT return captures `cx`'s lifetime
-    // for as long as the resulting element is alive (Rust 2024 impl Trait
-    // capture rules), so any `cx.listener(...)` call after them would
-    // conflict (E0502).
-    let resize_drag_handler = cx.listener(
-        |this, ev: &gpui::DragMoveEvent<super::LeftPanelResize>, window, cx| {
-            let current_x = f32::from(ev.event.position.x);
-            this.update_resize(current_x, window, cx);
-        },
-    );
-
-    let resize_mouse_handler = cx.listener(|this, ev: &gpui::MouseDownEvent, _window, _cx| {
-        this.start_resize(f32::from(ev.position.x));
-    });
+    // T278: resize handles and the resize-handle drag element used to live
+    // here. They moved to `WorkspaceView` (which owns the new transparent
+    // 4 px grab on the visible slice's outer edge). The legacy panel
+    // body now renders inside `WorkspaceView`'s 920 px canvas without
+    // its own resize affordance — the drag is driven by the workspace's
+    // input region, which already excludes the part of the canvas the
+    // legacy sidebar would have rendered into.
 
     // Build sidebar (now borrows cx — click handlers on collapse/expand)
     let sidebar = build_sessions_sidebar(panel, collapsed, &theme, cx);
@@ -464,26 +455,11 @@ pub fn render_panel(
                         .shadow(elev.shadows.to_vec())
                         .child(clipped_content),
                 )
-                .child(
-                    // T204 ghost handle: 4px transparent grab strip — no chrome
-                    // fill, no fat center stripe. A single 1px hairline on the
-                    // inner edge marks the thread column's boundary; pointer +
-                    // resize semantics unchanged (drag still works).
-                    div()
-                        .id("resize-handle")
-                        .flex_none()
-                        .w(px(SIDEBAR_HANDLE_WIDTH))
-                        .h_full()
-                        .cursor_col_resize()
-                        .bg(gpui::transparent_black())
-                        .border_l_1()
-                        .border_color(theme.border.subtle)
-                        .on_mouse_down(gpui::MouseButton::Left, resize_mouse_handler)
-                        .on_drag(super::LeftPanelResize, |_, _, _, cx| {
-                            cx.new(|_| gpui::EmptyView)
-                        })
-                        .on_drag_move(resize_drag_handler),
-                )
+                // T278: the resize handle used to live here. It now lives in
+                // `WorkspaceView` (transparent 4 px grab on the visible
+                // slice's outer edge). The legacy body renders inside the
+                // workspace's input region, which already enforces the
+                // left-aligned visible-rect boundary.
                 .with_animation(
                     "side-panel-left-enter",
                     motion::enter_animation(),

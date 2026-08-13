@@ -29,14 +29,25 @@ use chronos_services::hermes_acp::{
 use chronos_services::threads::{ThreadRecord, ThreadStore};
 use chronos_services::{ModelInfo, SessionMode};
 use gpui::{
-    App, Bounds, DisplayId, Focusable, Global, Size, UTF16Selection, Window,
+    App, Bounds, DisplayId, Entity, Focusable, Global, Size, UTF16Selection, Window,
     WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions,
     layer_shell::*, point, prelude::*, px,
 };
+use gpui_component::Root;
 use std::collections::HashMap;
 use std::ops::Range;
+use std::path::PathBuf;
 
 pub struct LeftPanelResize;
+
+// Forward decls for the two new view entities (Task 2). Defined in
+// `rail_view.rs` and `workspace_view.rs`; declared here so the SoT
+// `SidePanelLeftState_` can hold weak handles to them without a circular
+// `mod` declaration in the child files.
+mod rail_view;
+mod workspace_view;
+use rail_view::RailView;
+use workspace_view::WorkspaceView;
 
 /// Top air under the bar — live bar height (T200). Same contract as the
 /// right panel's `panel_edge_gap()`; open-time geometry only.
@@ -44,18 +55,137 @@ fn panel_edge_gap() -> f32 {
     crate::state::bar_height_px()
 }
 
-#[derive(Default)]
+/// T278 / Slice A1 — the lifecycle / UI source of truth.
+///
+/// Mirrors `side_panel_right::SidePanelRightState`'s shape (T276): rail
+/// and content each have their own `WindowHandle<Root>`, and a weak
+/// content-view handle lets `RailView` (a different window) reach the
+/// content view for tab switches, dock toggles, and resize bookkeeping.
+///
+/// `SidePanelLeft` (the legacy god-object) no longer owns a `WindowHandle`,
+/// width, dock flag, exclusive zone, or resize state. It is the product-
+/// state child of `WorkspaceView`; all window-level mutation lives here.
 pub struct SidePanelLeftState_ {
-    handle: Option<WindowHandle<SidePanelLeft>>,
-    pinned: bool,
-    peek_generation: u64,
-    /// T220: remembered expanded-chat width (N) that survives panel close so a
-    /// later summon→expand returns N, not the 352px default. Mirrored from /
-    /// into the per-instance `SidePanelLeftState.remembered_chat_width`.
-    remembered_chat_width: Option<f32>,
+    /// T278: the permanent 40px icon-rail surface. Owns the exclusive zone.
+    pub(crate) rail_handle: Option<WindowHandle<Root>>,
+    /// T278: the fixed-canvas content surface. Never resized after open —
+    /// only the visible slice and input region change.
+    pub(crate) content_handle: Option<WindowHandle<Root>>,
+    /// Weak handle to the live `WorkspaceView` (lives in the `content`
+    /// window). Needed by `RailView` (a different window) and by IPC
+    /// handlers running in `App` context with no `Window` in scope.
+    pub(crate) content_view: Option<gpui::WeakEntity<WorkspaceView>>,
+    /// Currently selected left tab (Slice A catalog). Default = `Chat`
+    /// (matches T220 behaviour where Super+A expands the chat column).
+    pub active_tab: tabs::LeftTab,
+    /// Current *logical* panel width (px), `RAIL_WIDTH..=MAX_PANEL_WIDTH`.
+    /// T278: no surface is ever resized to this value directly — `rail`
+    /// stays at `RAIL_WIDTH`, `content` stays at `CONTENT_CANVAS_WIDTH`;
+    /// this number only drives the visible rectangle inside the content
+    /// canvas and the rail's exclusive zone.
+    pub panel_width: f32,
+    /// Per-resizable-tab runtime width memory (Chat, Plan, Context Files).
+    /// Reset on process restart; never persisted.
+    pub remembered_widths: tabs::ResizableWidths,
+    /// Transient active project canonical path (mirrors SQLite
+    /// `workspace_project_state.active_thread_id` for the current session;
+    /// SQLite remains the persistent source).
+    pub active_project_path: Option<PathBuf>,
+    /// Transient active session id mirror.
+    pub active_session_id: Option<String>,
+    /// Dock mode: when true, content is always visible (rail reserves
+    /// `panel_width` instead of just `RAIL_WIDTH`). When false (default),
+    /// only the rail shows until content is opened.
+    pub dock_content: bool,
+    /// True while a resize drag is active. Suppresses peek-close.
+    pub resizing: bool,
+    /// `true` when opened by hotkey/bar-click (`toggle`/`open_pinned`) —
+    /// stays open until re-toggled. `false` when opened by hover (peek) —
+    /// closes on mouse-leave debounce unless a pin request arrives.
+    pub pinned: bool,
+    /// Bumped on hover-enter (strip or panel). Leave schedules a close
+    /// only if this value is still unchanged after the debounce window.
+    pub peek_generation: u64,
+    /// Last exclusive_zone value sent to the compositor (avoids redundant
+    /// Wayland round-trips). Set on the rail surface only.
+    pub last_exclusive_zone: Option<f32>,
+}
+
+impl Default for SidePanelLeftState_ {
+    fn default() -> Self {
+        Self {
+            rail_handle: None,
+            content_handle: None,
+            content_view: None,
+            active_tab: tabs::LeftTab::Chat,
+            panel_width: tabs::RAIL_WIDTH,
+            remembered_widths: tabs::ResizableWidths::default(),
+            active_project_path: None,
+            active_session_id: None,
+            dock_content: false,
+            resizing: false,
+            pinned: false,
+            peek_generation: 0,
+            last_exclusive_zone: None,
+        }
+    }
 }
 
 impl Global for SidePanelLeftState_ {}
+
+impl SidePanelLeftState_ {
+    /// Exclusive zone px: full panel when docked, rail-only when overlay.
+    /// T278: this value is set on the **rail** surface only — the content
+    /// canvas never reserves space itself (`exclusive_zone: Some(px(-1.))`
+    /// opts it out of foreign reservations, including the top bar).
+    pub fn exclusive_px(&self) -> f32 {
+        if self.dock_content {
+            self.panel_width
+        } else {
+            tabs::RAIL_WIDTH
+        }
+    }
+
+    /// Clamp a candidate panel width into the hard drag range.
+    pub fn resize(&mut self, new_width: f32) {
+        self.panel_width = state::geometry::clamp_panel(new_width);
+    }
+
+    /// Expand or contract to the given target width.
+    /// Called when content becomes visible (tab open / dock toggle) or
+    /// when switching tabs with content already visible. Does NOT update
+    /// `last_exclusive_zone` — the rail's render path recomputes it on
+    /// the next paint and clears the cache itself when its own state
+    /// changes (`ensure_content_width` mirrors the T276 pattern).
+    pub fn ensure_content_width(&mut self, target: f32) {
+        self.panel_width = state::geometry::clamp_panel(target);
+        self.last_exclusive_zone = None;
+    }
+}
+
+/// T278 pure lifecycle decision: `open_window` calls this directly once
+/// `content` is confirmed open and `rail` has just been attempted. Kept
+/// as a two-variant enum (not a bool) so a third state (e.g. a future
+/// retry path) has somewhere to go without silently falling through an
+/// `if`. Mirrors `side_panel_right::TwoSurfaceOpen`.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum TwoSurfaceOpen {
+    /// `rail` opened too — commit both handles as one logical panel.
+    CommitBoth,
+    /// `rail` failed — `content` (already open) must be rolled back. Never
+    /// leaves the state with one handle set and the other absent.
+    RollbackContent,
+}
+
+/// Pure decision, no GPUI/Window side effects. See `side_panel_right` for
+/// the same shape (T276).
+pub(crate) fn two_surface_open_outcome(rail_opened: bool) -> TwoSurfaceOpen {
+    if rail_opened {
+        TwoSurfaceOpen::CommitBoth
+    } else {
+        TwoSurfaceOpen::RollbackContent
+    }
+}
 
 fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
     // `display_id` is always the result of `pult_display_id_or_primary` —
@@ -66,32 +196,80 @@ fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
         .unwrap_or(1080.)
 }
 
-fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
-    let display_h = display_height(display_id, cx);
-    let panel_h = (display_h - panel_edge_gap()).max(100.);
-    // T220: Super+A / peek opens rail-only (strip + handle), NOT the chat
-    // column. Chat reveals via dock toggle or resize drag. Matches the right
-    // panel's rail-only summon (`RAIL_ONLY_WIDTH`).
-    let open_w = state::SidePanelLeftState::rail_only_width();
+fn panel_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
+    (display_height(display_id, cx) - panel_edge_gap()).max(100.)
+}
+
+/// T278: the `rail` surface — fixed `RAIL_WIDTH` px, owns the exclusive
+/// zone. Never resized after open; `exclusive_zone` is a value updated
+/// live via `Window::set_exclusive_zone`, independent from the surface's
+/// own pixel footprint (legal per wlr-layer-shell — see `gpui-layer-shell`
+/// skill Part D). `KeyboardInteractivity::None` because the rail has no
+/// text inputs.
+pub(crate) fn rail_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
+    let panel_h = panel_height(display_id, cx);
+    let zone = cx
+        .try_global::<SidePanelLeftState_>()
+        .map(|s| s.exclusive_px())
+        .unwrap_or(tabs::RAIL_WIDTH);
     WindowOptions {
         display_id,
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: point(px(0.), px(0.)),
-            size: Size::new(px(open_w), px(panel_h)),
+            size: Size::new(px(tabs::RAIL_WIDTH), px(panel_h)),
         })),
-        app_id: Some("chronos-side-panel-left".to_string()),
+        app_id: Some("chronos-side-panel-left-rail".to_string()),
         window_background: WindowBackgroundAppearance::Transparent,
         kind: WindowKind::LayerShell(LayerShellOptions {
-            namespace: "side_panel_left".to_string(),
+            namespace: "side_panel_left_rail".to_string(),
             layer: Layer::Overlay,
-            anchor: Anchor::LEFT | Anchor::TOP,
-            // Bar-only exclusive = sidebar + handle (full open strip). Chat
-            // overlay still uses exclusive_px() which is the same strip until
-            // dock. exclusive_edge LEFT required on LEFT|TOP corner anchor.
-            exclusive_zone: Some(px(sessions_list::SIDEBAR_MIN_WIDTH)),
+            anchor: Anchor::TOP | Anchor::LEFT,
+            exclusive_zone: Some(px(zone)),
             exclusive_edge: Some(Anchor::LEFT),
             margin: None,
+            keyboard_interactivity: KeyboardInteractivity::None,
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+/// CSS-order: (top, right, bottom, left). `-1` (below) also disables the
+/// bar's automatic top offset, so both offsets must be explicit.
+fn content_window_margin(top_gap: f32) -> (gpui::Pixels, gpui::Pixels, gpui::Pixels, gpui::Pixels) {
+    (px(top_gap), px(0.), px(0.), px(tabs::RAIL_WIDTH))
+}
+
+/// T278: the `content` surface — fixed `CONTENT_CANVAS_WIDTH` px canvas,
+/// positioned immediately right of `rail` via a constant `margin-left =
+/// RAIL_WIDTH`. **Never resized** for the surface's lifetime; only the
+/// visible rectangle inside it (left-aligned) and its input region change.
+pub(crate) fn content_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
+    let panel_h = panel_height(display_id, cx);
+    WindowOptions {
+        display_id,
+        titlebar: None,
+        window_bounds: Some(WindowBounds::Windowed(Bounds {
+            origin: point(px(0.), px(0.)),
+            size: Size::new(px(tabs::CONTENT_CANVAS_WIDTH), px(panel_h)),
+        })),
+        app_id: Some("chronos-side-panel-left-content".to_string()),
+        window_background: WindowBackgroundAppearance::Transparent,
+        kind: WindowKind::LayerShell(LayerShellOptions {
+            namespace: "side_panel_left_content".to_string(),
+            layer: Layer::Overlay,
+            anchor: Anchor::TOP | Anchor::LEFT,
+            // Content never reserves space — that is rail's job (spec §
+            // "Contract геометрии"). `-1` is the wlr-layer-shell escape
+            // hatch: opts this surface OUT of being pushed by *other*
+            // surfaces' exclusive zones on the same edge. `None` would map
+            // to the protocol default of `0`, which does NOT opt out and
+            // the compositor would still auto-offset. See T276 / right
+            // panel's `content_window_options` for the full rationale.
+            exclusive_zone: Some(px(-1.)),
+            margin: Some(content_window_margin(panel_edge_gap())),
+            // OnDemand: Chat's composer + Sessions' rename/search live here.
             keyboard_interactivity: KeyboardInteractivity::OnDemand,
             ..Default::default()
         }),
@@ -174,42 +352,20 @@ pub struct SidePanelLeft {
 
 impl Render for SidePanelLeft {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Exclusive zone: sidebar-only when dock off, full width when dock on.
-        // Must call set_exclusive_edge(LEFT) or Hyprland silently ignores the
-        // zone on our LEFT|TOP corner anchor (DECISIONS 2026-07-23).
-        let new_zone = self.state.exclusive_px();
-        if self.state.last_exclusive_zone != Some(new_zone) {
-            window.set_exclusive_edge(gpui::layer_shell::Anchor::LEFT);
-            window.set_exclusive_zone(px(new_zone));
-            self.state.last_exclusive_zone = Some(new_zone);
-        }
-
-        // T243 (mirrored): gate the resize on the compositor's ACTUAL width
-        // (`window.bounds()`), not on `last_resized_width` vs `state.width`
-        // (two state copies). `window.resize()` is async on Wayland — a
-        // configure that never lands leaves last==target while the surface
-        // sits at the rail width, and the old guard read "already resized"
-        // and never retried (the compose_and_send / expand-left surface
-        // stuck at 40px while state said 352 — caught live in T226). Gating
-        // on live geometry re-issues the resize every render until the
-        // compositor acks — self-healing, same principle as T216
-        // `update_resize` and the right panel's T243 fix.
-        let actual_width = window.bounds().size.width.as_f32();
-        if crate::side_panel_right::view::needs_width_resize(actual_width, self.state.width) {
-            let display_id = crate::monitor::pult_display_id_or_primary(cx);
-            let display_h = display_height(display_id, cx);
-            let panel_h = (display_h - panel_edge_gap()).max(100.);
-            self.state.height = panel_h;
-            tracing::debug!(
-                state_width = self.state.width,
-                actual_width,
-                last_resized = ?self.last_resized_width,
-                dock_chat = self.state.dock_chat,
-                "render: issuing window.resize"
-            );
-            window.resize(Size::new(px(self.state.width), px(panel_h)));
-            self.last_resized_width = Some(self.state.width);
-        }
+        // T278: `SidePanelLeft` no longer owns window lifecycle, exclusive
+        // zone, width, dock, or resize. Those responsibilities moved to
+        // `WorkspaceView` (content canvas) and `RailView` (rail surface).
+        // All `window.resize()` / `set_exclusive_zone()` / `set_exclusive_
+        // edge()` calls are gone — the surface bounds and zone are set
+        // once at open time (`content_window_options` /
+        // `rail_window_options`) and live-mutated only by their owning
+        // views. This entity is purely the legacy product-state child,
+        // rendered as a sub-element of `WorkspaceView`.
+        //
+        // The renderer still reads `state.width`/`state.dock_chat` for
+        // layout decisions (chat_open threshold, dock-mode chrome). They
+        // are mirrored from `SidePanelLeftState_` by `WorkspaceView::render`
+        // before this render fires, so changes propagate through the SoT.
         panel::render_panel(self, window, cx)
     }
 }
@@ -1156,7 +1312,7 @@ impl Drop for SidePanelLeft {
 }
 
 fn open_window(cx: &mut App, pinned: bool) {
-    if cx.global::<SidePanelLeftState_>().handle.is_some() {
+    if cx.global::<SidePanelLeftState_>().rail_handle.is_some() {
         if pinned {
             cx.global_mut::<SidePanelLeftState_>().pinned = true;
             tracing::info!("side_panel_left: upgraded peek → pinned");
@@ -1164,29 +1320,78 @@ fn open_window(cx: &mut App, pinned: bool) {
         return;
     }
     let display_id = crate::monitor::pult_display_id_or_primary(cx);
-    // T220: apply the remembered chat width (from a previous expand) to the
-    // fresh per-instance state so the next dock-toggle/resize returns N, not 352.
-    let remembered = cx.global::<SidePanelLeftState_>().remembered_chat_width;
-    match cx.open_window(window_options(display_id, cx), |_, view_cx| {
-        view_cx.new(|cx| SidePanelLeft::new(cx))
-    }) {
-        Ok(handle) => {
-            // Mirror the remembered width into the new instance before first paint.
-            let _ = handle.update(cx, |this, _, _| {
-                this.state.remembered_chat_width = remembered;
-            });
+
+    // T278: open content first, then rail — exactly the T276 order.
+    // Content failure is an early return; rail failure rolls content
+    // back. `opened_workspace` is captured outside the closure so the
+    // rail creation can reach it through a weak handle (mirrors the
+    // T276 `opened_content_entity` pattern).
+    let mut opened_workspace: Option<Entity<WorkspaceView>> = None;
+    let mut opened_panel: Option<Entity<SidePanelLeft>> = None;
+
+    let content_result = cx.open_window(content_window_options(display_id, cx), |window, view_cx| {
+        let panel = view_cx.new(|cx| SidePanelLeft::new(cx));
+        let workspace = view_cx.new(|cx| WorkspaceView::new(panel.clone(), cx));
+        opened_panel = Some(panel);
+        opened_workspace = Some(workspace.clone());
+        view_cx.new(|cx| {
+            Root::new(workspace, window, cx)
+                .bordered(false)
+                .bg(gpui::transparent_black())
+        })
+    });
+
+    let content_handle = match content_result {
+        Ok(handle) => handle,
+        Err(err) => {
+            tracing::warn!("side_panel_left: content surface failed to open: {err}");
+            return;
+        }
+    };
+    let Some(workspace_entity) = opened_workspace else {
+        tracing::warn!("side_panel_left: content window opened without a workspace — rolling back");
+        if let Err(e) = content_handle.update(cx, |_, window: &mut Window, _| window.remove_window())
+        {
+            tracing::warn!("side_panel_left: rollback could not close content ({e})");
+        }
+        return;
+    };
+    let _ = opened_panel; // kept alive by workspace_entity; suppress unused warning.
+
+    let rail_result = cx.open_window(rail_window_options(display_id, cx), |window, view_cx| {
+        let rail = view_cx.new(|cx| RailView::new(workspace_entity.downgrade(), cx));
+        view_cx.new(|cx| {
+            Root::new(rail, window, cx)
+                .bordered(false)
+                .bg(gpui::transparent_black())
+        })
+    });
+
+    match two_surface_open_outcome(rail_result.is_ok()) {
+        TwoSurfaceOpen::RollbackContent => {
+            let err = rail_result.err().expect("Err branch");
+            tracing::warn!(
+                "side_panel_left: rail surface failed to open ({err}) — rolling back content"
+            );
+            if let Err(e) =
+                content_handle.update(cx, |_, window: &mut Window, _| window.remove_window())
+            {
+                tracing::warn!("side_panel_left: rollback could not close content ({e})");
+            }
+        }
+        TwoSurfaceOpen::CommitBoth => {
+            let rail_handle = rail_result.expect("checked Ok above");
             let state = cx.global_mut::<SidePanelLeftState_>();
-            state.handle = Some(handle);
+            state.content_handle = Some(content_handle);
+            state.rail_handle = Some(rail_handle);
+            state.content_view = Some(workspace_entity.downgrade());
             state.pinned = pinned;
+
             tracing::info!(
-                "side_panel_left: opened ({})",
+                "side_panel_left: opened both surfaces ({})",
                 if pinned { "pinned" } else { "peek" }
             );
         }
-        Err(err) => tracing::warn!(
-            "side_panel_left: failed to open ({}): {err}",
-            if pinned { "pinned" } else { "peek" }
-        ),
     }
 }
 
@@ -1199,55 +1404,105 @@ pub fn open_peek(cx: &mut App) {
 }
 
 pub fn close(cx: &mut App) {
-    if let Some(handle) = cx.global_mut::<SidePanelLeftState_>().handle.take() {
-        cx.global_mut::<SidePanelLeftState_>().pinned = false;
-        // T220: read the remembered chat width out of the dying instance
-        // (separate `update` from the one that destroys the surface, because
-        // `handle.update` borrows `cx` for the whole closure and we can't
-        // touch the global mid-borrow). Mirror it into the global so a later
-        // summon→expand returns N instead of the 352px default.
-        let remembered = handle
-            .update(cx, |this, _, _| this.state.remembered_chat_width)
-            .ok()
-            .flatten();
-        cx.global_mut::<SidePanelLeftState_>().remembered_chat_width = remembered;
+    let state = cx.global_mut::<SidePanelLeftState_>();
+    let rail_handle = state.rail_handle.take();
+    let content_handle = state.content_handle.take();
+    if rail_handle.is_none() && content_handle.is_none() {
+        state.pinned = false;
+        return;
+    }
+    state.content_view = None;
+    state.pinned = false;
+    state.resizing = false;
+    state.last_exclusive_zone = None;
+
+    if let Some(handle) = rail_handle {
         // Clear exclusive zone before destroying the surface so the
-        // compositor reclaims reserved space even if it doesn't auto-clean.
+        // compositor reclaims reserved space (T276 pattern).
         match handle.update(cx, |_, window: &mut Window, _| {
             window.set_exclusive_zone(px(0.));
             window.remove_window()
         }) {
-            Ok(()) => tracing::info!("side_panel_left: closed"),
+            Ok(()) => tracing::info!("side_panel_left: rail closed"),
             Err(e) => tracing::warn!(
-                "side_panel_left: close() could not reach the window ({e}) — possible ghost"
+                "side_panel_left: rail close() could not reach the window ({e}) — possible ghost"
             ),
         }
-    } else {
-        cx.global_mut::<SidePanelLeftState_>().pinned = false;
+    }
+    if let Some(handle) = content_handle {
+        match handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
+            Ok(()) => tracing::info!("side_panel_left: content closed"),
+            Err(e) => tracing::warn!(
+                "side_panel_left: content close() could not reach the window ({e}) — possible ghost"
+            ),
+        }
     }
 }
 
+/// Close both surfaces from inside a callback that already holds `&mut Window`
+/// for one of the two panel surfaces. Must not re-enter `handle.update` on that
+/// same window id (ghost-window guard, `ARCHITECTURE.md §4.1`) — the *other*
+/// surface is closed via its own handle instead. Mirrors `side_panel_right`'s
+/// `close_this` exactly.
 pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
     let this = window.window_handle();
-    let tracked = cx
-        .global::<SidePanelLeftState_>()
-        .handle
+    let state = cx.global::<SidePanelLeftState_>();
+    let is_rail = state
+        .rail_handle
         .as_ref()
         .map(|h| **h == this)
         .unwrap_or(false);
-    if tracked {
-        let state = cx.global_mut::<SidePanelLeftState_>();
-        state.handle.take();
-        state.pinned = false;
+    let is_content = state
+        .content_handle
+        .as_ref()
+        .map(|h| **h == this)
+        .unwrap_or(false);
+    if !is_rail && !is_content {
+        return;
     }
-    window.set_exclusive_zone(px(0.));
+    let other = if is_rail {
+        state.content_handle.clone()
+    } else {
+        state.rail_handle.clone()
+    };
+    {
+        let state = cx.global_mut::<SidePanelLeftState_>();
+        state.rail_handle = None;
+        state.content_handle = None;
+        state.content_view = None;
+        state.pinned = false;
+        state.resizing = false;
+    }
+    if is_rail {
+        window.set_exclusive_zone(px(0.));
+    }
     window.remove_window();
-    tracing::info!("side_panel_left: close_this");
+    if let Some(other) = other {
+        let result = other.update(cx, |_, w: &mut Window, _| {
+            if is_content {
+                // `other` is rail in this branch — clear its zone too.
+                w.set_exclusive_zone(px(0.));
+            }
+            w.remove_window();
+        });
+        if let Err(e) = result {
+            tracing::warn!(
+                "side_panel_left: close_this could not reach the other surface ({e}) — possible ghost"
+            );
+        }
+    }
+    tracing::info!(
+        "side_panel_left: close_this ({})",
+        if is_rail { "rail" } else { "content" }
+    );
 }
 
 /// Pure decision: should a peek-leave request close the panel?
+/// T278: also blocks while a resize drag is active (mirrors right
+/// panel T276 — a stale hover-leave must not close the surface the
+/// cursor is currently dragging).
 fn should_close_on_peek_leave(state: &SidePanelLeftState_) -> bool {
-    !state.pinned
+    !state.pinned && !state.resizing
 }
 
 /// Cursor entered strip or panel — cancel any pending peek-close.
@@ -1263,7 +1518,8 @@ pub(crate) fn schedule_release_peek(cx: &mut App) {
     schedule_release_from_app(cx, generation);
 }
 
-/// Mouse left the strip and the panel. Closes only if not pinned.
+/// Mouse left the strip and the panel. Closes only if not pinned and
+/// not currently resizing (T276 peek guard).
 pub fn close_peek_if_not_pinned(cx: &mut App) {
     if !should_close_on_peek_leave(cx.global::<SidePanelLeftState_>()) {
         return;
@@ -1292,7 +1548,7 @@ pub(crate) fn schedule_release_from_app(cx: &mut gpui::App, generation: u64) {
 /// Toggle the pinned panel open/closed. Called from the IPC handler (no
 /// `Window` in scope there — matches `launcher::toggle(cx)`'s shape).
 pub fn toggle(cx: &mut App) {
-    if cx.global::<SidePanelLeftState_>().handle.is_some() {
+    if cx.global::<SidePanelLeftState_>().rail_handle.is_some() {
         close(cx);
     } else {
         open_pinned(cx);
@@ -1302,61 +1558,77 @@ pub fn toggle(cx: &mut App) {
 /// T226 tooling: open the left agent panel pinned, dock the chat column
 /// (full panel width, not overlay) and focus the composer so typed input
 /// lands in the message box. `App` context — IPC handler has no `Window`,
-/// so it reaches the window through the tracked handle.
+/// so it reaches the workspace through the weak handle.
+///
+/// T278: dock + width live on `SidePanelLeftState_` (SoT). Width is set
+/// via `ensure_content_width` so the cache invalidation hooks fire; the
+/// workspace then mirrors SoT into the legacy child on its next render.
+/// Composer focus is queued for the next render — the IPC path has no
+/// `&mut Window`, so we let `WorkspaceView::render` consume the flag.
 pub fn expand_with_composer(cx: &mut App) {
     open_pinned(cx);
-    let Some(handle) = cx.global::<SidePanelLeftState_>().handle.clone() else {
-        tracing::warn!("side_panel_left: expand_with_composer has no window");
+    let Some(workspace) = cx
+        .global::<SidePanelLeftState_>()
+        .content_view
+        .as_ref()
+        .and_then(|w| w.upgrade())
+    else {
+        tracing::warn!("side_panel_left: expand_with_composer has no workspace");
         return;
     };
-    if let Err(e) = handle.update(cx, |this, window, cx| {
-        // T242: reset the resize throttle so render() always issues a
-        // window.resize(), even if state.width happens to already equal
-        // the target. Without this, a previous close/resize cycle can
-        // leave last_resized_width == state.width, the ensure_chat_width
-        // no-op below would keep it that way, and the physical Wayland
-        // surface stays at rail-only (40px) while the state model thinks
-        // it's wide — the desync that T242 reproduces intermittently.
-        this.last_resized_width = None;
-        this.state.dock_chat = true;
-        this.state.ensure_chat_width();
-        this.composer_focused = true;
-        window.focus(&this.composer_focus, cx);
-        this.start_blink(cx);
-        cx.notify();
-    }) {
-        tracing::warn!("side_panel_left: expand_with_composer update failed: {e}");
-    }
+    let target = {
+        let state = cx.global::<SidePanelLeftState_>();
+        let active = state.active_tab;
+        tabs::width_for_open(active, &state.remembered_widths)
+            .max(tabs::SOFT_OPEN_MIN_WIDTH)
+    };
+    workspace.update(cx, |view, cx| {
+        view.set_panel_width(target, true, cx);
+        view.request_focus_composer(cx);
+    });
 }
 
 /// T241 tooling: open the left panel, write `text` into the composer, and
 /// send it to the agent — all in one IPC command. Bypasses Wayland seat focus
-/// entirely (same class of tool as `preview-target`). The text is logged only
-/// at `debug!` level (user-input hygiene).
+/// entirely (same class of tool as `preview-target`).
 pub fn compose_and_send(text: String, cx: &mut App) {
     open_pinned(cx);
-    let Some(handle) = cx.global::<SidePanelLeftState_>().handle.clone() else {
-        tracing::warn!("side_panel_left: compose_and_send has no window");
+    let Some(workspace) = cx
+        .global::<SidePanelLeftState_>()
+        .content_view
+        .as_ref()
+        .and_then(|w| w.upgrade())
+    else {
+        tracing::warn!("side_panel_left: compose_and_send has no workspace");
         return;
     };
-    if let Err(e) = handle.update(cx, |this, window, cx| {
-        this.last_resized_width = None;
-        this.state.dock_chat = true;
-        this.state.ensure_chat_width();
-        this.composer_focused = true;
-        window.focus(&this.composer_focus, cx);
-        // Clear any leftover text, write the payload.
-        this.composer_input.clear();
-        this.composer_input.content = text.into();
-        // Reset cursor position to end-of-text so send_composer reads
-        // the full content (selected_range covers 0..0 by default,
-        // which is correct — `clear()` already resets it).
-        this.composer_input.selected_range = this.composer_input.content.len()..this.composer_input.content.len();
-        tracing::debug!("compose_and_send: dispatching to agent (len={})", this.composer_input.content.len());
-        this.send_composer(window, cx);
-    }) {
-        tracing::warn!("side_panel_left: compose_and_send update failed: {e}");
-    }
+    let target = {
+        let state = cx.global::<SidePanelLeftState_>();
+        let active = state.active_tab;
+        tabs::width_for_open(active, &state.remembered_widths)
+            .max(tabs::SOFT_OPEN_MIN_WIDTH)
+    };
+    workspace.update(cx, |view, cx| {
+        view.set_panel_width(target, true, cx);
+        view.content.update(cx, |child, _cx| {
+            child.composer_input.clear();
+            child.composer_input.content = text.into();
+            child.composer_input.selected_range =
+                child.composer_input.content.len()..child.composer_input.content.len();
+        });
+        // Send the message via the legacy child. This reaches the same
+        // `Window` through the parent entity — `send_composer` is
+        // identical to the UI button path.
+        let content_handle = cx.global::<SidePanelLeftState_>().content_handle.clone();
+        if let Some(handle) = content_handle {
+            let _ = handle.update(cx, |_root, window, cx| {
+                view.content.update(cx, |child, cx| {
+                    child.send_composer(window, cx);
+                });
+            });
+        }
+        view.request_focus_composer(cx);
+    });
 }
 
 pub fn init(cx: &mut App) {
@@ -1370,16 +1642,11 @@ pub fn init(cx: &mut App) {
             .timer(std::time::Duration::from_millis(50))
             .await;
         cx.update(|cx| {
-            // Hover-peek disabled by design decision (2026-07-23): the
-            // panel is now a keybind-toggled, pinned-only dock — auto-open
-            // on hover fought with "stays put until I close it" (the user
-            // kept nudging the edge and getting an unwanted peek). The
-            // strip + `hold_peek`/`schedule_release_peek`/`close_peek_if_
-            // not_pinned` debounce machinery in this module is kept
-            // working and unit-tested — flip this back on if hover-peek is
-            // ever wanted again as an *additional* quick-look mode
-            // alongside the keybind toggle, not a replacement for it.
-            // hover_strip::init_hover_strip(cx);
+            // Hover-peek disabled by design decision (2026-07-23) — see
+            // T278 / design spec §4. The hover-strip module stays
+            // dormant (its init function is never called). The
+            // `peek_generation` machinery is still wired and used by the
+            // rail/content `on_hover` guards.
             // Optional smoke: pin-open for grim without hover/ydotool.
             // Not product wiring — only when env is set.
             if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL_LEFT").is_some() {
@@ -1536,5 +1803,222 @@ mod tests {
         state.width = sessions_list::SIDEBAR_MIN_WIDTH;
         state.ensure_chat_width();
         assert_eq!(state.width, n);
+    }
+
+    // ── T278 / Slice A1 — two-surface lifecycle contracts ──
+
+    #[test]
+    fn both_surfaces_open_commits_both_handles() {
+        assert_eq!(two_surface_open_outcome(true), TwoSurfaceOpen::CommitBoth);
+    }
+
+    #[test]
+    fn rail_failing_after_content_opened_rolls_content_back() {
+        assert_eq!(
+            two_surface_open_outcome(false),
+            TwoSurfaceOpen::RollbackContent
+        );
+    }
+
+    #[test]
+    fn peek_close_request_is_noop_while_pinned() {
+        let mut state = SidePanelLeftState_::default();
+        state.pinned = true;
+        assert!(!should_close_on_peek_leave(&state));
+    }
+
+    #[test]
+    fn peek_close_request_closes_when_not_pinned() {
+        let mut state = SidePanelLeftState_::default();
+        state.pinned = false;
+        assert!(should_close_on_peek_leave(&state));
+    }
+
+    #[test]
+    fn peek_close_suppressed_while_resizing() {
+        // T278: same suppression rule as T276 / right panel — a resize
+        // drag must not be terminated by a stale hover-leave from the
+        // rail or content canvas.
+        let mut state = SidePanelLeftState_::default();
+        state.pinned = false;
+        state.resizing = true;
+        assert!(!should_close_on_peek_leave(&state));
+    }
+
+    #[test]
+    fn sot_default_matches_left_rail_only() {
+        let state = SidePanelLeftState_::default();
+        assert_eq!(state.rail_handle, None);
+        assert_eq!(state.content_handle, None);
+        assert_eq!(state.content_view, None);
+        assert_eq!(state.panel_width, tabs::RAIL_WIDTH);
+        assert_eq!(state.active_tab, tabs::LeftTab::Chat);
+        assert!(!state.dock_content);
+        assert!(!state.resizing);
+        assert!(!state.pinned);
+        assert_eq!(state.peek_generation, 0);
+        assert_eq!(state.last_exclusive_zone, None);
+        // Default ResizableWidths slots match spec §7.
+        assert_eq!(state.remembered_widths.chat, 560.0);
+        assert_eq!(state.remembered_widths.plan, 480.0);
+        assert_eq!(state.remembered_widths.context_files, 560.0);
+    }
+
+    #[test]
+    fn sot_exclusive_px_dock_vs_overlay() {
+        // Mirrors the right-panel T276 contract.
+        let mut state = SidePanelLeftState_::default();
+        assert_eq!(state.exclusive_px(), tabs::RAIL_WIDTH);
+        state.dock_content = true;
+        assert_eq!(state.exclusive_px(), state.panel_width);
+        state.panel_width = 600.0;
+        assert_eq!(state.exclusive_px(), 600.0);
+    }
+
+    #[test]
+    fn sot_resize_clamps_into_drag_range() {
+        let mut state = SidePanelLeftState_::default();
+        state.resize(0.0); // below RAIL_WIDTH
+        assert_eq!(state.panel_width, tabs::RAIL_WIDTH);
+        state.resize(2000.0); // above MAX_PANEL_WIDTH
+        assert_eq!(state.panel_width, tabs::MAX_PANEL_WIDTH);
+        state.resize(500.0); // in range
+        assert_eq!(state.panel_width, 500.0);
+    }
+
+    #[test]
+    fn sot_ensure_content_width_invalidates_zone_cache() {
+        // T278 mirror of T276: any explicit width change must clear the
+        // rail's cached exclusive_zone so the next paint re-pushes.
+        let mut state = SidePanelLeftState_::default();
+        state.last_exclusive_zone = Some(40.0);
+        state.ensure_content_width(500.0);
+        assert_eq!(state.panel_width, 500.0);
+        assert_eq!(state.last_exclusive_zone, None);
+    }
+
+    #[test]
+    fn left_rail_width_matches_right_rail_only_width() {
+        // Spec §3: both rails own the full collapsed footprint — 40 px
+        // end-to-end (the legacy split into 36+4 stays inside the
+        // legacy per-instance state for backward compatibility with the
+        // A1 bridge but is no longer the surface width).
+        assert_eq!(
+            tabs::RAIL_WIDTH,
+            crate::side_panel_right::RAIL_ONLY_WIDTH
+        );
+    }
+
+    #[test]
+    fn left_content_canvas_width_is_max_minus_rail() {
+        assert_eq!(tabs::CONTENT_CANVAS_WIDTH, 920.0);
+        assert_eq!(
+            tabs::CONTENT_CANVAS_WIDTH,
+            tabs::MAX_PANEL_WIDTH - tabs::RAIL_WIDTH
+        );
+    }
+
+    #[test]
+    fn window_options_have_no_resize_calls() {
+        // T278 spec §"Запрещено": `window.resize()` is forbidden across
+        // `side_panel_left`. Skip comment lines (`//`/`*`) and string
+        // literals so the test does not match its own error message.
+        fn scan_for_resize(src: &str, file_label: &str) {
+            for (i, line) in src.lines().enumerate() {
+                let trimmed = line.trim_start();
+                if trimmed.starts_with("//") || trimmed.starts_with("/*")
+                    || trimmed.starts_with('*') || trimmed.starts_with("//!")
+                {
+                    continue;
+                }
+                // Strip inline string literals — ` "window.resize() ..." `
+                // would otherwise match. We only flag the bare call site.
+                let mut without_strings = String::with_capacity(line.len());
+                for (idx, part) in line.split('"').enumerate() {
+                    if idx % 2 == 0 {
+                        without_strings.push_str(part);
+                    }
+                }
+                assert!(
+                    !without_strings.contains("window.resize("),
+                    "{file_label} line {} contains a live `window.resize(` \
+                     call — forbidden by the T278 contract. Drag must only \
+                     mutate SidePanelLeftState_.panel_width and re-issue \
+                     set_input_region on the next paint. Line: {line}",
+                    i + 1,
+                );
+            }
+        }
+        scan_for_resize(include_str!("mod.rs"), "side_panel_left::mod.rs");
+        scan_for_resize(
+            include_str!("workspace_view.rs"),
+            "side_panel_left::workspace_view.rs",
+        );
+        scan_for_resize(
+            include_str!("rail_view.rs"),
+            "side_panel_left::rail_view.rs",
+        );
+    }
+
+    #[gpui::test]
+    async fn window_options_match_spec(cx: &mut gpui::TestAppContext) {
+        // Direct test of the WindowOptions builders. Runs against
+        // GPUI's TestAppContext which provides a real `App`; the
+        // display fallback (`unwrap_or(1080.)`) lets us skip any
+        // monitor/AppState wiring — we just need the global to exist
+        // so `try_global` inside the options builders resolves.
+        cx.update(|cx| {
+            crate::side_panel_left::init(cx);
+        });
+        let opts = cx.update(|cx| rail_window_options(None, cx));
+        match opts.kind {
+            gpui::WindowKind::LayerShell(ls) => {
+                assert_eq!(ls.namespace, "side_panel_left_rail");
+                assert!(ls.anchor.contains(gpui::layer_shell::Anchor::TOP));
+                assert!(ls.anchor.contains(gpui::layer_shell::Anchor::LEFT));
+                assert_eq!(ls.layer, gpui::layer_shell::Layer::Overlay);
+                assert_eq!(
+                    ls.keyboard_interactivity,
+                    gpui::layer_shell::KeyboardInteractivity::None
+                );
+                assert_eq!(ls.exclusive_edge, Some(gpui::layer_shell::Anchor::LEFT));
+            }
+            _ => panic!("rail must be a LayerShell window"),
+        }
+        assert_eq!(opts.app_id.as_deref(), Some("chronos-side-panel-left-rail"));
+        let rail_w = match opts.window_bounds.expect("rail window_bounds") {
+            gpui::WindowBounds::Windowed(b) => b.size.width.as_f32(),
+            _ => panic!("rail must be a Windowed window"),
+        };
+        assert_eq!(rail_w, tabs::RAIL_WIDTH);
+
+        let opts = cx.update(|cx| content_window_options(None, cx));
+        match opts.kind {
+            gpui::WindowKind::LayerShell(ls) => {
+                assert_eq!(ls.namespace, "side_panel_left_content");
+                assert!(ls.anchor.contains(gpui::layer_shell::Anchor::TOP));
+                assert!(ls.anchor.contains(gpui::layer_shell::Anchor::LEFT));
+                assert_eq!(ls.layer, gpui::layer_shell::Layer::Overlay);
+                assert_eq!(
+                    ls.keyboard_interactivity,
+                    gpui::layer_shell::KeyboardInteractivity::OnDemand
+                );
+                assert_eq!(
+                    ls.exclusive_zone,
+                    Some(gpui::px(-1.0)),
+                    "content opts out of foreign exclusive zones"
+                );
+            }
+            _ => panic!("content must be a LayerShell window"),
+        }
+        assert_eq!(
+            opts.app_id.as_deref(),
+            Some("chronos-side-panel-left-content")
+        );
+        let content_w = match opts.window_bounds.expect("content window_bounds") {
+            gpui::WindowBounds::Windowed(b) => b.size.width.as_f32(),
+            _ => panic!("content must be a Windowed window"),
+        };
+        assert_eq!(content_w, tabs::CONTENT_CANVAS_WIDTH);
     }
 }
