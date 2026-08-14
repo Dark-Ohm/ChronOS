@@ -379,16 +379,13 @@ pub fn workspace_transition(
             }
         }
         WorkspaceAction::SelectTab(clicked) => {
-            if !state.open {
-                return WorkspaceTransition {
-                    open_rail: true,
-                    open_content: true,
-                    active_tab: clicked,
-                    dock_content: false,
-                    panel_width: width_for_open(clicked, &state.remembered_widths),
-                    focus_composer: false,
-                };
-            }
+            // No `!state.open` special case: the rail (source of
+            // `SelectTab`) only exists as a window while the workspace is
+            // already open, so that combination cannot occur in
+            // production. `tab_select_transition` derives "rail-only" vs
+            // "content open" from `panel_width` alone (via
+            // `visible_content_width`), which is already correct for
+            // every reachable case.
             let (next_tab, next_width, next_dock) = tab_select_transition(
                 clicked,
                 state.active_tab,
@@ -406,16 +403,10 @@ pub fn workspace_transition(
             }
         }
         WorkspaceAction::ToggleDock => {
-            if !state.open {
-                return WorkspaceTransition {
-                    open_rail: true,
-                    open_content: true,
-                    active_tab: state.active_tab,
-                    dock_content: true,
-                    panel_width: width_for_open(state.active_tab, &state.remembered_widths),
-                    focus_composer: false,
-                };
-            }
+            // Same reasoning as `SelectTab`: the dock button only exists
+            // on the already-open rail, so `!state.open` cannot occur in
+            // production — `dock_transition` derives rail-only from
+            // `panel_width` alone.
             let (next_width, next_dock) = dock_transition(
                 state.panel_width,
                 state.dock_content,

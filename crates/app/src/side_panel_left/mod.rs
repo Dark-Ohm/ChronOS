@@ -544,13 +544,33 @@ pub(crate) fn schedule_release_from_app(cx: &mut gpui::App, generation: u64) {
     .detach();
 }
 
+/// Build the `WorkspaceSnapshot` the T281 reducer needs from the live SoT.
+/// `open` is `rail_handle.is_some()` — the reducer never inspects a
+/// `WindowHandle` itself.
+fn workspace_snapshot(cx: &App) -> tabs::WorkspaceSnapshot {
+    let state = cx.global::<SidePanelLeftState_>();
+    tabs::WorkspaceSnapshot {
+        open: state.rail_handle.is_some(),
+        active_tab: state.active_tab,
+        panel_width: state.panel_width,
+        dock_content: state.dock_content,
+        remembered_widths: state.remembered_widths,
+    }
+}
+
 /// Toggle the pinned panel open/closed. Called from the IPC handler (no
 /// `Window` in scope there — matches `launcher::toggle(cx)`'s shape).
+///
+/// T281 / Task 7: routed through `tabs::workspace_transition` so every
+/// entry point (`toggle`, `select_tab`, `apply_dock_toggle`,
+/// `expand_with_composer`, `compose_and_send`) shares the single reducer
+/// boundary the plan asks for — not just IPC's Chat-forcing pair.
 pub fn toggle(cx: &mut App) {
-    if cx.global::<SidePanelLeftState_>().rail_handle.is_some() {
-        close(cx);
-    } else {
+    let transition = tabs::workspace_transition(workspace_snapshot(cx), tabs::WorkspaceAction::Toggle);
+    if transition.open_rail {
         open_pinned(cx);
+    } else {
+        close(cx);
     }
 }
 
@@ -565,16 +585,13 @@ pub fn toggle(cx: &mut App) {
 /// Mutates `SidePanelLeftState_` in place: applies the pure transition,
 /// invalidates `last_exclusive_zone` when the computed `exclusive_px`
 /// changes (so the rail re-pushes on the next paint).
+///
+/// T281 / Task 7: routed through `tabs::workspace_transition` (`ToggleDock`
+/// arm), which itself composes `tabs::dock_transition` — same numbers,
+/// single reducer boundary.
 pub fn apply_dock_toggle(cx: &mut App) {
-    let (next_width, next_dock) = {
-        let state = cx.global::<SidePanelLeftState_>();
-        tabs::dock_transition(
-            state.panel_width,
-            state.dock_content,
-            state.active_tab,
-            &state.remembered_widths,
-        )
-    };
+    let transition = tabs::workspace_transition(workspace_snapshot(cx), tabs::WorkspaceAction::ToggleDock);
+    let (next_width, next_dock) = (transition.panel_width, transition.dock_content);
     let state = cx.global_mut::<SidePanelLeftState_>();
     let was_docked = state.dock_content;
     let was_width = state.panel_width;
@@ -604,17 +621,14 @@ pub fn apply_dock_toggle(cx: &mut App) {
 /// Branch #2 (collapse) remembers the width being collapsed away, so a
 /// later re-open returns to the user's last-drag width. `resizable_opt`
 /// gates the remember: fixed-width tabs have no runtime width memory.
+///
+/// T281 / Task 7: routed through `tabs::workspace_transition` (`SelectTab`
+/// arm), which itself composes `tabs::tab_select_transition` — same
+/// numbers, single reducer boundary.
 pub fn select_tab(tab: tabs::LeftTab, cx: &mut App) {
-    let (next_tab, next_width, next_dock) = {
-        let state = cx.global::<SidePanelLeftState_>();
-        tabs::tab_select_transition(
-            tab,
-            state.active_tab,
-            state.panel_width,
-            state.dock_content,
-            &state.remembered_widths,
-        )
-    };
+    let transition = tabs::workspace_transition(workspace_snapshot(cx), tabs::WorkspaceAction::SelectTab(tab));
+    let (next_tab, next_width, next_dock) =
+        (transition.active_tab, transition.panel_width, transition.dock_content);
     let state = cx.global_mut::<SidePanelLeftState_>();
     let was_tab = state.active_tab;
     let was_width = state.panel_width;
@@ -772,19 +786,7 @@ pub fn expand_with_composer(cx: &mut App) {
     // T281 / Task 7: route through the single reducer so this always lands
     // on Chat+dock regardless of which tab was active before the call —
     // see `set_panel_width`'s doc comment for the bug this closes.
-    let transition = {
-        let state = cx.global::<SidePanelLeftState_>();
-        tabs::workspace_transition(
-            tabs::WorkspaceSnapshot {
-                open: state.rail_handle.is_some(),
-                active_tab: state.active_tab,
-                panel_width: state.panel_width,
-                dock_content: state.dock_content,
-                remembered_widths: state.remembered_widths,
-            },
-            tabs::WorkspaceAction::ExpandComposer,
-        )
-    };
+    let transition = tabs::workspace_transition(workspace_snapshot(cx), tabs::WorkspaceAction::ExpandComposer);
     workspace.update(cx, |view, cx| {
         view.set_panel_width(transition.panel_width, transition.dock_content, transition.active_tab, cx);
         view.request_focus_composer(cx);
@@ -807,19 +809,7 @@ pub fn compose_and_send(text: String, cx: &mut App) {
     };
     // T281 / Task 7: same reducer as `expand_with_composer` — always lands
     // on Chat+dock so the text actually appears where it's written.
-    let transition = {
-        let state = cx.global::<SidePanelLeftState_>();
-        tabs::workspace_transition(
-            tabs::WorkspaceSnapshot {
-                open: state.rail_handle.is_some(),
-                active_tab: state.active_tab,
-                panel_width: state.panel_width,
-                dock_content: state.dock_content,
-                remembered_widths: state.remembered_widths,
-            },
-            tabs::WorkspaceAction::ComposeAndSend,
-        )
-    };
+    let transition = tabs::workspace_transition(workspace_snapshot(cx), tabs::WorkspaceAction::ComposeAndSend);
     workspace.update(cx, |view, cx| {
         view.set_panel_width(transition.panel_width, transition.dock_content, transition.active_tab, cx);
         view.chat.update(cx, |child, _cx| {
