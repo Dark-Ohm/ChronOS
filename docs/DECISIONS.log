@@ -1462,3 +1462,19 @@ severity)` — замена всех перечисленных вхождени
 Контекстные иконки Preview (`folder.svg`) и Terminal Failed
 (`rail-terminal.svg`) — осмысленная вариация, не дрейф.
 
+---
+## 2026-08-14 — T279: мёртвый breakpoint-хелпер и lease через content_view
+
+- Considered: оставить `chat_layout_for_visible_width` + 4 зелёных теста
+  как «контракт» visible-width, не вызывая его из `render_panel`.
+- Rejected: T278-театр. Тест зелёный при любом проде. Удалено в r2;
+  прод уже ветвится по зеркалу `visible_w` → `state.width`.
+- Considered: coordinator достаёт Chat через `content_view` /
+  `WorkspaceView` изнутри `on_sessions_event`.
+- Rejected: `entity_map::lease` / `double_lease_panic` — `content_view`
+  уже leased. Решение: отдельный `SidePanelLeftState_.chat`.
+- Considered: чистые `session_select_transition` / `project_switch_transition`
+  как тестируемое ядро (игнор snapshot-аргументов).
+- Rejected: безусловный return входа/константы. Тест обязан звать
+  `select_session` / `switch_project` по имени на `&mut App`.
+

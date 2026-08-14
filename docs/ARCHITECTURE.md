@@ -355,8 +355,16 @@ Durable architecture introduced by the wave:
   Light is **identity palette**, not Latte invert (see DECISIONS 2026-07-19).
 
 ### Side panels
-- **Left** (`side_panel_left/`): agent/Hermes ACP; sessions strip =
-  exclusive bar; chat overlay; Dock = full exclusive; Super+A.
+- **Left** (`side_panel_left/`, T278+T279): two fixed surfaces — rail 40 px
+  + content canvas 920 px; `window.resize` forbidden. SoT =
+  `SidePanelLeftState_`. Tabs: Project / Sessions / Chat + B/C shells.
+  Coordinator reducers are free fns on `&mut App`; live Chat is
+  `state.chat: WeakEntity<ChatTab>` (never a second lease of
+  `content_view`). Popup project switcher is gone; `project_switcher::init`
+  stays. Super+A. Live proof = T281.
+  `ThreadStore` schema v2 (T280): `project_path`, `workspace_project_state`,
+  one transactional migrate, real v1 fixture. Sessions without an active
+  project is empty — never unscoped `list()`.
 - **Right** (`side_panel_right/`): System tab chrome + rail; rail =
   exclusive; content overlay; Dock; Super+G.
 - **Light C surface roles (right):** do not map `bg.primary/tertiary` 1:1
