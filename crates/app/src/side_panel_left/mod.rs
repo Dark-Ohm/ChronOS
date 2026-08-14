@@ -75,6 +75,16 @@ pub struct SidePanelLeftState_ {
     /// window). Needed by `RailView` (a different window) and by IPC
     /// handlers running in `App` context with no `Window` in scope.
     pub(crate) content_view: Option<gpui::WeakEntity<WorkspaceView>>,
+    /// Weak handle to the live `ChatTab` product entity (owned by
+    /// `WorkspaceView`). T279 round 2: the coordinator reducers
+    /// (`select_session` / `create_thread` / `switch_project` /
+    /// `remove_project_scope`) reach the chat column through THIS handle,
+    /// not through `content_view` — `content_view` is already leased while
+    /// `WorkspaceView::on_*_event` runs, and a second lease of the same
+    /// entity is a `double_lease_panic` (`entity_map::lease`). `ChatTab`
+    /// is a separate entity, so leasing it is safe. `None` in unit tests
+    /// and whenever the surfaces are closed; reducers no-op then.
+    pub(crate) chat: Option<gpui::WeakEntity<ChatTab>>,
     /// Currently selected left tab (Slice A catalog). Default = `Chat`
     /// (matches T220 behaviour where Super+A expands the chat column).
     pub active_tab: tabs::LeftTab,
@@ -117,6 +127,7 @@ impl Default for SidePanelLeftState_ {
             rail_handle: None,
             content_handle: None,
             content_view: None,
+            chat: None,
             active_tab: tabs::LeftTab::Chat,
             panel_width: tabs::RAIL_WIDTH,
             remembered_widths: tabs::ResizableWidths::default(),
@@ -322,7 +333,10 @@ fn open_window(cx: &mut App, pinned: bool) {
         }
         return;
     };
-    let _ = opened_panel; // kept alive by workspace_entity; suppress unused warning.
+    // T279 round 2: keep a weak handle to the chat product entity so the
+    // coordinator reducers can reach it from `App` context. The entity
+    // itself is kept alive by `workspace_entity` (`WorkspaceView.chat`).
+    let chat_weak = opened_panel.as_ref().map(|p| p.downgrade());
 
     let rail_result = cx.open_window(rail_window_options(display_id, cx), |window, view_cx| {
         let rail = view_cx.new(|cx| RailView::new(workspace_entity.downgrade(), cx));
@@ -351,6 +365,7 @@ fn open_window(cx: &mut App, pinned: bool) {
             state.content_handle = Some(content_handle);
             state.rail_handle = Some(rail_handle);
             state.content_view = Some(workspace_entity.downgrade());
+            state.chat = chat_weak;
             state.pinned = pinned;
 
             tracing::info!(
@@ -381,6 +396,7 @@ pub fn close(cx: &mut App) {
     // an idempotent close() (no surfaces open, e.g. from a stray IPC
     // double-fire) still snaps stale state to rail-only.
     state.content_view = None;
+    state.chat = None;
     state.pinned = false;
     state.resizing = false;
     state.last_exclusive_zone = None;
@@ -446,6 +462,7 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
         state.rail_handle = None;
         state.content_handle = None;
         state.content_view = None;
+        state.chat = None;
         state.pinned = false;
         state.resizing = false;
         // T278 architect round 2: close_this is the click-X path inside
@@ -629,50 +646,100 @@ pub fn select_tab(tab: tabs::LeftTab, cx: &mut App) {
     );
 }
 
-/// T279 / Task 4 — session-select coordinator reducer. Pure policy lives in
-/// `tabs::session_select_transition`; this writes the SoT. Free function on
-/// `&mut App` so a unit test exercises the path without a live `ChatTab`
-/// (T278 lesson). Sets `active_session_id` then switches to Chat (which
-/// opens the content surface at the Chat width policy).
-pub fn select_session(thread_id: String, cx: &mut App) {
-    let (next_tab, _next_id) = {
-        let state = cx.global::<SidePanelLeftState_>();
-        tabs::session_select_transition(&thread_id, state.active_tab, state.active_session_id.as_deref())
-    };
-    let state = cx.global_mut::<SidePanelLeftState_>();
-    state.active_session_id = Some(thread_id);
-    drop(state);
-    select_tab(next_tab, cx);
+/// Direct handle to the live chat column for the coordinator reducers.
+/// Reached through `SidePanelLeftState_.chat` (registered by `open_window`
+/// on `CommitBoth`, reset by `close`/`close_this`), NOT `content_view` —
+/// `content_view` is already leased while `WorkspaceView::on_*_event` runs,
+/// and a second lease of the same entity is a `double_lease_panic`.
+/// `None` in unit tests and whenever the surfaces are closed; reducers
+/// no-op in that case.
+fn chat_handle(cx: &App) -> Option<Entity<ChatTab>> {
+    cx.global::<SidePanelLeftState_>()
+        .chat
+        .as_ref()
+        .and_then(|w| w.upgrade())
 }
 
-/// T279 / Task 4 — project-switch coordinator reducer. Pure policy lives in
-/// `tabs::project_switch_transition` (clear session, set path); this writes
-/// the SoT and reloads the project scope. Free function on `&mut App`.
+/// T279 / Task 4 — session-select coordinator reducer. Free function on
+/// `&mut App` (T278 lesson) so a unit test calls it by name and asserts
+/// the SoT. Records the id, switches to Chat, and loads the transcript
+/// into the live `ChatTab` (`load_thread_by_id` → `load_thread` → legacy
+/// `select_session`: outgoing cache, cached replay, ACP `load_session`).
+pub fn select_session(thread_id: String, cx: &mut App) {
+    cx.global_mut::<SidePanelLeftState_>().active_session_id = Some(thread_id.clone());
+    select_tab(tabs::LeftTab::Chat, cx);
+    if let Some(chat) = chat_handle(cx) {
+        chat.update(cx, |chat, cx| chat.load_thread_by_id(&thread_id, cx));
+    }
+}
+
+/// T279 / Task 4 — "+ New" reducer. Opens Chat and mints a fresh thread
+/// in the live `ChatTab` (`create_new_session`), mirroring the
+/// inline-sidebar "＋" path. Free function on `&mut App` so the Sessions
+/// tab reaches it through the coordinator.
+pub fn create_thread(cx: &mut App) {
+    select_tab(tabs::LeftTab::Chat, cx);
+    if let Some(chat) = chat_handle(cx) {
+        chat.update(cx, |chat, cx| chat.create_new_session(cx));
+    }
+}
+
+/// T279 / Task 4 — project-switch coordinator reducer. Free function on
+/// `&mut App` (T278 lesson) so a unit test calls it by name and asserts
+/// the SoT. Clears the old session id, sets the new project path, and
+/// clears the outgoing chat column via `ChatTab::clear_for_project`
+/// (reached through `SidePanelLeftState_.chat`).
 ///
 /// T280 will extend this to load the store's `active_thread(project_path)`
 /// and restore it; A2 just clears + sets — the coordinator re-derives the
 /// session list from the new project on next render.
 pub fn switch_project(new_project_path: std::path::PathBuf, cx: &mut App) {
-    let (next_path, _next_session) = {
-        let state = cx.global::<SidePanelLeftState_>();
-        tabs::project_switch_transition(
-            &new_project_path,
-            state.active_project_path.as_deref(),
-            state.active_session_id.as_deref(),
-        )
-    };
-    let state = cx.global_mut::<SidePanelLeftState_>();
-    state.active_project_path = next_path;
-    state.active_session_id = None;
-    let new_zone = state.exclusive_px();
-    if state.last_exclusive_zone != Some(new_zone) {
-        state.last_exclusive_zone = None;
+    {
+        let state = cx.global_mut::<SidePanelLeftState_>();
+        state.active_session_id = None;
+        state.active_project_path = Some(new_project_path.clone());
+        let new_zone = state.exclusive_px();
+        if state.last_exclusive_zone != Some(new_zone) {
+            state.last_exclusive_zone = None;
+        }
+        tracing::info!(
+            now_project = format!("{:?}", state.active_project_path),
+            now_session = format!("{:?}", state.active_session_id),
+            "side_panel_left: project switched (session cleared)"
+        );
     }
-    tracing::info!(
-        now_project = format!("{:?}", state.active_project_path),
-        now_session = format!("{:?}", state.active_session_id),
-        "side_panel_left: project switched (session cleared)"
-    );
+    if let Some(chat) = chat_handle(cx) {
+        chat.update(cx, |chat, cx| chat.clear_for_project(&new_project_path, cx));
+    }
+}
+
+/// T279 / Task 4 — project-removal reducer. When the removed path is the
+/// active project, clears the active project + session scope AND the chat
+/// column (`ChatTab::clear_for_project`) so the removed project's chat
+/// cannot leak onto the screen. Returns `true` when the scope was cleared.
+/// Free function on `&mut App` (T278 lesson).
+pub fn remove_project_scope(path: std::path::PathBuf, cx: &mut App) -> bool {
+    let clears = {
+        let state = cx.global::<SidePanelLeftState_>();
+        state.active_project_path.as_deref() == Some(path.as_path())
+    };
+    if !clears {
+        return false;
+    }
+    {
+        let state = cx.global_mut::<SidePanelLeftState_>();
+        state.active_project_path = None;
+        state.active_session_id = None;
+        state.last_exclusive_zone = None;
+        tracing::info!(
+            removed_project = format!("{path:?}"),
+            "side_panel_left: active project removed (scope cleared)"
+        );
+    }
+    if let Some(chat) = chat_handle(cx) {
+        chat.update(cx, |chat, cx| chat.clear_for_project(&path, cx));
+    }
+    true
 }
 
 /// T226 tooling: open the left agent panel pinned, dock the chat column
@@ -1468,5 +1535,111 @@ mod tests {
             tabs::LeftTab::Sessions,
             tabs::ResizableWidths::default(),
         );
+    }
+
+    // ── T279 round 2 / Task 4 — coordinator reducers on `&mut App` ──
+    //
+    // The Chat path is unreachable here (`SoT.chat == None` without a live
+    // `WorkspaceView` — `ChatTab::new` spawns an async ACP connect needing
+    // a Tokio runtime, unconstructable in `TestAppContext`); the reducers
+    // must no-op, not panic. That the chat column reads the SAME state is
+    // proven by construction: `select_session` writes `active_session_id`
+    // and loads the same id via `load_thread_by_id`; `switch_project`
+    // writes the path and clears via the same path in `clear_for_project`.
+
+    /// `select_session` records the id on the SoT and switches the
+    /// workspace to Chat.
+    #[gpui::test]
+    async fn select_session_records_id_and_opens_chat(cx: &mut gpui::TestAppContext) {
+        // T279 round 2 review: start with Sessions as the active tab so
+        // the assertion below proves the reducer switched to Chat —
+        // with the default `active_tab = Chat` the assert would be a
+        // tautology (same class as the T278 `on_dock_toggle` theater).
+        cx.update(|cx| crate::side_panel_left::init(cx));
+        cx.update(|cx| {
+            cx.global_mut::<SidePanelLeftState_>().active_tab = tabs::LeftTab::Sessions;
+        });
+        cx.update(|cx| select_session("thread-42".to_string(), cx));
+        cx.update(|cx| {
+            let state = cx.global::<SidePanelLeftState_>();
+            assert_eq!(
+                state.active_session_id.as_deref(),
+                Some("thread-42"),
+                "select_session must record the id on the SoT"
+            );
+            assert_eq!(
+                state.active_tab,
+                tabs::LeftTab::Chat,
+                "select_session must switch the workspace to Chat"
+            );
+        });
+    }
+
+    /// `switch_project` sets the new project path and clears the stale
+    /// session id (the old project's thread must not leak into the new
+    /// scope).
+    #[gpui::test]
+    async fn switch_project_sets_path_and_clears_session(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| crate::side_panel_left::init(cx));
+        // Precondition: a stale session from the previous project.
+        cx.update(|cx| {
+            cx.global_mut::<SidePanelLeftState_>().active_session_id =
+                Some("old-thread".to_string());
+        });
+        cx.update(|cx| switch_project(std::path::PathBuf::from("/home/neo/new-proj"), cx));
+        cx.update(|cx| {
+            let state = cx.global::<SidePanelLeftState_>();
+            assert_eq!(
+                state.active_project_path.as_deref(),
+                Some(std::path::Path::new("/home/neo/new-proj")),
+                "switch_project must set the new project path"
+            );
+            assert_eq!(
+                state.active_session_id, None,
+                "switch_project must clear the old session id"
+            );
+        });
+    }
+
+    /// `remove_project_scope` clears only when the removed path IS the
+    /// active project; a foreign path leaves the scope untouched.
+    #[gpui::test]
+    async fn remove_project_scope_clears_only_the_active_project(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| crate::side_panel_left::init(cx));
+
+        // Removing the ACTIVE project clears path + session and reports true.
+        let cleared = cx.update(|cx| {
+            cx.global_mut::<SidePanelLeftState_>().active_project_path =
+                Some(std::path::PathBuf::from("/home/neo/active"));
+            cx.global_mut::<SidePanelLeftState_>().active_session_id =
+                Some("leak".to_string());
+            remove_project_scope(std::path::PathBuf::from("/home/neo/active"), cx)
+        });
+        assert!(cleared, "removing the active project must clear scope");
+        cx.update(|cx| {
+            let state = cx.global::<SidePanelLeftState_>();
+            assert_eq!(state.active_project_path, None);
+            assert_eq!(state.active_session_id, None);
+        });
+
+        // Removing a FOREIGN project is a no-op and reports false.
+        let cleared = cx.update(|cx| {
+            cx.global_mut::<SidePanelLeftState_>().active_project_path =
+                Some(std::path::PathBuf::from("/home/neo/keep"));
+            cx.global_mut::<SidePanelLeftState_>().active_session_id =
+                Some("keep-thread".to_string());
+            remove_project_scope(std::path::PathBuf::from("/home/neo/other"), cx)
+        });
+        assert!(!cleared, "removing a foreign project must not clear scope");
+        cx.update(|cx| {
+            let state = cx.global::<SidePanelLeftState_>();
+            assert_eq!(
+                state.active_project_path.as_deref(),
+                Some(std::path::Path::new("/home/neo/keep"))
+            );
+            assert_eq!(state.active_session_id.as_deref(), Some("keep-thread"));
+        });
     }
 }

@@ -469,6 +469,24 @@ impl SidePanelRightView {
             .clone()
     }
 
+    /// T279 — point the Files tab at `path`, creating the tab lazily if it
+    /// was never opened. Called by `side_panel_right::open_files_at` (the
+    /// left workspace Project "Files" action).
+    pub(crate) fn set_files_root(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
+        if let TabContent::Files(files) = self.ensure_tab_view(PanelTab::Files, cx) {
+            files.update(cx, |tab, cx| tab.set_root(path, cx));
+        }
+    }
+
+    /// T279 — respawn the Terminal tab's shell at `path`, creating the tab
+    /// lazily if needed. Called by `side_panel_right::open_terminal_at`
+    /// (the left workspace Project "Terminal" action).
+    pub(crate) fn open_terminal_at(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
+        if let TabContent::Terminal(term) = self.ensure_tab_view(PanelTab::Terminal, cx) {
+            term.update(cx, |tab, cx| tab.open_at(path, cx));
+        }
+    }
+
     /// T226 tooling: focus handle of the currently active tab, when that tab
     /// is keyboard-focusable. Synthetic mouse clicks do not focus GPUI
     /// layer-shell windows, so `select_tab` re-focuses the window itself to

@@ -645,6 +645,41 @@ pub fn select_tab(tab: PanelTab, cx: &mut App) {
     }
 }
 
+/// T279 — open the right panel at the Files tab rooted at `path` (the left
+/// workspace Project "Files" action). Free function on `&mut App` (the T278
+/// lesson): the left coordinator runs in a click handler and must reach
+/// this by name. Opens the panel pinned first when closed.
+pub fn open_files_at(path: std::path::PathBuf, cx: &mut App) {
+    select_tab(PanelTab::Files, cx);
+    let Some(view) = cx
+        .global::<SidePanelRightState>()
+        .content_view
+        .clone()
+        .and_then(|w| w.upgrade())
+    else {
+        tracing::warn!("side_panel_right: open_files_at has no live view");
+        return;
+    };
+    view.update(cx, |view, cx| view.set_files_root(path, cx));
+}
+
+/// T279 — open the right panel at the Terminal tab with the shell respawned
+/// at `path` (the left workspace Project "Terminal" action). Same free-fn
+/// pattern as `open_files_at`.
+pub fn open_terminal_at(path: std::path::PathBuf, cx: &mut App) {
+    select_tab(PanelTab::Terminal, cx);
+    let Some(view) = cx
+        .global::<SidePanelRightState>()
+        .content_view
+        .clone()
+        .and_then(|w| w.upgrade())
+    else {
+        tracing::warn!("side_panel_right: open_terminal_at has no live view");
+        return;
+    };
+    view.update(cx, |view, cx| view.open_terminal_at(path, cx));
+}
+
 /// T226 tooling: point the Preview/Editor tab at `path`, exactly like a
 /// Files click would. Opens the panel pinned first so the live view exists
 /// to observe the `PreviewTarget` bump — that observer switches the tab to

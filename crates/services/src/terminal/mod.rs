@@ -138,6 +138,18 @@ impl Terminal {
     /// Spawn `$SHELL` (or `/bin/sh`) on a fresh PTY and wrap it with a
     /// VT100 grid of `size` cells.
     pub fn launch(size: TermSize, cell_w: f32, cell_h: f32) -> anyhow::Result<Self> {
+        Self::launch_in(size, cell_w, cell_h, None)
+    }
+
+    /// T279 — spawn the shell with an explicit working directory. `None`
+    /// keeps the legacy behaviour (home dir). Used by the right-panel
+    /// Terminal tab's `open_at` (left workspace Project "Terminal" action).
+    pub fn launch_in(
+        size: TermSize,
+        cell_w: f32,
+        cell_h: f32,
+        cwd: Option<&std::path::Path>,
+    ) -> anyhow::Result<Self> {
         let pty_system = NativePtySystem::default();
         let pair = pty_system.openpty(size.to_pty_size(cell_w, cell_h))?;
 
@@ -147,8 +159,15 @@ impl Terminal {
         let mut cmd = CommandBuilder::new(&shell);
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
-        if let Some(home) = dirs::home_dir() {
-            cmd.cwd(home);
+        match cwd {
+            Some(dir) => {
+                cmd.cwd(dir);
+            }
+            None => {
+                if let Some(home) = dirs::home_dir() {
+                    cmd.cwd(home);
+                }
+            }
         }
 
         let child = pair.slave.spawn_command(cmd)?;

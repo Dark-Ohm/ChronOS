@@ -69,6 +69,10 @@ pub struct TerminalTab {
     /// available height every render so the PTY grid matches the drawer's
     /// real box instead of the whole window.
     available_height_override: Option<f32>,
+    /// T279: cwd for the NEXT shell spawn — set by `open_at` (the left
+    /// workspace Project "Terminal" action), consumed by `launch`. `None`
+    /// keeps the legacy home-dir spawn.
+    pending_cwd: Option<std::path::PathBuf>,
 }
 
 impl TerminalTab {
@@ -85,9 +89,20 @@ impl TerminalTab {
             cursor_row: 0,
             show_cursor: false,
             available_height_override: None,
+            pending_cwd: None,
         };
         this.launch(cx);
         this
+    }
+
+    /// T279 — respawn the shell with cwd = `path` (the left workspace
+    /// Project "Terminal" action). Replaces the live PTY: the old child
+    /// exits when its `Terminal` handle drops.
+    pub fn open_at(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
+        self.pending_cwd = Some(path);
+        self.terminal = None;
+        self.launch(cx);
+        cx.notify();
     }
 
     /// Set (or clear) the explicit body height override — see the field
@@ -100,8 +115,9 @@ impl TerminalTab {
 
     /// Lazily spawn the shell: the tab view is created on first activation
     /// (`TabContent::create`), so no tab open → no PTY → no process.
+    /// Consumes `pending_cwd` when the Project "Terminal" action set one.
     fn launch(&mut self, cx: &mut Context<Self>) {
-        match spawn_terminal() {
+        match spawn_terminal(self.pending_cwd.take()) {
             Ok(term) => {
                 tracing::info!(
                     pid = term.child_pid(),
@@ -517,18 +533,24 @@ fn shell_name() -> String {
 
 /// Spawn the shared engine. `cfg(test)` returns an error so unit tests never
 /// raise a real shell — tab laziness is verified live via pgrep (T177
-/// report), not in tests.
-fn spawn_terminal() -> Result<Terminal, SharedString> {
+/// report), not in tests. T279: `cwd` threads the Project action's target
+/// directory into `Terminal::launch_in`.
+fn spawn_terminal(cwd: Option<std::path::PathBuf>) -> Result<Terminal, SharedString> {
     #[cfg(test)]
     {
         // Keep the geometry constants referenced in test builds.
-        let _ = (TermSize::new(LAUNCH_COLS, LAUNCH_ROWS), CELL_W_FALLBACK, CELL_H);
+        let _ = (TermSize::new(LAUNCH_COLS, LAUNCH_ROWS), CELL_W_FALLBACK, CELL_H, cwd);
         Err(SharedString::from("PTY disabled in unit tests"))
     }
     #[cfg(not(test))]
     {
-        Terminal::launch(TermSize::new(LAUNCH_COLS, LAUNCH_ROWS), CELL_W_FALLBACK, CELL_H)
-            .map_err(|e| SharedString::from(format!("PTY error: {e:#}")))
+        Terminal::launch_in(
+            TermSize::new(LAUNCH_COLS, LAUNCH_ROWS),
+            CELL_W_FALLBACK,
+            CELL_H,
+            cwd.as_deref(),
+        )
+        .map_err(|e| SharedString::from(format!("PTY error: {e:#}")))
     }
 }
 

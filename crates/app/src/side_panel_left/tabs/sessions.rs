@@ -36,6 +36,14 @@ pub struct SessionsTab {
     threads: Vec<ThreadListItem>,
     /// Search filter query.
     search: String,
+    /// Currently selected thread id — written on click, painted in render
+    /// (T279 round 2: the field was previously written-but-never-read,
+    /// which the reviewer flagged as dead state). The SoT
+    /// (`SidePanelLeftState_.active_session_id`) remains the source of
+    /// truth for the coordinator; this mirror exists purely so the row
+    /// can paint its selected background without re-querying the global
+    /// during render.
+    selected: Option<String>,
     /// Weak handle to the owning `WorkspaceView` — used to forward events
     /// to the coordinator without this tab owning panel state.
     coordinator: WeakEntity<WorkspaceView>,
@@ -58,6 +66,7 @@ impl SessionsTab {
         Self {
             threads,
             search: String::new(),
+            selected: None,
             coordinator,
         }
     }
@@ -77,10 +86,18 @@ impl SessionsTab {
         // T280 will filter by project_path; A2 shows all threads.
     }
 
-    /// Currently selected thread id (read from the coordinator — the tab
-    /// does not duplicate it).
+    /// Currently selected thread id (written on click; the SoT keeps the
+    /// coordinator-side copy).
     pub fn selected_thread(&self) -> Option<&str> {
-        None
+        self.selected.as_deref()
+    }
+
+    /// T279 round 2 — project switch/removal clears the selection: the
+    /// old project's thread must not stay highlighted in the new scope.
+    /// (T280 will also reload the list via `list_for_project` here.)
+    pub fn clear_for_project(&mut self, cx: &mut Context<Self>) {
+        self.selected = None;
+        cx.notify();
     }
 
     /// Visible threads after applying the search filter.
@@ -147,6 +164,7 @@ impl Render for SessionsTab {
             // Thread list.
             .children(visible.iter().enumerate().map(|(i, item)| {
                 let id = item.record.id.clone();
+                let is_selected = self.selected.as_deref() == Some(id.as_str());
                 div()
                     .id(("sessions-row", i))
                     .flex()
@@ -156,11 +174,16 @@ impl Render for SessionsTab {
                     .border_b_1()
                     .border_color(theme.border.subtle)
                     .cursor_pointer()
+                    // T279 round 2: the selected row paints — the field is
+                    // no longer write-only dead state.
+                    .when(is_selected, |el| el.bg(theme.interactive.active))
                     .hover(|s| s.bg(theme.interactive.hover))
                     .on_click({
                         let thread_id = id.clone();
                         cx.listener(move |this, _e, _w, cx| {
+                            this.selected = Some(thread_id.clone());
                             this.emit(SessionsEvent::SelectThread(thread_id.clone()), cx);
+                            cx.notify();
                         })
                     })
                     .child(
@@ -227,6 +250,27 @@ mod tests {
         // Recency desc among non-pinned: a (2026-01-03) is newer than c (2026-01-02).
         assert_eq!(items[1].record.id, "a", "then recency desc — newest non-pinned");
         assert_eq!(items[2].record.id, "c", "then older non-pinned");
+    }
+
+    /// Source contract (round-2 §5): the `selected` field must be WRITTEN
+    /// on row click and READ in render for the highlight — a write-only
+    /// field was the round-1 reject ("highlight is a lie"). Source scan
+    /// mirrors the T278 gate pattern.
+    #[test]
+    fn selected_field_is_written_on_click_and_read_in_render() {
+        let src = include_str!("sessions.rs");
+        assert!(
+            src.contains("this.selected = Some(thread_id.clone())"),
+            "row click must write `selected`"
+        );
+        assert!(
+            src.contains("self.selected.as_deref() == Some(id.as_str())"),
+            "render must read `selected` for the row highlight"
+        );
+        assert!(
+            src.contains(".when(is_selected, |el| el.bg(theme.interactive.active))"),
+            "render must paint the selected row background"
+        );
     }
 
     fn record_fixture() -> ThreadRecord {

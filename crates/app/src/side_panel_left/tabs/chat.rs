@@ -4,42 +4,13 @@
 //! active tab, or window lifecycle — the workspace coordinator
 //! (`WorkspaceView`) forwards visible-width and project/thread commands.
 //!
-//! Responsive layout consumes the visible content width passed by the
-//! coordinator, never `window.bounds().size.width == 920`.
-
-/// Responsive layout mode selected from the visible content width.
-/// The breakpoint is the soft-open floor expressed in visible-content
-/// terms: `visible_content_width(SOFT_OPEN_MIN_WIDTH) = 320`.
-#[derive(Debug, PartialEq, Eq)]
-pub enum ChatLayout {
-    /// Rail-only — the content slice is zero; chat is not painted.
-    Hidden,
-    /// Visible but below the soft floor — compact single-column chat.
-    Narrow,
-    /// At or above the soft floor — full chat + composer layout.
-    Full,
-}
-
-/// Pure breakpoint selector. Window-free (`no` `Window`/`App`/`Context`)
-/// so a unit test exercises every branch directly — the plan Task 3
-/// Step 1 gate. The threshold mirrors the soft-open minimum: below the
-/// soft floor the chat column is usable but compact; at/above it the
-/// full composer (pickers row + multi-line textarea) fits.
-///
-/// The breakpoint is expressed in **visible-content width** (panel_width
-/// minus `RAIL_WIDTH`), never the 920 px canvas bounds — the workspace
-/// coordinator passes visible_w so the chat tab never needs a `Window`.
-pub fn chat_layout_for_visible_width(visible_w: f32) -> ChatLayout {
-    let soft_floor = crate::side_panel_left::tabs::SOFT_OPEN_MIN_WIDTH
-        - crate::side_panel_left::tabs::RAIL_WIDTH;
-    if visible_w <= 0.0 {
-        ChatLayout::Hidden
-    } else if visible_w < soft_floor {
-        ChatLayout::Narrow
-    } else {
-        ChatLayout::Full
-    }
-}
+//! Responsive layout consumes the visible content width mirrored by the
+//! coordinator (`WorkspaceView::render` mirrors `visible_w` into
+//! `state.width`, and `render_panel` branches on that mirror) — never
+//! `window.bounds().size.width == 920`. T279 round 2: the standalone
+//! `ChatLayout`/`chat_layout_for_visible_width` breakpoint helper was
+//! deleted — prod never called it (the render path branches on the
+//! mirrored width directly), so it was green-test theatre.
 
 use chronos_services::hermes_acp::{
     AgentDescriptor, HermesClient, StreamingEvent, known_agents, load_shared_env,
@@ -455,7 +426,10 @@ impl ChatTab {
         });
     }
 
-    fn create_new_session(&mut self, cx: &mut Context<Self>) {
+    /// T279 / Task 3 — mint a fresh thread. `pub(crate)` so the workspace
+    /// coordinator (`create_thread` free fn) reaches it through
+    /// `SidePanelLeftState_.chat` — the Sessions-tab "+ New" path.
+    pub(crate) fn create_new_session(&mut self, cx: &mut Context<Self>) {
         let id = uuid::Uuid::new_v4().to_string();
         let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().to_string();
 
@@ -545,6 +519,62 @@ impl ChatTab {
                 }
             })
             .detach();
+        }
+        cx.notify();
+    }
+
+    /// T279 / Task 3 — coordinator-facing thread load. Guarantees the
+    /// record is in the local list (the workspace Sessions tab may hold a
+    /// record this column has not seen yet), then delegates to the legacy
+    /// `select_session` (outgoing-transcript cache, cached replay, ACP
+    /// `load_session`).
+    pub fn load_thread(&mut self, thread: ThreadRecord, cx: &mut Context<Self>) {
+        let id = thread.id.clone();
+        if !self.sessions.iter().any(|t| t.record.id == id) {
+            self.sessions.push(sessions_list::ThreadListItem {
+                record: thread,
+                active: false,
+            });
+            self.sort_sessions();
+        }
+        self.select_session(&id, cx);
+    }
+
+    /// T279 / Task 3 — load a thread by id: record comes from the store
+    /// (`ThreadStore::get`), falling back to the local list (covers a
+    /// thread created this session that the store has not flushed yet).
+    pub(crate) fn load_thread_by_id(&mut self, thread_id: &str, cx: &mut Context<Self>) {
+        let record = self
+            .thread_store
+            .as_ref()
+            .and_then(|s| s.get(thread_id).ok().flatten())
+            .or_else(|| {
+                self.sessions
+                    .iter()
+                    .find(|t| t.record.id == thread_id)
+                    .map(|t| t.record.clone())
+            });
+        match record {
+            Some(record) => self.load_thread(record, cx),
+            None => {
+                tracing::warn!("load_thread_by_id: unknown thread {thread_id}");
+            }
+        }
+    }
+
+    /// T279 / Task 4 — clear the chat column for a project switch or
+    /// removal. Caches the outgoing transcript, then resets chat,
+    /// streaming, `pending_send`, and both session ids so nothing from
+    /// the old scope paints into the new one.
+    pub fn clear_for_project(&mut self, _project_path: &std::path::Path, cx: &mut Context<Self>) {
+        self.cache_transcript(cx);
+        self.chat = chat_view::ChatView::new();
+        self.streaming.reset();
+        self.pending_send = None;
+        self.state.active_session_id = None;
+        self.state.session_id = None;
+        for s in &mut self.sessions {
+            s.active = false;
         }
         cx.notify();
     }
@@ -2045,36 +2075,6 @@ fn build_sessions_sidebar(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Visible-content width at the soft-open floor (360 panel − 40 rail).
-    const SOFT_FLOOR_VISIBLE: f32 =
-        crate::side_panel_left::tabs::SOFT_OPEN_MIN_WIDTH
-            - crate::side_panel_left::tabs::RAIL_WIDTH;
-
-    #[test]
-    fn layout_below_breakpoint_is_narrow() {
-        let below = SOFT_FLOOR_VISIBLE - 1.0;
-        assert_eq!(chat_layout_for_visible_width(below), ChatLayout::Narrow);
-    }
-
-    #[test]
-    fn layout_at_breakpoint_is_full() {
-        assert_eq!(
-            chat_layout_for_visible_width(SOFT_FLOOR_VISIBLE),
-            ChatLayout::Full
-        );
-    }
-
-    #[test]
-    fn layout_above_breakpoint_is_full() {
-        let above = SOFT_FLOOR_VISIBLE + 180.0;
-        assert_eq!(chat_layout_for_visible_width(above), ChatLayout::Full);
-    }
-
-    #[test]
-    fn layout_at_zero_is_hidden() {
-        assert_eq!(chat_layout_for_visible_width(0.0), ChatLayout::Hidden);
-    }
 
     /// Source contract (plan Task 3 gate): `tabs/chat.rs` must not
     /// reference the window-lifecycle surface — the chat tab is

@@ -136,6 +136,26 @@ pub(crate) fn set_active(path: String, cx: &mut App) {
     let _ = cx; // no callback yet — ProjectTab drives the reload explicitly.
 }
 
+/// Remove a project from the list and persist. If the removed path was the
+/// active project, `active` is cleared — the workspace coordinator's own
+/// scope cleanup lives in `side_panel_left::remove_project_scope` (the
+/// Project tab runs both). Returns `true` when an entry was removed.
+pub(crate) fn remove_project(path: &str, cx: &mut App) -> bool {
+    let mut config = cached();
+    let before = config.projects.len();
+    config.projects.retain(|p| p.path != path);
+    if config.projects.len() == before {
+        return false;
+    }
+    if config.active.as_deref() == Some(path) {
+        config.active = None;
+    }
+    update_cache_and_save(config);
+    tracing::info!("project_switcher: removed project {path}");
+    let _ = cx;
+    true
+}
+
 /// "+ Add project": XDG portal directory picker on a dedicated thread.
 /// ashpd runs on its async-io reactor (the feature set the gpui fork already
 /// pins — tokio feature conflicts at unification), so a plain
@@ -144,7 +164,14 @@ pub(crate) fn set_active(path: String, cx: &mut App) {
 ///
 /// T279: the popup `refresh_popup` is gone — the list repaints via the
 /// `ProjectTab` entity observing the config cache on next render.
-pub(crate) fn add_project(cx: &mut App) {
+///
+/// T279 round 2: `on_added` fires after the persist so the caller (the
+/// Project tab) can forward the picked path to the workspace coordinator
+/// — Add must run the same clear+load transaction as Select.
+pub(crate) fn add_project(
+    cx: &mut App,
+    on_added: impl Fn(PathBuf, &mut App) + Send + 'static,
+) {
     let (tx, rx) = tokio::sync::oneshot::channel::<Option<PathBuf>>();
 
     std::thread::spawn(move || {
@@ -190,6 +217,7 @@ pub(crate) fn add_project(cx: &mut App) {
             config.active = Some(path_str);
             update_cache_and_save(config);
             tracing::info!("project_switcher: added project, reloading cache");
+            on_added(path, cx);
         });
     })
     .detach();

@@ -304,68 +304,12 @@ pub fn tab_select_transition(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Coordinator transitions — pure policy on workspace snapshot fields.
-// ─────────────────────────────────────────────────────────────────────────
-
-/// T279 / Task 4 — session-selection transition. When the user picks a thread
-/// from SessionsTab, the workspace must (a) record the selected id and (b)
-/// switch to Chat so the transcript opens. Both effects are pure here; the
-/// reducer `select_session` writes them into the global SoT. Mirrors the
-/// T278 carve: no `App`/`Window`/`Context`, testable directly.
-///
-/// Inputs are the *read-only* snapshot fields the policy depends on:
-/// `active_tab` (to know whether we're already on Chat) and
-/// `active_session_id` (to detect a no-op reselect). Returns
-/// `(next_active_tab, next_active_session_id)`.
-///
-/// Contract (plan Task 4 Step 1: "session selection → selected id + Chat tab"):
-/// - always sets `active_session_id = Some(thread_id)`; the store later
-///   validates it against the project scope (T280: `active_thread`), but the
-///   transition itself trusts the id the list emitted — the list only holds
-///   ids the store returned.
-/// - always switches `active_tab = Chat` (even if already there — the
-///   reducer's `include_chat_width` open is idempotent via `ensure_content_width`).
-pub fn session_select_transition(
-    thread_id: &str,
-    _active_tab: LeftTab,
-    _active_session_id: Option<&str>,
-) -> (LeftTab, String) {
-    // T278 lesson: every policy reads at least one input field so the test
-    // path covers the function. Here `active_tab` and `active_session_id`
-    // are snapshot-only (no branch on them since the policy is unconditional),
-    // but they stay in the signature so the reducer signature matches and a
-    // future "reselect no-op" optimization threads through cleanly.
-    (LeftTab::Chat, thread_id.to_string())
-}
-
-/// T279 / Task 4 — project-switch transition. When the user picks a project
-/// from ProjectTab, the workspace must (a) set the active project path and
-/// (b) **clear** the active session id — the old project's thread must not
-/// leak into the new scope (plan Step 3: "clear old Chat/Sessions view state,
-/// update `ProjectsConfig.active`, ask the store for the new project's active
-/// thread"). The *loading* of whatever the store reports as the new
-/// project's active thread is a separate store call (T280), not a transition;
-/// this helper only encodes the clear-then-set-scope contract.
-///
-/// Inputs are read-only snapshot fields: the old `active_project_path` and
-/// `active_session_id` (kept in the signature so the reducer mirrors the
-/// surface, and so a future "same project reselect" optimization lands
-/// cleanly). Returns `(next_active_project_path, next_active_session_id)`.
-///
-/// Contract (plan Task 4 Step 1: "project switch → all session/chat state is
-/// cleared before loading the new scope"):
-/// - `next_active_session_id` is always `None` — clear before load, the
-///   store's `active_thread(project_path)` reinstates a valid one in the
-///   reducer.
-/// - `next_active_project_path` is always `Some(new_path.clone())`.
-pub fn project_switch_transition(
-    new_project_path: &std::path::Path,
-    _old_project_path: Option<&std::path::Path>,
-    _old_active_session_id: Option<&str>,
-) -> (Option<std::path::PathBuf>, Option<String>) {
-    (Some(new_project_path.to_path_buf()), None)
-}
+// T279 round 2: the coordinator transitions (`session_select_transition`,
+// `project_switch_transition`) were deleted — unconditional helpers that
+// returned their input/a constant are tautology bait (the T278 lesson).
+// The real policy lives in the free-fn reducers in
+// `crate::side_panel_left` (`select_session`, `switch_project`,
+// `remove_project_scope`), exercised by name in `#[gpui::test]`s there.
 
 #[cfg(test)]
 mod tests {
@@ -470,55 +414,6 @@ mod tests {
         );
         assert_eq!(r, (LeftTab::Project, LeftTab::Project.preferred_panel_width(), false));
         assert_eq!(r.1, 440.0);
-    }
-
-    // ── T279 / Task 4 — coordinator transitions (pure helpers) ──
-
-    /// Session selection → Chat tab + active_session_id set.
-    /// Plan Step 1: "session selection → selected id + Chat tab".
-    #[test]
-    fn session_select_switches_to_chat_and_records_id() {
-        let (tab, id) = session_select_transition("thread-42", LeftTab::Sessions, None);
-        assert_eq!(tab, LeftTab::Chat);
-        assert_eq!(id, "thread-42");
-    }
-
-    /// Session selection from already-on-Chat is still a no-op-on-tab field
-    /// but the id updates — the store backs the new thread's transcript.
-    #[test]
-    fn session_select_from_chat_still_switches_and_records() {
-        let (tab, id) =
-            session_select_transition("thread-7", LeftTab::Chat, Some("thread-1"));
-        assert_eq!(tab, LeftTab::Chat);
-        assert_eq!(id, "thread-7");
-    }
-
-    /// Project switch → active_project_path set, active_session_id CLEARED.
-    /// Plan Step 1: "project switch → all session/chat state is cleared
-    /// before loading the new scope". The old session id must not leak.
-    #[test]
-    fn project_switch_clears_session_and_sets_path() {
-        let old_path = std::path::PathBuf::from("/home/neo/old-proj");
-        let new_path = std::path::PathBuf::from("/home/neo/new-proj");
-        let (next_path, next_session) = project_switch_transition(
-            &new_path,
-            Some(&old_path),
-            Some("old-thread"),
-        );
-        assert_eq!(next_path.as_deref(), Some(new_path.as_path()));
-        assert_eq!(next_session, None, "old session id must be cleared");
-    }
-
-    /// Project switch to the same project still clears the session id —
-    /// the store's `active_thread` reinstates it after. The transition is
-    /// unconditional; it does not optimize away the clear.
-    #[test]
-    fn project_switch_same_path_still_clears_session() {
-        let path = std::path::PathBuf::from("/home/neo/same-proj");
-        let (next_path, next_session) =
-            project_switch_transition(&path, Some(&path), Some("thread-99"));
-        assert_eq!(next_path.as_deref(), Some(path.as_path()));
-        assert_eq!(next_session, None);
     }
 
     #[test]

@@ -41,6 +41,16 @@ pub struct FilesTab {
 }
 
 impl FilesTab {
+    /// T279 — re-root the listing at `path` (the left workspace Project
+    /// "Files" action). Resets pagination state and reloads.
+    pub fn set_root(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if self.cwd == path {
+            return;
+        }
+        self.cwd = path;
+        self.request_reload(cx);
+    }
+
     pub fn new(cx: &mut Context<Self>) -> Self {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
         let mut this = Self {

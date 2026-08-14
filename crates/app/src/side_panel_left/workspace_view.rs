@@ -140,27 +140,50 @@ impl WorkspaceView {
                 crate::side_panel_left::select_session(id, cx);
             }
             SessionsEvent::CreateThread => {
-                // T280: session creation via the ThreadStore; A2 forwards to
-                // Chat which opens an empty transcript.
-                crate::side_panel_left::select_tab(crate::side_panel_left::tabs::LeftTab::Chat, cx);
+                // T279 round 2: "+ New" is a real reducer now — it opens
+                // Chat AND mints a fresh thread in the live `ChatTab`
+                // (`create_new_session`), not a bare tab switch.
+                crate::side_panel_left::create_thread(cx);
             }
         }
         cx.notify();
     }
 
     /// T279 / Task 4 — thin dispatcher for `ProjectTab` events. The real
-    /// reducer is `crate::side_panel_left::switch_project` (free function on
-    /// `&mut App`, T278 lesson).
+    /// reducers are free functions on `&mut App` (the T278 lesson):
+    /// `switch_project` / `remove_project_scope` on the left,
+    /// `side_panel_right::open_files_at` / `open_terminal_at` on the right.
     pub fn on_project_event(&mut self, event: crate::side_panel_left::tabs::ProjectEvent, cx: &mut Context<Self>) {
         use crate::side_panel_left::tabs::ProjectEvent;
         match event {
-            ProjectEvent::Select(path) => {
+            // Select and Add run the SAME transaction — clear the chat
+            // column + session scope, set the new path, reset the Sessions
+            // selection. `Add`'s config persist already happened inside
+            // `project_switcher::add_project`; Select persists after this
+            // handler returns (`ProjectTab` click order: emit first,
+            // `set_active` last).
+            ProjectEvent::Select(path) | ProjectEvent::Add(path) => {
                 crate::side_panel_left::switch_project(path, cx);
+                // Reset the Sessions selection for the new scope — the old
+                // project's thread must not stay highlighted.
+                // (`self.sessions` is a separate entity from `self`, so
+                // this lease is safe here.)
+                if let Some(sessions) = &self.sessions {
+                    sessions.update(cx, |tab, cx| tab.clear_for_project(cx));
+                }
             }
-            ProjectEvent::Add => {
-                // The portal picker already updated the config cache via
-                // `add_project`; nothing for the coordinator to do here
-                // beyond a repaint, which `on_click` triggers.
+            ProjectEvent::Remove(path) => {
+                // Config removal lives in `project_switcher` (the domain
+                // owner); the coordinator clears the chat/session scope
+                // only when the removed path WAS the active project.
+                crate::project_switcher::remove_project(&path.to_string_lossy(), cx);
+                crate::side_panel_left::remove_project_scope(path, cx);
+            }
+            ProjectEvent::OpenInFiles(path) => {
+                crate::side_panel_right::open_files_at(path, cx);
+            }
+            ProjectEvent::OpenInTerminal(path) => {
+                crate::side_panel_right::open_terminal_at(path, cx);
             }
         }
         cx.notify();
