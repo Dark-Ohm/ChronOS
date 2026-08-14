@@ -1,6 +1,6 @@
 # T278 — левая workspace: fixed surfaces, rail и геометрия
 
-**Статус:** READY.
+**Статус:** ACCEPTED 2026-08-14 (round 4). Код: `19263d3`.
 **Приоритет:** P1.
 **Роль:** GPUI / layer-shell lifecycle.
 **Зависимость:** T276 — канонический reference implementation.

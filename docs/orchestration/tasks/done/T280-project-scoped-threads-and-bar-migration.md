@@ -1,6 +1,6 @@
 # T280 — project-scoped ThreadStore v2 и удаление project pill из bar
 
-**Статус:** ACCEPTED 2026-08-14 вместе с T283. Код незакоммичен, коммит по команде.
+**Статус:** ACCEPTED 2026-08-14 вместе с T283. Код: `f083779`.
 **Приоритет:** P1.
 **Роль:** persistence migration + bar configuration.
 **Зависимость:** принятый T279.

@@ -1,10 +1,33 @@
 # T279 — левая workspace: Chat, Sessions и Project tabs
 
-**Статус:** BLOCKED BY T278.
+**Статус:** ACCEPTED 2026-08-14 (round 2 + errata). Код: `bd999a5`.
 **Приоритет:** P1.
 **Роль:** GPUI product UI + existing ACP integration.
-**Зависимость:** принятый T278.
+**Зависимость:** T278 принят 2026-08-14 (round 4, четыре раунда).
+**База:** `19263d3`. Перед стартом доказать:
+`git merge-base --is-ancestor 19263d3 HEAD`.
 **Следующий тикет:** T280; параллельно не выполнять.
+
+## Что реально отдал T278 (сверено с деревом, не по отчёту)
+
+Строиться на этих именах, не изобретать параллельные:
+
+- `side_panel_left/tabs/mod.rs` — `LeftTab`, `PRIMARY_TABS`, `BOTTOM_TAB`,
+  `ResizableWidths`, `width_for_open`, `dock_transition`;
+- `side_panel_left/state.rs` — чистая геометрия (`geometry::`);
+- `side_panel_left/rail_view.rs` — `RailView`, рельса 40 px;
+- `side_panel_left/workspace_view.rs` — `WorkspaceView`, фикс-канвас 920 px;
+- `side_panel_left/mod.rs` — `SidePanelLeftState_` (SoT),
+  `apply_dock_toggle(cx: &mut App)`.
+
+Урок T278, обязательный к соблюдению здесь (см. `docs/ARCHITECT.md`,
+раздел от 2026-08-14): **редьюсер состояния — свободная функция на
+`&mut App`, вьюха делегирует.** Причина: `SidePanelLeft::new` спавнит
+async ACP-connect, поэтому entity не поднимается в `TestAppContext`, и
+любой редьюсер-метод вьюхи становится непокрываемым. Тест обязан звать
+проверяемый путь по имени; тавтология под именем интеграционного теста
+отклоняется без обсуждения. Ветки теста обязаны доказывать, что прод
+читает состояние, а не совпал со статической константой.
 
 ## Канон
 

@@ -1,9 +1,9 @@
 # T281 — левая workspace: IPC, focus, dock и live-приёмка Slice A
 
-**Статус:** BLOCKED BY T280.
+**Статус:** READY.
 **Приоритет:** P1 — финальный integration/live gate Slice A.
 **Роль:** integration + Hyprland live verification.
-**Зависимость:** принятый T280.
+**Зависимость:** T280+T283 в git (`f083779`).
 
 ## Канон
 
