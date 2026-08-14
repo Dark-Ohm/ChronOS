@@ -426,17 +426,51 @@ impl ChatTab {
         });
     }
 
+    /// T280 — canonical project path to scope a thread to: the workspace's
+    /// active project when set, else the process cwd (pre-v2 behaviour).
+    fn project_path(&self, cx: &mut Context<Self>) -> String {
+        cx.global::<crate::side_panel_left::SidePanelLeftState_>()
+            .active_project_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| {
+                std::env::current_dir()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string()
+            })
+    }
+
+    /// T280 — persist the active-thread selection for the current project.
+    /// Best-effort: no store or no active project → no-op (never panics).
+    fn persist_active_thread(&self, thread_id: Option<&str>, cx: &mut Context<Self>) {
+        let project = cx
+            .global::<crate::side_panel_left::SidePanelLeftState_>()
+            .active_project_path
+            .clone();
+        let Some(project) = project else {
+            return;
+        };
+        if let Some(store) = &self.thread_store {
+            let p = project.to_string_lossy().to_string();
+            if let Err(e) = store.set_active_thread(&p, thread_id) {
+                tracing::warn!("persist_active_thread: {e}");
+            }
+        }
+    }
+
     /// T279 / Task 3 — mint a fresh thread. `pub(crate)` so the workspace
     /// coordinator (`create_thread` free fn) reaches it through
     /// `SidePanelLeftState_.chat` — the Sessions-tab "+ New" path.
     pub(crate) fn create_new_session(&mut self, cx: &mut Context<Self>) {
         let id = uuid::Uuid::new_v4().to_string();
         let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().to_string();
+        let project = self.project_path(cx);
 
-        // Insert into the thread store (T150). If the store is unavailable,
-        // fall back to an in-memory-only session.
+        // Insert into the thread store (T150), scoped to the project. If the
+        // store is unavailable, fall back to an in-memory-only session.
         if let Some(store) = &self.thread_store {
-            if let Ok(record) = store.insert(&id, &self.active_agent_id, &cwd) {
+            if let Ok(record) = store.insert_for_project(&id, &self.active_agent_id, &cwd, &project) {
                 self.sessions.push(sessions_list::ThreadListItem {
                     record,
                     active: true,
@@ -452,7 +486,8 @@ impl ChatTab {
                     acp_session_id: None,
                     title: String::new(),
                     title_override: None,
-                    cwd,
+                    cwd: cwd.clone(),
+                    project_path: project.clone(),
                     last_model: None,
                     pinned: false,
                     archived: false,
@@ -468,7 +503,9 @@ impl ChatTab {
             s.active = false;
         }
         self.sort_sessions();
-        self.state.active_session_id = Some(id);
+        self.state.active_session_id = Some(id.clone());
+        // T280: persist the new thread as the project's active selection.
+        self.persist_active_thread(Some(&id), cx);
         // Clear local transcript; mint a fresh ACP session on the agent.
         self.chat = chat_view::ChatView::new();
         self.streaming.reset();
@@ -579,6 +616,24 @@ impl ChatTab {
         cx.notify();
     }
 
+    /// T280 — restore the project's persisted active thread. Runs right after
+    /// `clear_for_project` on a project switch. A valid persisted row is
+    /// loaded into the chat column and mirrored on the SoT; missing / stale /
+    /// archived / cross-project ids yield empty Chat (the store's
+    /// `active_thread` already validates both id and project_path).
+    pub fn restore_project_thread(&mut self, project_path: &std::path::Path, cx: &mut Context<Self>) {
+        let Some(store) = &self.thread_store else {
+            return;
+        };
+        let p = project_path.to_string_lossy().to_string();
+        let Ok(Some(record)) = store.active_thread(&p) else {
+            return;
+        };
+        cx.global_mut::<crate::side_panel_left::SidePanelLeftState_>()
+            .active_session_id = Some(record.id.clone());
+        self.load_thread(record, cx);
+    }
+
     fn select_session(&mut self, session_id: &str, cx: &mut Context<Self>) {
         // Cache current transcript before switching away.
         self.cache_transcript(cx);
@@ -593,6 +648,8 @@ impl ChatTab {
             s.active = s.record.id == session_id;
         }
         self.state.active_session_id = Some(session_id.to_string());
+        // T280: persist this thread as the project's active selection.
+        self.persist_active_thread(Some(session_id), cx);
         self.thread_menu_open = None;
 
         // Clear chat and show loading state.
@@ -843,6 +900,8 @@ impl ChatTab {
                 self.chat = chat_view::ChatView::new();
                 self.state.active_session_id = None;
                 self.state.session_id = None;
+                // T280: deterministic clear of the persisted active id.
+                self.persist_active_thread(None, cx);
             }
         }
         self.sort_sessions();
@@ -861,6 +920,8 @@ impl ChatTab {
             self.chat = chat_view::ChatView::new();
             self.state.active_session_id = None;
             self.state.session_id = None;
+            // T280: deterministic clear of the persisted active id.
+            self.persist_active_thread(None, cx);
         }
         cx.notify();
     }

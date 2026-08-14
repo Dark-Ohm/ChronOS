@@ -44,6 +44,9 @@ pub struct SessionsTab {
     /// can paint its selected background without re-querying the global
     /// during render.
     selected: Option<String>,
+    /// T280: the project this list is scoped to. `None` before any project
+    /// is active — shows no project-scoped threads (empty list is honest).
+    project_path: Option<std::path::PathBuf>,
     /// Weak handle to the owning `WorkspaceView` — used to forward events
     /// to the coordinator without this tab owning panel state.
     coordinator: WeakEntity<WorkspaceView>,
@@ -51,24 +54,41 @@ pub struct SessionsTab {
 
 impl SessionsTab {
     pub fn new(coordinator: WeakEntity<WorkspaceView>) -> Self {
-        let store = ThreadStore::open_default().ok();
-        let mut threads = store
-            .as_ref()
-            .map(|s| {
-                s.list(None, false, false)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|record| ThreadListItem { record, active: false })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        Self::sort(&mut threads);
-        Self {
-            threads,
+        // T280/T283: the canonical active project comes from
+        // `ProjectsConfig` (the sole backend owner). Delegate to the
+        // testable core; `None` → honest empty scope, no store read.
+        Self::with_active_project(coordinator, crate::project_switcher::cached().active)
+    }
+
+    /// T283 — construct with an explicit active project scope. `None`
+    /// yields an honest empty scope (no project path, no selection, no
+    /// threads) and never touches the store — a no-project tab must NOT
+    /// fall back to the whole-store unscoped `list()` (that leaked every
+    /// project's threads onto the screen). The runtime entry point reads
+    /// the process-global `ProjectsConfig`; this core is separate so the
+    /// no-project contract is unit-testable without the global cache or
+    /// the user's on-disk store.
+    fn with_active_project(coordinator: WeakEntity<WorkspaceView>, active: Option<String>) -> Self {
+        let mut tab = Self {
+            threads: Vec::new(),
             search: String::new(),
             selected: None,
+            project_path: None,
             coordinator,
+        };
+        if let Some(active) = active {
+            tab.project_path = Some(std::path::PathBuf::from(&active));
+            if let Ok(store) = ThreadStore::open_default() {
+                if let Ok(records) = store.list_for_project(&active, false) {
+                    tab.threads = records
+                        .into_iter()
+                        .map(|record| ThreadListItem { record, active: false })
+                        .collect::<Vec<_>>();
+                    Self::sort(&mut tab.threads);
+                }
+            }
         }
+        tab
     }
 
     fn sort(threads: &mut [ThreadListItem]) {
@@ -79,11 +99,26 @@ impl SessionsTab {
         });
     }
 
-    /// Set the active project and reload the list for it. Slice A2 uses the
-    /// global store (no project scope yet — that's T280); the signature is
-    /// forward-compatible so T280 wires `list_for_project` here.
-    pub fn set_project(&mut self, _project_path: std::path::PathBuf, _cx: &mut Context<Self>) {
-        // T280 will filter by project_path; A2 shows all threads.
+    /// T280 — set the active project scope and reload the list via
+    /// `list_for_project`. Old-project threads are dropped, not merely
+    /// hidden; a cleared selection keeps an old highlight from persisting.
+    pub fn set_project(&mut self, project_path: std::path::PathBuf, cx: &mut Context<Self>) {
+        self.project_path = Some(project_path.clone());
+        self.selected = None;
+        let store = ThreadStore::open_default().ok();
+        let mut threads = store
+            .as_ref()
+            .and_then(|s| {
+                s.list_for_project(&project_path.to_string_lossy(), false)
+                    .ok()
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .map(|record| ThreadListItem { record, active: false })
+            .collect::<Vec<_>>();
+        Self::sort(&mut threads);
+        self.threads = threads;
+        cx.notify();
     }
 
     /// Currently selected thread id (written on click; the SoT keeps the
@@ -92,12 +127,22 @@ impl SessionsTab {
         self.selected.as_deref()
     }
 
-    /// T279 round 2 — project switch/removal clears the selection: the
-    /// old project's thread must not stay highlighted in the new scope.
-    /// (T280 will also reload the list via `list_for_project` here.)
+    /// T283 — project removal clears the whole scope: project path,
+    /// selection, and the loaded list. The removed project's threads must
+    /// not stay on screen. Reload for the *next* project happens in
+    /// `set_project` (Select/Add); no store read here.
     pub fn clear_for_project(&mut self, cx: &mut Context<Self>) {
-        self.selected = None;
+        self.empty_scope();
         cx.notify();
+    }
+
+    /// T283 — honest empty scope, shared by the no-project constructor
+    /// path and `clear_for_project` (project removal). Resets the project
+    /// scope, the selection, and drops every loaded thread.
+    fn empty_scope(&mut self) {
+        self.project_path = None;
+        self.selected = None;
+        self.threads.clear();
     }
 
     /// Visible threads after applying the search filter.
@@ -273,12 +318,82 @@ mod tests {
         );
     }
 
+    /// T283 — removing the active project must reset the whole Sessions
+    /// scope: project path, selection, AND the loaded list. The old
+    /// project's threads must not stay on screen (the pre-T283 code only
+    /// cleared the highlight while the list kept painting). Drives the
+    /// real prod removal path `clear_for_project` on a live entity.
+    #[gpui::test]
+    fn clear_for_project_resets_scope(cx: &mut gpui::TestAppContext) {
+        let coord = WeakEntity::<WorkspaceView>::new_invalid();
+        let tab = cx.new(|_| SessionsTab {
+            threads: vec![ThreadListItem {
+                record: ThreadRecord {
+                    id: "t1".into(),
+                    ..record_fixture()
+                },
+                active: false,
+            }],
+            search: String::new(),
+            selected: Some("t1".into()),
+            project_path: Some(std::path::PathBuf::from("/proj")),
+            coordinator: coord,
+        });
+        tab.update(cx, |tab, cx| tab.clear_for_project(cx));
+        let (threads, selection, project) = tab.read_with(cx, |tab, _| {
+            (
+                tab.threads.is_empty(),
+                tab.selected_thread().is_none(),
+                tab.project_path.is_none(),
+            )
+        });
+        assert!(threads, "removed project's threads must not stay on screen");
+        assert!(selection, "selection must clear");
+        assert!(project, "project scope must clear");
+    }
+
+    /// T283 — no active project → honest empty scope: 0 rows, no project
+    /// path. The pre-T283 constructor fell back to the unscoped
+    /// `list(None, ..)` and painted every project's threads. Uses the
+    /// explicit-scope core (the `new` entry point delegates to it) so the
+    /// test is deterministic — no process-global config cache, no user's
+    /// on-disk store.
+    #[test]
+    fn new_without_project_loads_empty_scope() {
+        let tab = SessionsTab::with_active_project(WeakEntity::<WorkspaceView>::new_invalid(), None);
+        assert!(tab.threads.is_empty(), "no project → no rows");
+        assert_eq!(tab.selected_thread(), None, "no project → no selection");
+        assert!(tab.project_path.is_none(), "no project → no scope");
+    }
+
+    /// T283 — the unscoped whole-store `list(None, ...)` must never
+    /// reappear in Sessions, and `new` must keep delegating to the
+    /// explicit-scope core (so the no-project contract above is the path
+    /// prod actually runs). Source scan mirrors the T278 gate pattern; the
+    /// needle is split so the test does not self-match.
+    #[test]
+    fn no_unscoped_list_in_sessions() {
+        let src = include_str!("sessions.rs");
+        let needle = "list(None".to_owned() + ", false, false)";
+        assert!(
+            !src.contains(&needle),
+            "Sessions must never list the whole store unscoped"
+        );
+        assert!(
+            src.contains(
+                "Self::with_active_project(coordinator, crate::project_switcher::cached().active)"
+            ),
+            "new must delegate to the explicit-scope core"
+        );
+    }
+
     fn record_fixture() -> ThreadRecord {
         ThreadRecord {
             id: String::new(),
             acp_session_id: None,
             agent_id: "test".into(),
             cwd: "/tmp".into(),
+            project_path: "/tmp".into(),
             title: String::new(),
             title_override: None,
             last_model: None,

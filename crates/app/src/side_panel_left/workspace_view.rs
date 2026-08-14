@@ -163,13 +163,12 @@ impl WorkspaceView {
             // handler returns (`ProjectTab` click order: emit first,
             // `set_active` last).
             ProjectEvent::Select(path) | ProjectEvent::Add(path) => {
-                crate::side_panel_left::switch_project(path, cx);
-                // Reset the Sessions selection for the new scope — the old
-                // project's thread must not stay highlighted.
-                // (`self.sessions` is a separate entity from `self`, so
-                // this lease is safe here.)
+                crate::side_panel_left::switch_project(path.clone(), cx);
+                // T280: scope the Sessions list to the new project and drop
+                // the old selection. (`self.sessions` is a separate entity
+                // from `self`, so this lease is safe here.)
                 if let Some(sessions) = &self.sessions {
-                    sessions.update(cx, |tab, cx| tab.clear_for_project(cx));
+                    sessions.update(cx, |tab, cx| tab.set_project(path, cx));
                 }
             }
             ProjectEvent::Remove(path) => {
@@ -178,6 +177,11 @@ impl WorkspaceView {
                 // only when the removed path WAS the active project.
                 crate::project_switcher::remove_project(&path.to_string_lossy(), cx);
                 crate::side_panel_left::remove_project_scope(path, cx);
+                // T280: if the removed project was active, reset the
+                // Sessions list scope + selection too.
+                if let Some(sessions) = &self.sessions {
+                    sessions.update(cx, |tab, cx| tab.clear_for_project(cx));
+                }
             }
             ProjectEvent::OpenInFiles(path) => {
                 crate::side_panel_right::open_files_at(path, cx);

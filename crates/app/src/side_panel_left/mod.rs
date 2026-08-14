@@ -690,9 +690,10 @@ pub fn create_thread(cx: &mut App) {
 /// clears the outgoing chat column via `ChatTab::clear_for_project`
 /// (reached through `SidePanelLeftState_.chat`).
 ///
-/// T280 will extend this to load the store's `active_thread(project_path)`
-/// and restore it; A2 just clears + sets — the coordinator re-derives the
-/// session list from the new project on next render.
+/// T280: after clearing, `ChatTab::restore_project_thread` below loads
+/// the store's `active_thread(project_path)` and restores it; the
+/// coordinator re-derives the Sessions list from the new project on next
+/// render.
 pub fn switch_project(new_project_path: std::path::PathBuf, cx: &mut App) {
     {
         let state = cx.global_mut::<SidePanelLeftState_>();
@@ -709,7 +710,12 @@ pub fn switch_project(new_project_path: std::path::PathBuf, cx: &mut App) {
         );
     }
     if let Some(chat) = chat_handle(cx) {
-        chat.update(cx, |chat, cx| chat.clear_for_project(&new_project_path, cx));
+        chat.update(cx, |chat, cx| {
+            chat.clear_for_project(&new_project_path, cx);
+            // T280: after clearing, restore the new project's persisted
+            // active thread (valid → load; stale → empty Chat).
+            chat.restore_project_thread(&new_project_path, cx);
+        });
     }
 }
 

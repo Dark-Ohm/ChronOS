@@ -24,7 +24,6 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "workspaces",
     "mpris",
     "cava",
-    "project",
     "workspace_mode",
     "keyboard_layout",
     "volume",
@@ -74,7 +73,6 @@ impl Default for BarLayoutConfig {
             ],
             center: vec!["mpris".into(), "cava".into()],
             right: vec![
-                "project".into(),
                 "workspace_mode".into(),
                 "separator".into(),
                 "volume".into(),
@@ -160,19 +158,26 @@ impl BarLayoutConfig {
                     // v1 files (no `version` / version < 2): appearance stays
                     // code defaults even if an `[appearance]` section exists.
                     cfg.appearance = gated_appearance(cfg.version, cfg.appearance);
-                    if cfg.migrate_new_builtins() {
+                    // T280: silently strip the retired `project` builtin so
+                    // the load-save cycle normalizes an old bar.toml exactly
+                    // once. Runs BEFORE migrate_new_builtins / sanitized so
+                    // the retired name never surfaces as a warning.
+                    let stripped = cfg.strip_retired_project();
+                    let migrated = cfg.migrate_new_builtins();
+                    if stripped || migrated {
                         // Persist so the migration doesn't loop on every
-                        // restart. This is the one exception to the
-                        // "no silent write on load" rule — the
-                        // alternative (migration re-inserting on every
-                        // boot) is worse.
+                        // restart. One exception to the "no silent write on
+                        // load" rule — the alternative (migration re-running
+                        // every boot) is worse.
                         if let Err(e) = cfg.save() {
                             tracing::warn!(
                                 "bar: failed to persist migration: {e}"
                             );
                         } else {
                             tracing::info!(
-                                "bar: migrated layout persisted to {}",
+                                stripped = stripped,
+                                migrated = migrated,
+                                "bar: layout migration persisted to {}",
                                 path.display()
                             );
                         }
@@ -275,6 +280,26 @@ impl BarLayoutConfig {
         // Record the new names so they aren't re-inserted next time.
         self.known.extend(new_names.iter().map(|n| n.to_string()));
         true
+    }
+
+    /// T280 — one-way removal of the retired `project` builtin. Removes the
+    /// exact name from every section AND from `known`, silently (the
+    /// Project Switcher is now the left workspace's Project tab; the bar
+    /// pill is gone). Returns `true` when anything was stripped so `load`
+    /// persists once. Other/unknown names are never touched.
+    fn strip_retired_project(&mut self) -> bool {
+        let removed = |list: &mut Vec<String>| -> bool {
+            let before = list.len();
+            list.retain(|n| n != "project");
+            list.len() != before
+        };
+        let mut changed = removed(&mut self.left);
+        changed |= removed(&mut self.center);
+        changed |= removed(&mut self.right);
+        if self.known.remove("project") {
+            changed = true;
+        }
+        changed
     }
 
     /// Insert `name` into the section and position defined by `default_cfg`.
@@ -578,7 +603,6 @@ mod tests {
         assert_eq!(
             d.right,
             vec![
-                "project",
                 "workspace_mode",
                 "separator",
                 "volume",
@@ -593,6 +617,10 @@ mod tests {
                 "clock",
             ]
         );
+        // T280: `project` retired into the left workspace — it must not
+        // appear in the default nor in the builtin catalog.
+        assert!(!d.right.contains(&"project".to_string()));
+        assert!(!BUILTIN_NAMES.contains(&"project"));
     }
 
     #[test]
@@ -666,23 +694,28 @@ mod tests {
 
     /// Виджет обязан встать рядом со СВОИМ соседом из `Default`, даже если
     /// пользователь переставил кластер. Регрессия эрраты T163: раньше якорь
-    /// искался только среди успешников, и `workspace_mode` уезжал в позицию 0.
+    /// искался только среди успешников, и виджет уезжал в позицию 0.
+    /// T280: fixture переведён с retired `project` на `tray` (predecessor —
+    /// `keyboard_layout`), ассерты эквивалентны.
     #[test]
     fn migration_anchors_on_predecessor_not_successor() {
         let mut known: BTreeSet<String> = BTreeSet::new();
-        for name in BUILTIN_NAMES.iter().filter(|&&n| n != "workspace_mode") {
+        for name in BUILTIN_NAMES.iter().filter(|&&n| n != "tray") {
             known.insert(name.to_string());
         }
         // Пользовательский порядок: кластер НАЧИНАЕТСЯ с separator, а
-        // project стоит в середине. В `Default` порядок другой.
+        // keyboard_layout стоит в середине. В `Default` tray идёт сразу за
+        // keyboard_layout. Successor-якорь (updates) стоит раньше в
+        // пользовательском списке — только predecessor-якорь даёт верную
+        // позицию рядом с keyboard_layout.
         let mut cfg = BarLayoutConfig {
             left: vec!["dock".into()],
             center: vec!["cava".into()],
             right: vec![
                 "separator".into(),
                 "system".into(),
-                "tray".into(),
-                "project".into(),
+                "updates".into(),
+                "keyboard_layout".into(),
                 "battery".into(),
                 "clock".into(),
             ],
@@ -692,21 +725,21 @@ mod tests {
 
         assert!(cfg.migrate_new_builtins());
 
-        let pos = cfg
+        let tray_pos = cfg
             .right
             .iter()
-            .position(|n| n == "workspace_mode")
-            .expect("виджет вставлен");
-        let project_pos = cfg
+            .position(|n| n == "tray")
+            .expect("tray вставлен");
+        let kl_pos = cfg
             .right
             .iter()
-            .position(|n| n == "project")
-            .expect("project на месте");
+            .position(|n| n == "keyboard_layout")
+            .expect("keyboard_layout на месте");
 
         assert_eq!(
-            pos,
-            project_pos + 1,
-            "workspace_mode обязан встать сразу за project, а не в начало кластера: {:?}",
+            tray_pos,
+            kl_pos + 1,
+            "tray обязан встать сразу за keyboard_layout, а не в начало кластера: {:?}",
             cfg.right
         );
     }
@@ -719,7 +752,7 @@ mod tests {
         let mut cfg = BarLayoutConfig {
             left: vec!["dock".into()],
             center: vec!["cava".into()],
-            right: vec!["project".into(), "clock".into()],
+            right: vec!["clock".into()],
             known: BTreeSet::new(),
             ..Default::default()
         };
@@ -753,10 +786,10 @@ mod tests {
             left: vec!["dock".into(), "separator".into(), "workspaces".into()],
             center: vec!["mpris".into(), "cava".into()],
             right: vec![
-                "project".into(),
                 "separator".into(),
                 "volume".into(),
                 "network".into(),
+                "keyboard_layout".into(),
                 "tray".into(),
                 "updates".into(),
                 "system".into(),
@@ -769,8 +802,13 @@ mod tests {
             ..Default::default()
         };
         cfg.migrate_new_builtins();
-        // workspace_mode inserted at index 1 (after "project", before "separator").
+        // workspace_mode (default index 0, project retired) has no
+        // predecessor → inserted before its first successor that exists in
+        // the user config: volume. User's right starts with separator, so
+        // workspace_mode lands at index 1.
+        assert_eq!(cfg.right[0], "separator");
         assert_eq!(cfg.right[1], "workspace_mode");
+        assert_eq!(cfg.right[2], "volume");
         assert!(cfg.known.contains("workspace_mode"));
     }
 
@@ -786,7 +824,6 @@ mod tests {
             left: vec!["dock".into(), "separator".into(), "workspaces".into()],
             center: vec!["mpris".into(), "cava".into()],
             right: vec![
-                "project".into(),
                 "workspace_mode".into(),
                 "separator".into(),
                 // user removed "volume" here
@@ -837,10 +874,10 @@ mod tests {
             left: vec!["dock".into(), "separator".into(), "workspaces".into()],
             center: vec!["mpris".into(), "cava".into()],
             right: vec![
-                "project".into(),
                 "separator".into(),
                 "volume".into(),
                 "network".into(),
+                "keyboard_layout".into(),
                 "tray".into(),
                 "updates".into(),
                 "system".into(),
@@ -852,11 +889,78 @@ mod tests {
             known,
             ..Default::default()
         };
-        cfg.migrate_new_builtins();
+                cfg.migrate_new_builtins();
         let after_first = cfg.right.clone();
         cfg.migrate_new_builtins();
         assert_eq!(cfg.right, after_first);
         assert_eq!(cfg.right.iter().filter(|n| *n == "workspace_mode").count(), 1);
+    }
+
+    // -- T280 / retired `project` builtin ------------------------------------
+
+    /// The retired `project` is silently stripped from every section AND
+    /// from `known`. Returns true so `load` can persist the normalized
+    /// config once.
+    #[test]
+    fn strip_retired_project_removes_from_all_sections_and_known() {
+        let mut known: BTreeSet<String> = BTreeSet::new();
+        known.insert("project".to_string());
+        known.insert("clock".to_string());
+        let mut cfg = BarLayoutConfig {
+            left: vec!["project".into(), "dock".into()],
+            center: vec!["project".into()],
+            right: vec!["separator".into(), "project".into(), "project".into(), "clock".into()],
+            known,
+            ..Default::default()
+        };
+        assert!(cfg.strip_retired_project());
+        assert_eq!(cfg.left, vec!["dock"]);
+        assert!(cfg.center.is_empty());
+        assert_eq!(cfg.right, vec!["separator", "clock"]);
+        assert!(!cfg.known.contains("project"));
+        assert!(cfg.known.contains("clock"));
+    }
+
+    /// A second pass is a no-op — no duplicates can be re-stripped, and an
+    /// unrelated unknown name is left untouched.
+    #[test]
+    fn strip_retired_project_nops_when_absent_and_keeps_unknown() {
+        let mut known: BTreeSet<String> = BTreeSet::new();
+        known.insert("clock".to_string());
+        let mut cfg = BarLayoutConfig {
+            left: vec!["dock".into()],
+            center: vec![],
+            right: vec!["custom_plugin".into(), "clock".into()],
+            known,
+            ..Default::default()
+        };
+        assert!(!cfg.strip_retired_project());
+        assert_eq!(cfg.right, vec!["custom_plugin", "clock"]);
+        assert!(!cfg.known.contains("project"));
+    }
+
+    /// The retired name must never surface as a warning-producing unknown:
+    /// because `load()` strips BEFORE `sanitized()`, a config that STILL has
+    /// `project` cannot make it past the builtin whitelist into the layout.
+    #[test]
+    fn retired_project_never_reaches_sanitized_whitelist() {
+        let mut known: BTreeSet<String> = BTreeSet::new();
+        known.insert("project".to_string());
+        known.insert("clock".to_string());
+        let mut cfg = BarLayoutConfig {
+            left: vec!["project".into(), "dock".into()],
+            center: vec![],
+            right: vec!["project".into(), "clock".into()],
+            known,
+            ..Default::default()
+        };
+        // Simulate load(): strip first, sanitize after.
+        cfg.strip_retired_project();
+        let s = cfg.sanitized();
+        assert!(!s.left.contains(&"project".to_string()));
+        assert!(!s.right.contains(&"project".to_string()));
+        assert_eq!(s.left, vec!["dock"]);
+        assert_eq!(s.right, vec!["clock"]);
     }
 
     // -- T199 appearance schema ---------------------------------------------

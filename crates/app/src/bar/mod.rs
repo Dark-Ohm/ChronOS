@@ -261,18 +261,17 @@ fn section_div(section: BarSection, widgets: Vec<AnyElement>) -> AnyElement {
 /// Spacing inside one semantic group of the right tray cluster.
 const RIGHT_INNER_GAP: f32 = 4.0;
 /// Spacing between semantic groups of the right tray cluster (T234):
-/// time | status(net/battery/sound) | keyboard layout | mode | project.
+/// time | status(net/battery/sound) | keyboard layout | mode.
 const RIGHT_GROUP_GAP: f32 = 14.0;
 
 /// Semantic group id for a right-section widget name. Drives two-level
 /// spacing: 4px within a group, 14px between groups. `separator` (0) is a
 /// forced break and is dropped from layout — T234 replaces dividers with
 /// spacing. Everything not explicitly a stand-alone group falls into the
-/// status cluster (1).
+/// status cluster (1). T280: `project` retired into the left workspace.
 fn right_widget_group(name: &str) -> u8 {
     match name {
         "separator" => 0,
-        "project" => 2,
         "workspace_mode" => 3,
         "keyboard_layout" => 4,
         "clock" => 5,
@@ -767,11 +766,10 @@ use chronos_ui::{Theme, WindowRootExt};
 
     #[test]
     fn group_right_breaks_on_semantic_change() {
-        // Default config order: project | workspace_mode | volume | network |
+        // Default config order: workspace_mode | volume | network |
         // keyboard_layout | tray | updates | system | notification_bell |
-        // battery | clock (separators dropped).
+        // battery | clock (separators dropped). `project` is retired (T280).
         let g = group_right_names(&names(&[
-            "project",
             "workspace_mode",
             "separator",
             "volume",
@@ -785,18 +783,17 @@ use chronos_ui::{Theme, WindowRootExt};
             "battery",
             "clock",
         ]));
-        // 7 clusters: project / mode / net / layout / status / battery / clock.
-        assert_eq!(g.len(), 7);
-        assert_eq!(g[0], vec!["project"]);
-        assert_eq!(g[1], vec!["workspace_mode"]);
-        assert_eq!(g[2], vec!["volume", "network"]);
-        assert_eq!(g[3], vec!["keyboard_layout"]);
+        // 6 clusters: mode / net / layout / status / battery / clock.
+        assert_eq!(g.len(), 6);
+        assert_eq!(g[0], vec!["workspace_mode"]);
+        assert_eq!(g[1], vec!["volume", "network"]);
+        assert_eq!(g[2], vec!["keyboard_layout"]);
         assert_eq!(
-            g[4],
+            g[3],
             vec!["tray", "updates", "system", "notification_bell"]
         );
-        assert_eq!(g[5], vec!["battery"]);
-        assert_eq!(g[6], vec!["clock"]);
+        assert_eq!(g[4], vec!["battery"]);
+        assert_eq!(g[5], vec!["clock"]);
     }
 
     #[test]
