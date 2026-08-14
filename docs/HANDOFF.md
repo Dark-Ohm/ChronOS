@@ -77,19 +77,13 @@ round 3 пришёл с тестом `on_dock_toggle_uses_pure_helper`, кото
 **Очередь на 2026-08-14:**
 
 - **T280+T283** закрыты: `f083779` — ThreadStore v2, bar project retired,
-  Sessions empty-scope. Дальше только **T281** (IPC + live). Не параллелить с T281
+  Sessions empty-scope. Дальше **T281** (IPC + live). Не параллелить с T281
   зону `side_panel_left` / `threads`.
-- **T282 — новый: packaging.** Вскрыт блокер: `Cargo.toml:39-63` держит
-  два блока `[patch]` на локальный `../Source/*`, у постороннего сборка
-  падает до компиляции. Развязка — вынести `[patch]` в некоммитимый
-  `.cargo/config.toml`, релиз собирается из публичного
-  `github.com/Dark-Ohm/Chronos-GPUI` по пину `rev = 57f582f` (проверить,
-  что репо публичный и пин не отстал от `../Source`). Дальше PKGBUILD
-  `chronos-shell-git` + release tarball + смок в чистом контейнере.
-  Параллелится с чем угодно.
+- **T273** закрыт (поглощён T276). **T274** снят: pill бара нет после T280.
+- **T270** уехал в Chronos-GPUI: `../Source/docs/tasks/T270-wayland-dnd-source-never-finishes.md`.
+- **T282 packaging** — LAST, после пустой очереди шелла, не параллельно.
 - **Лаунчер:** волна T265-A конфликтует по зоне с T275 (`launcher/**` +
-  frecency) — сначала закрыть T275. Любая волна T265, трогающая
-  `bar/widgets/`, ждёт T280 (тот же файл `widgets/mod.rs`).
+  frecency) — сначала закрыть T275. T280 больше не блокер `bar/widgets/`.
 
 **Решения по релизу (2026-08-14):** ветку `stable` в `Source/` не
 заводим — пин по sha плюс тег `chronos-<version>` на релизном коммите;
