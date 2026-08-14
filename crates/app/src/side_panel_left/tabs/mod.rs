@@ -304,6 +304,156 @@ pub fn tab_select_transition(
     }
 }
 
+/// T281 / Task 7 — the single reducer boundary the plan (§Task 7 Step 1)
+/// requires: every keybind/IPC/rail entry point funnels through this pure
+/// function so the whole state-machine table (`toggle` / `SelectTab` /
+/// `ToggleDock` / `expand-left` / `compose-and-send`) is exercised as one
+/// contract instead of five independently-plausible call sites drifting
+/// apart. Internally it composes the existing pure helpers
+/// (`tab_select_transition`, `dock_transition`, `width_for_open`) — no
+/// duplicated policy, this is a documented composition, not a rewrite.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkspaceAction {
+    Toggle,
+    SelectTab(LeftTab),
+    ToggleDock,
+    ExpandComposer,
+    ComposeAndSend,
+}
+
+/// Read-only snapshot the reducer needs. `open` is `rail_handle.is_some()`
+/// at the call site — the reducer never inspects a `WindowHandle` itself.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WorkspaceSnapshot {
+    pub open: bool,
+    pub active_tab: LeftTab,
+    pub panel_width: f32,
+    pub dock_content: bool,
+    pub remembered_widths: ResizableWidths,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WorkspaceTransition {
+    pub open_rail: bool,
+    pub open_content: bool,
+    pub active_tab: LeftTab,
+    pub dock_content: bool,
+    pub panel_width: f32,
+    pub focus_composer: bool,
+}
+
+/// Pure decision for every `WorkspaceAction`. No `App`/`Window`/`Context` —
+/// callers translate `open_rail`/`open_content` into `open_pinned`/`close`,
+/// write the remaining fields into `SidePanelLeftState_`, and call
+/// `request_focus_composer` when `focus_composer` is set.
+///
+/// `ExpandComposer`/`ComposeAndSend` are identical at this layer (both
+/// must land on Chat, docked, focused) — `compose_and_send`'s extra "submit
+/// exactly once after readiness" behaviour is not representable here (it
+/// needs the live `ChatTab`/ACP connection) and stays the caller's job,
+/// same as before this reducer existed (T247).
+pub fn workspace_transition(
+    state: WorkspaceSnapshot,
+    action: WorkspaceAction,
+) -> WorkspaceTransition {
+    match action {
+        WorkspaceAction::Toggle => {
+            if state.open {
+                WorkspaceTransition {
+                    open_rail: false,
+                    open_content: false,
+                    active_tab: state.active_tab,
+                    dock_content: false,
+                    panel_width: RAIL_WIDTH,
+                    focus_composer: false,
+                }
+            } else {
+                WorkspaceTransition {
+                    open_rail: true,
+                    open_content: true,
+                    active_tab: state.active_tab,
+                    dock_content: false,
+                    panel_width: RAIL_WIDTH,
+                    focus_composer: false,
+                }
+            }
+        }
+        WorkspaceAction::SelectTab(clicked) => {
+            if !state.open {
+                return WorkspaceTransition {
+                    open_rail: true,
+                    open_content: true,
+                    active_tab: clicked,
+                    dock_content: false,
+                    panel_width: width_for_open(clicked, &state.remembered_widths),
+                    focus_composer: false,
+                };
+            }
+            let (next_tab, next_width, next_dock) = tab_select_transition(
+                clicked,
+                state.active_tab,
+                state.panel_width,
+                state.dock_content,
+                &state.remembered_widths,
+            );
+            WorkspaceTransition {
+                open_rail: true,
+                open_content: true,
+                active_tab: next_tab,
+                dock_content: next_dock,
+                panel_width: next_width,
+                focus_composer: false,
+            }
+        }
+        WorkspaceAction::ToggleDock => {
+            if !state.open {
+                return WorkspaceTransition {
+                    open_rail: true,
+                    open_content: true,
+                    active_tab: state.active_tab,
+                    dock_content: true,
+                    panel_width: width_for_open(state.active_tab, &state.remembered_widths),
+                    focus_composer: false,
+                };
+            }
+            let (next_width, next_dock) = dock_transition(
+                state.panel_width,
+                state.dock_content,
+                state.active_tab,
+                &state.remembered_widths,
+            );
+            WorkspaceTransition {
+                open_rail: true,
+                open_content: true,
+                active_tab: state.active_tab,
+                dock_content: next_dock,
+                panel_width: next_width,
+                focus_composer: false,
+            }
+        }
+        WorkspaceAction::ExpandComposer | WorkspaceAction::ComposeAndSend => {
+            // Spec: "обеспечить Chat, dock и focus composer" from EVERY
+            // entry state (closed / rail-only / content-open / docked).
+            // Force the tab regardless of what was active — the previous
+            // implementation read `state.active_tab` instead of forcing
+            // Chat, so calling expand-left/compose-and-send from a
+            // non-Chat tab silently focused/wrote into an entity that
+            // was never on screen (the render match only paints Chat
+            // when `active_tab == Chat` — see `workspace_view.rs`).
+            let width = width_for_open(LeftTab::Chat, &state.remembered_widths)
+                .max(SOFT_OPEN_MIN_WIDTH);
+            WorkspaceTransition {
+                open_rail: true,
+                open_content: true,
+                active_tab: LeftTab::Chat,
+                dock_content: true,
+                panel_width: width,
+                focus_composer: true,
+            }
+        }
+    }
+}
+
 // T279 round 2: the coordinator transitions (`session_select_transition`,
 // `project_switch_transition`) were deleted — unconditional helpers that
 // returned their input/a constant are tautology bait (the T278 lesson).
@@ -618,5 +768,199 @@ mod tests {
         let mut v: Vec<LeftTab> = PRIMARY_TABS.to_vec();
         v.push(BOTTOM_TAB);
         v
+    }
+
+    // ── T281 / Task 7 — unified `workspace_transition` reducer ──
+    //
+    // One test per table cell from the plan
+    // (`docs/superpowers/plans/2026-08-13-left-ai-workspace-slice-a.md`
+    // §Task 7). "Closed" = `open: false`; "Rail-only" = `open: true,
+    // dock_content: false, panel_width: RAIL_WIDTH`; "Content open" =
+    // `open: true, dock_content: false, panel_width > RAIL_WIDTH`;
+    // "Docked" = `open: true, dock_content: true`.
+
+    fn snap(open: bool, tab: LeftTab, width: f32, dock: bool) -> WorkspaceSnapshot {
+        WorkspaceSnapshot {
+            open,
+            active_tab: tab,
+            panel_width: width,
+            dock_content: dock,
+            remembered_widths: ResizableWidths::default(),
+        }
+    }
+
+    // Toggle row.
+    #[test]
+    fn toggle_from_closed_opens_both_rail_only() {
+        let t = workspace_transition(
+            snap(false, LeftTab::Chat, RAIL_WIDTH, false),
+            WorkspaceAction::Toggle,
+        );
+        assert!(t.open_rail && t.open_content);
+        assert!(!t.dock_content);
+        assert_eq!(t.panel_width, RAIL_WIDTH);
+        assert!(!t.focus_composer);
+    }
+
+    #[test]
+    fn toggle_from_rail_only_closes_both() {
+        let t = workspace_transition(
+            snap(true, LeftTab::Chat, RAIL_WIDTH, false),
+            WorkspaceAction::Toggle,
+        );
+        assert!(!t.open_rail && !t.open_content);
+        assert_eq!(t.panel_width, RAIL_WIDTH);
+    }
+
+    #[test]
+    fn toggle_from_content_open_closes_both() {
+        let t = workspace_transition(
+            snap(true, LeftTab::Chat, 612.0, false),
+            WorkspaceAction::Toggle,
+        );
+        assert!(!t.open_rail && !t.open_content);
+        assert!(!t.dock_content);
+    }
+
+    #[test]
+    fn toggle_from_docked_closes_both() {
+        let t = workspace_transition(
+            snap(true, LeftTab::Chat, 612.0, true),
+            WorkspaceAction::Toggle,
+        );
+        assert!(!t.open_rail && !t.open_content);
+        assert!(!t.dock_content);
+    }
+
+    // SelectTab row: "active tab click" — n/a closed, open tab, collapse
+    // content, no-op docked. Covered together with `tab_select_transition`
+    // above; here we prove the reducer wires `open_rail`/`open_content`
+    // correctly around it.
+    #[test]
+    fn select_tab_from_closed_opens_both() {
+        let t = workspace_transition(
+            snap(false, LeftTab::Chat, RAIL_WIDTH, false),
+            WorkspaceAction::SelectTab(LeftTab::Sessions),
+        );
+        assert!(t.open_rail && t.open_content);
+        assert_eq!(t.active_tab, LeftTab::Sessions);
+        assert_eq!(t.panel_width, LeftTab::Sessions.preferred_panel_width());
+    }
+
+    #[test]
+    fn select_tab_active_docked_is_noop() {
+        let t = workspace_transition(
+            snap(true, LeftTab::Chat, 612.0, true),
+            WorkspaceAction::SelectTab(LeftTab::Chat),
+        );
+        assert_eq!(t.active_tab, LeftTab::Chat);
+        assert_eq!(t.panel_width, 612.0);
+        assert!(t.dock_content, "dock wins over collapse");
+    }
+
+    #[test]
+    fn select_tab_active_undocked_collapses() {
+        let t = workspace_transition(
+            snap(true, LeftTab::Sessions, 444.0, false),
+            WorkspaceAction::SelectTab(LeftTab::Sessions),
+        );
+        assert_eq!(t.panel_width, RAIL_WIDTH);
+        assert!(!t.dock_content);
+    }
+
+    #[test]
+    fn select_tab_other_switches_and_opens() {
+        let t = workspace_transition(
+            snap(true, LeftTab::Chat, RAIL_WIDTH, false),
+            WorkspaceAction::SelectTab(LeftTab::Project),
+        );
+        assert_eq!(t.active_tab, LeftTab::Project);
+        assert_eq!(t.panel_width, 440.0);
+    }
+
+    // ToggleDock row.
+    #[test]
+    fn toggle_dock_from_closed_opens_docked() {
+        let t = workspace_transition(
+            snap(false, LeftTab::Chat, RAIL_WIDTH, false),
+            WorkspaceAction::ToggleDock,
+        );
+        assert!(t.open_rail && t.open_content);
+        assert!(t.dock_content);
+        // Closed + Chat active + default remembered widths → opens at the
+        // remembered Chat width (560), same as `width_for_open`.
+        assert_eq!(t.panel_width, ResizableWidths::default().chat);
+    }
+
+    #[test]
+    fn toggle_dock_from_rail_only_expands_and_docks() {
+        let t = workspace_transition(
+            snap(true, LeftTab::Chat, RAIL_WIDTH, false),
+            WorkspaceAction::ToggleDock,
+        );
+        assert!(t.dock_content);
+        assert_eq!(t.panel_width, ResizableWidths::default().chat);
+    }
+
+    #[test]
+    fn toggle_dock_from_content_open_preserves_width_and_docks() {
+        let t = workspace_transition(
+            snap(true, LeftTab::Chat, 612.0, false),
+            WorkspaceAction::ToggleDock,
+        );
+        assert!(t.dock_content);
+        assert_eq!(t.panel_width, 612.0);
+    }
+
+    #[test]
+    fn toggle_dock_from_docked_undocks_and_preserves_width() {
+        let t = workspace_transition(
+            snap(true, LeftTab::Chat, 612.0, true),
+            WorkspaceAction::ToggleDock,
+        );
+        assert!(!t.dock_content);
+        assert_eq!(t.panel_width, 612.0);
+    }
+
+    // ExpandComposer / ComposeAndSend row: identical at this layer, from
+    // ALL four entry states — always Chat, docked, focused.
+    #[test]
+    fn expand_composer_from_every_state_lands_on_chat_docked_focused() {
+        let cases = [
+            snap(false, LeftTab::Project, RAIL_WIDTH, false), // closed
+            snap(true, LeftTab::Sessions, RAIL_WIDTH, false), // rail-only
+            snap(true, LeftTab::Project, 612.0, false),       // content open, wrong tab
+            snap(true, LeftTab::Sessions, 612.0, true),       // docked, wrong tab
+        ];
+        for s in cases {
+            for action in [WorkspaceAction::ExpandComposer, WorkspaceAction::ComposeAndSend] {
+                let t = workspace_transition(s, action);
+                assert!(t.open_rail && t.open_content);
+                assert_eq!(t.active_tab, LeftTab::Chat, "{s:?} / {action:?} must land on Chat");
+                assert!(t.dock_content, "{s:?} / {action:?} must dock");
+                assert!(t.focus_composer, "{s:?} / {action:?} must focus composer");
+                assert!(t.panel_width >= SOFT_OPEN_MIN_WIDTH);
+            }
+        }
+    }
+
+    // Hard-drag edge: 40 (rail-only) → dock on → 960 → dock off must not
+    // clamp outside the drag range at any step (Task 7 gate: "remembered
+    // width, hard drag to 40, drag back from 40, and dock/undock").
+    #[test]
+    fn drag_960_to_40_and_back_stays_in_range_across_dock_toggle() {
+        let mut widths = ResizableWidths::default();
+        widths.chat = MAX_PANEL_WIDTH; // simulate a drag all the way to 960
+        let s = WorkspaceSnapshot {
+            open: true,
+            active_tab: LeftTab::Chat,
+            panel_width: RAIL_WIDTH, // collapsed via drag to 40
+            dock_content: false,
+            remembered_widths: widths,
+        };
+        let t = workspace_transition(s, WorkspaceAction::ToggleDock);
+        assert!(t.dock_content);
+        assert_eq!(t.panel_width, MAX_PANEL_WIDTH, "dock-on from rail-only restores the remembered drag width, clamped in range");
+        assert!(t.panel_width <= MAX_PANEL_WIDTH && t.panel_width >= RAIL_WIDTH);
     }
 }

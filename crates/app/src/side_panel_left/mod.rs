@@ -769,14 +769,24 @@ pub fn expand_with_composer(cx: &mut App) {
         tracing::warn!("side_panel_left: expand_with_composer has no workspace");
         return;
     };
-    let target = {
+    // T281 / Task 7: route through the single reducer so this always lands
+    // on Chat+dock regardless of which tab was active before the call —
+    // see `set_panel_width`'s doc comment for the bug this closes.
+    let transition = {
         let state = cx.global::<SidePanelLeftState_>();
-        let active = state.active_tab;
-        tabs::width_for_open(active, &state.remembered_widths)
-            .max(tabs::SOFT_OPEN_MIN_WIDTH)
+        tabs::workspace_transition(
+            tabs::WorkspaceSnapshot {
+                open: state.rail_handle.is_some(),
+                active_tab: state.active_tab,
+                panel_width: state.panel_width,
+                dock_content: state.dock_content,
+                remembered_widths: state.remembered_widths,
+            },
+            tabs::WorkspaceAction::ExpandComposer,
+        )
     };
     workspace.update(cx, |view, cx| {
-        view.set_panel_width(target, true, cx);
+        view.set_panel_width(transition.panel_width, transition.dock_content, transition.active_tab, cx);
         view.request_focus_composer(cx);
     });
 }
@@ -795,14 +805,23 @@ pub fn compose_and_send(text: String, cx: &mut App) {
         tracing::warn!("side_panel_left: compose_and_send has no workspace");
         return;
     };
-    let target = {
+    // T281 / Task 7: same reducer as `expand_with_composer` — always lands
+    // on Chat+dock so the text actually appears where it's written.
+    let transition = {
         let state = cx.global::<SidePanelLeftState_>();
-        let active = state.active_tab;
-        tabs::width_for_open(active, &state.remembered_widths)
-            .max(tabs::SOFT_OPEN_MIN_WIDTH)
+        tabs::workspace_transition(
+            tabs::WorkspaceSnapshot {
+                open: state.rail_handle.is_some(),
+                active_tab: state.active_tab,
+                panel_width: state.panel_width,
+                dock_content: state.dock_content,
+                remembered_widths: state.remembered_widths,
+            },
+            tabs::WorkspaceAction::ComposeAndSend,
+        )
     };
     workspace.update(cx, |view, cx| {
-        view.set_panel_width(target, true, cx);
+        view.set_panel_width(transition.panel_width, transition.dock_content, transition.active_tab, cx);
         view.chat.update(cx, |child, _cx| {
             child.composer_input.clear();
             child.composer_input.content = text.into();

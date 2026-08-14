@@ -88,14 +88,24 @@ impl WorkspaceView {
             .panel_width
     }
 
-    /// Set panel width and mirror it into the legacy child. Used by IPC
-    /// (`expand_with_composer`, `compose_and_send`) to dock the chat
-    /// column at the remembered/preferred width without reaching through
-    /// a window handle.
+    /// Apply a width/dock/tab change and mirror the width into the legacy
+    /// child. Used by IPC (`expand_with_composer`, `compose_and_send`) to
+    /// dock the chat column at the remembered/preferred width without
+    /// reaching through a window handle.
+    ///
+    /// T281 / Task 7: takes `active_tab` too. The previous signature left
+    /// `SidePanelLeftState_.active_tab` untouched, so `expand_with_composer`
+    /// / `compose_and_send` from a non-Chat tab silently focused/wrote into
+    /// the `ChatTab` entity while the screen kept showing whatever tab was
+    /// already active — `render`'s match only paints Chat when
+    /// `active_tab == LeftTab::Chat`. Callers now always pass
+    /// `LeftTab::Chat` (via `tabs::workspace_transition`'s
+    /// `ExpandComposer`/`ComposeAndSend` arm).
     pub fn set_panel_width(
         &mut self,
         new_width: f32,
         dock: bool,
+        active_tab: crate::side_panel_left::tabs::LeftTab,
         cx: &mut Context<Self>,
     ) {
         // Read the resulting panel_width + dock off the global before
@@ -106,6 +116,7 @@ impl WorkspaceView {
             let state = cx.global_mut::<crate::side_panel_left::SidePanelLeftState_>();
             state.ensure_content_width(new_width);
             state.dock_content = dock;
+            state.active_tab = active_tab;
             state.last_exclusive_zone = None;
             (state.panel_width, state.dock_content)
         };
