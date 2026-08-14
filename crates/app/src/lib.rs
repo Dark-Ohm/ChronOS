@@ -14,6 +14,12 @@ pub mod launcher;
 pub mod monitor;
 pub mod motion;
 pub mod notifications;
+// Lib-side twin of bin `mod project_switcher` (main.rs) — the left
+// workspace tabs (lib) read `ProjectsConfig` and call domain actions from
+// `project_switcher`; this mirror lets `cargo test --lib` compile the
+// same path `crate::project_switcher` that main.rs resolves. Same twin
+// pattern as `desktop_terminal` (see comment above).
+pub(crate) mod project_switcher;
 pub mod scene;
 pub mod side_panel_left;
 pub mod side_panel_right;

@@ -577,6 +577,104 @@ pub fn apply_dock_toggle(cx: &mut App) {
     );
 }
 
+/// T279 / Task 4 — rail-tab-select reducer. A free function on `&mut App`
+/// (mirrors `apply_dock_toggle`) so a unit test exercises the full path
+/// without instantiating `WorkspaceView` — which needs `ChatTab`, whose
+/// `new()` spawns an async ACP connect requiring a live Tokio runtime
+/// (unconstructable in `TestAppContext`). The rail view delegates to
+/// this; `tab_select_transition` is the pure decision core.
+///
+/// Branch #2 (collapse) remembers the width being collapsed away, so a
+/// later re-open returns to the user's last-drag width. `resizable_opt`
+/// gates the remember: fixed-width tabs have no runtime width memory.
+pub fn select_tab(tab: tabs::LeftTab, cx: &mut App) {
+    let (next_tab, next_width, next_dock) = {
+        let state = cx.global::<SidePanelLeftState_>();
+        tabs::tab_select_transition(
+            tab,
+            state.active_tab,
+            state.panel_width,
+            state.dock_content,
+            &state.remembered_widths,
+        )
+    };
+    let state = cx.global_mut::<SidePanelLeftState_>();
+    let was_tab = state.active_tab;
+    let was_width = state.panel_width;
+    let collapsing =
+        next_tab == was_tab && !state.dock_content && next_width == tabs::RAIL_WIDTH;
+    if collapsing {
+        if let Some(resizable) = workspace_view::resizable_active(was_tab) {
+            state.remembered_widths.set(resizable, was_width);
+        }
+    }
+    state.active_tab = next_tab;
+    if next_width > tabs::RAIL_WIDTH {
+        state.ensure_content_width(next_width);
+    } else {
+        state.panel_width = tabs::RAIL_WIDTH;
+        state.last_exclusive_zone = None;
+    }
+    state.dock_content = next_dock;
+    let new_zone = state.exclusive_px();
+    if state.last_exclusive_zone != Some(new_zone) {
+        state.last_exclusive_zone = None;
+    }
+    tracing::info!(
+        was_tab = was_tab.label(),
+        now_tab = state.active_tab.label(),
+        now_width = state.panel_width,
+        now_dock = state.dock_content,
+        "side_panel_left: rail tab select"
+    );
+}
+
+/// T279 / Task 4 — session-select coordinator reducer. Pure policy lives in
+/// `tabs::session_select_transition`; this writes the SoT. Free function on
+/// `&mut App` so a unit test exercises the path without a live `ChatTab`
+/// (T278 lesson). Sets `active_session_id` then switches to Chat (which
+/// opens the content surface at the Chat width policy).
+pub fn select_session(thread_id: String, cx: &mut App) {
+    let (next_tab, _next_id) = {
+        let state = cx.global::<SidePanelLeftState_>();
+        tabs::session_select_transition(&thread_id, state.active_tab, state.active_session_id.as_deref())
+    };
+    let state = cx.global_mut::<SidePanelLeftState_>();
+    state.active_session_id = Some(thread_id);
+    drop(state);
+    select_tab(next_tab, cx);
+}
+
+/// T279 / Task 4 — project-switch coordinator reducer. Pure policy lives in
+/// `tabs::project_switch_transition` (clear session, set path); this writes
+/// the SoT and reloads the project scope. Free function on `&mut App`.
+///
+/// T280 will extend this to load the store's `active_thread(project_path)`
+/// and restore it; A2 just clears + sets — the coordinator re-derives the
+/// session list from the new project on next render.
+pub fn switch_project(new_project_path: std::path::PathBuf, cx: &mut App) {
+    let (next_path, _next_session) = {
+        let state = cx.global::<SidePanelLeftState_>();
+        tabs::project_switch_transition(
+            &new_project_path,
+            state.active_project_path.as_deref(),
+            state.active_session_id.as_deref(),
+        )
+    };
+    let state = cx.global_mut::<SidePanelLeftState_>();
+    state.active_project_path = next_path;
+    state.active_session_id = None;
+    let new_zone = state.exclusive_px();
+    if state.last_exclusive_zone != Some(new_zone) {
+        state.last_exclusive_zone = None;
+    }
+    tracing::info!(
+        now_project = format!("{:?}", state.active_project_path),
+        now_session = format!("{:?}", state.active_session_id),
+        "side_panel_left: project switched (session cleared)"
+    );
+}
+
 /// T226 tooling: open the left agent panel pinned, dock the chat column
 /// (full panel width, not overlay) and focus the composer so typed input
 /// lands in the message box. `App` context — IPC handler has no `Window`,
@@ -632,7 +730,7 @@ pub fn compose_and_send(text: String, cx: &mut App) {
     };
     workspace.update(cx, |view, cx| {
         view.set_panel_width(target, true, cx);
-        view.content.update(cx, |child, _cx| {
+        view.chat.update(cx, |child, _cx| {
             child.composer_input.clear();
             child.composer_input.content = text.into();
             child.composer_input.selected_range =
@@ -644,7 +742,7 @@ pub fn compose_and_send(text: String, cx: &mut App) {
         let content_handle = cx.global::<SidePanelLeftState_>().content_handle.clone();
         if let Some(handle) = content_handle {
             let _ = handle.update(cx, |_root, window, cx| {
-                view.content.update(cx, |child, cx| {
+                view.chat.update(cx, |child, cx| {
                     child.send_composer(window, cx);
                 });
             });

@@ -228,51 +228,19 @@ impl Render for RailView {
 }
 
 impl WorkspaceView {
-    /// Called by `RailView` when an icon is clicked. Same three-action
-    /// policy as T276 / T221:
+    /// Called by `RailView` when an icon is clicked. Thin dispatcher —
+    /// the real reducer lives in `crate::side_panel_left::select_tab`
+    /// (a free function on `&mut App`, mirroring `apply_dock_toggle`)
+    /// so the 3-action policy is unit-testable without instantiating
+    /// `WorkspaceView` (which needs `ChatTab`, unconstructable in
+    /// `TestAppContext`). Same three-action policy as T276 / T221:
     ///
     /// 1. Same tab, dock on → no-op (dock wins, can't collapse).
     /// 2. Same tab, content open → collapse to rail-only.
     /// 3. Same tab, content closed → open at `width_for_open`.
     /// 4. Different tab → switch and open.
     pub fn on_rail_tab_select(&mut self, tab: LeftTab, cx: &mut Context<Self>) {
-        let state = cx.global::<crate::side_panel_left::SidePanelLeftState_>();
-        let active = state.active_tab;
-        let dock = state.dock_content;
-        let panel_w = state.panel_width;
-        let visible_w = crate::side_panel_left::state::geometry::visible_content_width(panel_w);
-        let content_open = dock || visible_w > 1.0;
-        drop(state);
-
-        let new_w = width_for_open(tab, &cx.global::<SidePanelLeftState_>().remembered_widths);
-        let state = cx.global_mut::<crate::side_panel_left::SidePanelLeftState_>();
-
-        match (tab == active, content_open, dock) {
-            (true, true, true) => {
-                // 1. Dock wins — no-op.
-                tracing::debug!(tab = tab.label(), "side_panel_left: rail click while docked — no-op");
-                return;
-            }
-            (true, true, false) => {
-                // 2. Collapse to rail-only.
-                state.panel_width = RAIL_WIDTH;
-                state.dock_content = false;
-                state.last_exclusive_zone = None;
-                state.remembered_widths.set(active, panel_w);
-                tracing::info!(tab = active.label(), "side_panel_left: rail click collapsed to rail-only");
-            }
-            _ => {
-                // 3 + 4. Select and open (or re-open).
-                state.active_tab = tab;
-                state.ensure_content_width(new_w);
-                state.last_exclusive_zone = None;
-                tracing::info!(
-                    tab = tab.label(),
-                    width = state.panel_width,
-                    "side_panel_left: rail click opened tab"
-                );
-            }
-        }
+        crate::side_panel_left::select_tab(tab, cx);
         cx.notify();
     }
 

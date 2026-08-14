@@ -15,29 +15,34 @@
 //! and re-issues `set_input_region` on the next paint.
 
 use gpui::{
-    App, Bounds, Context, Entity, IntoElement, Render, Subscription, WeakEntity, Window,
+    AnyElement, App, Bounds, Context, Entity, IntoElement, Render, Subscription, Window,
     div, prelude::*, px,
 };
 
-use chronos_ui::Theme;
+use chronos_ui::{Theme, WindowRootExt};
 
 use crate::side_panel_left::ChatTab;
-use crate::side_panel_left::sessions_list::SIDEBAR_MIN_WIDTH;
 use crate::side_panel_left::state::geometry;
-use crate::side_panel_left::tabs::{
-    CONTENT_CANVAS_WIDTH, MAX_PANEL_WIDTH, RAIL_WIDTH, RESIZE_HANDLE_WIDTH,
-};
+use crate::side_panel_left::tabs::{self, RESIZE_HANDLE_WIDTH};
 use crate::side_panel_left::LeftPanelResize;
 
 /// The content window's root view. Hosts the legacy `ChatTab`
 /// product body as a child entity; that body still owns chat history,
 /// composer state, ACP/Hermes client, etc.
 pub struct WorkspaceView {
-    /// T278: the legacy product-state child. It no longer owns a
-    /// `WindowHandle`, width, dock, exclusive zone, or resize — it is
-    /// rendered as a sub-element of this view, with state mirrored from
-    /// `SidePanelLeftState_` on every render.
-    pub(crate) content: Entity<ChatTab>,
+    /// T278: the legacy chat child — always alive (owns ACP/Hermes
+    /// clients, chat history, composer state). No `WindowHandle`, width,
+    /// dock, exclusive zone, or resize — rendered as a sub-element, with
+    /// state mirrored from `SidePanelLeftState_` on every render.
+    pub(crate) chat: Entity<ChatTab>,
+    /// T279 / Task 4: lazy-created secondary tabs (created on first
+    /// selection, retained for reuse). Project/Sessions own their list
+    /// state; shells are stateless labels.
+    sessions: Option<Entity<tabs::SessionsTab>>,
+    project: Option<Entity<tabs::ProjectTab>>,
+    /// B/C shell tabs keyed by `LeftTab` (Plan/Tools/Skills/ContextFiles/
+    /// Archive) — created on first selection, reused after.
+    shells: std::collections::HashMap<tabs::LeftTab, Entity<tabs::ShellTab>>,
     /// Cache of the last `interactive_w` pushed to `set_input_region`.
     /// Only re-issues when it changes — avoids a Wayland round-trip per
     /// paint (T276 pattern).
@@ -51,8 +56,8 @@ pub struct WorkspaceView {
     /// have a `&mut Window` in scope). Consumed by `render`, which holds
     /// the window and can call `window.focus(...)` directly.
     focus_composer_pending: bool,
-    /// Held only to keep the subscription alive; not read.
-    _sub: Subscription,
+    /// Held only to keep the subscriptions alive; not read.
+    _subs: Vec<Subscription>,
 }
 
 impl WorkspaceView {
@@ -63,12 +68,15 @@ impl WorkspaceView {
         // view together.
         let sub = cx.observe(&content, |_, _, cx| cx.notify());
         Self {
-            content,
+            chat: content,
+            sessions: None,
+            project: None,
+            shells: std::collections::HashMap::new(),
             last_visible_width: None,
             resize_start_x: None,
             resize_start_width: None,
             focus_composer_pending: false,
-            _sub: sub,
+            _subs: vec![sub],
         }
     }
 
@@ -91,7 +99,7 @@ impl WorkspaceView {
         cx: &mut Context<Self>,
     ) {
         // Read the resulting panel_width + dock off the global before
-        // mutating the child — `self.content.update(cx, ...)` borrows cx
+        // mutating the child — `self.chat.update(cx, ...)` borrows cx
         // mutably for the duration of the closure, and we cannot touch
         // `cx.global(...)` again until that borrow ends.
         let (panel_width, dock_value) = {
@@ -101,7 +109,7 @@ impl WorkspaceView {
             state.last_exclusive_zone = None;
             (state.panel_width, state.dock_content)
         };
-        self.content.update(cx, |child, _cx| {
+        self.chat.update(cx, |child, _cx| {
             child.state.width = panel_width;
             child.state.dock_chat = dock_value;
             child.state.remembered_chat_width = Some(panel_width);
@@ -114,10 +122,47 @@ impl WorkspaceView {
     /// context with no `&mut Window` in scope. The render path holds
     /// the window and calls `window.focus(...)` directly.
     pub fn request_focus_composer(&mut self, cx: &mut Context<Self>) {
-        self.content.update(cx, |child, _cx| {
+        self.chat.update(cx, |child, _cx| {
             child.composer_focused = true;
         });
         self.focus_composer_pending = true;
+        cx.notify();
+    }
+
+    /// T279 / Task 4 — thin dispatcher for `SessionsTab` events. The real
+    /// reducer is `crate::side_panel_left::select_session` (free function on
+    /// `&mut App`, T278 lesson), so the transition is unit-testable without
+    /// a live `ChatTab` entity.
+    pub fn on_sessions_event(&mut self, event: crate::side_panel_left::tabs::SessionsEvent, cx: &mut Context<Self>) {
+        use crate::side_panel_left::tabs::SessionsEvent;
+        match event {
+            SessionsEvent::SelectThread(id) => {
+                crate::side_panel_left::select_session(id, cx);
+            }
+            SessionsEvent::CreateThread => {
+                // T280: session creation via the ThreadStore; A2 forwards to
+                // Chat which opens an empty transcript.
+                crate::side_panel_left::select_tab(crate::side_panel_left::tabs::LeftTab::Chat, cx);
+            }
+        }
+        cx.notify();
+    }
+
+    /// T279 / Task 4 — thin dispatcher for `ProjectTab` events. The real
+    /// reducer is `crate::side_panel_left::switch_project` (free function on
+    /// `&mut App`, T278 lesson).
+    pub fn on_project_event(&mut self, event: crate::side_panel_left::tabs::ProjectEvent, cx: &mut Context<Self>) {
+        use crate::side_panel_left::tabs::ProjectEvent;
+        match event {
+            ProjectEvent::Select(path) => {
+                crate::side_panel_left::switch_project(path, cx);
+            }
+            ProjectEvent::Add => {
+                // The portal picker already updated the config cache via
+                // `add_project`; nothing for the coordinator to do here
+                // beyond a repaint, which `on_click` triggers.
+            }
+        }
         cx.notify();
     }
 
@@ -126,10 +171,58 @@ impl WorkspaceView {
             return;
         }
         self.focus_composer_pending = false;
-        self.content.update(cx, |child, cx| {
+        self.chat.update(cx, |child, cx| {
             window.focus(&child.composer_focus, cx);
             child.start_blink(cx);
         });
+    }
+
+    /// T279 / Task 4 — lazy-create the Sessions tab entity on first
+    /// activation, retain for reuse. Entity creation + observe happen
+    /// here in render-context but BEFORE the `div()` element builder is
+    /// constructed — keeps the `.when` closure a pure clone+attach.
+    /// Chat is always alive; secondary tabs are created on demand.
+    fn ensure_sessions(&mut self, cx: &mut Context<Self>) -> Entity<tabs::SessionsTab> {
+        if self.sessions.is_none() {
+            let coordinator = cx.weak_entity();
+            let entity = cx.new(|_| tabs::SessionsTab::new(coordinator));
+            self._subs.push(cx.observe(&entity, |_, _, cx| cx.notify()));
+            self.sessions = Some(entity);
+        }
+        self.sessions
+            .as_ref()
+            .expect("sessions tab created above")
+            .clone()
+    }
+
+    /// T279 / Task 4 — lazy-create the Project tab entity on first
+    /// activation. Same pattern as `ensure_sessions`.
+    fn ensure_project(&mut self, cx: &mut Context<Self>) -> Entity<tabs::ProjectTab> {
+        if self.project.is_none() {
+            let coordinator = cx.weak_entity();
+            let entity = cx.new(|_| tabs::ProjectTab::new(coordinator));
+            self._subs.push(cx.observe(&entity, |_, _, cx| cx.notify()));
+            self.project = Some(entity);
+        }
+        self.project
+            .as_ref()
+            .expect("project tab created above")
+            .clone()
+    }
+
+    /// T279 / Task 4 — lazy-create the shell tab (Plan/Tools/Skills/
+    /// ContextFiles/Archive) on first activation. ShellTabs are stateless
+    /// labels (Slice B/C bodies), keyed by `LeftTab` for reuse.
+    fn ensure_shell(&mut self, tab: tabs::LeftTab, cx: &mut Context<Self>) -> Entity<tabs::ShellTab> {
+        if !self.shells.contains_key(&tab) {
+            let entity = cx.new(|_| tabs::ShellTab::new(tab));
+            self._subs.push(cx.observe(&entity, |_, _, cx| cx.notify()));
+            self.shells.insert(tab, entity);
+        }
+        self.shells
+            .get(&tab)
+            .expect("shell tab created above")
+            .clone()
     }
 
     fn start_resize(&mut self, start_x: f32, cx: &mut Context<Self>) {
@@ -185,7 +278,7 @@ impl WorkspaceView {
 /// Helper: which `LeftTab`s carry resizable runtime width memory?
 /// Returns `Some(tab)` for resizable tabs, `None` for fixed-width tabs.
 /// (`fixed_width_tabs_only` documents the inverse for symmetry.)
-fn resizable_active(tab: crate::side_panel_left::tabs::LeftTab) -> Option<crate::side_panel_left::tabs::LeftTab> {
+pub(crate) fn resizable_active(tab: crate::side_panel_left::tabs::LeftTab) -> Option<crate::side_panel_left::tabs::LeftTab> {
     if tab.is_resizable() { Some(tab) } else { None }
 }
 
@@ -211,14 +304,75 @@ impl Render for WorkspaceView {
         let dock = so.dock_content;
         let resizing = so.resizing;
         let active_tab = so.active_tab;
-        drop(so);
+        let _ = so;
 
         let visible_w = geometry::visible_content_width(panel_w);
-        self.content.update(cx, |child, _cx| {
+
+        // T278 architect round 2: the Chat child must mirror the VISIBLE
+        // slice width (not logical panel_width) on every render — it
+        // stays always-alive and is only the active body when
+        // `active_tab == Chat`. Secondary tabs (Sessions/Project/Shell)
+        // own their own layout and read panel_width from the global SoT
+        // when they need it; they do not receive this width-mirror.
+        self.chat.update(cx, |child, _cx| {
             child.state.width = visible_w.max(crate::side_panel_left::sessions_list::SIDEBAR_MIN_WIDTH);
             child.state.dock_chat = dock;
             child.state.remembered_chat_width = Some(child.state.width);
         });
+
+        // T279 / Task 4 — lazy-create the active tab's entity and build
+        // the clip wrapper as a concrete `AnyElement` per arm. `Render`
+        // is not dyn-compatible (`Self: Sized`), so `Entity<dyn Render>`
+        // is impossible — each arm builds the sized clip `div` with the
+        // concrete entity clone and resolves to `AnyElement` before the
+        // match ends. When the panel is closed (`visible_w == 0`) we
+        // produce `None` so no tab entity is created on an invisible
+        // surface (lazy creation waits for the first *visible* render).
+        // Chat is always alive (created in `new`); secondary tabs are
+        // created here on first visible activation and retained in the
+        // `Option`/`HashMap` slots for reuse.
+        let clip: Option<AnyElement> = if visible_w > 0.0 {
+            Some(match active_tab {
+                tabs::LeftTab::Chat => div()
+                    .id("side-panel-left-product-clip")
+                    .w(px(visible_w))
+                    .h_full()
+                    .overflow_hidden()
+                    .flex_none()
+                    .child(self.chat.clone())
+                    .into_any_element(),
+                tabs::LeftTab::Sessions => div()
+                    .id("side-panel-left-product-clip")
+                    .w(px(visible_w))
+                    .h_full()
+                    .overflow_hidden()
+                    .flex_none()
+                    .child(self.ensure_sessions(cx))
+                    .into_any_element(),
+                tabs::LeftTab::Project => div()
+                    .id("side-panel-left-product-clip")
+                    .w(px(visible_w))
+                    .h_full()
+                    .overflow_hidden()
+                    .flex_none()
+                    .child(self.ensure_project(cx))
+                    .into_any_element(),
+                tabs::LeftTab::Plan
+                | tabs::LeftTab::Tools
+                | tabs::LeftTab::Skills
+                | tabs::LeftTab::ContextFiles
+                | tabs::LeftTab::Archive => div()
+                    .id("side-panel-left-product-clip")
+                    .w(px(visible_w))
+                    .h_full()
+                    .overflow_hidden()
+                    .flex_none()
+                    .child(self.ensure_shell(active_tab, cx))
+                    .into_any_element(),
+            })
+        } else {
+            None
+        };
 
         // Drain any pending focus request — only fires once per request.
         self.perform_focus_composer(window, cx);
@@ -252,8 +406,11 @@ impl Render for WorkspaceView {
             |this, _ev: &gpui::MouseUpEvent, _window, cx| this.end_resize(cx),
         );
 
+        let theme = *Theme::global(cx);
+
         div()
             .id("side-panel-left-content-root")
+            .window_font(&theme)
             .size_full()
             .relative()
             .flex()
@@ -265,23 +422,15 @@ impl Render for WorkspaceView {
                     crate::side_panel_left::schedule_release_peek(cx);
                 }
             })
-            // The legacy child is rendered inside a sized clip wrapper.
-            // At visible_w == 0 the wrapper is 0 px wide and the child
-            // is omitted entirely (no painting, no input region).
-            // The product-state child itself stays alive — its chat
-            // history, ACP client, composer state all persist between
-            // open/close cycles.
-            .when(visible_w > 0.0, |root| {
-                root.child(
-                    div()
-                        .id("side-panel-left-product-clip")
-                        .w(px(visible_w))
-                        .h_full()
-                        .overflow_hidden()
-                        .flex_none()
-                        .child(self.content.clone()),
-                )
-            })
+            // The active child renders inside the clip wrapper built
+            // above (`Option<AnyElement>`). When the panel is closed
+            // (`clip == None`) no child paints and no input region is
+            // claimed. The Chat child stays alive between open/close
+            // cycles (ACP/Hermes clients, composer state, chat history);
+            // secondary tab entities also stay alive once created —
+            // their list state persists across tab switches — but are
+            // omitted from the paint when `visible_w == 0`.
+            .children(clip)
             .when(show_handle, |root| {
                 root.child(
                     div()
@@ -315,9 +464,12 @@ mod tests {
 
     #[test]
     fn canvas_constants_match_tabs_constants() {
-        assert_eq!(CONTENT_CANVAS_WIDTH, MAX_PANEL_WIDTH - RAIL_WIDTH);
-        assert!(RAIL_WIDTH > 0.0);
+        assert_eq!(
+            tabs::CONTENT_CANVAS_WIDTH,
+            tabs::MAX_PANEL_WIDTH - tabs::RAIL_WIDTH
+        );
+        assert!(tabs::RAIL_WIDTH > 0.0);
         assert!(RESIZE_HANDLE_WIDTH > 0.0);
-        assert!(RESIZE_HANDLE_WIDTH < RAIL_WIDTH);
+        assert!(RESIZE_HANDLE_WIDTH < tabs::RAIL_WIDTH);
     }
 }

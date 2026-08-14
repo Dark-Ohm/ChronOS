@@ -7,7 +7,6 @@ mod dock;
 mod mpris;
 mod network;
 mod notification_bell;
-mod project;
 mod separator;
 mod system;
 mod tray;
@@ -50,7 +49,6 @@ fn instantiate(name: &str, section: BarSection) -> Option<Box<dyn BarWidget>> {
         "workspaces" => Box::new(workspaces::WorkspacesWidget),
         "mpris" => Box::new(mpris::MprisWidget),
         "cava" => Box::new(cava::CavaWidget),
-        "project" => Box::new(project::ProjectWidget),
         "volume" => Box::new(volume::VolumeWidget::new()),
         "network" => Box::new(network::NetworkWidget::new()),
         "tray" => Box::new(tray::TrayWidget::new()),

@@ -35,10 +35,21 @@ mod tests {
     // has a root diver here; hover strips are text-less transparent hit
     // surfaces and are intentionally absent). Each must source through
     // `window_font`, and none may hand-roll per-element `font_family(font_ui)`.
+    //
+    // T279: `side_panel_left/panel.rs` (deleted T279 Task 3 — chat body moved
+    // to `tabs/chat.rs`, render root is now `workspace_view.rs`) and
+    // `project_switcher/view.rs` (deleted T279 Task 4 — popup embedded as a
+    // tab, render root is now `tabs/project.rs`) are intentionally absent.
+    // The chat/workspace/project tab render roots are covered by the
+    // broader font audit below rather than this `window_font` gate.
     const ROOTS: &[(&str, &str)] = &[
         (
-            "side_panel_left/panel.rs",
-            include_str!("../../app/src/side_panel_left/panel.rs"),
+            "side_panel_left/rail_view.rs",
+            include_str!("../../app/src/side_panel_left/rail_view.rs"),
+        ),
+        (
+            "side_panel_left/workspace_view.rs",
+            include_str!("../../app/src/side_panel_left/workspace_view.rs"),
         ),
         (
             "side_panel_right/view.rs",
@@ -74,10 +85,6 @@ mod tests {
         (
             "tray_menu/view.rs",
             include_str!("../../app/src/tray_menu/view.rs"),
-        ),
-        (
-            "project_switcher/view.rs",
-            include_str!("../../app/src/project_switcher/view.rs"),
         ),
         (
             "desktop_terminal/view.rs",

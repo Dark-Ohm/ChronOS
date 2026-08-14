@@ -1,34 +1,25 @@
-//! Project switcher — persistent `{name, path}` list + active project whose
-//! git branch shows in the bar pill (`bar/widgets/project.rs`).
+//! Project switcher — persistent `{name, path}` list + active project.
+//!
+//! T279 / Slice A2: the popup lifecycle (`ProjectPopupState`, `view.rs`,
+//! `open`/`close`/`toggle`) is gone — project selection now lives as an
+//! embedded `ProjectTab` inside the left workspace content canvas. This
+//! module keeps only the domain that `ProjectTab` (and any future caller)
+//! needs: `ProjectsConfig` persistence, branch lookup, and the add/select
+//! actions. `init` still reloads + logs the cache; it no longer registers a
+//! popup global.
 //!
 //! Config: `~/.config/chronos/projects.toml` (same cached-load pattern as
 //! `dock/config.rs`). Branch comes from parsing `.git/HEAD` directly (a
-//! ~30-byte file read on the bar's 1s ticker — no subprocess, no inotify).
-//! "Add project" opens the real XDG portal directory picker via `ashpd`;
-//! the portal call runs on a throwaway tokio runtime in its own thread
-//! because GPUI's executor is not a tokio context (HANDOFF: spawn_blocking
-//! outside tokio hangs).
-
-pub mod view;
+//! ~30-byte file read — no subprocess, no inotify). "Add project" opens the
+//! real XDG portal directory picker via `ashpd`; the portal call runs on a
+//! throwaway tokio runtime in its own thread because GPUI's executor is not
+//! a tokio context (HANDOFF: spawn_blocking outside tokio hangs).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use gpui::{
-    App, Bounds, DisplayId, Global, Size, Window, WindowBackgroundAppearance, WindowBounds,
-    WindowHandle, WindowKind, WindowOptions, layer_shell::*, point, prelude::*, px,
-};
+use gpui::App;
 use serde::{Deserialize, Serialize};
-
-use crate::project_switcher::view::ProjectPopupView;
-
-const POPUP_WIDTH: f32 = 300.;
-const POPUP_MARGIN_TOP: f32 = 36.;
-const POPUP_MARGIN_RIGHT: f32 = 8.;
-const HEADER_H: f32 = 40.;
-const ROW_H: f32 = 34.;
-const ADD_ROW_H: f32 = 38.;
-const MAX_ROWS: usize = 12;
 
 // ── Config ──
 
@@ -132,105 +123,17 @@ pub fn current_branch(path: &Path) -> Option<String> {
     }
 }
 
-// ── Popup lifecycle (updates_popup pattern: close_this guard, no
-//    focus-loss close) ──
-
-#[derive(Default)]
-pub struct ProjectPopupState {
-    handle: Option<WindowHandle<ProjectPopupView>>,
-}
-
-impl Global for ProjectPopupState {}
-
-fn popup_height(project_count: usize) -> f32 {
-    HEADER_H + (project_count.clamp(0, MAX_ROWS) as f32) * ROW_H + ADD_ROW_H
-}
-
-fn window_options(display_id: Option<DisplayId>, height: f32) -> WindowOptions {
-    WindowOptions {
-        display_id,
-        titlebar: None,
-        window_bounds: Some(WindowBounds::Windowed(Bounds {
-            origin: point(px(0.), px(0.)),
-            size: Size::new(px(POPUP_WIDTH), px(height)),
-        })),
-        app_id: Some("chronos-project-popup".to_string()),
-        window_background: WindowBackgroundAppearance::Transparent,
-        kind: WindowKind::LayerShell(LayerShellOptions {
-            namespace: "project-popup".to_string(),
-            layer: Layer::Overlay,
-            anchor: Anchor::TOP | Anchor::RIGHT,
-            exclusive_zone: None,
-            margin: Some((px(POPUP_MARGIN_TOP), px(POPUP_MARGIN_RIGHT), px(0.), px(0.))),
-            keyboard_interactivity: KeyboardInteractivity::None,
-            ..Default::default()
-        }),
-        ..Default::default()
-    }
-}
-
-pub fn open(cx: &mut App) {
-    if cx.global::<ProjectPopupState>().handle.is_some() {
-        return;
-    }
-    let display_id = crate::monitor::pult_display(cx);
-    let height = popup_height(cached().projects.len());
-    match cx.open_window(window_options(display_id, height), |_, app_cx| {
-        app_cx.new(|_| ProjectPopupView {})
-    }) {
-        Ok(handle) => cx.global_mut::<ProjectPopupState>().handle = Some(handle),
-        Err(err) => tracing::warn!("project_switcher: failed to open popup: {err}"),
-    }
-}
-
-pub fn close(cx: &mut App) {
-    if let Some(handle) = cx.global_mut::<ProjectPopupState>().handle.take() {
-        let _ = handle.update(cx, |_, window: &mut Window, _| window.remove_window());
-    }
-}
-
-pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
-    let this = window.window_handle();
-    let tracked = cx
-        .global::<ProjectPopupState>()
-        .handle
-        .as_ref()
-        .map(|h| **h == this)
-        .unwrap_or(false);
-    if tracked {
-        cx.global_mut::<ProjectPopupState>().handle.take();
-    }
-    window.remove_window();
-}
-
-pub fn toggle(_window: &mut Window, cx: &mut App) {
-    let is_open = cx.global::<ProjectPopupState>().handle.is_some();
-    if is_open {
-        close(cx);
-    } else {
-        open(cx);
-    }
-}
-
-/// Repaint + resize the open popup after the project list changed.
-fn refresh_popup(cx: &mut App) {
-    let handle = cx.global::<ProjectPopupState>().handle.clone();
-    if let Some(handle) = handle {
-        let height = popup_height(cached().projects.len());
-        let _ = handle.update(cx, |_, window: &mut Window, view_cx| {
-            window.resize(Size::new(px(POPUP_WIDTH), px(height)));
-            view_cx.notify();
-        });
-    }
-}
-
 // ── Actions ──
 
-pub(crate) fn set_active(path: String, window: &mut Window, cx: &mut App) {
+/// Set the active project path and persist it. T279: the popup `close_this`
+/// is gone — selecting a project from `ProjectTab` updates the config and
+/// the workspace coordinator reloads scope. No `Window` argument.
+pub(crate) fn set_active(path: String, cx: &mut App) {
     let mut config = cached();
     config.active = Some(path);
     update_cache_and_save(config);
-    close_this(window, cx);
+    tracing::info!("project_switcher: active project set");
+    let _ = cx; // no callback yet — ProjectTab drives the reload explicitly.
 }
 
 /// "+ Add project": XDG portal directory picker on a dedicated thread.
@@ -238,6 +141,9 @@ pub(crate) fn set_active(path: String, window: &mut Window, cx: &mut App) {
 /// pins — tokio feature conflicts at unification), so a plain
 /// `futures::executor::block_on` drives it; the result comes back through a
 /// tokio oneshot (a plain future — awaitable on the GPUI executor).
+///
+/// T279: the popup `refresh_popup` is gone — the list repaints via the
+/// `ProjectTab` entity observing the config cache on next render.
 pub(crate) fn add_project(cx: &mut App) {
     let (tx, rx) = tokio::sync::oneshot::channel::<Option<PathBuf>>();
 
@@ -283,7 +189,7 @@ pub(crate) fn add_project(cx: &mut App) {
             }
             config.active = Some(path_str);
             update_cache_and_save(config);
-            refresh_popup(cx);
+            tracing::info!("project_switcher: added project, reloading cache");
         });
     })
     .detach();
@@ -291,7 +197,7 @@ pub(crate) fn add_project(cx: &mut App) {
 
 /// `file:///home/x/my%20dir` → `/home/x/my dir`. Portal always returns
 /// `file://` URIs with percent-encoding; anything else → None.
-fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
+pub(crate) fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
     let encoded = uri.strip_prefix("file://")?;
     let mut bytes = Vec::with_capacity(encoded.len());
     let mut chars = encoded.bytes();
@@ -311,12 +217,14 @@ fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
 }
 
 pub fn init(cx: &mut App) {
-    cx.set_global(ProjectPopupState::default());
+    // T279: no popup global to register — the embedded `ProjectTab` owns the
+    // selection surface. Init still reloads the cache and logs the count.
     reload_cache();
     tracing::info!(
         "project_switcher: loaded {} projects",
         cached().projects.len()
     );
+    let _ = cx;
 }
 
 #[cfg(test)]
@@ -375,5 +283,12 @@ mod tests {
     #[test]
     fn branch_of_non_repo_is_none() {
         assert_eq!(current_branch(Path::new("/tmp")), None);
+    }
+
+    /// T279: no popup artifacts remain in the public API after carve.
+    #[test]
+    fn file_uri_to_path_decodes_percent() {
+        let p = file_uri_to_path("file:///home/x/my%20dir").unwrap();
+        assert_eq!(p, PathBuf::from("/home/x/my dir"));
     }
 }
