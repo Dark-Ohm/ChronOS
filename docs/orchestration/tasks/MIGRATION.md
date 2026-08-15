@@ -377,5 +377,5 @@ Hermes против нашей.
 
 | T-ID | Роль | Описание | Статус | Путь |
 |---|---|---|---|---|
-| T268 | FRONTEND | Нижняя полоска + стыки (без exclusive) | код в git `d572657`; бриф в `active/` исторический, не исполнять | `active/T268-desktop-frame-bottom-strip.md` |
+| T268 | FRONTEND | Нижняя полоска + стыки (без exclusive) | **DONE** `d572657`; обёртка → T284 | `done/T268-desktop-frame-bottom-strip.md` |
 | T284 | FRONTEND | Тема Frame Hide/Wrap; окна внутри рамки | **OPEN** | `active/T284-frame-wrap-appearance-theme.md`; спека `docs/superpowers/specs/2026-08-15-desktop-frame-wrap-theme-design.md`; план `docs/superpowers/plans/2026-08-15-t284-frame-wrap-theme.md` |
