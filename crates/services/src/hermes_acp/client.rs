@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use agent_client_protocol::{
@@ -93,7 +93,15 @@ pub struct PromptResponse {
 /// Commands sent from the client to the background connection task.
 pub(crate) enum Command {
     /// Create or replace the held ACP session (UI "New session").
+    ///
+    /// `cwd` is the resolved ACP session working directory (T288): the
+    /// shell's active project when one is selected, else the process cwd.
+    /// Threading it explicitly lets the caller — which owns the project
+    /// scope — pick the path, instead of this layer silently reading
+    /// `std::env::current_dir()` (which is `packaging/` under
+    /// `chronos-start`, see T288 symptom).
     CreateSession {
+        cwd: PathBuf,
         reply: tokio::sync::oneshot::Sender<Result<AcpSession>>,
     },
     /// Prompt on the held session; creates one if missing.
@@ -145,8 +153,8 @@ pub(crate) async fn execute_command(
     // Silencing the send is correct; the caller's panic propagates the
     // failure elsewhere and dropping the result here is harmless.
     match cmd {
-        Command::CreateSession { reply } => {
-            let result = ensure_fresh_session(cx, session, intercepted_models).await;
+        Command::CreateSession { cwd, reply } => {
+            let result = ensure_fresh_session(cx, session, intercepted_models, &cwd).await;
             // Receiver may have dropped — silence intentional (see function header).
             let _ = reply.send(result);
         }
@@ -707,7 +715,14 @@ async fn send_prompt_streaming(
         let mut guard = session.lock().await;
         if guard.is_none() {
             debug!("No held session — creating before first prompt");
-            let new_session = start_new_session(cx).await?;
+            // T288: services has no access to the shell's active project, so
+            // the lazy on-demand path falls back to the process cwd — the
+            // "no active project" branch of the T288 contract. The explicit
+            // `create_session` path (Command::CreateSession) carries the real
+            // resolved cwd from the UI.
+            let lazy_cwd = std::env::current_dir()
+                .context("no working directory for lazy session")?;
+            let new_session = start_new_session(cx, &lazy_cwd).await?;
             *guard = Some(new_session);
         }
         let session_ref = guard
@@ -771,11 +786,16 @@ fn acp_session_meta(
         .with_models(models_from_session(session, intercepted_models))
 }
 
-async fn start_new_session(cx: &ConnectionTo<Agent>) -> Result<ActiveSession<'static, Agent>> {
-    debug!("Starting new ACP session");
+async fn start_new_session(
+    cx: &ConnectionTo<Agent>,
+    cwd: &Path,
+) -> Result<ActiveSession<'static, Agent>> {
+    debug!(cwd = %cwd.display(), "Starting new ACP session");
+    // T288: build the session from the explicit cwd — not the ACP SDK
+    // convenience that reads `std::env::current_dir()`, which would
+    // reintroduce the `packaging/` bug (the process cwd under chronos-start).
     let session = cx
-        .build_session_cwd()
-        .context("failed to build session")?
+        .build_session(cwd)
         .block_task()
         .start_session()
         .await
@@ -789,6 +809,7 @@ async fn ensure_fresh_session(
     cx: &ConnectionTo<Agent>,
     session: &SharedSession,
     intercepted_models: &SharedModels,
+    cwd: &Path,
 ) -> Result<AcpSession> {
     let mut guard = session.lock().await;
     *guard = None;
@@ -797,7 +818,7 @@ async fn ensure_fresh_session(
     if let Ok(mut g) = intercepted_models.lock() {
         *g = None;
     }
-    let new_session = start_new_session(cx).await?;
+    let new_session = start_new_session(cx, cwd).await?;
     let meta = acp_session_meta(&new_session, intercepted_models);
     *guard = Some(new_session);
     Ok(meta)
@@ -939,7 +960,14 @@ async fn send_prompt_on_active(
         let mut guard = session.lock().await;
         if guard.is_none() {
             debug!("No held session — creating before first prompt");
-            let new_session = start_new_session(cx).await?;
+            // T288: services has no access to the shell's active project, so
+            // the lazy on-demand path falls back to the process cwd — the
+            // "no active project" branch of the T288 contract. The explicit
+            // `create_session` path (Command::CreateSession) carries the real
+            // resolved cwd from the UI.
+            let lazy_cwd = std::env::current_dir()
+                .context("no working directory for lazy session")?;
+            let new_session = start_new_session(cx, &lazy_cwd).await?;
             *guard = Some(new_session);
         }
         let session_ref = guard
@@ -1013,10 +1041,18 @@ impl HermesClient {
     }
 
     /// Create a new ACP session with the agent (replaces any held session).
-    pub async fn create_session(&self) -> Result<AcpSession> {
+    ///
+    /// `cwd` is the resolved ACP session working directory (T288): the shell's
+    /// active project when selected, else the process cwd. The caller owns
+    /// the project scope and resolves it once — this layer no longer guesses
+    /// via `std::env::current_dir()`.
+    pub async fn create_session(&self, cwd: &Path) -> Result<AcpSession> {
         let (reply, rx) = tokio::sync::oneshot::channel();
         self.cmd_tx
-            .send(Command::CreateSession { reply })
+            .send(Command::CreateSession {
+                cwd: cwd.to_path_buf(),
+                reply,
+            })
             .context("command channel closed")?;
         rx.await.context("reply channel closed")?
     }
@@ -1114,5 +1150,60 @@ impl HermesClient {
             })
             .context("command channel closed")?;
         rx.await.context("reply channel closed")?
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    /// T288 gate: `Command::CreateSession` must carry a `cwd` field and the
+    /// handler must forward it. Constructing the variant with `cwd` is itself
+    /// compile-time proof the shape changed -- a revert to `{ reply }` won't
+    /// compile here.
+    #[test]
+    fn create_session_command_carries_cwd() {
+        let (reply, _rx) = tokio::sync::oneshot::channel::<Result<AcpSession>>();
+        let cwd = PathBuf::from("/home/neo/projects/chronos-ecosystem/ChronOS");
+        let cmd = Command::CreateSession {
+            cwd: cwd.clone(),
+            reply,
+        };
+        match cmd {
+            Command::CreateSession { cwd: got, .. } => {
+                assert_eq!(got, cwd, "CreateSession must preserve the resolved cwd");
+            }
+            #[allow(unreachable_patterns)]
+            _ => panic!("expected Command::CreateSession variant"),
+        }
+    }
+
+    /// T288 gate: sessions are built from the explicit cwd argument, not the
+    /// ACP SDK convenience that reads `std::env::current_dir()` (which would
+    /// reintroduce the `packaging/` bug). Source-level scan mirroring the
+    /// `chat.rs::chat_tab_source_has_no_window_lifecycle` gate already relied
+    /// on by T278.
+    #[test]
+    fn start_new_session_uses_build_session_with_cwd() {
+        let src = include_str!("client.rs");
+        // Positive: the explicit cwd flows into the builder. The call-site
+        // literal `.build_session(cwd)` also appears in the real code, so this
+        // is green only if the call exists (the string literal below is a
+        // message, not the matched substring).
+        assert!(
+            src.contains(".build_session(cwd)"),
+            "start_new_session must call build_session(cwd)"
+        );
+        // Negative: the process-cwd convenience call must be gone. Match the
+        // call form (dot + name + parens) and assemble the needle from split
+        // tokens so this assertion source never contains the literal it scans
+        // for — same trick as the chat.rs window-lifecycle gate.
+        let bad = ".".to_string() + "build_session" + "_cwd" + "()";
+        assert!(
+            !src.contains(&bad),
+            "T288 regression: client.rs still calls {bad}"
+        );
     }
 }

@@ -26,7 +26,7 @@ use gpui::{AnimationExt, AnyElement, IntoElement, div, img, svg};
 use chronos_ui::{Theme, WindowRootExt, elevation_glow_bar};
 use std::collections::HashMap;
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::motion;
 use crate::side_panel_left::sessions_list;
@@ -305,6 +305,22 @@ impl ChatTab {
         // Connecting until HermesClient::new + create_session complete.
         state.agent_status = state::AgentStatus::Thinking;
 
+        // T288: resolve the ACP session cwd BEFORE cx.spawn. The panel scope
+        // (`active_project_path`) is seeded by `restore_active_project_on_startup`
+        // during `init` (side_panel_left/mod.rs:870), so the global already
+        // holds the shell's active project at this point. Reading it here — and
+        // not lazily inside the async body — means the session lands in the
+        // project dir (`…/ChronOS`), not the `packaging/` cwd `chronos-start`
+        // inherited (T288 symptom). Falls back to process cwd when unscoped.
+        let session_cwd = {
+            let active = cx
+                .global::<crate::side_panel_left::SidePanelLeftState_>()
+                .active_project_path
+                .as_deref();
+            let process = std::env::current_dir().unwrap_or_default();
+            session_cwd(active, &process)
+        };
+
         cx.spawn(async move |this, cx| {
             match HermesClient::new(default_config, env_for_spawn).await {
                 Ok(client) => {
@@ -313,7 +329,7 @@ impl ChatTab {
                     // hidden for the entire life of a thread nobody has
                     // messaged yet (live smoke, 2026-07-23: composer showed
                     // only attach/send, no indicators, on a fresh thread).
-                    let session = client.create_session().await;
+                    let session = client.create_session(&session_cwd).await;
                     let _ = this.update(cx, |this, cx| {
                         this.clients.insert(agent_id, client);
                         this.state.agent_status = state::AgentStatus::Connected;
@@ -440,19 +456,21 @@ impl ChatTab {
         });
     }
 
-    /// T280 — canonical project path to scope a thread to: the workspace's
-    /// active project when set, else the process cwd (pre-v2 behaviour).
+    /// T280 / T288 — canonical project path to scope a thread to: the
+    /// workspace's active project when set, else the process cwd.
+    ///
+    /// T288: resolution is delegated to the `session_cwd` helper so there is a
+    /// single source of truth — `project_path`, `ChatTab::new`, and
+    /// `switch_agent` all flow through here instead of each calling
+    /// `std::env::current_dir()` independently (the two-source split that let
+    /// `cwd` diverge onto `packaging/`).
     fn project_path(&self, cx: &mut Context<Self>) -> String {
-        cx.global::<crate::side_panel_left::SidePanelLeftState_>()
+        let active = cx
+            .global::<crate::side_panel_left::SidePanelLeftState_>()
             .active_project_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|| {
-                std::env::current_dir()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string()
-            })
+            .as_deref();
+        let process = std::env::current_dir().unwrap_or_default();
+        session_cwd(active, &process).to_string_lossy().to_string()
     }
 
     /// T280 — persist the active-thread selection for the current project.
@@ -478,8 +496,13 @@ impl ChatTab {
     /// `SidePanelLeftState_.chat` — the Sessions-tab "+ New" path.
     pub(crate) fn create_new_session(&mut self, cx: &mut Context<Self>) {
         let id = uuid::Uuid::new_v4().to_string();
-        let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().to_string();
-        let project = self.project_path(cx);
+        // T288: single source of truth for the session cwd — `project_path`
+        // (active project, else process cwd). `cwd` and `project` must agree
+        // so the ACP session and the persisted `ThreadRecord` can't drift
+        // apart (the pre-T288 split read `current_dir()` for `cwd` and
+        // `project_path` separately, landing the session in `packaging/`).
+        let cwd = self.project_path(cx);
+        let project = cwd.clone();
 
         // Insert into the thread store (T150), scoped to the project. If the
         // store is unavailable, fall back to an in-memory-only session.
@@ -528,7 +551,7 @@ impl ChatTab {
         self.state.session_id = None;
         if let Some(client) = self.clients.get(&self.active_agent_id).cloned() {
             self.state.agent_status = state::AgentStatus::Thinking;
-            cx.spawn(async move |this, cx| match client.create_session().await {
+            cx.spawn(async move |this, cx| match client.create_session(Path::new(&cwd)).await {
                 Ok(session) => {
                     let _ = this.update(cx, |this, cx| {
                         this.state.session_id = Some(session.id.to_string());
@@ -1119,10 +1142,15 @@ impl ChatTab {
 
         let agent_id = agent_id.to_string();
         let env_for_spawn = self.shared_env.clone();
+        // T288: capture the project cwd before spawn so the agent session
+        // is created in the active project, not `packaging/` (process cwd).
+        // `self` exists here, so route through `project_path` — the single
+        // resolution source used by all three create_session call sites.
+        let session_cwd = PathBuf::from(self.project_path(cx));
         cx.spawn(
             async move |this, cx| match HermesClient::new(desc.config, env_for_spawn).await {
                 Ok(client) => {
-                    let session = client.create_session().await;
+                    let session = client.create_session(&session_cwd).await;
                     let _ = this.update(cx, |this, _cx| {
                         this.clients.insert(agent_id, client);
                         this.state.agent_status = state::AgentStatus::Connected;
@@ -1171,6 +1199,27 @@ fn status_color(status: AgentStatus, theme: &Theme) -> gpui::Hsla {
         AgentStatus::Disconnected => theme.status.error,
         AgentStatus::Thinking => theme.status.warning,
     }
+}
+
+/// T288 — resolve the ACP session working directory.
+///
+/// Single source of truth for "where does a new ACP session start": the
+/// workspace's active project when set (and non-empty), else the process
+/// cwd. Every call site that needs a session cwd — `project_path`,
+/// `ChatTab::new` (pre-spawn capture), `switch_agent`, and
+/// `create_new_session` — delegates here instead of each independently
+/// reading `std::env::current_dir()` (the two-source split that let `cwd`
+/// drift onto `packaging/` while `project_path` pointed at `ChronOS`).
+///
+/// `active_project` is the shell's active project scope (`Option<&Path>`
+/// from `SidePanelLeftState_`); `process_cwd` is the process working
+/// directory captured at the call site so the helper stays pure and
+/// testable without a GPUI context.
+fn session_cwd(active_project: Option<&Path>, process_cwd: &Path) -> PathBuf {
+    active_project
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| process_cwd.to_path_buf())
 }
 
 pub fn render_panel(
@@ -2189,5 +2238,42 @@ mod tests {
             }
         }
         assert!(hits.is_empty(), "chat.rs has window-lifecycle refs: {hits:?}");
+    }
+
+    // ── T288: session_cwd resolution ──
+
+    /// Active project wins.
+    #[test]
+    fn session_cwd_project_some_returns_project() {
+        let project = Path::new("/home/neo/projects/chronos-ecosystem/ChronOS");
+        let process = Path::new("/home/neo/projects/chronos-ecosystem/ChronOS/packaging");
+        assert_eq!(
+            session_cwd(Some(project), process),
+            PathBuf::from(project),
+            "active project must override process cwd"
+        );
+    }
+
+    /// No active project → process cwd.
+    #[test]
+    fn session_cwd_none_returns_process() {
+        let process = Path::new("/home/neo/projects/chronos-ecosystem/ChronOS/packaging");
+        assert_eq!(
+            session_cwd(None, process),
+            PathBuf::from(process),
+            "missing project falls back to process cwd"
+        );
+    }
+
+    /// An empty active-project path is treated as unset (same as None) —
+    /// otherwise the shell could hand the agent `cwd = ""`.
+    #[test]
+    fn session_cwd_empty_project_returns_process() {
+        let process = Path::new("/home/neo/projects/chronos-ecosystem/ChronOS/packaging");
+        assert_eq!(
+            session_cwd(Some(Path::new("")), process),
+            PathBuf::from(process),
+            "empty project path must not win over process cwd"
+        );
     }
 }

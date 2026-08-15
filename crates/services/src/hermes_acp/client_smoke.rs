@@ -15,7 +15,7 @@ mod tests {
         let client = HermesClient::new(HermesConfig::default(), Default::default())
             .await
             .expect("spawn hermes acp");
-        let s1 = client.create_session().await.expect("create session");
+        let s1 = client.create_session(std::path::Path::new(".")).await.expect("create session");
         let r1 = client
             .send_prompt("Reply with exactly: pong1")
             .await
