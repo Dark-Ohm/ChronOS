@@ -43,7 +43,7 @@ use gpui::{
     Styled, Subscription, Window, div, img, prelude::*, px,
 };
 
-use chronos_ui::Theme;
+use chronos_ui::{Theme, WindowRootExt};
 
 use gpui_component::menu::{PopupMenu, PopupMenuItem};
 use gpui_component::{Icon, Side, h_flex};
@@ -142,8 +142,13 @@ impl Render for TrayMenuView {
         // an open submenu (T263). Clicks landing there hit the component's
         // `on_mouse_down_out` → `DismissEvent` → `close_this` — a
         // client-side close, no compositor grab (T264).
+        let theme = *Theme::global(cx);
         motion::apply_enter_menu(
-            div().size_full().items_start().child(menu.clone()),
+            div()
+                .size_full()
+                .items_start()
+                .window_font(&theme)
+                .child(menu.clone()),
             self.enter_t,
         )
         .into_any_element()

@@ -22,6 +22,7 @@ use gpui::{
     px,
 };
 
+use chronos_ui::{Theme, WindowRootExt};
 use gpui_component::Root;
 use gpui_component::menu::{PopupMenu, PopupMenuItem};
 
@@ -128,9 +129,14 @@ impl Render for DockMenuView {
             return div().into_any_element();
         };
         // Host: full-window transparent surface, enter fade. PopupMenu draws
-        // its own card (popover style) inside.
-        motion::apply_enter_menu(div().size_full().child(menu.clone()), self.enter_t)
-            .into_any_element()
+        // its own card (popover style) inside. Route the window root through
+        // `window_font` so the menu text inherits `theme.font_ui` (T227).
+        let theme = *Theme::global(cx);
+        motion::apply_enter_menu(
+            div().size_full().window_font(&theme).child(menu.clone()),
+            self.enter_t,
+        )
+        .into_any_element()
     }
 }
 
