@@ -36,6 +36,28 @@ use crate::side_panel_left::sessions_list::{
 use crate::side_panel_left::state;
 use crate::side_panel_left::state::AgentStatus;
 use crate::side_panel_left::chat_view;
+
+/// T285 — pure decision: given a restored thread's `acp_session_id` and its
+/// `cwd`, should the spawn connect via `load_session` (resume the Hermes
+/// session) or `create_session` (mint a new one)?
+///
+/// `HermesClient::load_session` bails on an empty `cwd`, and there is nothing
+/// to resume without an `acp_session_id` — both cases fall back to Create.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ConnectSessionAction {
+    Load { acp_id: String, cwd: String },
+    Create,
+}
+
+pub fn connect_session_action(restored_acp_id: Option<&str>, cwd: &str) -> ConnectSessionAction {
+    match (restored_acp_id.filter(|s| !s.is_empty()), cwd) {
+        (Some(acp_id), cwd) if !cwd.is_empty() => {
+            ConnectSessionAction::Load { acp_id: acp_id.to_string(), cwd: cwd.to_string() }
+        }
+        _ => ConnectSessionAction::Create,
+    }
+}
+
 pub struct ChatTab {
     pub(crate) state: state::SidePanelLeftState,
     /// Available agent backends from the registry.
@@ -324,40 +346,95 @@ impl ChatTab {
         cx.spawn(async move |this, cx| {
             match HermesClient::new(default_config, env_for_spawn).await {
                 Ok(client) => {
-                    // Fetch modes/models at connect time, not just after the
-                    // first prompt — otherwise the model/mode pickers stay
-                    // hidden for the entire life of a thread nobody has
-                    // messaged yet (live smoke, 2026-07-23: composer showed
-                    // only attach/send, no indicators, on a fresh thread).
-                    let session = client.create_session(&session_cwd).await;
-                    let _ = this.update(cx, |this, cx| {
-                        this.clients.insert(agent_id, client);
-                        this.state.agent_status = state::AgentStatus::Connected;
-                        tracing::info!("side_panel_left: ACP client connected");
-                        if let Ok(session) = session {
-                            this.state.session_id = Some(session.id.to_string());
-                            if let Some(modes) = session.modes {
-                                this.composer_selected_mode = modes.current_id;
-                                this.available_modes = modes.available;
-                                this.detect_yolo_bypass_mode();
-                            }
-                            if let Some(models) = session.models {
-                                this.composer_selected_model = models.current_id;
-                                this.available_models = models.available;
-                            }
-                        } else if let Err(e) = session {
-                            tracing::warn!(
-                                "side_panel_left: create_session after connect failed: {e}"
-                            );
+                    // T285: decide whether to resume the restored thread's ACP
+                    // session or mint a fresh one. If `restore_project_thread`
+                    // already painted a cached transcript (startup restore),
+                    // we must bind the session WITHOUT re-replaying — otherwise
+                    // the thread would be duplicated ("баннан" twice).
+                    let session_cwd_for_fallback = session_cwd.clone();
+                    let action = this
+                        .update(cx, |this, _cx| {
+                            let active = this
+                                .sessions
+                                .iter()
+                                .find(|s| s.record.id == this.state.active_session_id.as_deref().unwrap_or(""));
+                            let acp_id = active.and_then(|t| t.record.acp_session_id.clone());
+                            let cwd = active
+                                .map(|t| t.record.cwd.clone())
+                                .unwrap_or_default();
+                            connect_session_action(acp_id.as_deref(), &cwd)
+                        })
+                        .unwrap_or(ConnectSessionAction::Create);
+
+                    match action {
+                        ConnectSessionAction::Load { acp_id, cwd } => {
+                            let _ = this.update(cx, |this, cx| {
+                                this.clients.insert(agent_id, client);
+                                this.state.agent_status = state::AgentStatus::Thinking;
+                                tracing::info!(
+                                    "side_panel_left: ACP client connected, resuming session {acp_id}"
+                                );
+                                // Cache already painted by restore_project_thread;
+                                // bind only, do not re-replay into the transcript.
+                                let replay = this.chat.messages.is_empty();
+                                let acp_id_for_state = acp_id.clone();
+                                if let Some(client) = this.clients.get(&this.active_agent_id).cloned() {
+                                    this.run_load_session(
+                                        client,
+                                        acp_id,
+                                        std::path::PathBuf::from(&cwd),
+                                        replay,
+                                        // Startup restore: if Hermes dropped the
+                                        // session, fall back to a fresh one.
+                                        Some(session_cwd_for_fallback),
+                                        cx,
+                                    );
+                                }
+                                this.state.session_id = Some(acp_id_for_state);
+                                // T247: fire any queued message now that the
+                                // session is bound.
+                                if let Some(text) = this.pending_send.take() {
+                                    this.start_acp_turn(text, cx);
+                                }
+                                cx.notify();
+                            });
                         }
-                        // T247: fire any message queued while the client was
-                        // still connecting (user message already pushed by
-                        // send_composer's Thinking branch).
-                        if let Some(text) = this.pending_send.take() {
-                            this.start_acp_turn(text, cx);
+                        ConnectSessionAction::Create => {
+                            // Fetch modes/models at connect time, not just
+                            // after the first prompt — otherwise the
+                            // model/mode pickers stay hidden for the entire
+                            // life of a thread nobody has messaged yet
+                            // (live smoke, 2026-07-23).
+                            let session = client.create_session(&session_cwd).await;
+                            let _ = this.update(cx, |this, cx| {
+                                this.clients.insert(agent_id, client);
+                                this.state.agent_status = state::AgentStatus::Connected;
+                                tracing::info!("side_panel_left: ACP client connected");
+                                if let Ok(session) = session {
+                                    this.state.session_id = Some(session.id.to_string());
+                                    if let Some(modes) = session.modes {
+                                        this.composer_selected_mode = modes.current_id;
+                                        this.available_modes = modes.available;
+                                        this.detect_yolo_bypass_mode();
+                                    }
+                                    if let Some(models) = session.models {
+                                        this.composer_selected_model = models.current_id;
+                                        this.available_models = models.available;
+                                    }
+                                } else if let Err(e) = session {
+                                    tracing::warn!(
+                                        "side_panel_left: create_session after connect failed: {e}"
+                                    );
+                                }
+                                // T247: fire any message queued while the client
+                                // was still connecting.
+                                if let Some(text) = this.pending_send.take() {
+                                    this.start_acp_turn(text, cx);
+                                }
+                                cx.notify();
+                            });
                         }
-                        cx.notify();
-                    });
+                    }
                 }
                 Err(e) => {
                     tracing::warn!("side_panel_left: ACP client init failed: {e}");
@@ -707,157 +784,14 @@ impl ChatTab {
 
         if let Some(client) = self.clients.get(&self.active_agent_id).cloned() {
             if let (Some(acp_id), true) = (&acp_session_id, !cwd.is_empty()) {
+                // T285: the cache is already painted above. Only replay the
+                // ACP events into the transcript when the cache was empty —
+                // otherwise we'd double-paint ("баннан" twice). A restored
+                // thread with a cached transcript gets the session bound only.
+                let replay_into_chat = self.chat.messages.is_empty();
                 let cwd_path = std::path::PathBuf::from(&cwd);
-                self.state.agent_status = state::AgentStatus::Thinking;
-                cx.notify();
-
-                // Create streaming channel for replay events.
-                let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
-
-                // Push a placeholder agent message (filled by replay events).
-                self.chat.push_message(chat_view::ChatMessage {
-                    role: chat_view::MessageRole::Agent,
-                    segments: Vec::new(),
-                });
-                self.chat.scroll_to_bottom();
-
-                // Spawn ACP load_session task.
-                let acp_id_owned = acp_id.clone();
-                let load_task = cx.spawn(async move |this, cx| {
-                    match client.load_session(&acp_id_owned, &cwd_path, event_tx).await {
-                        Ok(()) => {
-                            tracing::info!("select_session: load_session replay complete for {acp_id_owned}");
-                        }
-                        Err(e) => {
-                            tracing::warn!("select_session: load_session failed: {e}");
-                            let _ = this.update(cx, |this, cx| {
-                                if let Some(last_msg) = this.chat.messages.last_mut() {
-                                    if last_msg.role == chat_view::MessageRole::Agent {
-                                        last_msg.segments.push(chat_view::Segment::Response {
-                                            content: format!("Error loading session: {e}"),
-                                        });
-                                    }
-                                }
-                                cx.notify();
-                            });
-                        }
-                    }
-                });
-
-                // Spawn GPUI task to consume replay events (same handler as
-                // composer streaming — see composer.rs for the full pattern).
-                let streaming_task = cx.spawn(async move |this, cx| {
-                    use std::time::Duration;
-                    let mut rx = event_rx;
-                    const TURN_TIMEOUT: Duration = Duration::from_secs(180);
-                    let mut last_event = cx.background_executor().now();
-                    let mut timer = cx.background_executor().timer(TURN_TIMEOUT);
-
-                    loop {
-                        tokio::select! {
-                            event = rx.recv() => match event {
-                                Some(event) => {
-                                    last_event = cx.background_executor().now();
-                                    let upd = this.update(cx, |this, cx| {
-                                        match event {
-                                            StreamingEvent::TextChunk(delta) => {
-                                                if let Some(last_msg) = this.chat.messages.last_mut() {
-                                                    if last_msg.role == chat_view::MessageRole::Agent {
-                                                        let append = last_msg.segments.last_mut().and_then(|s| {
-                                                            if let chat_view::Segment::Response { content } = s { Some(content) } else { None }
-                                                        });
-                                                        if let Some(content) = append {
-                                                            content.push_str(&delta);
-                                                        } else {
-                                                            last_msg.segments.push(chat_view::Segment::Response { content: delta });
-                                                        }
-                                                    }
-                                                }
-                                                this.chat.scroll_to_bottom();
-                                            }
-                                            StreamingEvent::ThoughtChunk(delta) => {
-                                                if let Some(last_msg) = this.chat.messages.last_mut() {
-                                                    if last_msg.role == chat_view::MessageRole::Agent {
-                                                        let append = last_msg.segments.last_mut().and_then(|s| {
-                                                            if let chat_view::Segment::Thinking { content } = s { Some(content) } else { None }
-                                                        });
-                                                        if let Some(content) = append {
-                                                            content.push_str(&delta);
-                                                        } else {
-                                                            let seg_idx = last_msg.segments.len();
-                                                            last_msg.segments.push(chat_view::Segment::Thinking { content: delta });
-                                                            let msg_idx = this.chat.messages.len().wrapping_sub(1);
-                                                            this.chat.collapsed_reasoning.remove(&(msg_idx, seg_idx));
-                                                        }
-                                                    }
-                                                }
-                                                this.chat.scroll_to_bottom();
-                                            }
-                                            StreamingEvent::ToolCall { id, name, status, args, result } => {
-                                                // T195: push tool call to Follow state (right panel activity)
-                                                if this.follow_enabled {
-                                                    let ft = crate::agent_follow::ToolCallPreview {
-                                                        id: id.clone(),
-                                                        name: name.clone(),
-                                                        status: status.clone(),
-                                                        args: args.clone(),
-                                                        result: result.clone(),
-                                                    };
-                                                    cx.update_global::<crate::agent_follow::AgentFollowState, _>(|state, _| {
-                                                        state.push_tool(ft.clone());
-                                                    });
-                                                    if let Some(path_str) = crate::agent_follow::AgentFollowState::extract_file_path(&ft) {
-                                                        cx.set_global(crate::side_panel_right::preview_target::PreviewTarget {
-                                                            path: Some(std::path::PathBuf::from(path_str)),
-                                                            generation: 1,
-                                                            intent: crate::side_panel_right::preview_target::PreviewIntent::View,
-                                                        });
-                                                    }
-                                                }
-                                                if let Some(last_msg) = this.chat.messages.last_mut() {
-                                                    if last_msg.role == chat_view::MessageRole::Agent {
-                                                        let found = last_msg.segments.iter_mut().rev().find_map(|s| {
-                                                            if let chat_view::Segment::ToolCall { tool } = s {
-                                                                if tool.id == id { Some(tool) } else { None }
-                                                            } else { None }
-                                                        });
-                                                        if let Some(tool) = found {
-                                                            tool.status = status;
-                                                            tool.args = args;
-                                                            tool.result = result;
-                                                        } else {
-                                                            last_msg.segments.push(chat_view::Segment::ToolCall {
-                                                                tool: chat_view::ToolCallPreview { id, name, status, args, result },
-                                                            });
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            StreamingEvent::Done => {}
-                                            StreamingEvent::Error(_) => {}
-                                        }
-                                        cx.notify();
-                                    });
-                                    if upd.is_err() { return; }
-                                }
-                                None => break,
-                            },
-                            _ = &mut timer => {
-                                let silent = last_event.elapsed();
-                                if silent >= TURN_TIMEOUT {
-                                    break;
-                                } else {
-                                    timer = cx.background_executor().timer(TURN_TIMEOUT - silent);
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-                });
-
-                self.streaming.active = true;
-                self.streaming.acp_task = Some(load_task);
-                self.streaming.receiver_task = Some(streaming_task);
+                // Sessions-click path: no create_session fallback on failure.
+                self.run_load_session(client, acp_id.clone(), cwd_path, replay_into_chat, None, cx);
             } else if acp_session_id.is_none() {
                 // New thread with no ACP session yet — show empty state.
                 self.chat.push_message(chat_view::ChatMessage {
@@ -875,6 +809,224 @@ impl ChatTab {
             self.thread_loading = false;
         }
         cx.notify();
+    }
+
+    /// T285 — resume an existing Hermes ACP session via `load_session`, wiring
+    /// the same replay consumer `select_session` used inline. When
+    /// `replay_into_chat` is false the transcript is already painted (cache or
+    /// a prior restore); we bind the session but do not mutate the visible
+    /// chat, so `load_session`'s re-sent TextChunk/Thought events don't
+    /// duplicate the thread.
+    ///
+    /// `fallback_cwd`, when `Some`, makes a dead `load_session` (Hermes no
+    /// longer holds that session) fall back to `create_session` in that cwd —
+    /// used by the startup restore path so a crashed Hermes still yields a
+    /// working agent. The SQLite transcript is never wiped on failure.
+    fn run_load_session(
+        &mut self,
+        client: HermesClient,
+        acp_id: String,
+        cwd_path: std::path::PathBuf,
+        replay_into_chat: bool,
+        fallback_cwd: Option<std::path::PathBuf>,
+        cx: &mut Context<Self>,
+    ) {
+        self.state.agent_status = state::AgentStatus::Thinking;
+        cx.notify();
+
+        // Create streaming channel for replay events.
+        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        if replay_into_chat {
+            // Push a placeholder agent message (filled by replay events).
+            self.chat.push_message(chat_view::ChatMessage {
+                role: chat_view::MessageRole::Agent,
+                segments: Vec::new(),
+            });
+            self.chat.scroll_to_bottom();
+        }
+
+        // Spawn ACP load_session task.
+        let acp_id_owned = acp_id.clone();
+        let fallback_cwd_owned = fallback_cwd.clone();
+        let agent_id_for_fallback = self.active_agent_id.clone();
+        let load_task = cx.spawn(async move |this, cx| {
+            match client.load_session(&acp_id_owned, &cwd_path, event_tx).await {
+                Ok(()) => {
+                    tracing::info!("side_panel_left: load_session replay complete for {acp_id_owned}");
+                }
+                Err(e) => {
+                    tracing::warn!("side_panel_left: load_session failed: {e}");
+                    if let Some(fb_cwd) = fallback_cwd_owned {
+                        // Explicit fallback: the restored session died in
+                        // Hermes. Mint a fresh one rather than leaving the
+                        // agent dead. Log clearly — do not fail silently.
+                        tracing::warn!("side_panel_left: load_session failed, new session");
+                        let client_for_create = client;
+                        match client_for_create.create_session(&fb_cwd).await {
+                            Ok(session) => {
+                                let _ = this.update(cx, |this, cx| {
+                                    this.clients.insert(agent_id_for_fallback, client_for_create);
+                                    this.state.session_id = Some(session.id.to_string());
+                                    this.state.agent_status = state::AgentStatus::Connected;
+                                    if let Some(modes) = session.modes {
+                                        this.composer_selected_mode = modes.current_id;
+                                        this.available_modes = modes.available;
+                                        this.detect_yolo_bypass_mode();
+                                    }
+                                    if let Some(models) = session.models {
+                                        this.composer_selected_model = models.current_id;
+                                        this.available_models = models.available;
+                                    }
+                                    cx.notify();
+                                });
+                            }
+                            Err(e2) => {
+                                tracing::warn!("side_panel_left: create_session fallback failed: {e2}");
+                                let _ = this.update(cx, |this, cx| {
+                                    this.state.agent_status = state::AgentStatus::Disconnected;
+                                    cx.notify();
+                                });
+                            }
+                        }
+                    } else if replay_into_chat {
+                        let _ = this.update(cx, |this, cx| {
+                            if let Some(last_msg) = this.chat.messages.last_mut() {
+                                if last_msg.role == chat_view::MessageRole::Agent {
+                                    last_msg.segments.push(chat_view::Segment::Response {
+                                        content: format!("Error loading session: {e}"),
+                                    });
+                                }
+                            }
+                            cx.notify();
+                        });
+                    }
+                }
+            }
+        });
+
+        // Spawn GPUI task to consume replay events (same handler as
+        // composer streaming — see composer.rs for the full pattern).
+        let streaming_task = cx.spawn(async move |this, cx| {
+            use std::time::Duration;
+            let mut rx = event_rx;
+            const TURN_TIMEOUT: Duration = Duration::from_secs(180);
+            let mut last_event = cx.background_executor().now();
+            let mut timer = cx.background_executor().timer(TURN_TIMEOUT);
+
+            loop {
+                tokio::select! {
+                    event = rx.recv() => match event {
+                        Some(event) => {
+                            last_event = cx.background_executor().now();
+                            let upd = this.update(cx, |this, cx| {
+                                // When binding only (replay_into_chat=false),
+                                // the transcript is already painted — skip all
+                                // message mutations so load_session's echoed
+                                // events don't duplicate the thread.
+                                if !replay_into_chat {
+                                    cx.notify();
+                                    return;
+                                }
+                                match event {
+                                    StreamingEvent::TextChunk(delta) => {
+                                        if let Some(last_msg) = this.chat.messages.last_mut() {
+                                            if last_msg.role == chat_view::MessageRole::Agent {
+                                                let append = last_msg.segments.last_mut().and_then(|s| {
+                                                    if let chat_view::Segment::Response { content } = s { Some(content) } else { None }
+                                                });
+                                                if let Some(content) = append {
+                                                    content.push_str(&delta);
+                                                } else {
+                                                    last_msg.segments.push(chat_view::Segment::Response { content: delta });
+                                                }
+                                            }
+                                        }
+                                        this.chat.scroll_to_bottom();
+                                    }
+                                    StreamingEvent::ThoughtChunk(delta) => {
+                                        if let Some(last_msg) = this.chat.messages.last_mut() {
+                                            if last_msg.role == chat_view::MessageRole::Agent {
+                                                let append = last_msg.segments.last_mut().and_then(|s| {
+                                                    if let chat_view::Segment::Thinking { content } = s { Some(content) } else { None }
+                                                });
+                                                if let Some(content) = append {
+                                                    content.push_str(&delta);
+                                                } else {
+                                                    let seg_idx = last_msg.segments.len();
+                                                    last_msg.segments.push(chat_view::Segment::Thinking { content: delta });
+                                                    let msg_idx = this.chat.messages.len().wrapping_sub(1);
+                                                    this.chat.collapsed_reasoning.remove(&(msg_idx, seg_idx));
+                                                }
+                                            }
+                                        }
+                                        this.chat.scroll_to_bottom();
+                                    }
+                                    StreamingEvent::ToolCall { id, name, status, args, result } => {
+                                        // T195: push tool call to Follow state (right panel activity)
+                                        if this.follow_enabled {
+                                            let ft = crate::agent_follow::ToolCallPreview {
+                                                id: id.clone(),
+                                                name: name.clone(),
+                                                status: status.clone(),
+                                                args: args.clone(),
+                                                result: result.clone(),
+                                            };
+                                            cx.update_global::<crate::agent_follow::AgentFollowState, _>(|state, _| {
+                                                state.push_tool(ft.clone());
+                                            });
+                                            if let Some(path_str) = crate::agent_follow::AgentFollowState::extract_file_path(&ft) {
+                                                cx.set_global(crate::side_panel_right::preview_target::PreviewTarget {
+                                                    path: Some(std::path::PathBuf::from(path_str)),
+                                                    generation: 1,
+                                                    intent: crate::side_panel_right::preview_target::PreviewIntent::View,
+                                                });
+                                            }
+                                        }
+                                        if let Some(last_msg) = this.chat.messages.last_mut() {
+                                            if last_msg.role == chat_view::MessageRole::Agent {
+                                                let found = last_msg.segments.iter_mut().rev().find_map(|s| {
+                                                    if let chat_view::Segment::ToolCall { tool } = s {
+                                                        if tool.id == id { Some(tool) } else { None }
+                                                    } else { None }
+                                                });
+                                                if let Some(tool) = found {
+                                                    tool.status = status;
+                                                    tool.args = args;
+                                                    tool.result = result;
+                                                } else {
+                                                    last_msg.segments.push(chat_view::Segment::ToolCall {
+                                                        tool: chat_view::ToolCallPreview { id, name, status, args, result },
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    }
+                                    StreamingEvent::Done => {}
+                                    StreamingEvent::Error(_) => {}
+                                }
+                                cx.notify();
+                            });
+                            if upd.is_err() { return; }
+                        }
+                        None => break,
+                    },
+                    _ = &mut timer => {
+                        let silent = last_event.elapsed();
+                        if silent >= TURN_TIMEOUT {
+                            break;
+                        } else {
+                            timer = cx.background_executor().timer(TURN_TIMEOUT - silent);
+                            continue;
+                        }
+                    }
+                }
+            }
+        });
+
+        self.streaming.active = true;
+        self.streaming.acp_task = Some(load_task);
+        self.streaming.receiver_task = Some(streaming_task);
     }
 
     /// Rename a thread — writes `title_override` to the store.
@@ -2274,6 +2426,48 @@ mod tests {
             session_cwd(Some(Path::new("")), process),
             PathBuf::from(process),
             "empty project path must not win over process cwd"
+        );
+    }
+
+    // ── T285: connect_session_action decision ──
+
+    /// Restored thread with both acp id and cwd → resume via load_session.
+    #[test]
+    fn connect_action_load_when_id_and_cwd_present() {
+        assert_eq!(
+            connect_session_action(Some("acp-123"), "/home/neo/proj"),
+            ConnectSessionAction::Load {
+                acp_id: "acp-123".to_string(),
+                cwd: "/home/neo/proj".to_string(),
+            }
+        );
+    }
+
+    /// No acp id → there is nothing to resume → create_session.
+    #[test]
+    fn connect_action_create_when_no_id() {
+        assert_eq!(
+            connect_session_action(None, "/home/neo/proj"),
+            ConnectSessionAction::Create
+        );
+    }
+
+    /// acp id present but cwd empty → load_session would bail in the client,
+    /// so fall back to create_session (matches client guard).
+    #[test]
+    fn connect_action_create_when_cwd_empty() {
+        assert_eq!(
+            connect_session_action(Some("acp-123"), ""),
+            ConnectSessionAction::Create
+        );
+    }
+
+    /// Both empty → create_session.
+    #[test]
+    fn connect_action_create_when_both_empty() {
+        assert_eq!(
+            connect_session_action(None, ""),
+            ConnectSessionAction::Create
         );
     }
 }
