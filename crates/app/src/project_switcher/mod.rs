@@ -33,6 +33,12 @@ pub fn cached() -> ProjectsConfig {
     config_cache().lock().unwrap().clone()
 }
 
+/// Test-only: seed the in-memory cache without touching `projects.toml`.
+#[cfg(test)]
+pub(crate) fn set_cached_for_test(config: ProjectsConfig) {
+    *config_cache().lock().unwrap() = config;
+}
+
 pub fn reload_cache() {
     *config_cache().lock().unwrap() = ProjectsConfig::load();
 }

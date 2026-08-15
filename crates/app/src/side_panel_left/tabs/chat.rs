@@ -368,7 +368,7 @@ impl ChatTab {
         })
         .detach();
 
-        Self {
+        let mut this = Self {
             state,
             agents,
             shared_env,
@@ -404,7 +404,21 @@ impl ChatTab {
             composer_focused: false,
             streaming: state::StreamingState::new(),
             pending_send: None,
+        };
+
+        // T281 gate 8 — on startup, restore the last valid session of the
+        // persisted active project so a restart reopens where the user left
+        // off. `restore_project_thread` only loads a thread the store
+        // validates (id + project_path + archived=0); a stale / archived /
+        // deleted / cross-project active id yields empty Chat. Mirrors the
+        // project-switch path used by `switch_project`.
+        if let Some(active) = crate::project_switcher::cached().active.clone() {
+            let path = PathBuf::from(active);
+            cx.global_mut::<crate::side_panel_left::SidePanelLeftState_>()
+                .active_project_path = Some(path.clone());
+            this.restore_project_thread(path.as_path(), cx);
         }
+        this
     }
 
     fn toggle_collapse(&mut self, cx: &mut Context<Self>) {

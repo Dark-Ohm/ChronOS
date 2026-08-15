@@ -762,6 +762,35 @@ pub fn remove_project_scope(path: std::path::PathBuf, cx: &mut App) -> bool {
     true
 }
 
+/// T281 gate 8 — restore the session scope on startup.
+///
+/// Reads the persisted active project from `ProjectsConfig.active` (the last
+/// project the user selected — `project_switcher::set_active` writes it on
+/// every project switch) and mirrors it onto the workspace SoT. When the live
+/// `ChatTab` already exists it also loads that project's last valid thread;
+/// the store validates id + project_path and archived=0, so a stale /
+/// archived / deleted / cross-project active id yields empty Chat (never
+/// another project's leak). `ChatTab::new` performs the same restore when the
+/// panel is first opened after a restart, so this is safe to call even before
+/// the chat entity exists (it then only seeds the SoT path).
+pub fn restore_active_project_on_startup(cx: &mut App) {
+    let Some(active) = crate::project_switcher::cached().active.clone() else {
+        return;
+    };
+    let path = PathBuf::from(active);
+    {
+        let state = cx.global_mut::<SidePanelLeftState_>();
+        // Seed the scope only if nothing is already selected — never clobber a
+        // live in-flight session (e.g. an IPC-driven open at startup).
+        if state.active_project_path.is_none() {
+            state.active_project_path = Some(path.clone());
+        }
+    }
+    if let Some(chat) = chat_handle(cx) {
+        chat.update(cx, |chat, cx| chat.restore_project_thread(path.as_path(), cx));
+    }
+}
+
 /// T226 tooling: open the left agent panel pinned, dock the chat column
 /// (full panel width, not overlay) and focus the composer so typed input
 /// lands in the message box. `App` context — IPC handler has no `Window`,
@@ -835,6 +864,10 @@ pub fn compose_and_send(text: String, cx: &mut App) {
 
 pub fn init(cx: &mut App) {
     cx.set_global(SidePanelLeftState_::default());
+    // T281 gate 8 — restore the persisted active project scope on startup so a
+    // restart reopens where the user left off (the live ChatTab restores the
+    // project's last valid session itself, in `ChatTab::new`).
+    restore_active_project_on_startup(cx);
     // Defer the strip one tick so `cx.displays()` / pult uuid match what
     // `bar::init` sees a moment later. Opening the strip synchronously in
     // `main` before the bar historically landed it on the wrong output
@@ -862,6 +895,7 @@ pub fn init(cx: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::project_switcher::{ProjectEntry, ProjectsConfig};
 
     #[test]
     fn state_starts_as_peek() {
@@ -1655,6 +1689,52 @@ mod tests {
                 Some(std::path::Path::new("/home/neo/keep"))
             );
             assert_eq!(state.active_session_id.as_deref(), Some("keep-thread"));
+        });
+    }
+
+    // ── T281 gate 8 — restore session on startup ──
+
+    /// Restart must seed the persisted active project onto the workspace SoT,
+    /// so the left panel reopens in the project the user last worked in.
+    #[gpui::test]
+    async fn restore_on_startup_seeds_active_project_path(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| crate::side_panel_left::init(cx));
+        // Seed the persisted active project without touching projects.toml.
+        crate::project_switcher::set_cached_for_test(ProjectsConfig {
+            active: Some("/home/neo/restart-proj".into()),
+            projects: vec![ProjectEntry {
+                name: "restart-proj".into(),
+                path: "/home/neo/restart-proj".into(),
+            }],
+        });
+        cx.update(|cx| {
+            cx.global_mut::<SidePanelLeftState_>().active_project_path = None;
+        });
+        cx.update(|cx| crate::side_panel_left::restore_active_project_on_startup(cx));
+        cx.update(|cx| {
+            let state = cx.global::<SidePanelLeftState_>();
+            assert_eq!(
+                state.active_project_path.as_deref(),
+                Some(std::path::Path::new("/home/neo/restart-proj")),
+                "restart must restore the persisted active project scope"
+            );
+        });
+    }
+
+    /// With no persisted active project, startup restore must leave the scope
+    /// untouched (empty Chat, no phantom project).
+    #[gpui::test]
+    async fn restore_on_startup_noop_without_active_project(cx: &mut gpui::TestAppContext) {
+        // Seed the empty config BEFORE init — the cache is a process-wide
+        // OnceLock shared across tests in this binary.
+        crate::project_switcher::set_cached_for_test(ProjectsConfig::default());
+        cx.update(|cx| crate::side_panel_left::init(cx));
+        cx.update(|cx| {
+            assert_eq!(
+                cx.global::<SidePanelLeftState_>().active_project_path,
+                None,
+                "no active project → no scope seeded on startup"
+            );
         });
     }
 }
