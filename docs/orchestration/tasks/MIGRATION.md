@@ -372,3 +372,10 @@ T137–T142: стриминг, reasoning, тул-карточки, автоап�
 сессия работают на релизном бинаре. Остаточные дефекты не возвращены в
 T138–T142, а собраны в T143 (D0–D5) — там же сырые логи и разбор вины
 Hermes против нашей.
+
+## T284 — Frame Hide/Wrap theme (2026-08-15)
+
+| T-ID | Роль | Описание | Статус | Путь |
+|---|---|---|---|---|
+| T268 | FRONTEND | Нижняя полоска + стыки (без exclusive) | код в git `d572657`; бриф в `active/` исторический, не исполнять | `active/T268-desktop-frame-bottom-strip.md` |
+| T284 | FRONTEND | Тема Frame Hide/Wrap; окна внутри рамки | **OPEN** | `active/T284-frame-wrap-appearance-theme.md`; спека `docs/superpowers/specs/2026-08-15-desktop-frame-wrap-theme-design.md`; план `docs/superpowers/plans/2026-08-15-t284-frame-wrap-theme.md` |

@@ -8,6 +8,13 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
+**Обновлено: 2026-08-15 (T284 заведён).**
+
+**T284 OPEN** — тема Frame Hide/Wrap (не перепись T268).
+Бриф `tasks/active/T284-frame-wrap-appearance-theme.md`, план
+`docs/superpowers/plans/2026-08-15-t284-frame-wrap-theme.md`.
+T268 код `d572657` остаётся путём Hide. Бриф T268 не исполнять.
+
 **Обновлено: 2026-08-14 (чекпоинт #12, T280+T283 в git).**
 
 **T279** принят, в git: `bd999a5`.
