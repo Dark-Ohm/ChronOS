@@ -45,7 +45,7 @@ See `docs/DECISIONS.log` for why zed/main and crates.io were rejected.
 |---|---|---|
 | **gpui-ce chronos edition** (gpui + gpui_platform + 16 sibling crates) | local `../Source/` (own git repo since 2026-07-16) | commit `3ce3466` "workspace skeleton restored" |
 | zed-internal leftovers (`util_macros`, `http_client`, `reqwest_client`) | `git+https://github.com/zed-industries/zed` | rev `876ec5a8a074ba83cce2129ed4d76b59c05a37e9` (fork candidate if rev vanishes) |
-| `gpui-component` → planned `crates/ui` | fork of `longbridge/gpui-component` in `../Source/gpui-component` | PLANNED — excluded from Source workspace, own workspace; upstream NOT tracked |
+| `gpui-component` | наш форк `../Source/gpui-component` (не член workspace ChronOS) | ВЗЯТ 2026-07-29; с 2026-08-15 новые контролы шелла оттуда, не руками. `crates/ui` — токены темы, не дом компонента |
 | `gpui-shell` (reference only) | `andre-brandao/gpui-shell` `c3476bd` | `reference/gpui-shell/` is EMPTY after the move — re-clone if needed, code study only |
 
 Structure of `../Source/` (flattened, no `crates/` nesting): 9 base crates
