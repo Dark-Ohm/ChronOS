@@ -272,7 +272,6 @@ const RIGHT_GROUP_GAP: f32 = 14.0;
 fn right_widget_group(name: &str) -> u8 {
     match name {
         "separator" => 0,
-        "workspace_mode" => 3,
         "keyboard_layout" => 4,
         "clock" => 5,
         _ => 1,
@@ -766,11 +765,10 @@ use chronos_ui::{Theme, WindowRootExt};
 
     #[test]
     fn group_right_breaks_on_semantic_change() {
-        // Default config order: workspace_mode | volume | network |
-        // keyboard_layout | tray | updates | system | notification_bell |
-        // battery | clock (separators dropped). `project` is retired (T280).
+        // Default config order (T292: workspace_mode retired from the bar):
+        // volume | network | keyboard_layout | tray | updates | system |
+        // notification_bell | battery | clock (separators dropped).
         let g = group_right_names(&names(&[
-            "workspace_mode",
             "separator",
             "volume",
             "network",
@@ -782,17 +780,16 @@ use chronos_ui::{Theme, WindowRootExt};
             "battery",
             "clock",
         ]));
-        // 6 clusters: mode / net / layout / status / battery / clock.
-        assert_eq!(g.len(), 6);
-        assert_eq!(g[0], vec!["workspace_mode"]);
-        assert_eq!(g[1], vec!["volume", "network"]);
-        assert_eq!(g[2], vec!["keyboard_layout"]);
+        // 5 clusters: net / layout / status / battery / clock.
+        assert_eq!(g.len(), 5);
+        assert_eq!(g[0], vec!["volume", "network"]);
+        assert_eq!(g[1], vec!["keyboard_layout"]);
         assert_eq!(
-            g[3],
+            g[2],
             vec!["tray", "updates", "notification_bell"]
         );
-        assert_eq!(g[4], vec!["battery"]);
-        assert_eq!(g[5], vec!["clock"]);
+        assert_eq!(g[3], vec!["battery"]);
+        assert_eq!(g[4], vec!["clock"]);
     }
 
     #[test]

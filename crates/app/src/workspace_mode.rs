@@ -38,15 +38,13 @@ impl WorkspaceMode {
         }
     }
 
-    // Разведка T159: `icons/code.svg` и `icons/gamepad.svg` в дереве НЕ
-    // существуют (36 файлов в `crates/app/assets/icons/`, ни одного
-    // подходящего по имени). GPUI при несуществующем пути молча рисует
-    // пустоту — поэтому берём существующие и помечаем TODO.
+    // T292: реальные иконки добавлены — gamepad для Gamer, mode-daily
+    // (чашка/кофе, повседневное) для Developer. Заменяют временные
+    // rail-editor/bolt из разведки T159.
     pub fn icon_path(self) -> &'static str {
         match self {
-            // TODO: заменить на code.svg / gamepad.svg, когда добавим свои SVG.
-            WorkspaceMode::Developer => "icons/rail-editor.svg",
-            WorkspaceMode::Gamer => "icons/bolt.svg",
+            WorkspaceMode::Developer => "icons/mode-daily.svg",
+            WorkspaceMode::Gamer => "icons/gamepad.svg",
         }
     }
 

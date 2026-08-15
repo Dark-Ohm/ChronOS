@@ -12,7 +12,6 @@ mod tray;
 mod updates;
 mod volume;
 mod workspaces;
-mod workspace_mode;
 mod keyboard_layout;
 
 use chronos_luau::bar::{BarSection, BarWidget, BarWidgetRegistry};
@@ -54,7 +53,6 @@ fn instantiate(name: &str, section: BarSection) -> Option<Box<dyn BarWidget>> {
         "updates" => Box::new(updates::UpdatesWidget::new()),
         "notification_bell" => Box::new(notification_bell::NotificationBellWidget::new()),
         "battery" => Box::new(battery::BatteryWidget),
-        "workspace_mode" => Box::new(workspace_mode::WorkspaceModeWidget),
         "keyboard_layout" => Box::new(keyboard_layout::KeyboardLayoutWidget),
         "clock" => Box::new(clock::ClockWidget),
         _ => return None,

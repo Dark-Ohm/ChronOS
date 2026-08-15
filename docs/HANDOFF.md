@@ -8,6 +8,111 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
+**Обновлено: 2026-08-16 (чекпоинт #16 — T292 принят).**
+
+**T292 DONE.** Shell Gamer (`WorkspaceMode`) — кнопка на правой рельсе
+над dock, не `PanelTab`. Бар-пилюля снята. Prompt инлайн в рельсе.
+Иконки `gamepad.svg` / `mode-daily.svg`. Live `+`. Эррата bins-теста
+`migration_idempotent`.
+
+**Канон панелей:** слева только ИИ; справа ежедневное и ОС.
+Display = правые настройки дисплея. Над доком — кнопка режима (T292).
+
+**Принято в этой волне:**
+- T288 `90ffd88` cwd=проект (live `c9f033fc`)
+- T289 `17afee6` dock=exclusive, не замок
+- T291 `84f25bf` + E `235185a` power/Perf Gaming на System
+- T290 `bb9790a` попап снесён (сторона была неверная)
+- T290-E `50b6c62`+`81fd7cb` window_font ROOTS
+- T296 `a2c072f` Display направо
+- T292 (этот коммит) режим на рельсе
+
+**Очередь:** T285 (`load_session`). Потом T286 → T287-C.
+Справа: T293, T294, T295. T275 remainder. T281 PARK.
+T265 не пачкой. T284 не с T266. T271 после левого фронта.
+
+Два gaming: Perf (`GamingModeState`) ≠ Shell (`WorkspaceMode::Gamer`).
+
+Калибр: тикет = ширина. 7b эррата; T288/T285 = 100b; не 1T на три вызова.
+
+**Инфра:** Hindsight :8888 отвечает (не мёртв). Honcho без ключа — skip.
+
+**Обновлено: 2026-08-15 (поле — T288).**
+
+**Панели:** слева ИИ, справа ОС. **T296 DONE** `a2c072f` (live `+`).
+Дальше: **T285** (лево) или **T292** (кнопка режима над доком). T284 не в поле.
+
+**Обновлено: 2026-08-15 (чекпоинт #14 — спеки, код не писали).**
+
+Накопление закрыто. Следующая сессия **исполняет**, не плодит новые тикеты без нужды.
+
+**Очередь исполнения (зоны не параллелить):**
+
+Левый ACP (строго по порядку):
+1. **T288** — `create_session(cwd проекта)`, не `current_dir()`. Процесс живьём в `…/ChronOS/packaging`.
+2. **T285** — restore: `load_session`, не `create_session`. После T288.
+3. **T286** — композер = kit `Input` multi-line. После T285.
+4. **T287-C** — срезать Zed-хром; Follow в `composer-pickers-row`. После T286.
+
+Правый / бар (после или рядом, не в тех же файлах что 288–287-C):
+5. **T289** — dock не открывает и не запирает вкладку (снимает T221 same-tab no-op).
+6. **T291** — Perf Gaming + power profile → правый System.
+7. **T290** — левая вкладка Display (яркость + waytrogen). После T291. Попап System снести.
+8. **T292** — Shell Gamer (`WorkspaceMode`) → кнопка на правой рельсе. Не T291.
+9. **T293** — вкладка Notifications; колокольчик открывает вкладку.
+10. **T294** — вкладка Updates; apply только pacman; AUR display-only + hover yay.
+11. **T295** — часы → kit `Calendar` попап (`gpui-component/time`).
+
+Живые хвосты / не трогать пачкой:
+- **T275** remainder: empty-query + pin live. Код A–D не переписывать.
+- **T281** PARK. Inbox не архивировать до `+` после T285.
+- **T265-A…G** BLOCKED цепочкой, **H** pause. Эпик не отдавать. 300B на волну.
+- **T284** Frame: Task 1/3/5 ок; 2/4 слева — когда left тихий.
+- **T271** только `ipc/`, после левого фронта.
+- **T266** не рядом с T284.
+
+Два gaming: **Perf Gaming** (`GamingModeState`) ≠ **Shell Gamer** (`WorkspaceMode::Gamer`).
+
+Кода в этой сессии нет — только брифы в `docs/orchestration/tasks/active/`.
+
+HEAD на момент чекпоинта: `5b73b34`.
+
+**Инфра:** Hindsight :8888 мёртв (пользователь выключил) — retain не делали. Honcho MCP `conclusions_of` в этой Grok-сессии нет (SDK 2.2 без того API).
+
+**Обновлено: 2026-08-15 (правка брифов).**
+
+- **T275** — remainder: empty-query «No matches» + pin live после `180fe88`. A–D не переписывать.
+- **T281** → `active/pause/`. Inbox-отчёт не архивировать. Гейт 8 = **T285**.
+- **T271** — только `ipc/`. `side_panel_left` нельзя, пока T285/T286/T287-C в поле.
+- **T287 порядок:** T285 → T286 → T287-C. C не параллелить с T286 (`composer.rs` / Follow).
+- **T266** — T263/T264/T265-0 закрыты; не класть рядом с T284.
+
+**Обновлено: 2026-08-15 (чекпоинт #13).**
+
+HEAD `5b73b34`. Сессия оборвалась на «чекпоинт» — дописан здесь.
+
+**Поле / очередь (не параллелить зоны):**
+- **T275** remainder. Код `89dfd25`, pin-эррата `180fe88`. Каретка живая. Pin после rebuild и empty-query — открыты. Не в `done/`.
+- **T281** PARK (`active/pause/`). Гейт 8 путь `23bf89f`, живьём Hermes `create_session` → **T285**. Не архивировать до `+` владельца.
+- **T295** SPEC: клик по часам → AnchoredPopup с kit `Calendar` (`gpui-component/time`). Не самописная сетка. Планировщика событий нет.
+- **T294** SPEC: вкладка Updates справа. Apply только `pacman` (не yay). AUR в списке, hover = «ставь через yay в терминале». Бар-счётчик открывает вкладку; попап снести.
+- **T293** SPEC: история уведомлений → вкладка Notifications справа. Бар-колокольчик остаётся, клик открывает вкладку; `history_popup` снести. Тосты не трогать.
+- **T292** SPEC: **Shell Gamer** (`WorkspaceMode`) с бара → кнопка на правой рельсе. Не T291.
+- **T291** SPEC: power profile + **Perf Gaming** (`GamingModeState`) → правый System. Яркость в попапе до T290.
+- **T290** SPEC: левая вкладка Display (яркость + waytrogen). Попап System снести. Бар `system` открывает Display. После T291.
+- **T289** SPEC: правый dock не открывает вкладку и не запирает её (ломает T221 same-tab no-op). Не выдавать до чекпоинта.
+- **T288** ACP cwd = active project, не `current_dir()`. Живо: шелл из `packaging/`, в UI выбран ChronOS. Перед T285.
+- **T285** `load_session` на restore, не `create_session`; не двоить транскрипт. После T288. Не параллелить с T286 (`side_panel_left`).
+- **T286** композер на gpui-component `Input` (wrap), не хак `text_input.rs`. После T285.
+- **T287-C** после T286 в git: срезать Sessions rail + thread-header + close X; Follow → composer-pickers-row, `icons/rail-preview.svg`. T287-A пикеры позже.
+- **T284** Frame Hide|Wrap — Appearance, не bar preset. Код не начат. Task 1/3/5 можно; 2/4 слева — только если left-зона тихая.
+- **T271** не выдавать, пока левый фронт в поле; зона только `ipc/`.
+- T265 эпик не отдавать. Дети A–G в `active/` (BLOCKED цепочкой), H в `pause/`. Сначала хвост T275. Не 30B на волну. T266 не рядом с T284.
+
+**Решения сессии:** component-first (наш `Source/gpui-component/`, `57f582f`). Frame ≠ bar preset. Follow не удалять. `Source-wt-component` — ложь, скилл починен `cf6f39e`.
+
+**Инфра:** Hindsight **временно выключен пользователем** (2026-08-15) — не поднимать, не чинить, retain пропускать. nginx `:8080` тоже мёртв. Банк по-прежнему `chronos-ecosystem`. Honcho SDK `conclusions_of(neo).create` в чекпоинте #13 прошёл.
+
 **Обновлено: 2026-08-15 (T285/T286).**
 
 T281 гейт 8 **живьём нет**: лента из store есть, Hermes — новый

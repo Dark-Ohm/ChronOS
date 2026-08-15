@@ -11,12 +11,8 @@
 **Принято:** T194c · T199–T208 · T203 · T204 (+errata).
 T202 `82e100a` · T205–T208 done; live smoke residual on chrome/editor.
 
-**Активное:**
-1. **T284** — тема Frame Hide/Wrap. Бриф
-   `docs/orchestration/tasks/active/T284-frame-wrap-appearance-theme.md`.
-   T268 не исполнять (код уже в `d572657`).
-2. ~~T195~~ **done** `9268440` Follow + PreviewTarget open (activity strip deferred)
-3. Live smoke residual: T206 resize · T207 edge/fraction · T208 Ln/Col+Wrap
+**Активное:** нет. T292 **принят** (режим на правой рельсе). T296 **принят** `a2c072f`. T285 не брать, пока не выдано.
+~~T195~~ **done** `9268440`. Live smoke residual T206–T208 — не сейчас.
 
 **Pause:** T196 · T197 SUPERSEDED. **T195** unblocked (pickup when free).
 **Канон:** `docs/PRODUCT.md`.

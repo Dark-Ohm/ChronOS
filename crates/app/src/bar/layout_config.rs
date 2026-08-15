@@ -24,7 +24,6 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "workspaces",
     "mpris",
     "cava",
-    "workspace_mode",
     "keyboard_layout",
     "volume",
     "network",
@@ -72,7 +71,6 @@ impl Default for BarLayoutConfig {
             ],
             center: vec!["mpris".into(), "cava".into()],
             right: vec![
-                "workspace_mode".into(),
                 "separator".into(),
                 "volume".into(),
                 "network".into(),
@@ -601,7 +599,6 @@ mod tests {
         assert_eq!(
             d.right,
             vec![
-                "workspace_mode",
                 "separator",
                 "volume",
                 "network",
@@ -618,6 +615,10 @@ mod tests {
         // appear in the default nor in the builtin catalog.
         assert!(!d.right.contains(&"project".to_string()));
         assert!(!BUILTIN_NAMES.contains(&"project"));
+        // T292: the `workspace_mode` pill moves to the right rail — it must
+        // not remain a bar widget.
+        assert!(!d.right.contains(&"workspace_mode".to_string()));
+        assert!(!BUILTIN_NAMES.contains(&"workspace_mode"));
     }
 
     #[test]
@@ -754,16 +755,16 @@ mod tests {
 
         // Рестарт 1: bootstrap, виджета ещё нет, но персист запрошен.
         assert!(cfg.migrate_new_builtins());
-        assert!(!cfg.right.contains(&"workspace_mode".to_string()));
+        assert!(!cfg.right.contains(&"keyboard_layout".to_string()));
 
         // Рестарт 2: `known` пришёл с диска, виджет распознан как новый.
         assert!(cfg.migrate_new_builtins());
-        assert!(cfg.right.contains(&"workspace_mode".to_string()));
+        assert!(cfg.right.contains(&"keyboard_layout".to_string()));
 
         // Рестарт 3: идемпотентность, дубликата нет.
         assert!(!cfg.migrate_new_builtins());
         assert_eq!(
-            cfg.right.iter().filter(|n| *n == "workspace_mode").count(),
+            cfg.right.iter().filter(|n| *n == "keyboard_layout").count(),
             1
         );
     }
@@ -773,18 +774,19 @@ mod tests {
     #[test]
     fn migration_adds_new_widget_at_default_pos() {
         let mut known: BTreeSet<String> = BTreeSet::new();
-        // Simulate: user has seen everything EXCEPT workspace_mode.
-        for name in BUILTIN_NAMES.iter().filter(|&&n| n != "workspace_mode") {
+        // Simulate: user has seen everything EXCEPT keyboard_layout.
+        for name in BUILTIN_NAMES.iter().filter(|&&n| n != "keyboard_layout") {
             known.insert(name.to_string());
         }
         let mut cfg = BarLayoutConfig {
             left: vec!["dock".into(), "separator".into(), "workspaces".into()],
             center: vec!["mpris".into(), "cava".into()],
+            // Old config predates keyboard_layout — it is absent here, so the
+            // migrator must insert it at its default position.
             right: vec![
                 "separator".into(),
                 "volume".into(),
                 "network".into(),
-                "keyboard_layout".into(),
                 "tray".into(),
                 "updates".into(),
                 "notification_bell".into(),
@@ -796,14 +798,15 @@ mod tests {
             ..Default::default()
         };
         cfg.migrate_new_builtins();
-        // workspace_mode (default index 0, project retired) has no
-        // predecessor → inserted before its first successor that exists in
-        // the user config: volume. User's right starts with separator, so
-        // workspace_mode lands at index 1.
+        // keyboard_layout's default successor present in the user config is
+        // `tray` (default order: …network, keyboard_layout, tray…), so it
+        // lands immediately before `tray`.
         assert_eq!(cfg.right[0], "separator");
-        assert_eq!(cfg.right[1], "workspace_mode");
-        assert_eq!(cfg.right[2], "volume");
-        assert!(cfg.known.contains("workspace_mode"));
+        assert_eq!(cfg.right[1], "volume");
+        assert_eq!(cfg.right[2], "network");
+        assert_eq!(cfg.right[3], "keyboard_layout");
+        assert_eq!(cfg.right[4], "tray");
+        assert!(cfg.known.contains("keyboard_layout"));
     }
 
     /// User removed an existing widget → it does NOT reappear.
@@ -818,7 +821,7 @@ mod tests {
             left: vec!["dock".into(), "separator".into(), "workspaces".into()],
             center: vec!["mpris".into(), "cava".into()],
             right: vec![
-                "workspace_mode".into(),
+                "keyboard_layout".into(),
                 "separator".into(),
                 // user removed "volume" here
                 "network".into(),
@@ -860,7 +863,7 @@ mod tests {
     #[test]
     fn migration_idempotent() {
         let mut known: BTreeSet<String> = BTreeSet::new();
-        for name in BUILTIN_NAMES.iter().filter(|&&n| n != "workspace_mode") {
+        for name in BUILTIN_NAMES {
             known.insert(name.to_string());
         }
         let mut cfg = BarLayoutConfig {
@@ -885,7 +888,8 @@ mod tests {
         let after_first = cfg.right.clone();
         cfg.migrate_new_builtins();
         assert_eq!(cfg.right, after_first);
-        assert_eq!(cfg.right.iter().filter(|n| *n == "workspace_mode").count(), 1);
+        // T292: retired bar widget must not be resurrected by migrate.
+        assert_eq!(cfg.right.iter().filter(|n| *n == "workspace_mode").count(), 0);
     }
 
     // -- T280 / retired `project` builtin ------------------------------------
