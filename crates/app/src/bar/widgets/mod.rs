@@ -8,7 +8,6 @@ mod mpris;
 mod network;
 mod notification_bell;
 mod separator;
-mod system;
 mod tray;
 mod updates;
 mod volume;
@@ -53,7 +52,6 @@ fn instantiate(name: &str, section: BarSection) -> Option<Box<dyn BarWidget>> {
         "network" => Box::new(network::NetworkWidget::new()),
         "tray" => Box::new(tray::TrayWidget::new()),
         "updates" => Box::new(updates::UpdatesWidget::new()),
-        "system" => Box::new(system::SystemWidget::new()),
         "notification_bell" => Box::new(notification_bell::NotificationBellWidget::new()),
         "battery" => Box::new(battery::BatteryWidget),
         "workspace_mode" => Box::new(workspace_mode::WorkspaceModeWidget),

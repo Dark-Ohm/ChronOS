@@ -66,7 +66,9 @@ fn default_dev_top() -> Vec<String> {
 }
 
 fn default_dev_bottom() -> Vec<String> {
-    vec!["editor_settings".into()]
+    // T296: Display (brightness + wallpaper) is the first button of the
+    // bottom group, immediately above shell settings.
+    vec!["display".into(), "editor_settings".into()]
 }
 
 fn default_gamer_top() -> Vec<String> {
@@ -80,7 +82,8 @@ fn default_gamer_top() -> Vec<String> {
 }
 
 fn default_gamer_bottom() -> Vec<String> {
-    vec!["editor_settings".into()]
+    // T296: Display (brightness + wallpaper) leads the bottom group in Gamer too.
+    vec!["display".into(), "editor_settings".into()]
 }
 
 impl Default for RailGroups {
@@ -591,7 +594,14 @@ mod tests {
         // "system" deduped, "nope" dropped — then missing mode tabs appended.
         assert_eq!(
             dev.top,
-            vec!["system", "files", "preview", "hyprland_binds", "acp_settings"]
+            vec![
+                "system",
+                "files",
+                "preview",
+                "hyprland_binds",
+                "acp_settings",
+                "display"
+            ]
         );
         assert_eq!(dev.bottom, vec!["editor_settings"]);
     }
@@ -706,8 +716,9 @@ mod tests {
         let cfg = PanelLayoutConfig::default();
         let (top, bottom) = resolve_grouped(WorkspaceMode::Developer, &cfg);
         assert_eq!(top.len(), 5); // system, files, preview, hyprland_binds, acp_settings
-        assert_eq!(bottom.len(), 1); // editor_settings
-        assert_eq!(bottom[0], PanelTab::EditorSettings);
+        assert_eq!(bottom.len(), 2); // display, editor_settings
+        assert_eq!(bottom[0], PanelTab::Display);
+        assert_eq!(bottom[1], PanelTab::EditorSettings);
     }
 
     #[test]

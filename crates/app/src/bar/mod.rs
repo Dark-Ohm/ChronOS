@@ -777,7 +777,6 @@ use chronos_ui::{Theme, WindowRootExt};
             "keyboard_layout",
             "tray",
             "updates",
-            "system",
             "notification_bell",
             "separator",
             "battery",
@@ -790,7 +789,7 @@ use chronos_ui::{Theme, WindowRootExt};
         assert_eq!(g[2], vec!["keyboard_layout"]);
         assert_eq!(
             g[3],
-            vec!["tray", "updates", "system", "notification_bell"]
+            vec!["tray", "updates", "notification_bell"]
         );
         assert_eq!(g[4], vec!["battery"]);
         assert_eq!(g[5], vec!["clock"]);

@@ -40,9 +40,6 @@ pub struct WorkspaceView {
     /// state; shells are stateless labels.
     sessions: Option<Entity<tabs::SessionsTab>>,
     project: Option<Entity<tabs::ProjectTab>>,
-    /// T290: brightness + wallpaper controls. Created on first selection,
-    /// retained for reuse (mirrors the other secondary tabs).
-    display: Option<Entity<tabs::DisplayTab>>,
     /// B/C shell tabs keyed by `LeftTab` (Plan/Tools/Skills/ContextFiles/
     /// Archive) — created on first selection, reused after.
     shells: std::collections::HashMap<tabs::LeftTab, Entity<tabs::ShellTab>>,
@@ -74,7 +71,6 @@ impl WorkspaceView {
             chat: content,
             sessions: None,
             project: None,
-            display: None,
             shells: std::collections::HashMap::new(),
             last_visible_width: None,
             resize_start_x: None,
@@ -257,20 +253,6 @@ impl WorkspaceView {
             .clone()
     }
 
-    /// T290 — lazy-create the Display tab entity on first activation. Same
-    /// pattern as `ensure_project`/`ensure_sessions`.
-    fn ensure_display(&mut self, cx: &mut Context<Self>) -> Entity<tabs::DisplayTab> {
-        if self.display.is_none() {
-            let entity = cx.new(|cx| tabs::DisplayTab::new(cx));
-            self._subs.push(cx.observe(&entity, |_, _, cx| cx.notify()));
-            self.display = Some(entity);
-        }
-        self.display
-            .as_ref()
-            .expect("display tab created above")
-            .clone()
-    }
-
     /// T279 / Task 4 — lazy-create the shell tab (Plan/Tools/Skills/
     /// ContextFiles/Archive) on first activation. ShellTabs are stateless
     /// labels (Slice B/C bodies), keyed by `LeftTab` for reuse.
@@ -417,14 +399,6 @@ impl Render for WorkspaceView {
                     .overflow_hidden()
                     .flex_none()
                     .child(self.ensure_project(cx))
-                    .into_any_element(),
-                tabs::LeftTab::Display => div()
-                    .id("side-panel-left-product-clip")
-                    .w(px(visible_w))
-                    .h_full()
-                    .overflow_hidden()
-                    .flex_none()
-                    .child(self.ensure_display(cx))
                     .into_any_element(),
                 tabs::LeftTab::Plan
                 | tabs::LeftTab::Tools

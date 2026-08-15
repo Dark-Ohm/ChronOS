@@ -13,7 +13,6 @@
 //! of the rule travel together.
 
 pub(crate) mod chat;
-pub(crate) mod display;
 pub(crate) mod project;
 pub(crate) mod sessions;
 pub(crate) mod shell;
@@ -24,7 +23,6 @@ pub(crate) mod shell;
 pub(crate) use project::{ProjectEvent, ProjectTab};
 pub(crate) use sessions::{SessionsEvent, SessionsTab};
 pub(crate) use shell::ShellTab;
-pub(crate) use display::DisplayTab;
 
 use crate::side_panel_left::state::geometry;
 
@@ -113,7 +111,6 @@ impl ResizableWidths {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum LeftTab {
     Project,
-    Display,
     Sessions,
     Chat,
     Plan,
@@ -137,7 +134,6 @@ impl LeftTab {
     pub const fn preferred_panel_width(self) -> f32 {
         match self {
             Self::Project => 440.0,
-            Self::Display => 440.0,
             Self::Sessions => 400.0,
             Self::Chat => SOFT_OPEN_MIN_WIDTH,
             Self::Plan => SOFT_OPEN_MIN_WIDTH,
@@ -154,7 +150,6 @@ impl LeftTab {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Project => "Project",
-            Self::Display => "Display",
             Self::Sessions => "Sessions",
             Self::Chat => "Chat",
             Self::Plan => "Plan",
@@ -170,7 +165,6 @@ impl LeftTab {
     pub const fn icon_path(self) -> &'static str {
         match self {
             Self::Project => "icons/rail-system.svg",
-            Self::Display => "icons/rail-display.svg",
             Self::Sessions => "icons/rail-source-control.svg",
             Self::Chat => "icons/rail-editor.svg",
             Self::Plan => "icons/rail-build.svg",
@@ -186,7 +180,6 @@ impl LeftTab {
 /// exactly — order is part of the contract, not a UI suggestion.
 pub const PRIMARY_TABS: &[LeftTab] = &[
     LeftTab::Project,
-    LeftTab::Display,
     LeftTab::Sessions,
     LeftTab::Chat,
     LeftTab::Plan,
@@ -470,7 +463,6 @@ mod tests {
             PRIMARY_TABS,
             &[
                 LeftTab::Project,
-                LeftTab::Display,
                 LeftTab::Sessions,
                 LeftTab::Chat,
                 LeftTab::Plan,
@@ -582,26 +574,6 @@ mod tests {
         assert_eq!(r.1, 440.0);
     }
 
-    /// Display is also a fixed-width tab (440) — selecting it from rail-only
-    /// opens at 440 and ignores any remembered width, exactly like Project.
-    #[test]
-    fn select_display_uses_fixed_preferred_width() {
-        let mut remembered = ResizableWidths::default();
-        remembered.chat = 800.0; // irrelevant — Display ignores remembered.
-        let r = tab_select_transition(
-            LeftTab::Display,
-            LeftTab::Chat,
-            RAIL_WIDTH,
-            false,
-            &remembered,
-        );
-        assert_eq!(
-            r,
-            (LeftTab::Display, LeftTab::Display.preferred_panel_width(), false)
-        );
-        assert_eq!(r.1, 440.0);
-    }
-
     #[test]
     fn archive_is_exactly_one_bottom_tab() {
         let mut bottom = Vec::new();
@@ -621,7 +593,6 @@ mod tests {
         assert!(LeftTab::ContextFiles.is_resizable());
 
         assert!(!LeftTab::Project.is_resizable());
-        assert!(!LeftTab::Display.is_resizable());
         assert!(!LeftTab::Sessions.is_resizable());
         assert!(!LeftTab::Tools.is_resizable());
         assert!(!LeftTab::Skills.is_resizable());
@@ -632,7 +603,6 @@ mod tests {
     fn fixed_widths_match_spec() {
         // Spec §7: Project 440, Sessions 400, Tools 440, Skills 440, Archive 440.
         assert_eq!(LeftTab::Project.preferred_panel_width(), 440.0);
-        assert_eq!(LeftTab::Display.preferred_panel_width(), 440.0);
         assert_eq!(LeftTab::Sessions.preferred_panel_width(), 400.0);
         assert_eq!(LeftTab::Tools.preferred_panel_width(), 440.0);
         assert_eq!(LeftTab::Skills.preferred_panel_width(), 440.0);
@@ -725,7 +695,6 @@ mod tests {
         };
         for tab in [
             LeftTab::Project,
-            LeftTab::Display,
             LeftTab::Sessions,
             LeftTab::Tools,
             LeftTab::Skills,
@@ -791,7 +760,6 @@ mod tests {
         in_rail.insert(BOTTOM_TAB);
         for tab in [
             LeftTab::Project,
-            LeftTab::Display,
             LeftTab::Sessions,
             LeftTab::Chat,
             LeftTab::Plan,

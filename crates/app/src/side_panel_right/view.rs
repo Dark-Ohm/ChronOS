@@ -653,6 +653,8 @@ impl Render for SidePanelRightView {
                         // T202: System settings «Bar» page.
                         TabContent::BarSettings(entity) => col.child(entity.clone()),
                         TabContent::AcpSettings(entity) => col.child(entity.clone()),
+                        // T296: Display settings (brightness + wallpaper).
+                        TabContent::Display(entity) => col.child(entity.clone()),
                         TabContent::Placeholder(entity) => col.child(entity.clone()),
                     };
                     // Enter animation belongs to the content column alone.
@@ -711,6 +713,8 @@ impl SidePanelRightView {
             // T202: System settings «Bar» page.
             TabContent::BarSettings(e) => e.entity_id(),
             TabContent::AcpSettings(e) => e.entity_id(),
+            // T296: Display settings (brightness + wallpaper).
+            TabContent::Display(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })
     }
@@ -872,14 +876,14 @@ mod tests {
             s.mode = WorkspaceMode::Developer;
         });
 
-        let before = cx.read(|cx| panels_config::cached());
+        let before = panels_config::cached();
         cx.update(|cx| {
             assert!(
                 !panels_config::move_tab(cx, WorkspaceMode::Developer, PanelTab::Library, -1),
                 "Library is not in the Developer rail — helper must report no-op"
             );
         });
-        let after = cx.read(|cx| panels_config::cached());
+        let after = panels_config::cached();
         assert_eq!(
             before, after,
             "no-op must not perturb the cache (save/update_cache skipped)"

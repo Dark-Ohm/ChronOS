@@ -11,7 +11,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_has_seventeen_tabs_in_fixed_order() {
+    fn all_has_eighteen_tabs_in_fixed_order() {
         // §4.1 spec: Developer sees System + 7 work tools (Files/Editor/
         // Terminal/Preview/Inspector/Build/SourceControl) + 6 settings
         // (AcpSettings/McpSettings/LspSettings/ApiProviders/EditorSettings/
@@ -19,7 +19,7 @@ mod tests {
         // (Library/Scenes/Captures) to the full catalog, slotted between the
         // work tools and the settings group. `for_mode(Developer)` excludes
         // them — they live in `ALL` for icon/label/coverage, not the dev rail.
-        assert_eq!(PanelTab::ALL.len(), 17);
+        assert_eq!(PanelTab::ALL.len(), 18);
         assert_eq!(PanelTab::ALL[0], PanelTab::System);
         assert_eq!(PanelTab::ALL[1], PanelTab::Files);
         assert_eq!(PanelTab::ALL[2], PanelTab::Editor);
@@ -37,6 +37,7 @@ mod tests {
         assert_eq!(PanelTab::ALL[14], PanelTab::ApiProviders);
         assert_eq!(PanelTab::ALL[15], PanelTab::EditorSettings);
         assert_eq!(PanelTab::ALL[16], PanelTab::HyprlandBinds);
+        assert_eq!(PanelTab::ALL[17], PanelTab::Display);
     }
 
     #[test]
@@ -241,13 +242,13 @@ mod tests {
     // --- T169: composition rules per §4.1 + §5 ---
 
     #[test]
-    fn developer_rail_is_six_product_tabs() {
+    fn developer_rail_is_seven_product_tabs() {
         // T192 product cut (docs/PRODUCT.md §2/§4): Developer default rail
         // ships System, Files, Editor (Preview relabeled, real edit is
-        // T194), Hyprland binds, ACP agents, System settings. Everything
-        // else (empty IDE tabs, LSP/MCP/API-providers settings, Gamer hub
-        // tools) stays in `ALL` for parse/scene-override/icon coverage but
-        // is not in the default rail.
+        // T194), Hyprland binds, ACP agents, Display, System settings.
+        // Everything else (empty IDE tabs, LSP/MCP/API-providers settings,
+        // Gamer hub tools) stays in `ALL` for parse/scene-override/icon
+        // coverage but is not in the default rail.
         let dev = PanelTab::for_mode(WorkspaceMode::Developer);
         assert_eq!(
             dev,
@@ -257,6 +258,7 @@ mod tests {
                 PanelTab::Preview,
                 PanelTab::HyprlandBinds,
                 PanelTab::AcpSettings,
+                PanelTab::Display,
                 PanelTab::EditorSettings,
             ]
         );
@@ -281,11 +283,11 @@ mod tests {
     }
 
     #[test]
-    fn gamer_rail_is_six_product_tabs() {
+    fn gamer_rail_is_seven_product_tabs() {
         // T192 product cut: Gamer default rail ships System, Library,
-        // Captures (honest empty — no capture backend), then the same
-        // three settings tabs as Developer. Scenes is a full product kill
-        // (docs/PRODUCT.md §4 — "сцены нахуй не нужны") and does not
+        // Captures (honest empty — no capture backend), Display, then the
+        // same three settings tabs as Developer. Scenes is a full product
+        // kill (docs/PRODUCT.md §4 — "сцены нахуй не нужны") and does not
         // appear in any default rail, even though `scene.rs`/seed code may
         // stay dormant.
         let gamer = PanelTab::for_mode(WorkspaceMode::Gamer);
@@ -296,6 +298,7 @@ mod tests {
                 PanelTab::Library,
                 PanelTab::Captures,
                 PanelTab::AcpSettings,
+                PanelTab::Display,
                 PanelTab::EditorSettings,
                 PanelTab::HyprlandBinds,
             ]
@@ -479,12 +482,15 @@ pub enum PanelTab {
     LspSettings,
     ApiProviders,
     EditorSettings,
+    // T296: display settings (brightness + wallpaper) — lives on the right
+    // rail's bottom group, immediately above shell settings.
+    Display,
     HyprlandBinds,
 }
 
 impl PanelTab {
     /// Full catalog — every tab that exists. Coverage tests iterate this.
-    pub const ALL: [PanelTab; 17] = [
+    pub const ALL: [PanelTab; 18] = [
         PanelTab::System,
         PanelTab::Files,
         PanelTab::Editor,
@@ -502,6 +508,7 @@ impl PanelTab {
         PanelTab::ApiProviders,
         PanelTab::EditorSettings,
         PanelTab::HyprlandBinds,
+        PanelTab::Display,
     ];
 
     /// Stable id for scene overrides (`scenes.toml` `rail_tabs`).
@@ -523,6 +530,7 @@ impl PanelTab {
             PanelTab::LspSettings => "lsp_settings",
             PanelTab::ApiProviders => "api_providers",
             PanelTab::EditorSettings => "editor_settings",
+            PanelTab::Display => "display",
             PanelTab::HyprlandBinds => "hyprland_binds",
         }
     }
@@ -547,6 +555,7 @@ impl PanelTab {
             "lsp_settings" | "lspsettings" => Some(PanelTab::LspSettings),
             "api_providers" | "apiproviders" => Some(PanelTab::ApiProviders),
             "editor_settings" | "editorsettings" => Some(PanelTab::EditorSettings),
+            "display" => Some(PanelTab::Display),
             "hyprland_binds" | "hyprlandbinds" => Some(PanelTab::HyprlandBinds),
             _ => None,
         }
@@ -581,6 +590,7 @@ impl PanelTab {
                 PanelTab::Preview,
                 PanelTab::HyprlandBinds,
                 PanelTab::AcpSettings,
+                PanelTab::Display,
                 PanelTab::EditorSettings,
             ],
             WorkspaceMode::Gamer => vec![
@@ -588,6 +598,7 @@ impl PanelTab {
                 PanelTab::Library,
                 PanelTab::Captures,
                 PanelTab::AcpSettings,
+                PanelTab::Display,
                 PanelTab::EditorSettings,
                 PanelTab::HyprlandBinds,
             ],
@@ -650,6 +661,7 @@ impl PanelTab {
             PanelTab::LspSettings => "LSP settings",
             PanelTab::ApiProviders => "API providers",
             PanelTab::EditorSettings => "System settings",
+            PanelTab::Display => "Display",
             PanelTab::HyprlandBinds => "Hyprland binds",
         }
     }
@@ -672,6 +684,7 @@ impl PanelTab {
             PanelTab::LspSettings => "icons/rail-lsp.svg",
             PanelTab::ApiProviders => "icons/rail-api.svg",
             PanelTab::EditorSettings => "icons/rail-editor-settings.svg",
+            PanelTab::Display => "icons/rail-display.svg",
             PanelTab::HyprlandBinds => "icons/rail-binds.svg",
         }
     }
@@ -684,6 +697,9 @@ impl PanelTab {
             PanelTab::System => 400.,
             PanelTab::Editor | PanelTab::Terminal => super::DEFAULT_CONTENT_WIDTH,
             PanelTab::Files | PanelTab::SourceControl => 440.,
+            // T296: Display tab (brightness + wallpaper) — fixed 440, not
+            // resizable, matching the v1 T290 placement on the left rail.
+            PanelTab::Display => 440.,
             // Build/Logs: cargo diagnostics need ~82 mono cols (640/7.8).
             // 560≈72 cols truncates long ` --> path:line` lines; 640 keeps them.
             PanelTab::Build => 640.,

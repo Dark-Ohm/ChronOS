@@ -9,6 +9,7 @@
 
 pub(crate) mod acp_settings;
 pub(crate) mod bar_settings;
+pub(crate) mod display;
 pub(crate) mod build;
 pub(crate) mod files;
 pub(crate) mod hypr_binds;
@@ -26,6 +27,7 @@ use crate::side_panel_right::tabs::PanelTab;
 use acp_settings::AcpSettingsTab;
 use bar_settings::BarSettingsTab;
 use build::BuildTab;
+use display::DisplayTab;
 use files::FilesTab;
 use hypr_binds::HyprBindsTab;
 use library::LibraryTab;
@@ -53,6 +55,8 @@ pub(crate) enum TabContent {
     BarSettings(gpui::Entity<BarSettingsTab>),
     // T196: ACP agents — list, add, remove agent backends.
     AcpSettings(gpui::Entity<AcpSettingsTab>),
+    // T296: Display settings (brightness + wallpaper) — real entity.
+    Display(gpui::Entity<DisplayTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
 
@@ -91,6 +95,8 @@ impl TabContent {
             // T196: ACP agents — list/add/remove ACP-compatible backends.
             // Reads/writes ~/.config/chronos/agents.toml.
             PanelTab::AcpSettings => TabContent::AcpSettings(cx.new(|cx| AcpSettingsTab::new(cx))),
+            // T296: Display settings (brightness + wallpaper) — real entity.
+            PanelTab::Display => TabContent::Display(cx.new(|cx| DisplayTab::new(cx))),
             PanelTab::Scenes
             | PanelTab::Captures => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
             _ => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
@@ -151,6 +157,7 @@ pub fn placeholder_description(tab: PanelTab) -> &'static str {
         PanelTab::LspSettings => "Language server and diagnostics configuration",
         PanelTab::ApiProviders => "API provider credentials and rate limits",
         PanelTab::EditorSettings => "Shell and OS settings: appearance, keybindings, integrations",
+        PanelTab::Display => "Display settings: brightness and wallpaper",
         PanelTab::HyprlandBinds => "View and search active Hyprland keybindings",
     }
 }
