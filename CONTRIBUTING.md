@@ -49,8 +49,10 @@ git config core.hooksPath scripts/git-hooks
 `./skills/check-proofs.sh` (exit 0 = чисто). В CI форк `Chronos-GPUI` клонируется
 в sibling `../Source` (best-effort): при успехе fork-ссылки проверяются строго,
 при провале — деградируют в informational. Корни, которых нет на свежем раннере,
-тоже informational: `reference/` (gitignored снапшоты) и `Source-wt-component/`
-(worktree gpui-component). Коммитящиеся корни (`crates/…`, `docs/…`, `skills/…`)
+тоже informational: `reference/` (gitignored снапшоты). Кит
+`gpui-component` живёт в `../Source/gpui-component/` (тот же форк, что
+`gpui`) — ссылки `Source/gpui-component/…` строгие, если `../Source`
+склонирован. Коммитящиеся корни (`crates/…`, `docs/…`, `skills/…`)
 строгие всегда.
 
 ## Plugins

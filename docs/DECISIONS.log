@@ -1496,3 +1496,8 @@ severity)` — замена всех перечисленных вхождени
 - **Отклонено:** «нарисуем Input за вечер» (T154 закрыл каретку, не
   редактор); тащить `side_panel_left/text_input.rs` в лаунчер.
 
+Эррата путей (тот же день): воркетри `Source-wt-component` и ветка
+`component/feature-gates` не существуют. Кит — `Source/gpui-component/`
+в Chronos-GPUI, гейты в `main` с `57f582f`. Скилл
+`gpui-component-in-chronos` больше не указывает на мёртвый path.
+

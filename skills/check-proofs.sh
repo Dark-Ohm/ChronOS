@@ -21,7 +21,9 @@
 #   - `Source/…` refs resolve against the fork root.
 #   - `crates/…`, `docs/…`, `packaging/…`, `scripts/…`, `skills/…`,
 #     `reference/…` (donor/upstream snapshots) resolve against the repo root.
-#   - `Source-wt-component/…` refs resolve against the sibling gpui-component
+#   - `Source-wt-component/…` — мёртвый воркетри (гейт влит 57f582f).
+#     Исторические ссылки в done/ не валят CI, если каталога нет. Живой
+#     кит: `Source/gpui-component/…`.
 #     worktree (Longbridge toolkit wired into ChronOS).
 #   - Short refs (e.g. `div.rs:1429`) are tried against known fork/repo
 #     prefixes in order; the first hit wins.

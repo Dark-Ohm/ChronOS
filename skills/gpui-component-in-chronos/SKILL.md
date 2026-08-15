@@ -7,32 +7,43 @@ description: Use when wiring, measuring or cutting gpui-component (Longbridge to
 
 ## Статус решения
 
-**Взят как инфраструктура IDE-панели** (`docs/DECISIONS.log`, 2026-07-29) —
-реверс июльского «варианта C». Условие пересмотра было прописано в самом
-июльском решении и сработало: строим полноценный Shell-IDE, а `table`,
-`tree`, `virtual_list`, `dock`, `form`, `setting`, `select`, `sidebar`,
-`tab` руками не пишем.
+**Взят** (`docs/DECISIONS.log` 2026-07-29, расширено 2026-08-15): новые
+контролы шелла — из кита, не руками. `table` / `tree` / `virtual_list` /
+`Input` / `PopupMenu` / `select` сами не пишем, если в крейте уже есть.
 
-Живёт как наш крейт: worktree `../Source-wt-component`, ветка
-`component/feature-gates`. Своя версия — **0.5.2**, свой `[workspace]`,
-членом наших воркспейсов **не делать** (см. ловушки).
+**Где лежит (2026-08-15, проверено в git):** дерево
+`../Source/gpui-component/` внутри репо **Chronos-GPUI** (`Source/` HEAD
+на `main`). Отдельного репо нет. Воркетри `../Source-wt-component` и
+живая ветка `component/feature-gates` **мертвы** — гейты влиты
+`57f582f` (2026-07-31). Не ходить туда и не создавать заново.
 
-## Проводка (рецепт, доказан пилотом `20ee13a`)
+Свой `[workspace]` у кита остаётся — **членом** workspace ChronOS или
+корневого `Source/Cargo.toml` его не делать (ловушка T155).
 
-Корневой `Cargo.toml` ChronOS:
+## Проводка (как в дереве сейчас)
+
+`ChronOS/Cargo.toml`:
 
 ```toml
 [workspace.dependencies]
-gpui-component = { path = "../Source-wt-component/gpui-component/crates/ui",
-                   default-features = false }
+# rev — исторический ярлык (merge гейтов). Собираемся НЕ с него.
+gpui-component = { git = "https://github.com/Dark-Ohm/Chronos-GPUI",
+                   rev = "57f582f", default-features = false }
 
-# компонент тянет gpui с zed-URL — одного нашего patch мало, нужен второй
+[patch."https://github.com/Dark-Ohm/Chronos-GPUI"]
+gpui-component = { path = "../Source/gpui-component/crates/ui" }
+# …и все gpui-* на ../Source/<crate>
+
 [patch."https://github.com/zed-industries/zed"]
 gpui = { path = "../Source/gpui" }
 gpui_macros = { path = "../Source/gpui_macros" }
 gpui_platform = { path = "../Source/gpui_platform" }
 gpui_web = { path = "../Source/gpui_web" }
 ```
+
+Линкер берёт **path**. `rev = "57f582f"` в `[workspace.dependencies]` —
+не то, что ты собираешь. После правок кита смотреть `../Source` HEAD,
+не этот пин.
 
 `crates/app/Cargo.toml`: `gpui-component.workspace = true`.
 `main.rs`: `gpui_component::init(cx)`.
@@ -46,9 +57,9 @@ gpui_web = { path = "../Source/gpui_web" }
    клавиатурные события вовсе.
 
 Типы: виджет — `gpui_component::input::Input`
-(`Source-wt-component/gpui-component/crates/ui/src/input/input.rs:37`),
+(`../Source/gpui-component/crates/ui/src/input/input.rs`),
 состояние — `InputState`
-(`Source-wt-component/gpui-component/crates/ui/src/input/state.rs:342`),
+(`../Source/gpui-component/crates/ui/src/input/state.rs`),
 создаётся через `cx.new(...)`. **`TextInput` в этой
 версии не существует** — писать по памяти не надо, открывать файл надо.
 
