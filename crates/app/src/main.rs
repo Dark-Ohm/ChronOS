@@ -5,6 +5,7 @@ pub mod bar_settings;
 mod desktop_terminal;
 mod dock;
 mod edit_mode;
+mod frame;
 mod games_config;
 mod icon_resolution;
 mod workspace_mode;
@@ -89,6 +90,7 @@ fn main() {
         scene::init(cx);
         monitor::init(cx);
         bar::init(cx);
+        frame::init(cx);
         notifications::init(cx);
         notifications::history_popup::init(cx);
         osd::init(cx);
