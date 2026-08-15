@@ -2,9 +2,10 @@
 
 **Родитель:** `T287-left-chat-onto-gpui-component.md`
 **Приоритет:** P1 — мёртвый хром, дубль IA.
-**Роль:** FRONTEND. `tabs/chat.rs` `render_panel` / `build_sessions_sidebar`.
-**Не** T285 (ACP), не T286 (композер Input). Можно после T286 или до:
-зона — шапка и сайдбар, не `text_input`.
+**Роль:** FRONTEND. `tabs/chat.rs` (`render_panel`, `build_sessions_sidebar`)
++ кнопка Follow в `composer.rs` (ряд пикеров, не `text_input`).
+**Не** T285. С T286 не драться за одно поле ввода; кнопку сажать в
+`composer-pickers-row`.
 
 ## Симптом (кадры владельца, 2026-08-15)
 
@@ -25,14 +26,18 @@
 - Убрать `build_sessions_sidebar` из `render_panel`. Chat = шапка + лента +
   композер на всю ширину канваса. `sessions_collapsed` / ширины сайдбара
   в Chat больше не участвуют в layout.
-- Новый тред — только вкладка Sessions (`+ New`). Кнопка `＋` в шапке Chat
-  уходит вместе с тулбаром.
-- Срезать мёртвые `thread-history` (`☰`) и `thread-more` (`⋯`).
-- Follow (`👁`, T195) — не в этой шапке. Либо выкинуть из Chat-хрома
-  (предпочтительно), либо одна иконка в меню агента, не ряд из четырёх.
-- Шапка: кластер агента (сигил + имя + статус + переключатель). Без
-  англо-Zed «Connected» как отдельной подписи, если статус уже точкой;
-  не плодить вторую строку «New Agent Thread» ради пустоты.
+- Снести целиком `thread-header` (`id="thread-header"`, ~38 px): `✦`,
+  заголовок треда, `thread-new-chat`, `thread-history`, `thread-follow`,
+  `thread-more`. Не оставлять пустую полоску.
+- Снести кнопку `side-panel-left-close`. `close_this` оставить — её зовут
+  рельса и IPC.
+- **Follow (T195) не убивать.** Убрать с шапки, посадить вниз в
+  `composer-pickers-row` (ряд model / mode / YOLO, у каретки).
+  Иконка: не emoji-глаз и не `follow.svg`, если он глаз.
+  `currentColor` SVG — `icons/rail-preview.svg` (Follow гонит Preview).
+  ON: `accent` фон/цвет, как у старого `thread-follow`. Тот же
+  `follow_enabled` / `AgentFollowState`, не второй флаг.
+- Остаётся одна верхняя шапка: кластер агента. Без Zed-полоски и без X.
 - `No messages yet` оставить как empty ленты. Пустая лента при выбранном
   «hi» — это T285/store, не этот тикет.
 
@@ -41,13 +46,15 @@
 - Выкидывать вкладку Sessions с рабочей рельсы.
 - Ломать `create_new_session` на Sessions.
 - ACP connect / `load_session`.
-- Композер.
+- Логику Follow (T195) и `AgentFollowState`.
+- Поле ввода композера (`text_input` / T286).
 
 ## Верификация
 
-Live grim: Chat без левой колонки сессий, без `＋☰👁⋯`. Sessions-вкладка
-по-прежнему список + New. `rg thread-history|thread-more|build_sessions_sidebar`
-в `render_panel` — пусто.
+Live grim: Chat без колонки сессий, без полоски `✦ ＋☰👁⋯`, без X
+в углу. Sessions-вкладка жива. В `render_panel` нет
+`thread-header` / `thread-new-chat` / `thread-history` / `thread-follow` /
+`thread-more` / `side-panel-left-close`.
 
 ## Коммит
 
