@@ -149,6 +149,11 @@ impl WorkspaceView {
         match event {
             SessionsEvent::SelectThread(id) => {
                 crate::side_panel_left::select_session(id, cx);
+                // Plan line 603: "Any transition to Chat through Sessions ...
+                // focuses the composer after the content window exists."
+                // `self` is the WorkspaceView (already leased here), so
+                // `request_focus_composer` cannot double-lease `content_view`.
+                self.request_focus_composer(cx);
             }
             SessionsEvent::CreateThread => {
                 // T279 round 2: "+ New" is a real reducer now — it opens

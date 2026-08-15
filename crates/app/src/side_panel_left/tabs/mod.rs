@@ -300,6 +300,7 @@ pub fn tab_select_transition(
     match (clicked == active, content_open, dock_content) {
         (true, true, true) => (active, panel_width, dock_content),
         (true, true, false) => (active, RAIL_WIDTH, false),
+        (false, _, true) => (clicked, panel_width, true),
         _ => (clicked, width_for_open(clicked, remembered), false),
     }
 }
@@ -506,6 +507,22 @@ mod tests {
             &ResizableWidths::default(),
         );
         assert_eq!(r, (LeftTab::Sessions, RAIL_WIDTH, false));
+    }
+
+    /// Different tab while docked → switch but keep docked width pinned.
+    /// Plan line 611 / T281: "In dock mode ... tab switches keep that
+    /// docked width pinned"; docked tab switch does NOT apply the tab's
+    /// fixed/remembered policy. The `_` arm must not undock here.
+    #[test]
+    fn select_other_tab_docked_keeps_dock_and_width() {
+        let r = tab_select_transition(
+            LeftTab::Sessions,
+            LeftTab::Chat,
+            612.0,
+            true,
+            &ResizableWidths::default(),
+        );
+        assert_eq!(r, (LeftTab::Sessions, 612.0, true));
     }
 
     /// Different tab → switch + open at width_for_open(clicked).
