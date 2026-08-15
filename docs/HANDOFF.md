@@ -8,6 +8,14 @@
 > LICENSE-TBD, CONTRIBUTING, CI). Исторические упоминания «report-log/» ниже —
 > дорелокационные, читать с этой поправкой.
 
+**Обновлено: 2026-08-16 (чекпоинт #17).** HEAD `dc6dc38`.
+
+T292 DONE `92786c5`. T285 OPEN: slice A `f9cd9a2` (chat.rs) зовёт load;
+живой провал — `session/load OK` затем наш `no active session for load`
+(`SharedSession.take()` на холодном клиенте) → fallback create.
+Бриф slice B: BACKEND `hermes_acp/client.rs`, 100b. `chat.rs` не трогать.
+Дальше после T285: T286 → T287-C. Справа T293–T295.
+
 **Обновлено: 2026-08-16 (чекпоинт #16 — T292 принят).**
 
 **T292 DONE.** Shell Gamer (`WorkspaceMode`) — кнопка на правой рельсе

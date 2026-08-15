@@ -48,6 +48,7 @@ _Major design choices with rationale. The "why" matters more than the "what" for
 ## Discovered durable knowledge
 _Cross-task facts that survive across sessions. Promoted from session checkpoints' §7 when proven durable._
 
+- **2026-08-16 / чекпоинт #17:** HEAD `dc6dc38`. T292 DONE. T285 OPEN — UI load есть (`f9cd9a2`); дыра в `load_session_command`: холодный `SharedSession=None`, `take()` → fallback create. Бриф BACKEND 100b. Не `session/new` «чтобы заполнить слот». `attach_session` в ACP 2.0 — `pub(crate)`.
 - **2026-08-16 / чекпоинт #16:** T292 принят live `+`. `WorkspaceMode` — кнопка над dock на правой рельсе, не вкладка; бар-виджет удалён; prompt инлайн. `layout_config` тесты только в `--bins`. Дальше T285. T275 empty-query+pin жив.
 - **2026-08-16 / чекпоинт #15:** исполнено T288, T289, T291+E, T290 (попап), T290-E, T296. HEAD `b2320fa`. Слева ИИ / справа ОС. Display справа внизу над settings, бар-`system` удалён. Дальше T285 или T292. T275 empty-query+pin жив. Калибр: 7b эррата, 100b ACP, не 1T на узкий тикет. Hindsight :8888 жив.
 - **2026-08-16 / стороны панелей:** слева только ИИ; справа ежедневное и ОС. Display — правая вкладка настроек дисплея (v1 яркость+обои, дальше расти там же). T290 налево — ошибка спеки, перенос T296.
