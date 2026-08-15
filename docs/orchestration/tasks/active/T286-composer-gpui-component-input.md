@@ -1,5 +1,6 @@
 # T286 — композер Chat на `gpui-component::Input`
 
+**Родитель:** эпик `T287-left-chat-onto-gpui-component.md` (волна 1).
 **Приоритет:** P1 — пользователь не видит, что печатает.
 **Роль:** FRONTEND (`side_panel_left/composer.rs`, `text_input.rs`, `tabs/chat.rs`).
 **Канон:** `docs/DECISIONS.log` 2026-08-15 — новые контролы из нашего кита,
@@ -64,8 +65,8 @@
 
 ## Конфликт зон
 
-`chat.rs` / `composer.rs` — не параллелить с T281 хвостом и с T285
-(ACP `load_session` на старте). Сначала этот тикет или T285, не оба.
+`chat.rs` / `composer.rs` — не параллелить с T285. T287-A не начинать,
+пока T286 не в git. Пикеры model/mode здесь не трогать.
 
 ## Коммит
 
