@@ -40,6 +40,9 @@ mod tests {
     // to `tabs/chat.rs`, render root is now `workspace_view.rs`) and
     // `project_switcher/view.rs` (deleted T279 Task 4 — popup embedded as a
     // tab, render root is now `tabs/project.rs`) are intentionally absent.
+    // T290: `system_popup/view.rs` (deleted T290 — popup removed; its content
+    // moved into `side_panel_left/tabs/display.rs` and `gaming_mode.rs`) has no
+    // standalone window root and is intentionally absent.
     // The chat/workspace/project tab render roots are covered by the
     // broader font audit below rather than this `window_font` gate.
     const ROOTS: &[(&str, &str)] = &[
@@ -63,10 +66,6 @@ mod tests {
         (
             "notifications/history_popup/view.rs",
             include_str!("../../app/src/notifications/history_popup/view.rs"),
-        ),
-        (
-            "system_popup/view.rs",
-            include_str!("../../app/src/system_popup/view.rs"),
         ),
         (
             "volume_popup/view.rs",
