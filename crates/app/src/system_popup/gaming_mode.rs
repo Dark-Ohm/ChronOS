@@ -106,6 +106,10 @@ pub(crate) fn apply(cx: &mut App) {
     // Repaint the popup so the toggle knob moves immediately — the global flip
     // above is synchronous, but no signal re-renders the view on its own.
     GamingModeState::repaint_popup(cx);
+    // T291-E: repaint every window (incl. the System tab) so its gaming knob
+    // flips at once, not after the UPower round-trip. No observe_global, no
+    // handle in the global — a single refresh covers all windows.
+    cx.refresh_windows();
 
     // 1. Compositor: animations off, blur off, allow_tearing on.
     cx.background_spawn(async move {
@@ -136,6 +140,9 @@ pub(crate) fn revert(cx: &mut App) {
 
     // Repaint the popup so the toggle knob moves back immediately.
     GamingModeState::repaint_popup(cx);
+    // T291-E: repaint every window (the System tab reads the global on redraw)
+    // so the knob flips back without the UPower round-trip delay.
+    cx.refresh_windows();
 
     cx.background_spawn(async move {
         match run_hyprctl_eval(HYPRCTL_GAMING_OFF).await {
