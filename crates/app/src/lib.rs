@@ -36,3 +36,4 @@ pub mod system_popup;
 pub mod theme_config;
 pub mod wallpaper_ctl;
 pub mod workspace_mode;
+mod power_controls;

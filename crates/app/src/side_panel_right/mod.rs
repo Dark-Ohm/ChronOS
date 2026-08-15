@@ -36,7 +36,9 @@ pub(crate) mod preview_target;
 mod rail;
 mod rail_view;
 mod spectrum_row;
-mod surfaces;
+// `pub(crate)`: T291's top-level `power_controls` (right-panel content) reads
+// `surfaces::card` so the moved power/gaming cards match the System card fill.
+pub(crate) mod surfaces;
 pub mod tab;
 pub(crate) mod tabs;
 pub mod view;

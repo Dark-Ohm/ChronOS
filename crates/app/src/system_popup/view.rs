@@ -1,9 +1,10 @@
-//! System popup view — brightness slider + steppers, 3-segment power
-//! profile switch, gaming-mode toggle + effect string.
+//! System popup view — brightness slider + steppers.
 //!
-//! Visual spec: `design/System Popup.dc.html`. Structure mirrors
+//! T291: the power-profile switch and gaming-mode toggle moved to the System
+//! tab (`power_controls.rs`); this popup now shows the header + brightness
+//! only. Visual spec: `design/System Popup.dc.html`. Structure mirrors
 //! `volume_popup/view.rs` (backdrop blur, Light C watermark + shadow,
-//! header + ✕, three blocks separated by dividers, border_1 + radius_lg).
+//! header + ✕, border_1 + radius_lg).
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -14,11 +15,11 @@ use gpui::{
     Styled, Window, canvas, div, img, prelude::*, px, rgba, svg,
 };
 
-use chronos_services::{BrightnessCommand, PowerProfile, Service, UPowerData};
+use chronos_services::{BrightnessCommand, Service, UPowerData};
 use chronos_ui::{Theme, WindowRootExt, elevation_apply_light_chrome, elevation_blur_layer};
 use crate::motion;
 use crate::state::AppState;
-use crate::system_popup::{close_this, gaming_mode, POPUP_WIDTH};
+use crate::system_popup::{close_this, POPUP_WIDTH};
 
 const PAD: f32 = 14.;
 const TRACK_H: f32 = 4.;
@@ -62,9 +63,6 @@ impl Render for SystemPopupView {
         {
             self.dispatched_brightness = None;
         }
-        let upower = AppState::upower(cx).get();
-        let gaming_active = gaming_mode::GamingModeState::is_active(cx);
-
         let bg = theme.bg.primary;
         let text_primary = theme.text.primary;
         let text_muted = theme.text.muted;
@@ -108,26 +106,6 @@ impl Render for SystemPopupView {
                 hover,
                 radius,
                 font_mono,
-                cx,
-            ))
-            .child(div().w_full().h(px(1.)).bg(divider))
-            .child(power_profile_block(
-                &upower,
-                text_primary,
-                text_muted,
-                accent,
-                hover,
-                radius,
-                cx,
-            ))
-            .child(div().w_full().h(px(1.)).bg(divider))
-            .child(gaming_mode_block(
-                gaming_active,
-                text_primary,
-                text_muted,
-                accent,
-                hover,
-                radius,
                 cx,
             ));
 
@@ -441,163 +419,3 @@ fn set_brightness_from_frac(
     cx.notify();
 }
 
-fn power_profile_block(
-    upower: &UPowerData,
-    text_primary: gpui::Hsla,
-    text_muted: gpui::Hsla,
-    accent: gpui::Hsla,
-    hover: gpui::Hsla,
-    radius: gpui::Pixels,
-    cx: &mut Context<SystemPopupView>,
-) -> AnyElement {
-    let current = upower.power_profile;
-
-    let segments: [(PowerProfile, &'static str); 3] = [
-        (PowerProfile::PowerSaver, "Quiet"),
-        (PowerProfile::Balanced, "Balanced"),
-        (PowerProfile::Performance, "Performance"),
-    ];
-
-    let title = div()
-        .w_full()
-        .text_size(px(12.5))
-        .font_weight(gpui::FontWeight::MEDIUM)
-        .text_color(text_primary)
-        .child("Power profile");
-
-    let mut row = div()
-        .w_full()
-        .flex()
-        .rounded(radius)
-        .overflow_hidden()
-        .border_1()
-        .border_color(text_muted.alpha(0.3));
-    for (profile, label) in segments {
-        let is_active = current == profile;
-        let seg_bg = if is_active { accent } else { gpui::transparent_black() };
-        let color = if is_active {
-            chronos_ui::on_fill(accent)
-        } else {
-            text_muted
-        };
-        let id: SharedString = format!("power-profile-{label}").into();
-        row = row.child(
-            div()
-                .id(id)
-                .flex_1()
-                .text_center()
-                .py(px(6.))
-                .text_color(color)
-                .bg(seg_bg)
-                .cursor_pointer()
-                .text_size(px(11.5))
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .hover(move |s| if is_active { s } else { s.bg(hover) })
-                .child(label)
-                .on_click(move |_event, _window, cx: &mut App| {
-                    let upower = AppState::upower(cx).clone();
-                    let target = profile;
-                    cx.background_spawn(async move {
-                        match upower.set_power_profile(target).await {
-                            Ok(()) => tracing::info!("system_popup: set power profile to {target:?}"),
-                            Err(e) => tracing::error!("system_popup: set power profile failed: {e:?}"),
-                        }
-                    })
-                    .detach();
-                }),
-        );
-    }
-
-    let _ = cx;
-
-    div()
-        .w_full()
-        .flex_col()
-        .gap(px(9.))
-        .px(px(PAD))
-        .py(px(14.))
-        .child(title)
-        .child(row)
-        .into_any_element()
-}
-
-fn gaming_mode_block(
-    active: bool,
-    text_primary: gpui::Hsla,
-    text_muted: gpui::Hsla,
-    accent: gpui::Hsla,
-    hover: gpui::Hsla,
-    radius: gpui::Pixels,
-    cx: &mut Context<SystemPopupView>,
-) -> AnyElement {
-    let title_row = div()
-        .w_full()
-        .flex()
-        .items_center()
-        .justify_between()
-        .child(
-            div()
-                .text_size(px(12.5))
-                .font_weight(gpui::FontWeight::MEDIUM)
-                .text_color(text_primary)
-                .child("Gaming mode"),
-        )
-        .child(toggle_switch(active, accent, hover, radius, cx));
-
-    let effect = "Performance profile · No animations · Do Not Disturb · Hide bar/dock · VSync forced";
-
-    let _ = cx;
-
-    div()
-        .w_full()
-        .flex_col()
-        .gap(px(8.))
-        .px(px(PAD))
-        .py(px(14.))
-        .child(title_row)
-        .child(
-            div()
-                .text_color(text_muted)
-                .text_size(px(10.5))
-                .line_height(px(16.))
-                .child(effect),
-        )
-        .into_any_element()
-}
-
-fn toggle_switch(
-    active: bool,
-    accent: gpui::Hsla,
-    hover: gpui::Hsla,
-    _radius: gpui::Pixels,
-    cx: &mut Context<SystemPopupView>,
-) -> AnyElement {
-    let track_bg = if active { accent } else { hover };
-    let knob_left = if active { px(17.) } else { px(2.) };
-    let knob_color = chronos_ui::on_fill(track_bg);
-
-    let _ = cx;
-
-    div()
-        .id("gaming-mode-toggle")
-        .w(px(34.))
-        .h(px(19.))
-        .rounded(px(10.))
-        .bg(track_bg)
-        .cursor_pointer()
-        .hover(move |s| s)
-        .child(
-            div()
-                .absolute()
-                .top(px(2.))
-                .left(knob_left)
-                .w(px(15.))
-                .h(px(15.))
-                .rounded(px(8.))
-                .bg(knob_color),
-        )
-        .on_click(move |_event, _window, cx: &mut App| {
-            crate::system_popup::gaming_mode::toggle(cx);
-        })
-        .into_any_element()
-}

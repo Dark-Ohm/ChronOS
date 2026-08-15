@@ -23,6 +23,7 @@ use crate::side_panel_right::spectrum_row::{
 };
 use crate::side_panel_right::wallpaper_card::render_wallpaper_card;
 use crate::state::{self, AppState};
+use crate::system_popup::gaming_mode;
 
 use chronos_ui::Theme;
 
@@ -86,6 +87,13 @@ impl SystemTab {
                 cx.notify();
             },
         );
+
+        // T291: repaint on power-profile changes so the power card (and, via
+        // the gaming-mode profile round-trip, the gaming card) stay live.
+        let upower_signal = AppState::upower(cx).subscribe();
+        state::watch(cx, upower_signal, |_this, _data, cx| {
+            cx.notify();
+        });
 
         // T256: subscribe to compositor for the header title. The signal
         // carries the full `CompositorState` (workspaces / keyboard / monitors
@@ -152,6 +160,8 @@ impl Render for SystemTab {
         self.sample_network();
         let theme = *Theme::global(cx);
         let gpu = self.system.gpu_percent;
+        let upower = AppState::upower(cx).get();
+        let gaming_active = gaming_mode::GamingModeState::is_active(cx);
 
         let dl = format_net_pair(self.net_state.cached_dl, 0.0);
         let ul = format_net_pair(0.0, self.net_state.cached_ul);
@@ -180,6 +190,16 @@ impl Render for SystemTab {
                         &self.wallpaper,
                         self.waytrogen_available,
                         cx,
+                    ))
+                    // T291: power profile + Perf Gaming now live on the System
+                    // tab (moved out of the bar popup). Popup keeps brightness only.
+                    .child(crate::power_controls::render_power_profile_card(
+                        &upower,
+                        &theme,
+                    ))
+                    .child(crate::power_controls::render_gaming_mode_card(
+                        gaming_active,
+                        &theme,
                     ))
                     // T259: «+ Add terminal» — only while edit mode (Super+Shift+E)
                     // is active, same gating as the bar's reorder affordances.

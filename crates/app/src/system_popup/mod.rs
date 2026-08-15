@@ -30,8 +30,8 @@ use crate::system_popup::view::SystemPopupView;
 
 /// Popup width (px). Mockup 360.
 pub(crate) const POPUP_WIDTH: f32 = 360.;
-/// Fixed height — all three blocks (brightness, power, gaming) are always
-/// shown, so height does not depend on data.
+/// Fixed height — T291 moved power + gaming to the System tab, so this popup
+/// now shows only the header + brightness block.
 const BASE_HEIGHT: f32 = 274.;
 /// Below the bar top edge — same budget as volume_popup / updates_popup.
 const POPUP_MARGIN_TOP: f32 = 36.;
