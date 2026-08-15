@@ -1,107 +1,125 @@
-# T285 — restore треда: ACP `load_session`, не `create_session`
+# T285 — cold `load_session` должен посадить `ActiveSession`, не `create_session`
 
-**Приоритет:** P1 — гейт 8 T281 живьём провален.
-**Роль:** FRONTEND + ACP. Зона: `crates/app/src/side_panel_left/tabs/chat.rs`
-(connect-спавн в `ChatTab::new` + хвост `select_session`). Не композер,
-не `text_input.rs`, не T286.
-**Зависимость:** `23bf89f` в git (SoT path + `restore_project_thread`).
-**Не параллелить** с T286 (тот же `chat.rs`).
+**Статус:** OPEN. Гейт 8 живьём провален 2026-08-16.
+**Приоритет:** P1.
+**Роль:** BACKEND. Калибр: 100b.
+**Зона:** `crates/services/src/hermes_acp/client.rs`
+(`load_session_command`, плюс только то, без чего bind не собрать).
+**Не трогать:** `chat.rs` (slice A уже в git), композер / `text_input.rs` /
+T286 / T287, `Cargo.lock`, `Source/gpui/`.
 
-## Симптом (кадр владельца, 2026-08-15)
+Slice A `f9cd9a2` уже зовёт `load_session` из `ChatTab::new` после
+`HermesClient::new`. Это **не** дыра. UI путь холодного старта живой.
+Чинить клиент.
 
-После рестарта шелла лента из SQLite на месте (`hi` / «баннан» / memory tool).
-Hermes — **новая** сессия: не знает ход, прёт Hindsight (`HERMES.md`,
-Chronos-AI-IDE). «Слово запомнил» и «новая сессия» — оба правды.
+Холодная сессия исполнителя. Не переписывай chat.rs «на всякий».
 
-## Почему (file:line)
+## Симптом (живой лог, не гипотеза)
 
-1. `ChatTab::new` (`tabs/chat.rs` ~308–344) спавнит `HermesClient::new`,
-   затем **всегда** `client.create_session()`. Пишет новый
-   `state.session_id`.
-2. `restore_project_thread` (~638) → `load_thread` (~582) →
-   `select_session` (~651). `select_session` зовёт
-   `client.load_session` (~704) **только если** клиент уже в
-   `self.clients`. На старте `HashMap` пуст → ветка
-   `else { thread_loading = false }` (~848): кэш нарисован, ACP нет.
-3. Потом спавн (1) приносит новый session_id. Гермес пустой.
+Бинарь правильный: `target/release/chronos` 2026-08-16 01:55 =
+`~/.local/bin/chronos` (symlink). В бинаре есть строки T285.
 
-`HermesClient::load_session` уже есть
-(`crates/services/src/hermes_acp/client.rs:1091`) — `session/load`,
-нужны `acp_session_id` + непустой `cwd` (из `ThreadRecord`).
+`~/.local/state/chronos/chronos.log` ~23:06 UTC 15 / 02:06+03 16:
 
-`23bf89f` закрыл только scope проекта. Этот тикет — вторая половина гейта 8.
+```
+ACP client connected, resuming session 65e1ce21-b5a6-48a3-9ca8-7e73ce573e32
+Sending session/load session_id=65e1ce21-… cwd_log=…/ChronOS
+session/load OK; consuming replay via stream_read_turn
+load_session failed: no active session for load
+load_session failed, new session
+ACP session started session_id=362cd7c5-…
+```
+
+Hermes `session/load` принял. Наш клиент упал. Fallback в chat.rs
+(`${create_session}`) сминтил **новую** сессию. Лента SQLite старая,
+агент пустой. Владелец спросил «какое слово?» — агент не знает ход.
+
+Строка `no active session for load` — **наша**, не ответ Hermes.
+
+## Почему
+
+`load_session_command` (`client.rs` ~862–898):
+
+1. Шлёт `LoadSessionRequest` — ок.
+2. `session.lock().take().context("no active session for load")?`
+3. На холодном старте `SharedSession` = `None`. `ActiveSession`
+   появляется только в `ensure_fresh_session` / `start_new_session`
+   (`cx.build_session(cwd).start_session()` = **session/new**).
+4. Этот `take()` имел смысл только если в **этом же** процессе уже
+   был create (клик Sessions). После рестарта шелла процесса нет.
+
+`attach_session` в `agent-client-protocol` **2.0.0** — `pub(crate)`.
+Публичного `SessionBuilder::load_session` нет. `start_session` = new.
 
 ## Задача
 
-После успешного `HermesClient::new` в спавне `ChatTab::new`:
+После холодного `HermesClient::new` + `load_session(acp_id, cwd)`:
 
-- Если у **активного** восстановленного треда есть `acp_session_id` и
-  непустой `cwd` → `load_session`, **не** `create_session`.
-  Проставить `state.session_id` = этот acp id (modes/models — если
-  `load_session` их не отдаёт, оставить как после connect / не выдумывать).
-- Иначе (нет acp id, пустой cwd, нет активного треда) → как сейчас
-  `create_session`.
-- `load_session` падает (сессия умерла у Hermes) → warn в лог, ленту
-  SQLite **не** стирать, `create_session` только как явный fallback с
-  пометкой в логе `load_session failed, new session`. Не молча.
+- `SharedSession` = `Some(ActiveSession)`, id = загруженный, не новый.
+- Следующий `send_prompt` идёт в эту сессию, **без** `session/new`.
+- `stream_read_turn` после load — если replay нужен; на старте UI
+  кэш уже нарисован (`replay_into_chat=false`). Bind важнее реплея.
+- Если Hermes реально отверг load (нет сессии у агента) — `Err` как
+  сейчас, chat.rs сделает fallback. Не маскировать bind-баг под это.
 
-**Дубль ленты:** кэш уже нарисован `select_session`. Replay
-`load_session` снова шлёт TextChunk/Thought — если просто склеить,
-«баннан» будет дважды. Если `chat.messages` уже непустой — replay
-события **не** пушить в ленту (только bind сессии). Пустая лента —
-оставить нынешний replay из `select_session` (клик по Sessions).
+`take()` пустого mutex — не стратегия bind.
 
-Не плодить третий connect-путь. Либо очередь «pending load» на
-`select_session` после insert клиента, либо ветка в существующем спавне
-`new`. Предпочтительнее: спавн смотрит активный тред после insert
-клиента и вызывает тот же `load_session`, что `select_session`, без
-повторной отрисовки кэша.
+Как собрать `ActiveSession` после `LoadSessionResponse` — твоя работа.
+`add_dynamic_handler` и `ActiveSessionHandler::new` публичны.
+Поля `ActiveSession` приватны, `attach_session` — нет.
+
+Если публичного пути нет — **стоп**, в отчёт: что искал, какие API,
+почему тупик. Не форкай SDK, не бампь крейт молча, не зови
+`start_session` «чтобы заполнить слот».
 
 ## Нельзя
 
-- Композер / `text_input.rs` / пикеры (T286 / T287-A).
-- `create_session` «на всякий» поверх успешного load.
-- `Cargo.lock`, `Source/gpui/`, `hermes_acp` протокол без нужды
-  (API `load_session` уже есть).
+- `create_session` / `start_session` / `session/new` до или вместо
+  успешного load «чтобы был ActiveSession».
+- Переписывать `chat.rs` / хелпер `connect_session_action`.
+- Считать гейт 8 закрытым по unit-тестам.
 
 ## Тесты
 
-Чистый хелпер, без живого `ChatTab::new` (ACP в TestApp не встаёт):
+Чистый хелпер решения, без живого Hermes:
 
-```rust
-enum ConnectSessionAction { Load { acp_id, cwd }, Create }
+- холодный bind: `SharedSession == None` + успешный load-response
+  → слот занят **тем же** id;
+- load rejected агентом → `Err`, слот пуст, id не подменён;
+- регресс T288: `start_new_session` по-прежнему `.build_session(cwd)`.
 
-fn connect_session_action(
-    restored_acp_id: Option<&str>,
-    cwd: &str,
-) -> ConnectSessionAction
-```
-
-- есть id + cwd → Load
-- нет id → Create
-- id есть, cwd пустой → Create (как `load_session` bail в клиенте)
-- пустые оба → Create
-
-Прод-спавн вызывает этот хелпер. Не тестировать «вызвали хелпер и
-сравнили с хелпером».
-
-## Верификация
+Не тестировать «вызвали хелпер и сравнили с хелпером».
 
 ```
-cargo test -p chronos --lib connect_session_action
-cargo test -p chronos --lib side_panel_left
+cargo test -p chronos-services --lib load_session
+cargo test -p chronos --lib connect_action
 ```
 
-Live, release, рестарт шелла на проекте с живым тредом:
+(фильтр брифа `connect_session_action` ловит 0 тестов — имена
+`connect_action_*`.)
 
-- В логе: `load_session` / replay complete, **нет** `create_session`
-  на этом пути (кроме fallback).
-- «что я просил запомнить?» → слово из **этой** ленты, не дамп Hindsight.
-- Лента не дублируется.
+## Live (гейт 8 — закрывает архитектор)
 
-Без живого прогона гейт 8 не закрыт. Отчёт:
-`docs/orchestration/tasks/report/T285-acp-load-session-on-restore-report.md`.
+Release, рестарт шелла на ChronOS с живым тредом. Hermes не рестартить
+между ходом и рестартом шелла, если проверяешь persist сессии агента.
+
+Лог:
+
+- есть `resuming session <старый-id>`
+- есть `session/load OK`
+- **нет** `no active session for load`
+- **нет** `load_session failed, new session`
+- **нет** нового `ACP session started` на этом пути
+- есть `load_session replay complete` (если реплей ещё идёт)
+
+«что я просил запомнить?» → слово из **этой** ленты.
+Лента не двоится.
+
+## Отчёт
+
+`docs/orchestration/tasks/report/T285-acp-load-session-on-restore-report.md`
+(допиши сверху slice B, старый slice A не три).
 
 ## Коммит
 
-`fix(left-panel): load ACP session on restore, do not create_session (T285)`
+`fix(acp): bind ActiveSession on cold load_session (T285)`

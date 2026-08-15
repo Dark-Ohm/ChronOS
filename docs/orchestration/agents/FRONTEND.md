@@ -11,7 +11,8 @@
 **Принято:** T194c · T199–T208 · T203 · T204 (+errata).
 T202 `82e100a` · T205–T208 done; live smoke residual on chrome/editor.
 
-**Активное:** нет. T292 **принят** (режим на правой рельсе). T296 **принят** `a2c072f`. T285 не брать, пока не выдано.
+**Активное:** нет. T292 **принят**. T296 **принят** `a2c072f`.
+T285 slice A `f9cd9a2` в git; остаток — BACKEND (`hermes_acp/client.rs`), не брать.
 ~~T195~~ **done** `9268440`. Live smoke residual T206–T208 — не сейчас.
 
 **Pause:** T196 · T197 SUPERSEDED. **T195** unblocked (pickup when free).

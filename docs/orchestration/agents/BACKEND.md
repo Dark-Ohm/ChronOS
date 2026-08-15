@@ -11,7 +11,9 @@ UI не твой (это FRONTEND).
 **T199** `31ec352` + **T201** `51219ab` ACCEPTED — schema + agent_api + skill
 `skills/chronos-bar-config/`.
 
-**Активных BACKEND bar-задач нет.** Дальше T203 dogfood — FRONTEND/skill.
+**Активное:** T285 — `docs/orchestration/tasks/active/T285-acp-load-session-on-restore.md`.
+Холодный bind `ActiveSession` после `session/load`. Slice A `f9cd9a2` не трогать.
+**T288** принят `90ffd88`.
 
 T190/T185/T187 closed. T189 Scenes — pause.
 

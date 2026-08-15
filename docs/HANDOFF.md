@@ -27,7 +27,12 @@ Display = правые настройки дисплея. Над доком — 
 - T296 `a2c072f` Display направо
 - T292 `92786c5` режим на рельсе
 
-**Очередь:** T285 (`load_session`). Потом T286 → T287-C.
+**T285 OPEN.** Slice A `f9cd9a2` (chat.rs) жив. Живой провал: Hermes
+`session/load OK`, наш `take()` на пустом `SharedSession` →
+`no active session for load` → fallback `create_session`.
+Остаток: BACKEND `hermes_acp/client.rs`, бриф переписан.
+
+**Очередь:** T285 slice B (холодный bind). Потом T286 → T287-C.
 Справа: T293, T294, T295. T275 remainder. T281 PARK.
 T265 не пачкой. T284 не с T266. T271 после левого фронта.
 
