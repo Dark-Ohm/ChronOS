@@ -117,7 +117,9 @@ impl Render for LauncherPinMenuView {
 /// config so the item is always honest about the entry's pinned state.
 fn build_pin_menu(window: &mut Window, cx: &mut App, entry_id: String) -> Entity<PopupMenu> {
     // Decide from the cached config (cheap, no disk I/O).
-    let is_pinned = cached().pinned.iter().any(|p| p == &entry_id);
+    let is_pinned = crate::dock::config::resolve_pinned(cx)
+        .iter()
+        .any(|p| p == &entry_id);
 
     PopupMenu::build(window, cx, |menu, _window, _cx| {
         if is_pinned {
@@ -134,6 +136,7 @@ fn build_pin_menu(window: &mut Window, cx: &mut App, entry_id: String) -> Entity
                     }
                     update_cache(config);
                     notify_config_changed(cx);
+                    tracing::info!(entry_id, "launcher pin-menu: unpinned");
                 }))
         } else {
             menu.min_w(px(MENU_WIDTH)).max_w(px(MENU_WIDTH)).item(
@@ -145,6 +148,7 @@ fn build_pin_menu(window: &mut Window, cx: &mut App, entry_id: String) -> Entity
                     }
                     update_cache(config);
                     notify_config_changed(cx);
+                    tracing::info!(entry_id, "launcher pin-menu: pinned");
                 }),
             )
         }

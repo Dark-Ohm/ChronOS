@@ -371,9 +371,15 @@ impl LauncherView {
                         {
                             let menu_id = entry_for_menu.id.clone();
                             move |event, window, cx| {
+                                // Output-local: the Overlay click-catcher
+                                // covers this Normal launcher. Window-local
+                                // `event.position` put the pass-through hole
+                                // at the wrong screen coords, so Left click
+                                // on "Pin" hit the catcher and only closed.
+                                let origin = window.bounds().origin + event.position;
                                 let anchor = Bounds::new(
-                                    event.position,
-                                    Size::new(px(220.), px(34.)),
+                                    origin,
+                                    Size::new(px(1.), px(1.)),
                                 );
                                 pin_menu::open(cx, anchor, window.window_handle(), menu_id.clone());
                             }
