@@ -22,19 +22,20 @@
 | Mode picker | то же | `Select` | T287-A |
 | Поиск сессий | `thread_search: String` | `Input` | T287-B |
 | Список сессий | свои `div` | `List` / `VirtualList` | T287-B |
+| Внутренний Sessions rail + `＋☰👁⋯` | Zed-хром, `☰`/`⋯` без click | выкинуть | **T287-C** |
 | Лента / reasoning / tool cards | свои | нет аналога | **не переносить** |
-| Рельса иконок | своя | нет | не переносить |
+| Рабочая рельса вкладок (40 px) | своя | нет | не трогать |
 
 Не тащить `dock`/`table`/`tree` в Chat. Не включать `lsp`/`chart`.
 
 ## Порядок
 
 1. **T286** — композер. Боль пользователя, `text_input.rs` уходит.
-2. **T285** — ACP `load_session` (не компонент, но тот же `chat.rs`:
-   не параллелить с T286).
-3. **T287-A** — пикеры model/mode на `Select`. После T286:
-   `compose-and-send` уже на `InputState`.
-4. **T287-B** — Sessions list + search. После A.
+2. **T287-C** — срезать Zed-шапку и внутренний Sessions rail (можно
+   параллельно с T286: разные куски `render_panel`).
+3. **T285** — ACP `load_session`. Не с T286.
+4. **T287-A** — пикеры model/mode на `Select`. После T286.
+5. **T287-B** — список на вкладке Sessions (не внутри Chat). После A.
 
 Каждая волна — свой бриф, свой коммит, live grim. Эпик целиком не отдавать.
 
