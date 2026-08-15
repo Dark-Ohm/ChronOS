@@ -43,9 +43,30 @@ T268 закрыл стык «полоска между рельсами» без
 - `.mx()` на `.size_full()` — известный баг T268, не повторять.
 - Hover-strip остаётся на физической кромке. Рельса — нет.
 - `wrap_inset()` = 0 в Hide, `bottom_strip.height` в Wrap. Панели сами
-  ставят margin. Frame не читает `SidePanel*State` (цикл модулей).
+  ставят inset. Frame не читает `SidePanel*State` (цикл модулей).
 - Presence рельс: панели зовут `frame::set_rail_mapped(side, bool)` на
   open/close рельсы, не hover-strip.
+- Рельса/контент в Wrap: L/R margin = `wrap_inset()` **и** высота
+  `display - bar - wrap_inset()`. Якорь TOP|LEFT/RIGHT, без BOTTOM —
+  нижний margin композитор игнорирует. Content `exclusive = -1` сам не
+  отступит от нижней dummy: если не урезать height, рельса ляжет на хром.
+- `Window::set_margin` в форке нет (есть только create-time
+  `layer_surface.set_margin` и live `set_exclusive_zone` /
+  `set_input_region`). Live-сдвиг — recreate существующим close+open.
+  `Source/` не трогать ради этого API.
+- `frame::apply` **не** вызывает `side_panel_*`. Хук `after_apply`
+  регистрирует `main.rs` (или текущая точка `init` шелла). Иначе цикл
+  `frame ↔ side_panel`.
+- Запись `style`: read-modify-write `toml::Value` существующего
+  `frame.toml`. Не serde-дамп `FrameConfig` — сотрёт height/radius/чужие ключи.
+- `style` парсить как строку + sanitize (`мусор → Hide + warn`). Не
+  `enum` через serde как у `junction`: неизвестный junction валит весь
+  parse и `load()` подменяет конфиг дефолтом (тест T268 это фиксирует).
+- Геометрия Wrap определена для **Top exclusive** бара. Bottom/floating:
+  верхний inset мата = `wrap_inset()`, тумблер не блокировать.
+- T281 OPEN (`active/T281-left-workspace-ipc-live-acceptance.md`): не
+  параллелить правки `side_panel_left/mod.rs`. Правая vs T277 — ок,
+  T277 review-only и код не пишет.
 
 ## Конфиг
 
@@ -66,13 +87,15 @@ inner_radius = 16.0  # clamp 0..=64; в UI крутилку не обязате�
 ## Зона файлов
 
 - `crates/app/src/frame.rs` (+ опционально `frame/wrap.rs`)
-- `crates/app/src/side_panel_left/mod.rs` — только margin рельсы/контента +
-  `set_rail_mapped`. **Не** IPC, tabs, `workspace_transition` (T281).
+- `crates/app/src/side_panel_left/mod.rs` — только inset рельсы/контента +
+  `set_rail_mapped`. **Не** IPC, tabs, `workspace_transition`. Пока T281
+  в `active/` — эти строки не начинать, если T281 уже в поле.
 - `crates/app/src/side_panel_right/mod.rs` — то же. Не аудит поверхностей
   (T277).
 - `crates/app/src/bar/mod.rs` — снять границу в карточку только при Wrap.
-- `crates/app/src/side_panel_right/tab/bar_settings.rs` — сегмент Frame,
-  пишет `frame.toml`, не `bar.toml`.
+- `crates/app/src/side_panel_right/tab/bar_settings.rs` — сегмент Frame;
+  persist `style` через хелпер в `frame.rs`, не через
+  `bar_settings::apply_patch` / `bar.toml`.
 
 Нельзя: `Source/gpui/`, `Cargo.lock`, `layout_config.rs` виджетов, пресеты
 бара, Hyprland-конфиг пользователя.
@@ -91,7 +114,7 @@ cargo build --release -p chronos
 - Hide + рельсы = T268, exclusive рамки 0, клиенты не сдвинуты.
 - Hide + рельсы закрыты = нет нижней полоски.
 - Wrap = клиенты отступили на height L/R/B; grim 4 угла, обе темы.
-- Wrap + рельса = рельса внутри карточки.
+- Wrap + рельса = рельса внутри карточки (не x=0 и не на нижнем хроме).
 - Клик в дырке/по хрому не съедается рамкой.
 - Тумблер обратно: слои `frame_wrap_*` исчезли, клиенты вернулись.
 

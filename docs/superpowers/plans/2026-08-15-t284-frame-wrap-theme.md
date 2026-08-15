@@ -4,7 +4,7 @@
 
 **Goal:** Добавить тему оформления Frame (`hide` | `wrap`) без смены дефолтного шелла: Hide = T268, Wrap = рамка по периметру, окна внутри, рельса внутри карточки.
 
-**Architecture:** `frame.toml` хранит `style` и `wrap.inner_radius`. Hide оставляет нижнюю полоску T268 и гасит её, когда рельс нет. Wrap поднимает одну полноэкранную рамку-рисунок (слой ниже Overlay) и три невидимых exclusive-полоски L/R/B. Бар не двигаем. Рельсы читают `frame::wrap_inset()` и ставят margin. Appearance пишет только `style`. Hyprland не трогаем.
+**Architecture:** `frame.toml` хранит `style` и `wrap.inner_radius`. Hide оставляет нижнюю полоску T268 и гасит её, когда рельс нет. Wrap поднимает одну полноэкранную рамку-рисунок (слой Top) и три невидимых exclusive-полоски L/R/B. Бар не двигаем. Рельсы читают `wrap_inset()`, ставят L/R margin и урезают height снизу. Appearance пишет только `style` (RMW). Hyprland не трогаем.
 
 **Tech Stack:** Rust 2024, gpui-ce layer-shell, TOML/serde, inotify 300 ms (уже в `frame.rs`), Theme tokens T267, Hyprland live `hyprctl layers` + grim.
 
@@ -20,21 +20,27 @@
 - `.mx()` на `.size_full()` переполняет (баг T268) — только flex-спейсеры или якоря.
 - `Source/gpui/` не трогать. `Cargo.lock` не коммитить.
 - Worktree — sibling репо, не `/tmp` (`path = "../Source"`).
-- Не параллелить origin/margin рельс с T277. T281 зона — IPC/tabs, не margin; если пересечение — стоп и писать архитектору.
+- T277 review-only — писать рядом можно. T281 OPEN: не параллелить `side_panel_left/mod.rs`. Пересечение — стоп, писать архитектору.
 - `pkill -x chronos`, не `-f`. Live — release + grim + `hyprctl layers`.
+- `Window::set_margin` в форке нет. Live inset рельс — recreate close+open, не охота в Source.
+- `frame::apply` не импортирует панели. `after_apply` хук вешает `main.rs`.
+- `style`: строка + sanitize, не serde-enum (иначе как junction — весь load → default).
+- Запись `style`: `toml::Value` RMW, не дамп `FrameConfig`.
+- Wrap + Top exclusive бар: top inset мата = высота бара. Bottom/floating: top inset = `wrap_inset()`.
 
 ## File map
 
 | Файл | Роль |
 |---|---|
-| `crates/app/src/frame.rs` | `FrameStyle`, `WrapConfig`, `wrap_inset`, `set_rail_mapped`, оркестр `apply` |
+| `crates/app/src/frame.rs` | `FrameStyle`, `WrapConfig`, `wrap_inset`, `set_rail_mapped`, `write_style`, оркестр `apply`, хук `after_apply` |
 | `crates/app/src/frame/wrap.rs` **или** тот же `frame.rs` если < ~700 строк | рамка-рисунок + 3 exclusive dummy |
-| `crates/app/src/side_panel_left/mod.rs` | `set_rail_mapped(Left)` на open/close; margin = `wrap_inset()` |
-| `crates/app/src/side_panel_right/mod.rs` | то же справа; content margin += inset |
+| `crates/app/src/main.rs` (точка init) | `frame::set_after_apply` → `side_panel_*::apply_frame_inset` |
+| `crates/app/src/side_panel_left/mod.rs` | `set_rail_mapped(Left)` на open/close; L margin + height -= inset |
+| `crates/app/src/side_panel_right/mod.rs` | то же справа; content margin += inset; height -= inset |
 | `crates/app/src/bar/mod.rs` | в Wrap снять границу, обращённую в карточку |
-| `crates/app/src/side_panel_right/tab/bar_settings.rs` | сегмент Frame → запись `style` в `frame.toml` |
+| `crates/app/src/side_panel_right/tab/bar_settings.rs` | сегмент Frame → `frame::write_style`, не `bar.toml` |
 
-Цикл модулей запрещён: панели **не** импортирует frame ради «рельса видна», frame **не** читает `SidePanel*State`. Presence рельс — сеттер на стороне панелей в глобал кадра.
+Цикл модулей запрещён: панели зовут `frame::*` (inset, setter, write). `frame` не импортирует `side_panel_*`. Presence рельс — сеттер в глобал кадра. Нотификация панелей — хук из `main.rs`, не прямой вызов.
 
 ---
 
@@ -47,8 +53,10 @@
 **Interfaces:**
 - Produces:
   ```rust
-  #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-  #[serde(rename_all = "lowercase")]
+  // FrameStyle is Copy/Eq; Deserialize MUST go through a string helper
+  // (unknown → Hide + warn). Do not #[derive(Deserialize)] on the enum —
+  // that is the junction trap (unknown_junction_value_fails_parse).
+  #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
   pub enum FrameStyle { #[default] Hide, Wrap }
 
   #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -156,7 +164,7 @@ fn wrap_radius_clamped() { /* 99 → 64, -1 → 0 */ }
 
 Дырка: **не** `parent.bg + transparent child` — ребёнок не пробивает заливку. Красить только пиксели хрома (полосы + внутренние четверти радиуса) либо custom Element. Приёмка угла: в укусе обои, не `#181825`/`#ECEEFA`.
 
-Верх мата не закрашивает виджеты бара (бар Overlay сверху). Внутренний inset сверху = живая высота бара.
+Верх мата не закрашивает виджеты бара (бар Overlay сверху). Top exclusive бар: inset сверху = живая высота бара. Bottom/floating: inset сверху = `wrap_inset()`.
 
 - [ ] **Step 1:** Тест на inset-прямоугольник (чистая fn): display 2560×1440, bar 32, height 4, radius 16 → inner `Bounds { x:4, y:32, w:2552, h:1404 }`.
 - [ ] **Step 2:** Open/close matte + 3 dummy в `apply` при `style==Wrap`. Hide-полоску закрыть. Toggle обратно — закрыть все четыре wrap-окна, вернуть Hide-логику Task 2.
@@ -169,20 +177,21 @@ fn wrap_radius_clamped() { /* 99 → 64, -1 → 0 */ }
 ### Task 4: Рельсы и контент едут внутрь только в Wrap
 
 **Files:**
-- Modify: `side_panel_left/mod.rs` `rail_window_options`, content margin, live apply
+- Modify: `side_panel_left/mod.rs` `rail_window_options`, `content_window_margin`, `panel_height`, open/close setter. Не начинать, если T281 уже в поле.
 - Modify: `side_panel_right/mod.rs` то же (`content_window_margin` сейчас `(top, RAIL_ONLY_WIDTH, 0, 0)`)
+- Modify: точка init шелла — зарегистрировать `after_apply`
 
 **Interfaces:**
 - Consumes: `frame::wrap_inset() -> f32`
-- Produces: left rail `margin.left = inset`; right rail `margin.right = inset`; content canvas сдвинут вместе с рельсой. Exclusive рельсы **не** включает толщину рамки.
+- Produces: left `margin.left = inset`; right `margin.right = inset`; **height = display - bar - inset**; content едет с рельсой. Exclusive рельсы **не** включает толщину рамки (её держат dummy).
 
 Hover-strip **не** сдвигать (физическая кромка).
 
-Live: если у `Window` есть `set_margin` (форк, рядом с `set_exclusive_zone`) — звать из `apply` без пересоздания рельсы. Нет метода — один явный recreate по образцу `frame::close`+`open`, залогировать. Не `window.resize` холста.
+Live: `Window::set_margin` нет. Recreate close+open уже открытых рельс/контента (как `frame::close`+`open`). Не `window.resize` холста. Не звать `side_panel_*` из `frame.rs`.
 
-- [ ] **Step 1:** Чистый тест/хелпер `rail_margin(side, inset, top_gap) -> (t,r,b,l)`.
-- [ ] **Step 2:** Подключить. `frame::apply` после смены style нотифает панели (вызов `side_panel_*::apply_frame_inset(cx)` — тонкая fn, не новый редьюсер вкладок).
-- [ ] **Step 3:** Регрессия `cargo test -p chronos --lib side_panel_left --lib` и фильтр `side_panel_right`.
+- [ ] **Step 1:** Чистый тест `rail_geom(side, inset, top_gap, display_h) -> {margin, height}`: inset=4, bar=32, display=1440 → height=1404, left margin `(32,0,0,4)`.
+- [ ] **Step 2:** Подключить. `frame::set_after_apply` в init. `apply_frame_inset` — тонкая fn, не редьюсер вкладок.
+- [ ] **Step 3:** Регрессия `cargo test -p chronos --lib side_panel_left` и фильтр `side_panel_right`.
 - [ ] **Step 4:** Commit `feat(panels): offset rails by frame wrap inset`
 
 ---
@@ -191,7 +200,7 @@ Live: если у `Window` есть `set_margin` (форк, рядом с `set_e
 
 **Files:**
 - Modify: `crates/app/src/bar/mod.rs` ~L123–134 — если `frame::cached_config().style == Wrap` и edge Top: **не** ставить `border_b_1`. Bottom-edge бар: не ставить `border_t_1`. Edit-mode акцент не трогать.
-- Modify: `crates/app/src/side_panel_right/tab/bar_settings.rs` — в сетке Appearance строка Frame (`Hide` / `Wrap`) через существующие `segmented` + `seg_chip`. Клик атомарно пишет ключ `style` в `~/.config/chronos/frame.toml` (не `bar.toml`). Watcher кадра подхватит за 300 ms. Пресеты бара не трогать.
+- Modify: `crates/app/src/side_panel_right/tab/bar_settings.rs` — строка Frame (`Hide`/`Wrap`) через `segmented` + `seg_chip`. Клик → `frame::write_style` (RMW ключа в `frame.toml`). Watcher 300 ms. Пресеты бара не трогать.
 
 - [ ] **Step 1:** UI + persist. Нет нового пресета в `PRESETS`.
 - [ ] **Step 2:** `cargo test -p chronos --lib bar_settings` и `frame::`
