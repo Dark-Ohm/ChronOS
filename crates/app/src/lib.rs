@@ -32,7 +32,7 @@ pub mod scene;
 pub mod side_panel_left;
 pub mod side_panel_right;
 pub mod state;
-pub mod system_popup;
+mod gaming_mode;
 pub mod theme_config;
 pub mod wallpaper_ctl;
 pub mod workspace_mode;

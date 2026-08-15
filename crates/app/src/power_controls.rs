@@ -172,7 +172,7 @@ fn toggle_switch(active: bool, accent: Hsla, hover: Hsla) -> AnyElement {
                 .bg(knob_color),
         )
         .on_click(move |_event, _window, cx: &mut App| {
-            crate::system_popup::gaming_mode::toggle(cx);
+            crate::gaming_mode::toggle(cx);
         })
         .into_any_element()
 }

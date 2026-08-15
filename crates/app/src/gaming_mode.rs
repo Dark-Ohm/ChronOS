@@ -25,6 +25,12 @@
 //! **Not implemented in MVP** (per ZED.md brief): hiding bar/dock. The brief
 //! calls this chicken-egg — without the bar you can't open the popup to
 //! toggle gaming mode off. Tracked as a follow-up TODO.
+//!
+//! T290: relocated from `system_popup/gaming_mode.rs` to the crate root.
+//! The popup is gone, so `repaint_popup` (which only repainted the popup
+//! view) is deleted — T291-E's `cx.refresh_windows()` already repaints every
+//! window (incl. the System tab and the new Display tab), so no repaint
+//! signal is lost.
 
 use std::process::Command;
 
@@ -34,7 +40,6 @@ use tracing::{info, warn};
 use chronos_services::{PowerProfile, Service, UPowerSubscriber};
 
 use crate::state::AppState;
-use crate::system_popup::{SystemPopupState, view::SystemPopupView};
 
 /// `hyprctl eval` payload for gaming mode ON (verified live 2026-07-19).
 const HYPRCTL_GAMING_ON: &str = "hl.config({ animations = { enabled = false }, decoration = { blur = { enabled = false } }, general = { allow_tearing = true } })";
@@ -63,17 +68,6 @@ impl GamingModeState {
         cx.set_global(Self::default());
     }
 
-    /// Repaint the open system popup (if any) so the gaming toggle knob moves
-    /// immediately. Called after the global is flipped in `apply`/`revert`.
-    /// Safe no-op when the popup is closed.
-    fn repaint_popup(cx: &mut App) {
-        if let Some(handle) = cx.global::<SystemPopupState>().handle.clone() {
-            let _ = handle.update(cx, |view: &mut SystemPopupView, _window, view_cx| {
-                view_cx.notify();
-            });
-        }
-    }
-
     pub fn is_active(cx: &App) -> bool {
         cx.global::<Self>().active
     }
@@ -81,6 +75,12 @@ impl GamingModeState {
     pub fn is_dnd(cx: &App) -> bool {
         cx.global::<Self>().dnd
     }
+}
+
+/// Wire gaming-mode global. Called once from `main.rs`. (The lib crate
+/// references `crate::gaming_mode` only for the toggle/apply/revert API.)
+pub fn init(cx: &mut App) {
+    GamingModeState::init(cx);
 }
 
 /// Toggle gaming mode. Applies/reverts the compositor config + power profile
@@ -103,12 +103,10 @@ pub(crate) fn apply(cx: &mut App) {
     cx.global_mut::<GamingModeState>().dnd = true;
     cx.global_mut::<GamingModeState>().previous_profile = Some(previous_profile);
 
-    // Repaint the popup so the toggle knob moves immediately — the global flip
-    // above is synchronous, but no signal re-renders the view on its own.
-    GamingModeState::repaint_popup(cx);
-    // T291-E: repaint every window (incl. the System tab) so its gaming knob
-    // flips at once, not after the UPower round-trip. No observe_global, no
-    // handle in the global — a single refresh covers all windows.
+    // T291-E: repaint every window (incl. the System tab AND the new Display
+    // tab) so its gaming knob flips at once, not after the UPower round-trip.
+    // No observe_global, no handle in the global — a single refresh covers all
+    // windows. (The old `repaint_popup` only repainted the deleted popup.)
     cx.refresh_windows();
 
     // 1. Compositor: animations off, blur off, allow_tearing on.
@@ -138,8 +136,6 @@ pub(crate) fn revert(cx: &mut App) {
     cx.global_mut::<GamingModeState>().dnd = false;
     cx.global_mut::<GamingModeState>().previous_profile = None;
 
-    // Repaint the popup so the toggle knob moves back immediately.
-    GamingModeState::repaint_popup(cx);
     // T291-E: repaint every window (the System tab reads the global on redraw)
     // so the knob flips back without the UPower round-trip delay.
     cx.refresh_windows();

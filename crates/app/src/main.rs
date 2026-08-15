@@ -22,7 +22,7 @@ mod popup_click_catcher;
 mod side_panel_left;
 mod side_panel_right;
 pub mod state;
-mod system_popup;
+mod gaming_mode;
 mod theme_config;
 mod tray_menu;
 mod updates_popup;
@@ -99,7 +99,7 @@ fn main() {
         updates_popup::init(cx);
         project_switcher::init(cx);
         volume_popup::init(cx);
-        system_popup::init(cx);
+        gaming_mode::init(cx);
         side_panel_right::init(cx);
         side_panel_left::init(cx);
         // Register the PTY registry global *before* desktop_terminal::init so

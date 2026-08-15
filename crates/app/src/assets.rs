@@ -48,6 +48,7 @@ icons!(
     "rail-binds.svg",
     "rail-build.svg",
     "rail-captures.svg",
+    "rail-display.svg",
     "rail-editor.svg",
     "rail-editor-settings.svg",
     "rail-inspector.svg",

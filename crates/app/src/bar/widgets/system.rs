@@ -1,33 +1,25 @@
-//! System widget for the bar — hexagon-sigil icon, click opens the system popup
-//! (brightness + power profile + gaming mode). Anchored popup: captures layout
-//! bounds via a zero-opacity canvas, then opens the popup anchored to those
-//! bounds on `on_mouse_down`.
+//! System widget for the bar — hexagon-sigil icon. T290: a click opens the
+//! left-panel `Display` tab (brightness + wallpapers) instead of the old
+//! system popup. The popup is gone; the Display tab is the brightness entry
+//! point now.
 //!
 //! Always visible (desktop or laptop, with or without a battery). On a
 //! desktop without a physical battery this is the only entry point into
-//! power/brightness controls — the legacy `battery.rs` widget renders an
+//! brightness/wallpaper controls — the legacy `battery.rs` widget renders an
 //! empty div there and is unclickable. The battery widget is **not**
 //! removed by this module; both can coexist (battery shows on laptops,
 //! system shows everywhere).
 
-use gpui::{
-    AnyElement, App, Bounds, MouseButton, Pixels, Window, canvas, div, prelude::*, px, svg,
-};
-use std::cell::Cell;
-use std::rc::Rc;
+use gpui::{AnyElement, App, MouseButton, Window, div, prelude::*, px, svg};
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_ui::Theme;
 
-pub struct SystemWidget {
-    bounds: Rc<Cell<Bounds<Pixels>>>,
-}
+pub struct SystemWidget;
 
 impl SystemWidget {
     pub fn new() -> Self {
-        Self {
-            bounds: Rc::new(Cell::new(Bounds::default())),
-        }
+        Self
     }
 }
 
@@ -43,8 +35,7 @@ impl BarWidget for SystemWidget {
     fn render(&self, _window: &mut Window, cx: &App) -> AnyElement {
         let theme = Theme::global(cx);
 
-        let bounds_cell = self.bounds.clone();
-        let content = div()
+        div()
             .id("bar-system")
             .flex()
             .items_center()
@@ -58,31 +49,16 @@ impl BarWidget for SystemWidget {
                     .path("icons/hexagon-core.svg")
                     .size(px(13.))
                     .text_color(theme.accent.primary),
-            );
-
-        div()
-            .relative()
-            .child(
-                canvas(
-                    move |bounds, _window, _cx| bounds,
-                    move |_bounds, captured, _window, _cx| {
-                        bounds_cell.set(captured);
-                    },
-                )
-                .absolute()
-                .size_full(),
             )
-            .child(content.on_mouse_down(MouseButton::Left, {
-                let bounds_cell = self.bounds.clone();
-                move |_event, window, cx: &mut App| {
-                    if crate::edit_mode::is_active(cx) {
-                        return;
-                    }
-                    let anchor_rect = bounds_cell.get();
-                    let parent = window.window_handle();
-                    crate::system_popup::toggle(anchor_rect, parent, window, cx);
+            .on_mouse_down(MouseButton::Left, |_event, _window, cx: &mut App| {
+                if crate::edit_mode::is_active(cx) {
+                    return;
                 }
-            }))
+                crate::side_panel_left::select_tab(
+                    crate::side_panel_left::tabs::LeftTab::Display,
+                    cx,
+                );
+            })
             .into_any_element()
     }
 }

@@ -41,7 +41,7 @@ use std::path::PathBuf;
 use gpui::{App, Global};
 use serde::{Deserialize, Serialize};
 
-use crate::system_popup::gaming_mode::{self, GamingModeState};
+use crate::gaming_mode::{self, GamingModeState};
 use crate::workspace_mode::{self, WorkspaceMode};
 
 const CONFIG_BASENAME: &str = "scenes.toml";

@@ -42,7 +42,6 @@ pub(crate) mod surfaces;
 pub mod tab;
 pub(crate) mod tabs;
 pub mod view;
-mod wallpaper_card;
 
 use gpui::{
     App, Bounds, DisplayId, Global, Size, Window, WindowBackgroundAppearance, WindowBounds,

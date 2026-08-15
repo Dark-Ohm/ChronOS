@@ -21,9 +21,8 @@ use crate::side_panel_right::spectrum_row::{
     H_CPU, H_GPU, H_NET, H_RAM, SpectrumHistory, color_cpu, color_gpu, color_net, color_ram,
     color_value_default, push_sample, render_spectrum_row,
 };
-use crate::side_panel_right::wallpaper_card::render_wallpaper_card;
 use crate::state::{self, AppState};
-use crate::system_popup::gaming_mode;
+use crate::gaming_mode;
 
 use chronos_ui::Theme;
 
@@ -186,11 +185,6 @@ impl Render for SystemTab {
                     .gap(px(14.))
                     .p(px(14.))
                     .child(render_mpris_card(&self.mpris, cx))
-                    .child(render_wallpaper_card(
-                        &self.wallpaper,
-                        self.waytrogen_available,
-                        cx,
-                    ))
                     // T291: power profile + Perf Gaming now live on the System
                     // tab (moved out of the bar popup). Popup keeps brightness only.
                     .child(crate::power_controls::render_power_profile_card(
