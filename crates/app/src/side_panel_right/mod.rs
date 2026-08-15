@@ -107,8 +107,10 @@ pub struct SidePanelRightState {
     /// content canvas (`visible_content_width`) and the rail's exclusive
     /// zone (`exclusive_px`).
     pub width: f32,
-    /// Dock mode: when true, content is always visible (full width).
-    /// When false (default), only the rail shows until content is opened.
+    /// Dock mode: exclusive-zone flag. When true, the rail reserves
+    /// `width` px (not `RAIL_ONLY_WIDTH`) — clients don't encroach on
+    /// the content area. Does NOT auto-open content; toggle only flips
+    /// this flag and resets the cached exclusive zone (T289).
     pub dock_content: bool,
     /// T210: true while a resize drag is active. Suppresses peek-close so
     /// the 280ms debounce cannot close the panel mid-drag.
@@ -367,16 +369,17 @@ fn open_window(cx: &mut App, pinned: bool) {
     }
 
     let mut opened_content_entity: Option<gpui::Entity<SidePanelRightView>> = None;
-    let content_result = cx.open_window(content_window_options(display_id, cx), |window, view_cx| {
-        let view = view_cx.new(|cx| SidePanelRightView::new(cx));
-        opened_content_entity = Some(view.clone());
-        // See `open_window`'s doc on gpui-component `Root` requirement below.
-        view_cx.new(|cx| {
-            Root::new(view, window, cx)
-                .bordered(false)
-                .bg(gpui::transparent_black())
-        })
-    });
+    let content_result =
+        cx.open_window(content_window_options(display_id, cx), |window, view_cx| {
+            let view = view_cx.new(|cx| SidePanelRightView::new(cx));
+            opened_content_entity = Some(view.clone());
+            // See `open_window`'s doc on gpui-component `Root` requirement below.
+            view_cx.new(|cx| {
+                Root::new(view, window, cx)
+                    .bordered(false)
+                    .bg(gpui::transparent_black())
+            })
+        });
 
     let content_handle = match content_result {
         Ok(handle) => handle,
@@ -387,7 +390,8 @@ fn open_window(cx: &mut App, pinned: bool) {
     };
     let Some(content_entity) = opened_content_entity else {
         tracing::warn!("side_panel_right: content window opened without a view — rolling back");
-        if let Err(e) = content_handle.update(cx, |_, window: &mut Window, _| window.remove_window())
+        if let Err(e) =
+            content_handle.update(cx, |_, window: &mut Window, _| window.remove_window())
         {
             tracing::warn!("side_panel_right: rollback could not close content ({e})");
         }
@@ -542,7 +546,11 @@ pub fn close(cx: &mut App) {
 pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
     let this = window.window_handle();
     let state = cx.global::<SidePanelRightState>();
-    let is_rail = state.rail_handle.as_ref().map(|h| **h == this).unwrap_or(false);
+    let is_rail = state
+        .rail_handle
+        .as_ref()
+        .map(|h| **h == this)
+        .unwrap_or(false);
     let is_content = state
         .content_handle
         .as_ref()
@@ -616,7 +624,10 @@ pub fn select_tab(tab: PanelTab, cx: &mut App) {
         .clone()
         .and_then(|w| w.upgrade())
     else {
-        tracing::warn!(tab = tab.id(), "side_panel_right: select_tab has no live view");
+        tracing::warn!(
+            tab = tab.id(),
+            "side_panel_right: select_tab has no live view"
+        );
         return;
     };
     view.update(cx, |view, cx| view.on_tab_select(tab, cx));
@@ -762,7 +773,8 @@ pub fn init(cx: &mut App) {
             if std::env::var_os("CHRONOS_SMOKE_SIDE_PANEL").is_some() {
                 // Smoke path: open the panel already expanded so automated screenshots
                 // and tests can see the content without a manual rail click.
-                cx.global_mut::<SidePanelRightState>().ensure_content_width(DEFAULT_CONTENT_WIDTH);
+                cx.global_mut::<SidePanelRightState>()
+                    .ensure_content_width(DEFAULT_CONTENT_WIDTH);
                 open_pinned(cx);
             }
         });
@@ -951,10 +963,7 @@ mod tests {
         let start_width = 400.0_f32;
         let start_x = 2.0_f32;
         let current_x = start_x - 50.0; // moved 50px left of the press point
-        assert_eq!(
-            resize_target_width(start_width, start_x, current_x),
-            450.0
-        );
+        assert_eq!(resize_target_width(start_width, start_x, current_x), 450.0);
     }
 
     #[test]
@@ -962,10 +971,7 @@ mod tests {
         let start_width = 400.0_f32;
         let start_x = 2.0_f32;
         let current_x = start_x + 50.0;
-        assert_eq!(
-            resize_target_width(start_width, start_x, current_x),
-            350.0
-        );
+        assert_eq!(resize_target_width(start_width, start_x, current_x), 350.0);
     }
 
     #[test]
@@ -993,9 +999,6 @@ mod tests {
         let start_width = 400.0_f32; // post-expand natural width
         let start_x = 2.0_f32; // mid-handle
         let current_x = start_x - 100.0;
-        assert_eq!(
-            resize_target_width(start_width, start_x, current_x),
-            500.0
-        );
+        assert_eq!(resize_target_width(start_width, start_x, current_x), 500.0);
     }
 }

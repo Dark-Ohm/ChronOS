@@ -32,6 +32,7 @@ use gpui::{AnimationExt, AsyncApp, IntoElement, Render, Window, div, prelude::*,
 
 use crate::agent_follow::AgentFollowState;
 use crate::motion;
+use crate::side_panel_right::panels_config;
 use crate::side_panel_right::power_row::{
     ARM_TIMEOUT, ArmState, PowerAction, is_confirming_click, on_click as arm_on_click, on_timeout,
     render_footer,
@@ -40,12 +41,11 @@ use crate::side_panel_right::preview_target::PreviewTarget;
 use crate::side_panel_right::surfaces;
 use crate::side_panel_right::tab::TabContent;
 use crate::side_panel_right::tab::system::format_net_pair;
-use crate::side_panel_right::panels_config;
 use crate::side_panel_right::tabs::PanelTab;
 use crate::side_panel_right::{
     CONTENT_CANVAS_WIDTH, HANDLE_WIDTH, MAX_WIDTH, RAIL_ONLY_WIDTH, RightPanelResize,
-    SidePanelRightState, content_input_region, content_interactive_width,
-    content_resize_handle_x, visible_content_width,
+    SidePanelRightState, content_input_region, content_interactive_width, content_resize_handle_x,
+    visible_content_width,
 };
 use crate::state::AppState;
 use crate::workspace_mode;
@@ -157,7 +157,7 @@ impl SidePanelRightView {
         let target = self.active_tab_width(self.active_tab, cx);
         let state = cx.global_mut::<SidePanelRightState>();
         let before = state.width;
-        let content_open = state.dock_content || state.width > RAIL_ONLY_WIDTH + 1.0;
+        let content_open = state.width > RAIL_ONLY_WIDTH + 1.0;
         if content_open {
             state.ensure_content_width(target);
         }
@@ -217,7 +217,10 @@ impl SidePanelRightView {
         if !resizable {
             self.resize_start_x = None;
             self.resize_start_width = None;
-            tracing::debug!(tab = tab.label(), "side_panel_right: tab is fixed width, drag ignored");
+            tracing::debug!(
+                tab = tab.label(),
+                "side_panel_right: tab is fixed width, drag ignored"
+            );
             return;
         }
 
@@ -245,8 +248,7 @@ impl SidePanelRightView {
         else {
             return;
         };
-        let new_w =
-            crate::side_panel_right::resize_target_width(start_width, start_x, current_x);
+        let new_w = crate::side_panel_right::resize_target_width(start_width, start_x, current_x);
         let state = cx.global_mut::<SidePanelRightState>();
         let old_w = state.width;
         state.resize(new_w);
@@ -276,10 +278,9 @@ impl SidePanelRightView {
     /// T276: dock ⊞/⊟ toggle, called from `rail_view::RailView` via the
     /// shared weak entity (the button itself renders in the rail window).
     pub(crate) fn toggle_dock(&mut self, cx: &mut Context<Self>) {
-        let target = self.active_tab_width(self.active_tab, cx);
         let state = cx.global_mut::<SidePanelRightState>();
         state.dock_content = !state.dock_content;
-        state.ensure_content_width(target);
+        state.last_exclusive_zone = None;
         tracing::info!(
             dock = state.dock_content,
             width = state.width,
@@ -384,19 +385,15 @@ impl SidePanelRightView {
 
         let (dock_content, content_open) = {
             let state = cx.global::<SidePanelRightState>();
-            (
-                state.dock_content,
-                state.dock_content || state.width > RAIL_ONLY_WIDTH + 1.0,
-            )
+            (state.dock_content, state.width > RAIL_ONLY_WIDTH + 1.0)
         };
 
         if tab != self.active_tab {
             // Branch 4 — different tab.
             //
             // Under dock: only switch `active_tab`. The dock button ⊞/⊟
-            // and the resize handle are the only knobs for width when
-            // content is always-visible; switching tabs in dock mode must
-            // not undo a pinned width.
+            // and the resize handle are the only knobs for width — switching
+            // tabs in dock mode must not undo a pinned width.
             //
             // Off dock: switch AND force-open at the new tab's natural /
             // remembered width.
@@ -411,7 +408,8 @@ impl SidePanelRightView {
                 return;
             }
             let target = self.active_tab_width(self.active_tab, cx);
-            cx.global_mut::<SidePanelRightState>().ensure_content_width(target);
+            cx.global_mut::<SidePanelRightState>()
+                .ensure_content_width(target);
             cx.refresh_windows();
             tracing::info!(
                 tab = tab.label(),
@@ -421,16 +419,10 @@ impl SidePanelRightView {
             return;
         }
 
-        // Same tab clicked.
-        if dock_content {
-            // Branch 1.
-            tracing::debug!(
-                tab = tab.label(),
-                "side_panel_right: same active tab click while docked → no-op (⊞/⊟ is the dock knob)"
-            );
-            return;
-        }
-
+        // Same tab clicked — collapse if open, re-open if collapsed.
+        // (T289) Dock is an exclusive-zone flag only — it does NOT guard
+        // this path, so same-tab clicks under dock behave identically to
+        // under dock-off (collapse if open, re-open if collapsed).
         if content_open {
             // Branch 2 — collapse. `tab_resize_memory` stays intact because
             // we only touch `state.width`.
@@ -443,7 +435,8 @@ impl SidePanelRightView {
         } else {
             // Branch 3 — re-open at the tab's stored width.
             let target = self.active_tab_width(self.active_tab, cx);
-            cx.global_mut::<SidePanelRightState>().ensure_content_width(target);
+            cx.global_mut::<SidePanelRightState>()
+                .ensure_content_width(target);
             cx.refresh_windows();
             tracing::info!(
                 tab = tab.label(),
@@ -458,11 +451,7 @@ impl SidePanelRightView {
     ///
     /// Returns the cached handle so callers never need to look it up again
     /// (and never need an `unwrap` on a key that was just inserted).
-    pub(crate) fn ensure_tab_view(
-        &mut self,
-        tab: PanelTab,
-        cx: &mut Context<Self>,
-    ) -> TabContent {
+    pub(crate) fn ensure_tab_view(&mut self, tab: PanelTab, cx: &mut Context<Self>) -> TabContent {
         self.tab_views
             .entry(tab)
             .or_insert_with(|| TabContent::create(tab, cx))
@@ -514,7 +503,8 @@ impl Render for SidePanelRightView {
         let panel_cfg = panels_config::cached();
         let (top_tabs, bottom_tabs) = panels_config::resolve_grouped(current_mode, &panel_cfg);
         // Flatten for active-tab validation.
-        let mut all_tabs: Vec<PanelTab> = top_tabs.iter().chain(bottom_tabs.iter()).copied().collect();
+        let mut all_tabs: Vec<PanelTab> =
+            top_tabs.iter().chain(bottom_tabs.iter()).copied().collect();
         all_tabs.dedup();
         // Active tab left the set after a mode switch — land on System, keep
         // the panel open (§5: must not discard panel state / close on mode change).
@@ -530,7 +520,6 @@ impl Render for SidePanelRightView {
         let net_summary = format!("↓ {dl}  ↑ {ul}");
 
         let panel_state = cx.global::<SidePanelRightState>();
-        let dock_content = panel_state.dock_content;
         let panel_width = panel_state.width;
         let resizing = panel_state.resizing;
 
@@ -539,7 +528,9 @@ impl Render for SidePanelRightView {
         // below and the Wayland input region (so the empty part of the
         // canvas passes clicks through instead of eating them).
         let visible_w = visible_content_width(panel_width);
-        let content_open = dock_content || visible_w > 1.0;
+        // T289: content_open is purely width-driven — dock_content only
+        // affects the exclusive zone (exclusive_px), not visibility.
+        let content_open = visible_w > 1.0;
         let interactive_w = content_interactive_width(visible_w, resizing);
 
         if self.last_visible_width != Some(interactive_w) {
@@ -564,19 +555,16 @@ impl Render for SidePanelRightView {
         let elev = theme.elevation_popup();
 
         let active = self.active_tab;
-        let resize_mouse_down = cx.listener(
-            |this, ev: &gpui::MouseDownEvent, _window, cx| {
-                this.start_resize(f32::from(ev.position.x), cx);
-            },
-        );
+        let resize_mouse_down = cx.listener(|this, ev: &gpui::MouseDownEvent, _window, cx| {
+            this.start_resize(f32::from(ev.position.x), cx);
+        });
         let resize_drag_move = cx.listener(
             |this, ev: &gpui::DragMoveEvent<RightPanelResize>, _window, cx| {
                 this.update_resize(f32::from(ev.event.position.x), cx);
             },
         );
-        let resize_mouse_up = cx.listener(
-            |this, _ev: &gpui::MouseUpEvent, _window, cx| this.end_resize(cx),
-        );
+        let resize_mouse_up =
+            cx.listener(|this, _ev: &gpui::MouseUpEvent, _window, cx| this.end_resize(cx));
 
         // Lazy tab view — created on first paint, cached thereafter.
         // ensure_tab_view() avoids expect-panic on the very first render
@@ -616,7 +604,11 @@ impl Render for SidePanelRightView {
                 // Empty, transparent slice of the fixed canvas to the left
                 // of the visible content — never painted, never receives
                 // input (excluded from the Wayland input region above).
-                div().id("side-panel-content-void").flex_1().min_w(px(0.)).h_full(),
+                div()
+                    .id("side-panel-content-void")
+                    .flex_1()
+                    .min_w(px(0.))
+                    .h_full(),
             )
             .when(content_open, |root| {
                 root.child({
@@ -671,25 +663,28 @@ impl Render for SidePanelRightView {
                     )
                 })
             })
-            .when((visible_w > 1.0 || resizing) && active.resizable(), |root| {
-                root.child(
-                    // A right panel resizes from its screen-inward LEFT
-                    // edge. The hit strip moves inside the fixed content
-                    // canvas; it never belongs to the standalone rail.
-                    div()
-                        .id("side-panel-right-resize-handle")
-                        .absolute()
-                        .left(px(handle_x))
-                        .top(px(0.))
-                        .w(px(HANDLE_WIDTH))
-                        .h_full()
-                        .cursor_col_resize()
-                        .on_mouse_down(gpui::MouseButton::Left, resize_mouse_down)
-                        .on_mouse_up(gpui::MouseButton::Left, resize_mouse_up)
-                        .on_drag(RightPanelResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
-                        .on_drag_move(resize_drag_move),
-                )
-            })
+            .when(
+                (visible_w > 1.0 || resizing) && active.resizable(),
+                |root| {
+                    root.child(
+                        // A right panel resizes from its screen-inward LEFT
+                        // edge. The hit strip moves inside the fixed content
+                        // canvas; it never belongs to the standalone rail.
+                        div()
+                            .id("side-panel-right-resize-handle")
+                            .absolute()
+                            .left(px(handle_x))
+                            .top(px(0.))
+                            .w(px(HANDLE_WIDTH))
+                            .h_full()
+                            .cursor_col_resize()
+                            .on_mouse_down(gpui::MouseButton::Left, resize_mouse_down)
+                            .on_mouse_up(gpui::MouseButton::Left, resize_mouse_up)
+                            .on_drag(RightPanelResize, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
+                            .on_drag_move(resize_drag_move),
+                    )
+                },
+            )
     }
 }
 
@@ -746,6 +741,8 @@ mod tests {
         cx.update(|cx| {
             let mut state = SidePanelRightState::default();
             state.dock_content = true;
+            state.width = 480.0; // T289: dock ON alone no longer opens content;
+            // width must be > RAIL_ONLY_WIDTH for content_open
             cx.set_global(state);
         });
         let view = cx.new(|cx| SidePanelRightView::new(cx));
@@ -774,6 +771,8 @@ mod tests {
         cx.update(|cx| {
             let mut state = SidePanelRightState::default();
             state.dock_content = true;
+            state.width = 480.0; // T289: dock ON alone no longer opens content;
+            // width must be > RAIL_ONLY_WIDTH for content_open
             cx.set_global(state);
         });
         let view = cx.new(|cx| SidePanelRightView::new(cx));
@@ -1032,42 +1031,58 @@ mod tests {
         });
         cx.update(|cx| {
             assert_eq!(
-                cx.global::<SidePanelRightState>().width, N,
+                cx.global::<SidePanelRightState>().width,
+                N,
                 "Editor: re-open phase must restore remembered width N, \
                  not the tab's preferred 560"
             );
         });
     }
 
-    /// (5) Dock wins: with `dock_content = true`, clicking the active tab
-    /// is a no-op. The dock button ⊞/⊟ is the only knob for docked mode —
-    /// mixing rail-icon-toggling into dock would create the inconsistent
-    /// «always-visible but rail-only» state we explicitly forbid.
+    /// (5) Dock ON + same-tab click: collapse to rail-only, dock stays ON.
+    /// Repeated click re-opens at the remembered width. T289: dock is an
+    /// exclusive-zone flag — it does NOT make content permanently visible,
+    /// so same-tab clicks under dock behave identically to under dock-off
+    /// (collapse if open, re-open if collapsed), with `dock_content` untouched.
     #[gpui::test]
-    async fn on_tab_select_active_tab_while_docked_is_noop(cx: &mut TestAppContext) {
+    async fn on_tab_select_same_tab_while_docked_collapses_then_reopens(cx: &mut TestAppContext) {
         const PINNED: f32 = 700.0;
         let mut state = SidePanelRightState::default();
-        state.width = PINNED;
         state.dock_content = true;
+        state.width = PINNED;
         let view = boot_view(cx, state, WorkspaceMode::Developer);
         cx.update_entity(&view, |this, _| {
-            this.active_tab = PanelTab::Preview;
+            this.active_tab = PanelTab::Preview; // resizable → has resize memory
+        });
+        // Record the pinned width through the drag path (T218).
+        cx.update_entity(&view, |this, cx| {
+            this.sim_resize(PINNED, cx);
         });
 
+        // Click 1: dock ON + same tab → collapse to rail-only, dock stays ON.
         cx.update_entity(&view, |this, cx| {
             this.on_tab_select(PanelTab::Preview, cx);
         });
-
         cx.update(|cx| {
-            let state = cx.global::<SidePanelRightState>();
+            let s = cx.global::<SidePanelRightState>();
             assert_eq!(
-                state.width, PINNED,
-                "dock + active-tab click must NOT resize"
+                s.width, RAIL_ONLY_WIDTH,
+                "dock ON + same-tab click must collapse to rail-only"
             );
-            assert!(
-                state.dock_content,
-                "dock mode must remain unchanged (rail-icon click cannot un-dock)"
+            assert!(s.dock_content, "dock must remain ON after collapse");
+        });
+
+        // Click 2: dock ON + same tab again → re-open at remembered width.
+        cx.update_entity(&view, |this, cx| {
+            this.on_tab_select(PanelTab::Preview, cx);
+        });
+        cx.update(|cx| {
+            let s = cx.global::<SidePanelRightState>();
+            assert_eq!(
+                s.width, PINNED,
+                "dock ON + same-tab re-click must re-open at remembered width"
             );
+            assert!(s.dock_content, "dock must remain ON after re-open");
         });
     }
 
@@ -1100,7 +1115,8 @@ mod tests {
         });
         cx.update_entity(&view, |this, _| {
             assert_eq!(
-                this.active_tab, PanelTab::Files,
+                this.active_tab,
+                PanelTab::Files,
                 "different-tab click must still switch the active tab"
             );
         });
@@ -1151,7 +1167,10 @@ mod tests {
             this.start_resize(2.0, cx);
         });
         cx.update_entity(&view, |this, _| {
-            assert_eq!(this.resize_start_x, None, "fixed-width tab must not arm a drag");
+            assert_eq!(
+                this.resize_start_x, None,
+                "fixed-width tab must not arm a drag"
+            );
         });
     }
 
@@ -1199,17 +1218,39 @@ mod tests {
         assert!(!needs_width_resize(320.4, 320.0));
     }
 
+    /// T289: dock toggle is a pure flag flip — it never calls
+    /// `ensure_content_width`. Width is unchanged regardless of dock state.
     #[gpui::test]
-    async fn toggle_dock_flips_flag_and_applies_active_tab_width(cx: &mut TestAppContext) {
+    async fn toggle_dock_flips_flag_without_changing_width(cx: &mut TestAppContext) {
+        // (1) Collapsed + dock toggle ON → dock=true, width stays rail-only.
         let view = boot_view(cx, SidePanelRightState::default(), WorkspaceMode::Developer);
         cx.update_entity(&view, |this, cx| {
-            this.active_tab = PanelTab::Files; // preferred 440
+            this.active_tab = PanelTab::Files;
             this.toggle_dock(cx);
         });
         cx.update(|cx| {
             let state = cx.global::<SidePanelRightState>();
             assert!(state.dock_content);
-            assert_eq!(state.width, PanelTab::Files.preferred_content_width());
+            assert_eq!(
+                state.width, RAIL_ONLY_WIDTH,
+                "dock toggle from collapsed must not auto-open content"
+            );
+        });
+
+        // (2) Open (dock OFF) + dock toggle ON → dock=true, width does not jump.
+        let mut state = SidePanelRightState::default();
+        state.width = 480.0;
+        let view = boot_view(cx, state, WorkspaceMode::Developer);
+        cx.update_entity(&view, |this, cx| {
+            this.toggle_dock(cx);
+        });
+        cx.update(|cx| {
+            let s = cx.global::<SidePanelRightState>();
+            assert!(s.dock_content);
+            assert_eq!(
+                s.width, 480.0,
+                "dock toggle ON from open must not change width"
+            );
         });
     }
 }
