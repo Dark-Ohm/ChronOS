@@ -1,6 +1,7 @@
 //! Launcher module: fuzzy search, overlay view, launch.
 
 pub mod launch;
+pub mod pin_menu;
 pub mod search;
 pub mod view;
 
@@ -8,6 +9,10 @@ use gpui::{
     App, Bounds, DisplayId, Global, Size, Window, WindowBackgroundAppearance, WindowBounds,
     WindowHandle, WindowKind, WindowOptions, point, prelude::*, px,
 };
+use gpui_component::Root;
+use gpui_component::input::InputState;
+
+use chronos_services::applications::frecency;
 
 use crate::launcher::view::LauncherView;
 
@@ -17,7 +22,7 @@ const LAUNCHER_HEIGHT: f32 = 560.;
 /// Tracks the open launcher window so `toggle` can open/close it.
 #[derive(Default)]
 struct LauncherState {
-    handle: Option<WindowHandle<LauncherView>>,
+    handle: Option<WindowHandle<Root>>,
 }
 
 impl Global for LauncherState {}
@@ -85,33 +90,40 @@ pub fn open(cx: &mut App) {
     tracing::info!(?display_id, "launcher display_id");
 
     match cx.open_window(window_options(display_id), |window, cx| {
-        let entity = cx.new(|cx| LauncherView::new(cx));
+        // T275 Часть A: the search field is a real `gpui-component` `Input`
+        // bound to this `InputState`. The component owns the caret, cursor,
+        // selection, IME, paste and ctrl+w.
+        let input = cx.new(|cx| InputState::new(window, cx));
+        input.update(cx, |s, cx| {
+            s.set_placeholder("Search applications, commands, files…", window, cx);
+        });
+        let entity = cx.new(|cx| LauncherView::new(cx, input.clone()));
+
+        // Focus the input immediately so typing works without a click.
+        input.update(cx, |s, cx| s.focus(window, cx));
+
+        // Refocus the input when the window (re)gains focus (e.g. the pointer
+        // left it). The view-level `focus_input` routes to the InputState.
         entity.update(cx, |_view, cx| {
-            // Dismiss is explicit only: Esc (LauncherView::handle_key), clicking
-            // a result (launches then closes), or re-toggling the hotkey. We
-            // deliberately do NOT close on focus loss: with `follow_mouse=1` in
-            // Hyprland, moving the cursor onto any other surface deactivates the
-            // launcher, which made it vanish the instant the pointer left it
-            // (seen live 2026-07-17; the earlier 300ms debounce only delayed
-            // that, it didn't fix it). The observer only re-focuses the text
-            // input when focus returns, so typing keeps working after a hover.
             cx.observe_window_activation(window, move |view, window, cx| {
                 if window.is_window_active() {
                     view.focus_input(window, cx);
                 }
             })
-            // Dropping the Subscription cancels the observer immediately —
-            // it must outlive this scope for the refocus to keep firing.
             .detach();
         });
-        entity
+
+        // Component widgets (Input, and the future Pin pop-up) require the
+        // window root to be a `gpui_component::Root` (T263 / T275 — widgets
+        // panic on `window.root()` otherwise).
+        cx.new(|cx| {
+            Root::new(entity, window, cx)
+                .bordered(false)
+                .bg(gpui::transparent_black())
+        })
     }) {
         Ok(handle) => {
             tracing::info!("launcher window created successfully");
-            // Focus the window immediately so keyboard input works without clicking
-            let _ = handle.update(cx, |view, window, cx| {
-                view.focus_input(window, cx);
-            });
             cx.global_mut::<LauncherState>().handle = Some(handle);
         }
         Err(err) => {
@@ -123,8 +135,9 @@ pub fn open(cx: &mut App) {
 /// Close the launcher overlay if it is open.
 pub fn close(cx: &mut App) {
     tracing::info!("launcher::close called");
+    // T275 Часть C: persist any pending frecency writes before the window goes.
+    frecency::flush();
     if let Some(handle) = cx.global_mut::<LauncherState>().handle.take() {
-        tracing::info!("launcher handle taken, removing window");
         let _ = handle.update(cx, |_, window: &mut Window, _| window.remove_window());
     } else {
         tracing::info!("launcher::close: no handle to close");
@@ -143,6 +156,8 @@ pub fn close(cx: &mut App) {
 /// Instead: clear the handle directly and call `remove_window()` on the live
 /// reference.
 pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
+    // T275 Часть C: flush frecency on launch/escape close paths.
+    frecency::flush();
     let this = window.window_handle();
     let tracked = cx
         .global::<LauncherState>()
@@ -177,4 +192,5 @@ pub fn toggle(cx: &mut App) {
 pub fn init(cx: &mut App) {
     tracing::info!("launcher::init called");
     cx.set_global(LauncherState::default());
+    pin_menu::init(cx);
 }

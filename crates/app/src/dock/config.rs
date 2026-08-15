@@ -170,6 +170,15 @@ impl DockConfig {
         self.pinned.retain(|p| p != id);
     }
 
+    /// Add an entry id to the stored pinned list (dedup), and clear any prior
+    /// explicit exclusion so a previously-unpinned mode-default reappears.
+    pub fn pin(&mut self, id: &str) {
+        if !id.is_empty() && !self.pinned.iter().any(|p| p == id) {
+            self.pinned.push(id.to_string());
+        }
+        self.excluded.retain(|e| e != id);
+    }
+
     /// Persist an explicit removal that also applies to mode/scene defaults.
     pub fn exclude(&mut self, id: &str) {
         if !id.is_empty() && !self.excluded.iter().any(|excluded| excluded == id) {
@@ -209,6 +218,24 @@ mod tests {
         let before = config.pinned.clone();
         config.unpin("nonexistent");
         assert_eq!(config.pinned, before);
+    }
+
+    #[test]
+    fn pin_adds_entry_and_clears_exclusion() {
+        let mut config = DockConfig::default();
+        config.exclude("newshell");
+        config.pin("newshell");
+        assert!(config.pinned.contains(&"newshell".to_string()));
+        assert!(!config.excluded.iter().any(|e| e == "newshell"));
+    }
+
+    #[test]
+    fn pin_is_idempotent() {
+        let mut config = DockConfig::default();
+        config.pin("newshell");
+        let first = config.pinned.clone();
+        config.pin("newshell");
+        assert_eq!(config.pinned, first, "pin must not duplicate an id");
     }
 
     #[test]

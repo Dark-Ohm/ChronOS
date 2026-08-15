@@ -33,17 +33,22 @@ impl FuzzySearch {
             .reparse(0, pattern, CaseMatching::Smart, Normalization::Never, false);
     }
 
-    pub fn results(&mut self, max: usize) -> Vec<&AppEntry> {
+    pub fn results(&mut self, max: usize) -> Vec<(AppEntry, f32)> {
         self.nucleo.tick(10);
 
         let snapshot = self.nucleo.snapshot();
         let count = snapshot.matched_item_count() as usize;
         let max = max.min(count);
         let mut matched = Vec::new();
-        for item in snapshot.matched_items(0..max as u32) {
+        // `matched_items` yields candidates in nucleo's relevance order (highest
+        // score first); the position is the relevance rank. Encode it as a
+        // descending score so `frecency::rank` can use it as the PRIMARY key for
+        // typed queries (T275 Часть C: nucleo stays primary, frecency secondary).
+        for (pos, item) in snapshot.matched_items(0..max as u32).enumerate() {
             let idx = *item.data as usize;
+            let relevance = (max - pos) as f32;
             if let Some(entry) = self.items.get(idx) {
-                matched.push(entry);
+                matched.push((entry.clone(), relevance));
             }
         }
         matched
@@ -90,7 +95,7 @@ mod tests {
         search.update_pattern("firefox");
         let results = search.results(10);
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, "firefox");
+        assert_eq!(results[0].0.id, "firefox");
     }
 
     #[test]
@@ -99,7 +104,7 @@ mod tests {
         search.set_items(make_entries());
         search.update_pattern("ffx");
         let results = search.results(10);
-        assert!(results.iter().any(|e| e.id == "firefox"));
+        assert!(results.iter().any(|e| e.0.id == "firefox"));
     }
 
     #[test]

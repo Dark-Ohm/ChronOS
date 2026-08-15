@@ -2,18 +2,28 @@
 //!
 //! Redesigned per `docs/design/Chronos-OSD-Launcher.dc.html` (T261):
 //! centered 720px card on a gradient backdrop, with header, search row,
-//! scrollable result list, and a static footer (luau badge + reload dot).
+//! scrollable result list, and a footer (luau badge + reload dot).
+//!
+//! T275 (волна 1): the search field is now a real `gpui-component` `Input`
+//! bound to an `InputState` — caret, cursor movement, selection, IME, paste,
+//! ctrl+w all come from the component (no hand-rolled caret). List navigation
+//! (up/down/tab/enter/escape) stays on the launcher; text editing is delegated
+//! to the `Input`. Results are ranked by frecency (T275 Часть C) and launching
+//! records frecency. Right-click on a row opens a Pin/Unpin menu (T275 Часть D).
 
 use gpui::{
-    self, App, Focusable, ImageSource, Render, ScrollHandle, SharedString, Window, div, img,
-    linear_color_stop, linear_gradient, prelude::*, px, svg,
+    self, App, Bounds, Entity, ImageSource, MouseButton, Render, ScrollHandle, SharedString, Size,
+    Subscription, Window, div, img, linear_color_stop, linear_gradient, prelude::*, px, svg,
 };
 
+use chronos_services::applications::frecency;
 use chronos_services::{AppEntry, Service};
 use chronos_ui::{Theme, WindowRootExt};
+use gpui_component::input::{Input, InputEvent, InputState};
 
 use crate::icon_resolution::resolve_icon;
 use crate::launcher::launch::launch;
+use crate::launcher::pin_menu;
 use crate::launcher::search::FuzzySearch;
 use crate::state;
 
@@ -27,29 +37,46 @@ const MAX_RESULTS: usize = 200;
 /// Centered overlay view showing fuzzy search results over desktop entries.
 pub struct LauncherView {
     search: FuzzySearch,
+    /// Real editable text buffer (replaces the old `String` pattern).
+    input: Entity<InputState>,
+    /// Mirror of the input text, updated on `InputEvent::Change`.
     pattern: String,
     selected: usize,
     results: Vec<AppEntry>,
-    focus: gpui::FocusHandle,
     scroll: ScrollHandle,
+    /// Subscription to `InputState` change events (drives re-search).
+    _input_sub: Subscription,
 }
 
 impl LauncherView {
     /// Build a launcher view seeded with the current desktop entries from the
-    /// applications service.
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    /// applications service and the live `InputState` created by the opener.
+    pub fn new(cx: &mut Context<Self>, input: Entity<InputState>) -> Self {
         let svc = state::AppState::applications(cx);
         let entries = svc.get().entries;
         let mut search = FuzzySearch::new();
         search.set_items(entries);
 
+        let pattern = input.read(cx).text().to_string();
+
+        let input_for_sub = input.clone();
+        let sub = cx.subscribe(&input, move |this: &mut Self, _state, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) {
+                this.pattern = input_for_sub.read(cx).text().to_string();
+                this.selected = 0;
+                this.refresh_results();
+                cx.notify();
+            }
+        });
+
         let mut view = Self {
             search,
-            pattern: String::new(),
+            input,
+            pattern,
             selected: 0,
             results: Vec::new(),
-            focus: cx.focus_handle(),
             scroll: ScrollHandle::new(),
+            _input_sub: sub,
         };
         view.refresh_results();
 
@@ -64,19 +91,24 @@ impl LauncherView {
         view
     }
 
-    /// Focus the launcher's input field.
+    /// Focus the launcher's input field (the component `InputState`).
     pub fn focus_input(&self, window: &mut Window, cx: &mut App) {
-        self.focus.focus(window, cx);
+        self.input
+            .update(cx, |input, cx| input.focus(window, cx));
     }
 
     fn refresh_results(&mut self) {
         self.search.update_pattern(&self.pattern);
-        self.results = self
-            .search
-            .results(MAX_RESULTS)
-            .into_iter()
-            .cloned()
-            .collect();
+        // `results()` returns `(AppEntry, nucleo_score)`; the score becomes the
+        // primary ranking key inside `frecency::rank` for typed queries.
+        let raw: Vec<(AppEntry, f32)> = self.search.results(MAX_RESULTS);
+
+        // T275 Часть C: rank by frecency. Empty query -> frecency primary;
+        // typed query -> nucleo relevance primary, frecency secondary.
+        let data = frecency::cached();
+        let now = frecency::now();
+        self.results = frecency::rank(raw, &self.pattern, &data, now);
+
         if self.selected >= self.results.len() {
             self.selected = self.results.len().saturating_sub(1);
         }
@@ -95,6 +127,8 @@ impl LauncherView {
             }
             "enter" => {
                 if let Some(entry) = self.results.get(self.selected).cloned() {
+                    // T275 Часть C: record the launch before firing it.
+                    frecency::record_launch(&entry.id);
                     if let Err(err) = launch(&entry.exec) {
                         tracing::error!("Failed to launch {}: {:#}", entry.name, err);
                     }
@@ -115,25 +149,11 @@ impl LauncherView {
                     window.refresh();
                 }
             }
-            "backspace" => {
-                self.pattern.pop();
-                self.selected = 0;
-                self.refresh_results();
-                window.refresh();
-            }
-            _ => {
-                if let Some(ch) = event.keystroke.key_char.as_ref() {
-                    if !event.keystroke.modifiers.alt
-                        && !event.keystroke.modifiers.platform
-                        && !event.keystroke.modifiers.control
-                    {
-                        self.pattern.push_str(ch);
-                        self.selected = 0;
-                        self.refresh_results();
-                        window.refresh();
-                    }
-                }
-            }
+            // All text editing (letters, backspace, ctrl+w, home/end, paste,
+            // cursor movement) is owned by the component `Input`; the launcher
+            // no longer touches the buffer. The raw keydown still bubbles here
+            // but we intentionally do nothing for those keys.
+            _ => {}
         }
     }
 }
@@ -142,9 +162,7 @@ impl Render for LauncherView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::global(cx);
 
-        let pattern: SharedString = self.pattern.clone().into();
         let selected = self.selected;
-        let has_pattern = !self.pattern.is_empty();
         let is_empty = self.results.is_empty();
         let results: Vec<(usize, SharedString, AppEntry)> = self
             .results
@@ -154,7 +172,6 @@ impl Render for LauncherView {
             .collect();
 
         div()
-            .track_focus(&self.focus)
             .window_font(theme)
             .size_full()
             .bg(theme.bg.tertiary)
@@ -178,7 +195,7 @@ impl Render for LauncherView {
                         linear_color_stop(theme.transparent, 0.6),
                     )),
             )
-            .child(self.render_card(theme, pattern, selected, has_pattern, is_empty, results))
+            .child(self.render_card(theme, selected, is_empty, results))
             .on_key_down(cx.listener(|this, event, window, cx| this.handle_key(event, window, cx)))
     }
 }
@@ -187,9 +204,7 @@ impl LauncherView {
     fn render_card(
         &self,
         theme: &Theme,
-        pattern: SharedString,
         selected: usize,
-        has_pattern: bool,
         is_empty: bool,
         results: Vec<(usize, SharedString, AppEntry)>,
     ) -> impl IntoElement {
@@ -208,7 +223,7 @@ impl LauncherView {
             .flex()
             .flex_col()
             .child(self.render_header(theme))
-            .child(self.render_search(theme, pattern, has_pattern))
+            .child(self.render_search(theme))
             .child(self.render_results(theme, selected, is_empty, results))
             .child(self.render_footer(theme))
     }
@@ -275,12 +290,7 @@ impl LauncherView {
             )
     }
 
-    fn render_search(
-        &self,
-        theme: &Theme,
-        pattern: SharedString,
-        has_pattern: bool,
-    ) -> impl IntoElement {
+    fn render_search(&self, theme: &Theme) -> impl IntoElement {
         div()
             .flex()
             .items_center()
@@ -296,32 +306,21 @@ impl LauncherView {
                     .size(px(18.))
                     .text_color(theme.text.muted),
             )
-            // Pattern display (fake input, matches current architecture).
+            // Real editable field: gpui-component `Input` bound to `input`.
+            // `appearance(false)` lets it blend into the launcher row (no extra
+            // box); the component owns the caret, selection, IME and editing.
             .child(
                 div()
                     .flex_1()
-                    .text_lg()
-                    .font_weight(gpui::FontWeight::MEDIUM)
-                    .text_color(theme.text.primary)
-                    .child(if has_pattern {
-                        div().child(pattern)
-                    } else {
-                        div().text_color(theme.text.faint).child("Search applications, commands, files…")
-                    }),
+                    .min_w(px(0.))
+                    .child(
+                        Input::new(&self.input)
+                            .appearance(false)
+                            .cleanable(true)
+                            .text_color(theme.text.primary)
+                            .text_size(px(17.)),
+                    ),
             )
-            // Clear button (visible only when pattern is non-empty).
-            .when(has_pattern, |el| {
-                el.child(
-                    div()
-                        .size(px(24.))
-                        .rounded(px(6.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .text_color(theme.text.faint)
-                        .child(svg().path("icons/x.svg").size(px(14.))),
-                )
-            })
     }
 
     fn render_results(
@@ -348,6 +347,7 @@ impl LauncherView {
             .children(results.into_iter().map(|(i, name, entry)| {
                 let is_selected = i == selected;
                 let entry_for_click = entry.clone();
+                let entry_for_menu = entry.clone();
                 let icon_el = resolve_app_icon(&entry, theme);
 
                 div()
@@ -365,6 +365,20 @@ impl LauncherView {
                     .when(!is_selected, |el| {
                         el.hover(|s| s.bg(theme.interactive.hover))
                     })
+                    // T275 Часть D: right-click a result row to pin/unpin it.
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        {
+                            let menu_id = entry_for_menu.id.clone();
+                            move |event, window, cx| {
+                                let anchor = Bounds::new(
+                                    event.position,
+                                    Size::new(px(220.), px(34.)),
+                                );
+                                pin_menu::open(cx, anchor, window.window_handle(), menu_id.clone());
+                            }
+                        },
+                    )
                     // Accent bar on the left of the selected row.
                     .when(is_selected, |el| {
                         el.child(
@@ -406,6 +420,10 @@ impl LauncherView {
                             .child(name),
                     )
                     .on_click(move |_event, window, cx: &mut App| {
+                        // T275 Часть C: record the launch on click too. Use the
+                        // already-cloned entry so the closure owns its data and
+                        // `self` does not escape the `render` method body.
+                        frecency::record_launch(&entry_for_click.id);
                         if let Err(err) = launch(&entry_for_click.exec) {
                             tracing::error!(
                                 "Failed to launch {}: {:#}",
@@ -441,26 +459,10 @@ impl LauncherView {
             .border_t_1()
             .border_color(theme.border.subtle)
             .bg(theme.bg.tertiary)
-            // Tune button (static — fine-tune panel is out of T261 scope).
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(7.))
-                    .px(px(11.))
-                    .h(px(30.))
-                    .rounded(px(7.))
-                    .border_1()
-                    .border_color(theme.border.subtle)
-                    .text_color(theme.text.muted)
-                    .child(
-                        div()
-                            .font_family(theme.font_mono)
-                            .text_size(theme.font_sizes.sm)
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child("tune"),
-                    ),
-            )
+            // NOTE (T275 Часть B): the old "tune" button was removed — it had
+            // no `on_click` and only pretended to be a settings control, which
+            // violates the T246 "no control without a backend" rule. It returns
+            // only with a real launcher settings panel.
             .child(div().flex_1())
             // Luau plugin badge.
             .child(
@@ -495,12 +497,6 @@ impl LauncherView {
                             .child("live"),
                     ),
             )
-    }
-}
-
-impl Focusable for LauncherView {
-    fn focus_handle(&self, _cx: &App) -> gpui::FocusHandle {
-        self.focus.clone()
     }
 }
 

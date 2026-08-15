@@ -19,6 +19,13 @@ use crate::Service;
 use crate::ServiceStatus;
 pub use types::{AppEntry, ApplicationsCommand, ApplicationsState, strip_field_codes};
 
+// `pub mod` so downstream crates (the app) can reach
+// `chronos_services::applications::frecency::*` directly (T275).
+pub mod frecency;
+pub use frecency::{
+    cached, flush, now, rank, record_launch, score, FrecencyData, FrecencyEntry,
+};
+
 /// Return `true` when an `AppEntry` represents a playable game (not the Steam client).
 ///
 /// Rules (T184/T187):

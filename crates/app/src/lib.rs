@@ -13,6 +13,14 @@ pub mod icon_resolution;
 pub mod launcher;
 pub mod monitor;
 pub mod motion;
+// Lib-side twin of bin `mod dock` (main.rs): the launcher (lib) opens a
+// right-click pin/unpin PopupMenu that reads/writes the dock config and uses
+// the shared click-catcher. Same twin pattern as `desktop_terminal` /
+// `project_switcher` (see comments above) — declared in both the lib and the
+// bin so `crate::dock` / `crate::popup_click_catcher` resolve in either crate.
+pub(crate) mod dock;
+// Lib-side twin of bin `mod popup_click_catcher` (main.rs).
+pub(crate) mod popup_click_catcher;
 pub mod notifications;
 // Lib-side twin of bin `mod project_switcher` (main.rs) — the left
 // workspace tabs (lib) read `ProjectsConfig` and call domain actions from
