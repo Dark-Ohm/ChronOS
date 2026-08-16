@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>ChronOS · Context Menu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* ChronOS registered palette — verbatim */
+    --bg:#181825;
+    --surface:#1e1e2e;
+    --surface1:#1e1e2e;
+    --surface2:#45475a;
+    --fg:#cdd6f4;
+    --muted:rgba(205,214,244,0.58);
+    --faint:rgba(205,214,244,0.34);
+    --border:#45475a;
+    --border-soft:rgba(205,214,244,0.09);
+    --hairline:rgba(205,214,244,0.07);
+    --accent:#007acc;          /* Blue — primary accent, used sparingly */
+    --accent-2:#cba6f7;        /* Mauve — secondary accent */
+    --accent-press:#007acc;
+    --sel:rgba(0,122,204,0.14);
+    --hover:rgba(205,214,244,0.07);
+    --shadow:0 1px 2px rgba(0,0,0,0.30), 0 10px 40px rgba(0,0,0,0.45);
+    --r:8px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--fg);
+    font-family:'Inter',system-ui,-apple-system,'Segoe UI','Helvetica Neue',Arial,sans-serif;
+    font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  .mono{font-family:'JetBrains Mono',Consolas,'Liberation Mono',Menlo,Courier,monospace}
+  svg{width:16px;height:16px;flex:none;display:block}
+  button{font:inherit;color:inherit;background:none;border:none;padding:0;margin:0;text-align:left;cursor:pointer}
+  :focus{outline:none}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:7px}
+
+  /* ---- compositor backdrop (what the menu floats over) ---- */
+  .stage{
+    position:fixed;inset:0;
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(0,122,204,0.06), transparent 60%),
+      repeating-linear-gradient(0deg, rgba(205,214,244,0.016) 0 1px, transparent 1px 3px),
+      var(--bg);
+    display:flex;flex-direction:column;
+  }
+  .hint{
+    flex:none;display:flex;align-items:center;gap:10px;padding:16px 22px;
+    font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--faint);
+    letter-spacing:.04em;
+  }
+  .hint .kbd{
+    font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--fg);
+    border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;
+    padding:1px 6px;background:var(--bg);
+  }
+  .hint .spacer{flex:1}
+
+  /* demo targets — right-clickable surfaces */
+  .targets{
+    flex:1;display:grid;grid-template-columns:repeat(auto-fill, minmax(190px,1fr));gap:16px;
+    padding:8px 22px 22px;align-content:start;
+  }
+  .target{
+    background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    padding:16px;display:flex;flex-direction:column;gap:11px;align-items:flex-start;
+    box-shadow:var(--shadow);transition:border-color .14s, transform .14s;
+    min-height:120px;
+  }
+  .target:hover{border-color:var(--surface2)}
+  .target:active{transform:translateY(1px)}
+  .target .t-ic{
+    width:34px;height:34px;border-radius:8px;background:var(--bg);
+    border:1px solid var(--border);display:flex;align-items:center;justify-content:center;
+    color:var(--accent);
+  }
+  .target .t-ic svg{width:19px;height:19px}
+  .target .t-name{font-size:13px;font-weight:600;color:var(--fg)}
+  .target .t-desc{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--faint);letter-spacing:.02em}
+  .target .t-tag{
+    margin-top:auto;align-self:stretch;display:flex;align-items:center;gap:6px;
+    font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--muted);
+    border-top:1px solid var(--hairline);padding-top:9px;letter-spacing:.04em;
+  }
+  .target .t-tag .dot{width:6px;height:6px;border-radius:50%;background:var(--accent-2);box-shadow:0 0 6px var(--accent-2)}
+
+  /* accent switcher (high customization — shares the launcher's live accent) */
+  .dock{
+    flex:none;display:flex;align-items:center;gap:14px;padding:11px 22px;
+    border-top:1px solid var(--border);background:var(--bg);
+  }
+  .dock .clabel{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);white-space:nowrap}
+  .swatches{display:flex;gap:7px}
+  .swatch{width:20px;height:20px;border-radius:6px;border:2px solid transparent;cursor:pointer;position:relative}
+  .swatch.on{border-color:var(--fg)}
+  .dock .cmeta{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--faint);display:flex;align-items:center;gap:7px}
+  .dock .plugin{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10px}
+  .dock .plugin .luau{color:var(--accent-2);display:inline-flex;align-items:center;gap:5px}
+  .dock .plugin .luau svg{width:13px;height:13px;color:var(--accent-2)}
+
+  /* ---- context menu ---- */
+  .ctx-menu{
+    position:fixed;min-width:230px;max-width:300px;
+    max-height:calc(100vh - 16px);overflow-y:auto;overscroll-behavior:contain;
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--r);box-shadow:var(--shadow);
+    padding:6px;display:flex;flex-direction:column;gap:2px;
+    z-index:50;animation:ctx-in .12s cubic-bezier(.2,.8,.2,1) both;
+  }
+  .ctx-menu::-webkit-scrollbar{width:6px}
+  .ctx-menu::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+  .ctx-menu::-webkit-scrollbar-track{background:transparent}
+  @keyframes ctx-in{from{opacity:0;transform:translateY(-4px) scale(.985)}to{opacity:1;transform:none}}
+  .ctx-sub{animation:ctx-sub-in .1s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes ctx-sub-in{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:none}}
+
+  .ctx-head{
+    position:sticky;top:0;z-index:1;
+    display:flex;align-items:center;gap:9px;padding:4px 10px 8px;
+    border-bottom:1px solid var(--hairline);margin-bottom:4px;
+    background:var(--surface);
+    font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);
+    letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .ctx-head svg{width:14px;height:14px;color:var(--accent);flex:none}
+
+  .ci{
+    position:relative;display:flex;align-items:center;gap:10px;
+    height:34px;padding:0 10px;border-radius:6px;cursor:pointer;color:var(--fg);
+    font-size:12.5px;white-space:nowrap;
+    transition:background .12s ease, color .12s ease;
+  }
+  /* left accent bar marks the keyboard/mouse selection */
+  .ci::before{
+    content:"";position:absolute;left:0;top:7px;bottom:7px;width:2px;
+    border-radius:0 2px 2px 0;background:var(--accent);
+    opacity:0;transform:scaleY(.5);transition:opacity .12s ease, transform .12s ease;
+  }
+  .ci:hover, .ci.nav{background:var(--hover)}
+  .ci.nav::before, .ci:hover::before{opacity:1;transform:scaleY(1)}
+  .ci .ci-ic{width:16px;height:16px;color:var(--muted);flex:none;display:flex;align-items:center;justify-content:center}
+  .ci:hover .ci-ic, .ci.nav .ci-ic{color:var(--accent)}
+  .ci .ci-ic svg{width:16px;height:16px}
+  .ci .ci-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .ci .ci-short{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--faint);letter-spacing:.04em;margin-left:16px;flex:none}
+  .ci .ci-arrow{color:var(--faint);margin-left:6px;flex:none;display:flex}
+  .ci .ci-check{width:16px;height:16px;color:var(--accent);flex:none;display:none;align-items:center;justify-content:center}
+  .ci.checked .ci-check{display:flex}
+  .ci.checked .ci-ic{display:none}
+  .ci.disabled{color:var(--faint);cursor:default}
+  .ci.disabled:hover{background:transparent}
+  .ci.disabled::before{display:none}
+  .ci.disabled .ci-ic{color:var(--faint)}
+  .csep{height:1px;margin:5px 6px;background:var(--hairline)}
+
+  /* execution toast */
+  .toast{
+    position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(8px);
+    display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:8px;
+    background:var(--bg);border:1px solid var(--accent-2);color:var(--fg);
+    font-family:'JetBrains Mono',monospace;font-size:11.5px;
+    opacity:0;pointer-events:none;transition:opacity .16s,transform .16s;z-index:60;
+    box-shadow:var(--shadow);max-width:80vw;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast svg{width:14px;height:14px;color:var(--accent-2);flex:none}
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="hint">
+      <span>right&#8209;click a target to open its context menu</span>
+      <span class="kbd">RCLICK</span>
+      <span>·</span>
+      <span class="kbd">↑</span><span class="kbd">↓</span><span>navigate</span>
+      <span class="kbd">→</span><span>submenu</span>
+      <span class="kbd">←</span><span class="kbd">ESC</span><span>back / close</span>
+      <span class="spacer"></span>
+      <span>gpui · layer&#8209;shell · luau&#8209;sandbox</span>
+    </div>
+
+    <div class="targets" id="targets">
+      <div class="target" data-menu="file" data-od-id="target-file">
+        <span class="t-ic" id="tFileIc"></span>
+        <span class="t-name">quarterly-report.pdf</span>
+        <span class="t-desc">PDF · 2.4 MB</span>
+        <span class="t-tag"><span class="dot"></span>file · rclick</span>
+      </div>
+      <div class="target" data-menu="widget" data-od-id="target-widget">
+        <span class="t-ic" id="tWidgetIc"></span>
+        <span class="t-name">Network widget</span>
+        <span class="t-desc">tray · eth0 · 54 Mb/s</span>
+        <span class="t-tag"><span class="dot"></span>widget · rclick</span>
+      </div>
+      <div class="target" data-menu="trayicon" data-od-id="target-trayicon">
+        <span class="t-ic" id="tIconIc"></span>
+        <span class="t-name">Music Player</span>
+        <span class="t-desc">tray · playing</span>
+        <span class="t-tag"><span class="dot"></span>tray icon · rclick</span>
+      </div>
+      <div class="target" data-menu="desktop" data-od-id="target-desktop">
+        <span class="t-ic" id="tDeskIc"></span>
+        <span class="t-name">Desktop</span>
+        <span class="t-desc">empty surface</span>
+        <span class="t-tag"><span class="dot"></span>background · rclick</span>
+      </div>
+      <div class="target" data-menu="steam" data-od-id="target-steam">
+        <span class="t-ic" id="tSteamIc"></span>
+        <span class="t-name">Steam</span>
+        <span class="t-desc">tray · online · 342 friends</span>
+        <span class="t-tag"><span class="dot"></span>3rd-party · rclick</span>
+      </div>
+      <div class="target" data-menu="discord" data-od-id="target-discord">
+        <span class="t-ic" id="tDiscordIc"></span>
+        <span class="t-name">Discord</span>
+        <span class="t-desc">tray · 3 notifications</span>
+        <span class="t-tag"><span class="dot"></span>3rd-party · rclick</span>
+      </div>
+      <div class="target" data-menu="podman" data-od-id="target-podman">
+        <span class="t-ic" id="tPodmanIc"></span>
+        <span class="t-name">Podman</span>
+        <span class="t-desc">tray · 4 containers</span>
+        <span class="t-tag"><span class="dot"></span>3rd-party · rclick</span>
+      </div>
+      <div class="target" data-menu="browser" data-od-id="target-browser">
+        <span class="t-ic" id="tBrowserIc"></span>
+        <span class="t-name">Browser</span>
+        <span class="t-desc">tray · 7 tabs · downloading</span>
+        <span class="t-tag"><span class="dot"></span>3rd-party · rclick</span>
+      </div>
+    </div>
+
+    <div class="dock" data-od-id="accent-dock">
+      <span class="clabel">Accent</span>
+      <div class="swatches" id="swatches"></div>
+      <span class="cmeta"><span id="accentName">Blue · #007acc</span></span>
+      <span class="plugin">
+        <span class="luau"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8 L9 16 M9 8 L5 16 M13 8h4M15 8v8"/></svg>luau</span>
+        plugin · hot&#8209;reload
+      </span>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>
+    <span id="toastText">done</span>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---- monoline icon paths (currentColor, stroke 1.6) ---- */
+  var ICONS = {
+    files:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+    network:'<path d="M12 3a9 9 0 0 1 9 9 M12 3a9 9 0 0 0-9 9 M3 12a9 9 0 0 0 9 9 M12 3v9l6 3"/><circle cx="12" cy="12" r="2"/>',
+    music:'<path d="M9 18V6l10-2v12"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="16" r="2"/>',
+    wallpaper:'<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M5 18l5-5 4 4 3-3 2 2"/>',
+    open:'<path d="M7 17 L17 7 M9 7h8v8"/>',
+    app:'<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',
+    cut:'<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M8 8 L20 16 M8 16 L20 8"/>',
+    copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+    path:'<path d="M6 8a3 3 0 0 1 6 0v7a2 2 0 0 1-4 0V8"/>',
+    rename:'<path d="M4 20 L5 15 L15 5 L19 9 L9 19 Z"/><path d="M14 6 L18 10"/>',
+    pin:'<circle cx="12" cy="6" r="2"/><path d="M12 8 L12 21"/>',
+    archive:'<path d="M3 7 L12 3 L21 7 V17 L12 21 L3 17 Z"/><path d="M3 7 L12 11 L21 7 M12 11 V21"/>',
+    trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+    info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+    settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+    reload:'<path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/>',
+    power:'<path d="M12 4v8M7 7a8 8 0 1 0 10 0"/>',
+    code:'<path d="M9 8l-4 4 4 4M15 8l4 4-4 4"/>',
+    term:'<path d="M5 8l4 4-4 4M11 16h7"/>',
+    logs:'<rect x="5" y="5" width="14" height="14" rx="2"/><path d="M8 9h8M8 13h6M8 17h4"/>',
+    unload:'<path d="M12 3v12M8 11l4 4 4-4M5 21h14"/>',
+    remove:'<path d="M5 12h14"/>',
+    diag:'<path d="M3 12h4l2-6 4 12 2-6h6"/>',
+    focus:'<path d="M4 4h16v16H4z M4 9h16 M9 4v16"/>',
+    launcher:'<path d="M5 8l4 4-4 4M11 16h7"/>',
+    search:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+    play:'<path d="M8 5v14l11-7z"/>',
+    pause:'<path d="M8 5v14M16 5v14"/>',
+    next:'<path d="M6 6l8 6-8 6z M18 6v12"/>',
+    image:'<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M5 18l5-5 4 4 3-3 2 2"/>',
+    dots:'<circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/>',
+    check:'<path d="M5 12l4 4 10-10"/>',
+    /* third-party tray app sigils + menu glyphs */
+    steam:'<circle cx="9" cy="8" r="5"/><path d="M9 3v10M12.5 14a3.5 3.5 0 1 0 1.2 6.8l2.3 2.4 1.6-1.5-2.2-2.4A3.5 3.5 0 0 0 12.5 14Z"/>',
+    discord:'<path d="M7 8a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3l-1.5-2M7 8v5a3 3 0 0 0 3 3l1.5-2"/><circle cx="9.5" cy="11.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="11.5" r="1.1" fill="currentColor" stroke="none"/>',
+    podman:'<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M6 11h12M11 6v12"/>',
+    browser:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M6 6.5h.01M9 6.5h.01"/>',
+    friends:'<circle cx="9" cy="9" r="3"/><path d="M3 19a6 6 0 0 1 12 0"/><path d="M16 7a3 3 0 0 1 0 6M15 19a6 6 0 0 1 6-6"/>',
+    bell:'<path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+    container:'<path d="M4 8l8-4 8 4-8 4-8-4Z"/><path d="M4 8v8l8 4 8-4V8M12 12v8"/>',
+    download:'<path d="M12 4v10M8 11l4 3 4-3M5 20h14"/>',
+    mute:'<path d="M5 9v6h3l5 4V5L8 9H5Z"/><path d="M17 9l4 6M21 9l-4 6"/>',
+    globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
+    plug:'<path d="M9 3v6M15 3v6M7 9h10v4a5 5 0 0 1-10 0V9Z M12 18v3"/>',
+    newwin:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 4v6M12 8a3 3 0 0 0-3-3M14.5 12H20M17 9.5l3 2.5-3 2.5"/>',
+    sync:'<path d="M4 12a8 8 0 0 1 13-6.2M20 12a8 8 0 0 1-13 6.2M17 3v3h-3M7 21v-3h3"/>',
+    compose:'<path d="M5 19h14M6 15l9-9 3 3-9 9H7v-3Z"/>',
+    gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'
+  };
+  function svg(p){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>';}
+
+  /* ---- target icons ---- */
+  document.getElementById('tFileIc').innerHTML   = svg(ICONS.files);
+  document.getElementById('tWidgetIc').innerHTML = svg(ICONS.network);
+  document.getElementById('tIconIc').innerHTML   = svg(ICONS.music);
+  document.getElementById('tDeskIc').innerHTML   = svg(ICONS.wallpaper);
+  document.getElementById('tSteamIc').innerHTML   = svg(ICONS.steam);
+  document.getElementById('tDiscordIc').innerHTML = svg(ICONS.discord);
+  document.getElementById('tPodmanIc').innerHTML  = svg(ICONS.podman);
+  document.getElementById('tBrowserIc').innerHTML = svg(ICONS.browser);
+
+  /* ---- menu models (real desktop surface, honest labels) ---- */
+  var MENUS = {
+    file: {
+      head:'quarterly-report.pdf', headIcon:'files',
+      items:[
+        {label:'Open', icon:'open', shortcut:'↵'},
+        {label:'Open With', icon:'app', sub:[
+          {label:'Code Editor', icon:'code'},
+          {label:'Browser', icon:'browser'},
+          {label:'Image Viewer', icon:'image'},
+          {label:'Other…', icon:'dots'}
+        ]},
+        {sep:true},
+        {label:'Cut', icon:'cut', shortcut:'⌃X'},
+        {label:'Copy', icon:'copy', shortcut:'⌃C'},
+        {label:'Copy Path', icon:'path', shortcut:'⌃⇧C'},
+        {label:'Paste', icon:'rename', shortcut:'⌃V', disabled:true},
+        {label:'Rename', icon:'rename', shortcut:'F2'},
+        {sep:true},
+        {label:'Pin to Dock', icon:'pin', check:true, checked:false},
+        {label:'Add to Archive', icon:'archive'},
+        {sep:true},
+        {label:'Delete', icon:'trash', shortcut:'⌦'},
+        {label:'Properties', icon:'info', shortcut:'⌃I'}
+      ]
+    },
+    widget: {
+      head:'Network widget · eth0', headIcon:'network',
+      items:[
+        {label:'Show Settings', icon:'settings'},
+        {label:'Reload Widget', icon:'reload', shortcut:'⌃R'},
+        {label:'Autostart', icon:'power', check:true, checked:true},
+        {sep:true},
+        {label:'Edit Script', icon:'code', sub:[
+          {label:'network.luau', icon:'code'},
+          {label:'Open in Editor', icon:'code'}
+        ]},
+        {label:'Plugin Console', icon:'term', sub:[
+          {label:'Logs', icon:'logs'},
+          {label:'Reload', icon:'reload'},
+          {label:'Unload', icon:'unload'}
+        ]},
+        {sep:true},
+        {label:'Remove from Tray', icon:'remove', disabled:true},
+        {label:'Diagnostics', icon:'diag'}
+      ]
+    },
+    trayicon: {
+      head:'Music Player', headIcon:'music',
+      items:[
+        {label:'Focus Window', icon:'focus', shortcut:'↵'},
+        {label:'Show in Launcher', icon:'launcher'},
+        {sep:true},
+        {label:'Play / Pause', icon:'pause', shortcut:'⌃P'},
+        {label:'Next Track', icon:'next', shortcut:'⌃N'},
+        {sep:true},
+        {label:'Quit', icon:'power', shortcut:'⌃Q'}
+      ]
+    },
+    desktop: {
+      head:'Desktop', headIcon:'wallpaper',
+      items:[
+        {label:'Launcher', icon:'launcher', shortcut:'↵'},
+        {label:'Terminal', icon:'term', shortcut:'⌃↵'},
+        {label:'Change Wallpaper', icon:'wallpaper'},
+        {sep:true},
+        {label:'Reload Shell', icon:'reload', shortcut:'⌃⇧R'},
+        {label:'Diagnostics', icon:'diag'}
+      ]
+    },
+    steam: {
+      head:'Steam', headIcon:'steam',
+      items:[
+        {label:'Open Library', icon:'app', shortcut:'↵'},
+        {label:'Friends', icon:'friends', sub:[
+          {label:'Friends & Chat', icon:'friends', check:true, checked:true},
+          {label:'View Friends List', icon:'friends'},
+          {label:'Add a Friend', icon:'friends'}
+        ]},
+        {label:'Store', icon:'globe'},
+        {label:'Screenshot Manager', icon:'image'},
+        {sep:true},
+        {label:'Settings', icon:'gear'},
+        {label:'Check for Updates', icon:'sync'},
+        {sep:true},
+        {label:'Big Picture Mode', icon:'newwin'},
+        {label:'Quit Steam', icon:'power', shortcut:'⌃Q'}
+      ]
+    },
+    discord: {
+      head:'Discord', headIcon:'discord',
+      items:[
+        {label:'Open Discord', icon:'app', shortcut:'↵'},
+        {label:'Notifications', icon:'bell', sub:[
+          {label:'Mute All', icon:'mute', check:true, checked:false},
+          {label:'Open Inbox', icon:'bell'},
+          {label:'Mark All Read', icon:'bell'}
+        ]},
+        {label:'Set Status', icon:'friends', sub:[
+          {label:'Online', icon:'friends', check:true, checked:true, radio:true},
+          {label:'Idle', icon:'friends', check:true, checked:false, radio:true},
+          {label:'Do Not Disturb', icon:'mute', check:true, checked:false, radio:true},
+          {label:'Invisible', icon:'friends', check:true, checked:false, radio:true}
+        ]},
+        {sep:true},
+        {label:'User Settings', icon:'gear'},
+        {label:'Streamer Mode', icon:'mute', check:true, checked:false},
+        {sep:true},
+        {label:'Quit Discord', icon:'power', shortcut:'⌃Q'}
+      ]
+    },
+    podman: {
+      head:'Podman', headIcon:'podman',
+      items:[
+        {label:'Open Console', icon:'term', shortcut:'↵'},
+        {label:'Containers', icon:'container', sub:[
+          {label:'List Running', icon:'container'},
+          {label:'Start All', icon:'play'},
+          {label:'Stop All', icon:'pause'},
+          {label:'Prune', icon:'trash'}
+        ]},
+        {label:'Images', icon:'image'},
+        {label:'Compose', icon:'sync', sub:[
+          {label:'Up', icon:'play'},
+          {label:'Down', icon:'pause'}
+        ]},
+        {sep:true},
+        {label:'Preferences', icon:'gear'},
+        {sep:true},
+        {label:'Quit Podman', icon:'power', shortcut:'⌃Q'}
+      ]
+    },
+    browser: {
+      head:'Browser', headIcon:'browser',
+      items:[
+        {label:'Open Browser', icon:'globe', shortcut:'↵'},
+        {label:'New Tab', icon:'compose', shortcut:'⌃T'},
+        {label:'New Window', icon:'newwin'},
+        {label:'Downloads', icon:'download'},
+        {sep:true},
+        {label:'Mute Tab', icon:'mute', check:true, checked:false},
+        {label:'Extensions', icon:'plug'},
+        {sep:true},
+        {label:'Quit Browser', icon:'power', shortcut:'⌃Q'}
+      ]
+    }
+  };
+
+  /* ---- state ---- */
+  var stack = [];      // open menus: {el, items, parentIdx}
+  var navIdx = 0;      // selected index within the top menu
+  var toastTimer = null;
+
+  var toast = document.getElementById('toast');
+  var toastText = document.getElementById('toastText');
+
+  /* ---- build a menu element ---- */
+  function buildMenu(model, parentIdx){
+    var el = document.createElement('div');
+    el.className = 'ctx-menu' + (parentIdx !== -1 ? ' ctx-sub' : '');
+    if(parentIdx === -1) el.setAttribute('data-od-id','context-menu');
+    el.setAttribute('role','menu');
+    if(model.head) el.setAttribute('aria-label', model.head);
+    if(model.head){
+      var h = document.createElement('div');
+      h.className = 'ctx-head';
+      h.innerHTML = svg(ICONS[model.headIcon]||ICONS.info) + '<span>'+escapeHtml(model.head)+'</span>';
+      el.appendChild(h);
+    }
+    model.items.forEach(function(it, i){
+      if(it.sep){ var s=document.createElement('div'); s.className='csep'; el.appendChild(s); return; }
+      var row = document.createElement('div');
+      row.className = 'ci'+(it.disabled?' disabled':'')+(it.checked?' checked':'');
+      row.setAttribute('role','menuitem');
+      if(it.sub) row.setAttribute('aria-haspopup','true');
+      row.setAttribute('tabindex','-1');
+      if(it.disabled) row.setAttribute('aria-disabled','true');
+      if(it.checked) row.setAttribute('aria-checked','true');
+      var ic = it.checked ? ICONS.check : (ICONS[it.icon]||'');
+      var right = '';
+      if(it.sub) right = '<span class="ci-arrow">'+svg('<path d="M9 6l6 6-6 6"/>')+'</span>';
+      else if(it.short) right = '<span class="ci-short">'+escapeHtml(it.short)+'</span>';
+      row.innerHTML =
+        '<span class="ci-check">'+svg(ICONS.check)+'</span>'+
+        '<span class="ci-ic">'+svg(ic)+'</span>'+
+        '<span class="ci-label">'+escapeHtml(it.label)+'</span>'+
+        right;
+      row._item = it; row._idx = i;
+      row._ctx = model.head || '';
+      el.appendChild(row);
+    });
+    return el;
+  }
+
+  function escapeHtml(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+  /* ---- open / close ---- */
+  function closeAll(){
+    stack.forEach(function(m){ if(m.el && m.el.parentNode) m.el.parentNode.removeChild(m.el); });
+    stack = []; navIdx = 0;
+  }
+
+  function positionRoot(el, x, y){
+    var w = el.offsetWidth, h = el.offsetHeight;
+    var left = x, top = y;
+    if(left + w > window.innerWidth - 8) left = window.innerWidth - w - 8;
+    if(top + h > window.innerHeight - 8) top = window.innerHeight - h - 8;
+    if(left < 8) left = 8;
+    if(top < 8) top = 8;
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+  }
+
+  function positionSub(el, parentRect){
+    var w = el.offsetWidth, h = el.offsetHeight;
+    var left = parentRect.right + 4;
+    if(left + w > window.innerWidth - 8) left = parentRect.left - w - 4;
+    var top = parentRect.top;
+    if(top + h > window.innerHeight - 8) top = window.innerHeight - h - 8;
+    if(top < 8) top = 8;
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+  }
+
+  function openRoot(key, x, y){
+    closeAll();
+    var model = MENUS[key]; if(!model) return;
+    var el = buildMenu(model, -1);
+    document.body.appendChild(el);
+    positionRoot(el, x, y);
+    wireMenu(el, model, -1);
+    stack.push({el:el, items:model.items, parentIdx:-1});
+    navIdx = firstSelectable(model.items, 0);
+    paintNav();
+  }
+
+  function openSub(rowEl, parentMenuEl, parentItems, parentIdx){
+    // only one sub-level: drop any existing sub
+    while(stack.length > 1){ var m = stack.pop(); if(m.el.parentNode) m.el.parentNode.removeChild(m.el); }
+    var it = parentItems[parentIdx];
+    if(!it || !it.sub) return;
+    var sub = buildMenu({items:it.sub}, parentIdx);
+    document.body.appendChild(sub);
+    positionSub(sub, rowEl.getBoundingClientRect());
+    wireMenu(sub, {items:it.sub}, parentIdx);
+    stack.push({el:sub, items:it.sub, parentIdx:parentIdx});
+    navIdx = firstSelectable(it.sub, 0);
+    paintNav();
+  }
+
+  function closeSub(){
+    while(stack.length > 1){ var m = stack.pop(); if(m.el.parentNode) m.el.parentNode.removeChild(m.el); }
+    navIdx = stack.length ? stack[stack.length-1].parentIdx : 0;
+    paintNav();
+  }
+
+  /* ---- navigation ---- */
+  function firstSelectable(items, from){
+    for(var i=from; i<items.length; i++){ if(!items[i].sep && !items[i].disabled) return i; }
+    for(var j=from-1; j>=0; j--){ if(!items[j].sep && !items[j].disabled) return j; }
+    return from;
+  }
+  function step(items, dir){
+    var i = navIdx;
+    do { i += dir; } while(i>=0 && i<items.length && (items[i].sep || items[i].disabled));
+    if(i<0 || i>=items.length) return navIdx;
+    return i;
+  }
+  function paintNav(){
+    if(!stack.length) return;
+    var top = stack[stack.length-1];
+    var rows = top.el.querySelectorAll('.ci');
+    rows.forEach(function(r,i){
+      var on = i===navIdx;
+      r.classList.toggle('nav', on);
+      if(on && r.scrollIntoView) r.scrollIntoView({block:'nearest'});
+    });
+  }
+
+  /* ---- wire a menu's rows ---- */
+  function wireMenu(el, model, parentIdx){
+    var rows = el.querySelectorAll('.ci');
+    rows.forEach(function(row){
+      var it = row._item;
+      if(it.disabled) return;
+      row.addEventListener('mouseenter', function(){
+        navIdx = row._idx;
+        paintNav();
+        if(it.sub){ openSub(row, el, model.items, row._idx); }
+        else if(stack.length > 1){ closeSub(); }
+      });
+      row.addEventListener('click', function(e){
+        e.stopPropagation();
+        if(it.sub){ openSub(row, el, model.items, row._idx); }
+        else { exec(it); }
+      });
+    });
+  }
+
+  /* ---- execute ---- */
+  function exec(it){
+    if(it.check){
+      it.checked = !it.checked;
+      var verb = it.checked ? 'enabled' : 'disabled';
+      var label = it.label.toLowerCase();
+      if(label==='pin to dock') verb = it.checked ? 'Pinned to dock' : 'Unpinned';
+      else if(label==='autostart') verb = it.checked ? 'Autostart on' : 'Autostart off';
+      else if(label==='friends & chat') verb = it.checked ? 'Friends & Chat on' : 'Friends & Chat off';
+      else if(label==='mute all') verb = it.checked ? 'Muted all notifications' : 'Unmuted notifications';
+      else if(label==='streamer mode') verb = it.checked ? 'Streamer mode on' : 'Streamer mode off';
+      else if(label==='mute tab') verb = it.checked ? 'Tab muted' : 'Tab unmuted';
+      else if(label.indexOf('do not disturb')===0) verb = it.checked ? 'Status: Do Not Disturb' : 'Status cleared';
+      else if(label==='online'||label==='idle'||label==='invisible') verb = 'Status: '+it.label;
+      toastMsg(verb.charAt(0).toUpperCase()+verb.slice(1));
+      // sync the check mark on the row
+      var top = stack[stack.length-1];
+      var rows = top.el.querySelectorAll('.ci');
+      rows.forEach(function(r){ if(r._item===it){ r.classList.toggle('checked', it.checked); r.setAttribute('aria-checked', it.checked?'true':'false'); } });
+      if(it.radio){
+        // uncheck sibling radio items in the same menu
+        rows.forEach(function(r){ if(r._item!==it && r._item.radio){ r._item.checked=false; r.classList.remove('checked'); r.setAttribute('aria-checked','false'); } });
+      }
+      return; // keep menu open for checkables
+    }
+    var msg = actionMsg(it);
+    toastMsg(msg);
+    closeAll();
+  }
+
+  function actionMsg(it){
+    var l = it.label.toLowerCase();
+    if(l.indexOf('open')===0) return 'Opening '+(it._ctx||'');
+    if(l==='copy path') return 'Copied path';
+    if(l==='copy') return 'Copied to clipboard';
+    if(l==='cut') return 'Cut to clipboard';
+    if(l==='rename') return 'Renaming…';
+    if(l==='delete') return 'Deleted';
+    if(l==='properties') return 'Opening properties';
+    if(l==='show settings') return 'Opening settings';
+    if(l==='reload widget') return 'Reloaded widget (hot-reload)';
+    if(l==='edit script') return 'Opening script';
+    if(l==='remove from tray') return 'Removed from tray';
+    if(l==='diagnostics') return 'Running diagnostics…';
+    if(l==='focus window') return 'Focusing window';
+    if(l==='show in launcher') return 'Reveal in launcher';
+    if(l==='play / pause') return 'Play / Pause';
+    if(l==='next track') return 'Next track';
+    if(l==='quit') return 'Quit';
+    if(l==='launcher') return 'Opening launcher';
+    if(l==='terminal') return 'Opening terminal';
+    if(l==='change wallpaper') return 'Wallpaper picker';
+    if(l==='reload shell') return 'Reloading shell';
+    if(l==='logs') return 'Opening logs';
+    if(l==='unload') return 'Plugin unloaded';
+    /* third-party tray apps */
+    if(l==='open library') return 'Opening Steam library';
+    if(l==='store') return 'Opening Steam Store';
+    if(l==='screenshot manager') return 'Opening screenshots';
+    if(l==='check for updates') return 'Checking for updates…';
+    if(l==='big picture mode') return 'Entering Big Picture';
+    if(l==='quit steam') return 'Quitting Steam';
+    if(l==='open discord') return 'Opening Discord';
+    if(l==='open inbox') return 'Opening notifications';
+    if(l==='mark all read') return 'Marked all read';
+    if(l==='user settings') return 'Opening user settings';
+    if(l==='open console') return 'Opening Podman console';
+    if(l==='list running') return 'Listing containers';
+    if(l==='start all') return 'Starting all containers';
+    if(l==='stop all') return 'Stopping all containers';
+    if(l==='prune') return 'Pruning containers';
+    if(l==='images') return 'Opening image list';
+    if(l==='preferences') return 'Opening preferences';
+    if(l==='quit podman') return 'Quitting Podman';
+    if(l==='open browser') return 'Opening browser';
+    if(l==='new tab') return 'New tab';
+    if(l==='new window') return 'New window';
+    if(l==='downloads') return 'Opening downloads';
+    if(l==='extensions') return 'Opening extensions';
+    if(l==='quit browser') return 'Quitting browser';
+    if(l==='view friends list') return 'Opening friends list';
+    if(l==='add a friend') return 'Add friend dialog';
+    if(l==='compose up') return 'Compose up';
+    if(l==='compose down') return 'Compose down';
+    return it.label;
+  }
+
+  function toastMsg(t){
+    toastText.textContent = t;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toast.classList.remove('show'); }, 1200);
+  }
+
+  /* ---- global events ---- */
+  document.addEventListener('contextmenu', function(e){
+    var t = e.target.closest && e.target.closest('.target');
+    e.preventDefault();
+    openRoot(t ? t.getAttribute('data-menu') : 'desktop', e.clientX, e.clientY);
+  });
+
+  document.addEventListener('click', function(e){
+    if(!stack.length) return;
+    var inside = e.target.closest && e.target.closest('.ctx-menu');
+    if(!inside) closeAll();
+  });
+
+  document.addEventListener('keydown', function(e){
+    if(!stack.length) return;
+    var top = stack[stack.length-1];
+    if(e.key==='ArrowDown'){ e.preventDefault(); navIdx = step(top.items, 1); paintNav(); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); navIdx = step(top.items, -1); paintNav(); }
+    else if(e.key==='ArrowRight'){
+      var it = top.items[navIdx];
+      if(it && it.sub){ e.preventDefault(); var rows = top.el.querySelectorAll('.ci'); openSub(rows[navIdx], top.el, top.items, navIdx); }
+    }
+    else if(e.key==='ArrowLeft'){
+      if(stack.length > 1){ e.preventDefault(); closeSub(); }
+    }
+    else if(e.key==='Enter' || e.key===' '){
+      var it2 = top.items[navIdx];
+      if(it2 && !it2.disabled){ e.preventDefault(); if(it2.sub){ var r2 = top.el.querySelectorAll('.ci'); openSub(r2[navIdx], top.el, top.items, navIdx); } else exec(it2); }
+    }
+    else if(e.key==='Escape'){ e.preventDefault(); if(stack.length>1) closeSub(); else closeAll(); }
+  });
+
+  window.addEventListener('resize', function(){ if(stack.length) closeAll(); });
+
+  /* ---- accent switcher (high customization — live, palette-bound) ---- */
+  var ACCENTS = [
+    {name:'Blue',   hex:'#007acc'},
+    {name:'Mauve',  hex:'#cba6f7'},
+    {name:'Base',   hex:'#181825'},
+    {name:'Mantle', hex:'#1e1e2e'},
+    {name:'Text',   hex:'#cdd6f4'},
+    {name:'Surface2',hex:'#45475a'}
+  ];
+  var swatches = document.getElementById('swatches');
+  var accentHex = '#007acc', accentName = 'Blue';
+  function renderSwatches(){
+    swatches.innerHTML='';
+    ACCENTS.forEach(function(c){
+      var s=document.createElement('button');
+      s.className='swatch'+(c.hex===accentHex?' on':'');
+      s.style.background=c.hex;
+      s.title=c.name+' · '+c.hex;
+      s.onclick=function(){
+        accentHex=c.hex; accentName=c.name;
+        document.documentElement.style.setProperty('--accent',c.hex);
+        document.documentElement.style.setProperty('--accent-press',(c.hex==='#181825'||c.hex==='#1e1e2e')?'#cdd6f4':c.hex);
+        document.getElementById('accentName').textContent=c.name+' · '+c.hex;
+        renderSwatches();
+      };
+      swatches.appendChild(s);
+    });
+  }
+  renderSwatches();
+})();
+</script>
+</body>
+</html>
