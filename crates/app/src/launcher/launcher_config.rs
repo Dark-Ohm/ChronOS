@@ -236,6 +236,7 @@ mod tests {
                 apps: vec!["code".into(), "slack".into()],
             }],
             hidden: vec!["org.gnome.eog".into()],
+            ..LauncherConfig::default()
         };
         write_config(&path, &cfg).unwrap();
         let back = read_config(&path);
