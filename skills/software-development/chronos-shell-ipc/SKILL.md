@@ -58,7 +58,8 @@ wins.
 | Payload | Channel → handler | Debounce | Effect |
 |---|---|---|---|
 | `ping` | `ping` → log | — | Wakes/confirms the primary instance (used for single-instance detection). |
-| `toggle-launcher` | `toggle` → `launcher::toggle(cx)` | 200 ms | Open/close app launcher. |
+| `toggle-launcher` | `toggle` → `launcher::toggle(cx)` | 200 ms | Open/close OSD launcher (SUPER+SPACE). |
+| `toggle-start-menu` | `start_menu_toggle` → `start_menu::toggle(cx)` | 200 ms | Open/close Start menu (tap Super). |
 | `toggle-side-panel-left` | `side_panel_toggle` → `side_panel_left::toggle(cx)` | 200 ms | Toggle left agent panel (pinned, no hover-peek). |
 | `toggle-side-panel-right` | `side_panel_right_toggle` → `side_panel_right::toggle(cx)` | 200 ms | Toggle right panel. |
 | `toggle-theme` | `theme_toggle` → `theme_config::toggle(cx)` | 200 ms | Switch dark/light scheme. |
