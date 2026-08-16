@@ -15,7 +15,8 @@ Cargo.lock / Source / left-panel не тронуты. Сверил сам.
 Show, скрыть новую из UI нельзя. Live grim: колонки сразу на OSD, Unhide,
 Tune → вкладка.
 
-T265-H остаётся PAUSE. Не выдана.
+T265-H **разблокирована** (A–G + T280 в git). Бриф в `active/`, не в
+`pause/`. Не выдана. Не параллелить с T297 (`app_menu.rs`).
 
 ---
 
