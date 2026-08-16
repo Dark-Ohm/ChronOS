@@ -24,13 +24,14 @@
 //!
 //! ## The one privileged path
 //!
-//! `AurCommand::UpgradeAll` shells out to `pkexec yay -Syu --noconfirm` (or
-//! `pkexec pacman -Syu --noconfirm` without `yay`) — the same approach Alloy
-//! already used (`upgrade_stream_script`/`upgrade_script`, there wrapped in a
-//! fish-shell + zenity/askpass layer we don't need here); `pkexec` alone
-//! hands off to the desktop's own PolicyKit auth agent, so nothing new is
-//! invented. This path is **never** invoked by the poll loop — only by an
-//! explicit `dispatch(AurCommand::UpgradeAll)` from the popup's button.
+//! `AurCommand::UpgradeAll` shells out to `pkexec pacman -Syu --noconfirm` —
+//! the same approach Alloy already used, there wrapped in a fish-shell +
+//! zenity/askpass layer we don't need here; `pkexec` alone hands off to the
+//! desktop's own PolicyKit auth agent, so nothing new is invented.
+//! T294: apply is ALWAYS pacman. AUR is display-only (hover hint teaches
+//! `yay -S <name>`); the privileged path never invokes `yay`. This path is
+//! **never** invoked by the poll loop — only by an explicit
+//! `dispatch(AurCommand::UpgradeAll/UpgradeSelected)` from the Updates tab.
 
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
@@ -168,12 +169,13 @@ impl AurSubscriber {
             }
             AurCommand::UpgradeSelected { packages } => {
                 // Defensive guard: an empty selection must NEVER spawn
-                // `pkexec yay -S --noconfirm --` — that's not a no-op, it
-                // re-enters yay's interactive target picker and hangs the
-                // auth prompt. The popup's footer already switches the
-                // label to "Upgrade all" when the selection is empty, so
-                // under normal UX this arm is never hit with `[]`; the log
-                // is a backstop.
+                // `pkexec pacman -Sy --noconfirm --` with no targets — that
+                // would re-enter pacman's interactive target prompt and hang
+                // the auth/install. T294: the UI only sends Official names
+                // (AUR is display-only), so an AUR-only selection arrives as
+                // `[]` and is a no-op here. The tab's footer already switches
+                // to "Upgrade all" when the selection is empty; the log is a
+                // backstop.
                 if packages.is_empty() {
                     warn!("AurSubscriber: UpgradeSelected dispatched with empty package list — no-op");
                     return;
@@ -379,12 +381,11 @@ pub fn parse_updates(stdout: &str, source: UpdateSource) -> Vec<PackageUpdate> {
 /// Pure mapping: which binary+argv the "Upgrade all" button runs. Unit
 /// tested — this is the only thing verified about the privileged path
 /// without ever executing it (ZED.md "живая верификация").
-pub fn upgrade_command_args(has_yay: bool) -> (&'static str, Vec<&'static str>) {
-    if has_yay {
-        ("pkexec", vec!["yay", "-Syu", "--noconfirm"])
-    } else {
-        ("pkexec", vec!["pacman", "-Syu", "--noconfirm"])
-    }
+///
+/// T294: apply is ALWAYS pacman. AUR is display-only (hover hint teaches
+/// `yay -S <name>`); the privileged apply path never touches `yay`.
+pub fn upgrade_command_args() -> (&'static str, Vec<&'static str>) {
+    ("pkexec", vec!["pacman", "-Syu", "--noconfirm"])
 }
 
 /// Pure mapping for "Upgrade selected" — argv after `pkexec`.
@@ -395,7 +396,7 @@ pub fn upgrade_command_args(has_yay: bool) -> (&'static str, Vec<&'static str>) 
 /// * Bare `-S` only looks at the **local** sync DB. That DB is often
 ///   hours/days older than what `checkupdates` sees (checkupdates keeps
 ///   its own temp mirror). Symptom we hit live 2026-07-24: popup listed
-///   kitty 0.48.0→0.48.1, `pkexec yay -S --noconfirm -- kitty` exited 0
+///   kitty 0.48.0→0.48.1, `pacman -Sy --noconfirm -- kitty` exited 0
 ///   in ~13s, `pacman -Q kitty` stayed 0.48.0, Check still showed kitty —
 ///   because local DB still thought 0.48.0 was current ("already up to
 ///   date" no-op success).
@@ -408,21 +409,15 @@ pub fn upgrade_command_args(has_yay: bool) -> (&'static str, Vec<&'static str>) 
 /// Empty `packages` is the caller's concern — helper still returns a
 /// valid argv with `--` terminator; the dispatcher refuses to spawn
 /// `pkexec` on an empty list.
-pub fn upgrade_selected_command_args(
-    has_yay: bool,
-    packages: &[String],
-) -> (&'static str, Vec<String>) {
-    let mut args: Vec<String> = if has_yay {
-        vec!["yay", "-Sy", "--noconfirm", "--"]
-            .into_iter()
-            .map(String::from)
-            .collect()
-    } else {
-        vec!["pacman", "-Sy", "--noconfirm", "--"]
-            .into_iter()
-            .map(String::from)
-            .collect()
-    };
+///
+/// T294: apply is ALWAYS pacman (official repos only). Selection can only
+/// carry Official package names; AUR is display-only and never reaches
+/// this argv.
+pub fn upgrade_selected_command_args(packages: &[String]) -> (&'static str, Vec<String>) {
+    let mut args: Vec<String> = vec!["pacman", "-Sy", "--noconfirm", "--"]
+        .into_iter()
+        .map(String::from)
+        .collect();
     for p in packages {
         args.push(p.clone());
     }
@@ -434,8 +429,7 @@ pub fn upgrade_selected_command_args(
 /// pipe stderr and parse `(N/M) upgrading|installing <name>...` patterns
 /// live.
 async fn run_upgrade_all(data: Mutable<UpdatesState>) -> anyhow::Result<()> {
-    let has_yay = binary_available("yay");
-    let (bin, args) = upgrade_command_args(has_yay);
+    let (bin, args) = upgrade_command_args();
     // `upgrade_command_args` returns `Vec<&'static str>`; widen to owned
     // for the shared helper without touching the existing test contract.
     let args_owned: Vec<String> = args.into_iter().map(String::from).collect();
@@ -453,8 +447,7 @@ async fn run_upgrade_selected(
         !packages.is_empty(),
         "run_upgrade_selected called with empty packages — dispatcher must guard this"
     );
-    let has_yay = binary_available("yay");
-    let (bin, args) = upgrade_selected_command_args(has_yay, &packages);
+    let (bin, args) = upgrade_selected_command_args(&packages);
     run_upgrade_command(bin, args, data).await
 }
 
@@ -686,16 +679,10 @@ mod tests {
         assert_eq!(updates[1].name, "pkg-b");
     }
 
+    /// T294: apply is ALWAYS pacman — a yay on PATH must NOT change argv.
     #[test]
-    fn upgrade_args_prefers_yay() {
-        let (bin, args) = upgrade_command_args(true);
-        assert_eq!(bin, "pkexec");
-        assert_eq!(args, vec!["yay", "-Syu", "--noconfirm"]);
-    }
-
-    #[test]
-    fn upgrade_args_falls_back_to_pacman() {
-        let (bin, args) = upgrade_command_args(false);
+    fn upgrade_command_args_is_always_pacman() {
+        let (bin, args) = upgrade_command_args();
         assert_eq!(bin, "pkexec");
         assert_eq!(args, vec!["pacman", "-Syu", "--noconfirm"]);
     }
@@ -703,14 +690,14 @@ mod tests {
     /// Targeted install: `-Sy` (refresh DBs + install named pkgs; NOT full
     /// `-Syu`). Bare `-S` is wrong — local sync DB lags `checkupdates`.
     #[test]
-    fn upgrade_selected_command_args_yay_includes_packages() {
+    fn upgrade_selected_command_args_includes_packages() {
         let pkgs: Vec<String> = vec!["firefox".into(), "discord".into()];
-        let (bin, args) = upgrade_selected_command_args(true, &pkgs);
+        let (bin, args) = upgrade_selected_command_args(&pkgs);
         assert_eq!(bin, "pkexec");
         assert_eq!(
             args,
             vec![
-                "yay".to_string(),
+                "pacman".to_string(),
                 "-Sy".into(),
                 "--noconfirm".into(),
                 "--".into(),
@@ -721,9 +708,9 @@ mod tests {
     }
 
     #[test]
-    fn upgrade_selected_command_args_pacman_fallback() {
+    fn upgrade_selected_command_args_single_package() {
         let pkgs: Vec<String> = vec!["linux".into()];
-        let (bin, args) = upgrade_selected_command_args(false, &pkgs);
+        let (bin, args) = upgrade_selected_command_args(&pkgs);
         assert_eq!(bin, "pkexec");
         assert_eq!(
             args,
@@ -742,12 +729,12 @@ mod tests {
     #[test]
     fn upgrade_selected_command_args_empty_yields_terminator_only() {
         let pkgs: Vec<String> = vec![];
-        let (bin, args) = upgrade_selected_command_args(true, &pkgs);
+        let (bin, args) = upgrade_selected_command_args(&pkgs);
         assert_eq!(bin, "pkexec");
         assert_eq!(
             args,
             vec![
-                "yay".to_string(),
+                "pacman".to_string(),
                 "-Sy".into(),
                 "--noconfirm".into(),
                 "--".into(),

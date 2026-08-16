@@ -43,6 +43,9 @@ mod tests {
     // T290: `system_popup/view.rs` (deleted T290 — popup removed; its content
     // moved into `side_panel_left/tabs/display.rs` and `gaming_mode.rs`) has no
     // standalone window root and is intentionally absent.
+    // T294: `updates_popup/view.rs` (deleted T294 — popup removed; the list
+    // moved into the right panel's `side_panel_right/tab/updates.rs`) has no
+    // standalone window root and is intentionally absent.
     // The chat/workspace/project tab render roots are covered by the
     // broader font audit below rather than this `window_font` gate.
     const ROOTS: &[(&str, &str)] = &[
@@ -70,10 +73,6 @@ mod tests {
         (
             "volume_popup/view.rs",
             include_str!("../../app/src/volume_popup/view.rs"),
-        ),
-        (
-            "updates_popup/view.rs",
-            include_str!("../../app/src/updates_popup/view.rs"),
         ),
         ("launcher/view.rs", include_str!("../../app/src/launcher/view.rs")),
         ("osd/view.rs", include_str!("../../app/src/osd/view.rs")),

@@ -1,18 +1,15 @@
-//! Updates widget for the bar — icon + pending-update count, click opens the
-//! updates popup (`crate::updates_popup`).
+//! Updates widget for the bar — icon + pending-update count. Click opens the
+//! Updates tab on the right panel (T294; the updates popup is gone).
 //!
 //! Data comes from `AppState::aur(cx)` (`UpdatesState`, `crates/services/src/aur/`).
 
-use gpui::{
-    AnyElement, App, Bounds, MouseButton, Pixels, Window, canvas, div, prelude::*, px, svg,
-};
-use std::cell::Cell;
-use std::rc::Rc;
+use gpui::{AnyElement, App, MouseButton, Window, div, prelude::*, px, svg};
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{Service, UpdatesState};
 use chronos_ui::Theme;
 
+use crate::side_panel_right::tabs::PanelTab;
 use crate::state::AppState;
 
 /// Pure description of what the widget should display (unit-testable).
@@ -37,15 +34,11 @@ fn describe(state: &UpdatesState) -> UpdatesView {
     }
 }
 
-pub struct UpdatesWidget {
-    bounds: Rc<Cell<Bounds<Pixels>>>,
-}
+pub struct UpdatesWidget;
 
 impl UpdatesWidget {
     pub fn new() -> Self {
-        Self {
-            bounds: Rc::new(Cell::new(Bounds::default())),
-        }
+        Self
     }
 }
 
@@ -91,32 +84,17 @@ impl BarWidget for UpdatesWidget {
             );
         }
 
-        let bounds_cell = self.bounds.clone();
-        div()
-            .relative()
-            .child(
-                canvas(
-                    move |bounds, _window, _cx| bounds,
-                    move |bounds, captured, _window, _cx| {
-                        bounds_cell.set(captured);
-                        let _ = bounds;
-                    },
-                )
-                .absolute()
-                .size_full(),
-            )
-            .child(row.on_mouse_down(MouseButton::Left, {
-                let bounds_cell = self.bounds.clone();
-                move |_event, window, cx: &mut App| {
-                    if crate::edit_mode::is_active(cx) {
-                        return;
-                    }
-                    let anchor_rect = bounds_cell.get();
-                    let parent = window.window_handle();
-                    crate::updates_popup::toggle(anchor_rect, parent, window, cx);
+        // T294: the bar counter opens the Updates tab on the right panel —
+        // there is no popup anymore, so no anchor-bounds capture is needed.
+        row.on_mouse_down(MouseButton::Left, {
+            move |_event, _window, cx: &mut App| {
+                if crate::edit_mode::is_active(cx) {
+                    return;
                 }
-            }))
-            .into_any_element()
+                crate::side_panel_right::select_tab(PanelTab::Updates, cx);
+            }
+        })
+        .into_any_element()
     }
 }
 

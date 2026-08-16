@@ -18,6 +18,7 @@ pub(crate) mod preview;
 pub(crate) mod system;
 pub(crate) mod terminal;
 pub(crate) mod ui;
+pub(crate) mod updates;
 
 use gpui::{Context, IntoElement, Render, Window, prelude::*};
 
@@ -34,6 +35,7 @@ use library::LibraryTab;
 use preview::PreviewTab;
 use system::SystemTab;
 use terminal::TerminalTab;
+use updates::UpdatesTab;
 
 // ---------------------------------------------------------------------------
 // Registry — one entity type per populated tab, EmptyTab for the rest
@@ -57,6 +59,8 @@ pub(crate) enum TabContent {
     AcpSettings(gpui::Entity<AcpSettingsTab>),
     // T296: Display settings (brightness + wallpaper) — real entity.
     Display(gpui::Entity<DisplayTab>),
+    // T294: Updates — pending repo + AUR updates, apply via pacman.
+    Updates(gpui::Entity<UpdatesTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
 
@@ -97,6 +101,8 @@ impl TabContent {
             PanelTab::AcpSettings => TabContent::AcpSettings(cx.new(|cx| AcpSettingsTab::new(cx))),
             // T296: Display settings (brightness + wallpaper) — real entity.
             PanelTab::Display => TabContent::Display(cx.new(|cx| DisplayTab::new(cx))),
+            // T294: Updates — live view, apply is pacman-only (AUR display-only).
+            PanelTab::Updates => TabContent::Updates(cx.new(|cx| UpdatesTab::new(cx))),
             PanelTab::Scenes
             | PanelTab::Captures => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
             _ => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
@@ -142,6 +148,7 @@ impl Render for EmptyTab {
 pub fn placeholder_description(tab: PanelTab) -> &'static str {
     match tab {
         PanelTab::System => "Hardware monitor and system controls",
+        PanelTab::Updates => "Pending repo and AUR package updates",
         PanelTab::Files => "Browse and manage files on disk",
         PanelTab::Editor => "Text and code editor with syntax highlighting",
         PanelTab::Terminal => "Integrated terminal emulator session",

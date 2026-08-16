@@ -37,3 +37,8 @@ pub mod theme_config;
 pub mod wallpaper_ctl;
 pub mod workspace_mode;
 mod power_controls;
+// Lib-side twin of bin `mod updates_list` (main.rs): the Updates tab
+// (side_panel_right/tab/updates.rs, lib) renders its list through the shared
+// geometry/cell helpers here. Same twin pattern as `desktop_terminal` /
+// `project_switcher` so `crate::updates_list` resolves in either crate.
+pub(crate) mod updates_list;

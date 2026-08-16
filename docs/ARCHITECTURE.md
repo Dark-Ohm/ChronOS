@@ -107,9 +107,10 @@ No manual `wl_surface` calls — GPUI encapsulates the protocol.
 
 ### 4.1 Layer-shell popup conventions (established 2026-07-19, all popups follow this)
 
-Three real live-smoke bugs (`updates_popup`, `notifications`, launcher — see
+Three live-smoke bugs (`notifications`, launcher — see
 `docs/DECISIONS.log` 2026-07-19) converged on two standing rules for every
-layer-shell popup with dynamic content (`updates_popup`, `volume_popup`,
+> **Notes**: The `updates_popup` was deleted in T294: apply is ALWAYS `pkexec pacman -Syu` (official repos only). AUR rows are display-only (hover hint `yay -S <name>`); the list lives on the Updates tab of the right panel. The old `updates_popup` fallback via canvas-bounds capture is no longer needed.
+layer-shell popup with dynamic content (`volume_popup`,
 `notifications`, `tray_menu`, `side_panel_right` skeleton `da744a2`, and
 anything added later):
 

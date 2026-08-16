@@ -655,6 +655,8 @@ impl Render for SidePanelRightView {
                         TabContent::AcpSettings(entity) => col.child(entity.clone()),
                         // T296: Display settings (brightness + wallpaper).
                         TabContent::Display(entity) => col.child(entity.clone()),
+                        // T294: Updates list (pacman-only apply, AUR display-only).
+                        TabContent::Updates(entity) => col.child(entity.clone()),
                         TabContent::Placeholder(entity) => col.child(entity.clone()),
                     };
                     // Enter animation belongs to the content column alone.
@@ -715,6 +717,8 @@ impl SidePanelRightView {
             TabContent::AcpSettings(e) => e.entity_id(),
             // T296: Display settings (brightness + wallpaper).
             TabContent::Display(e) => e.entity_id(),
+            // T294: Updates list (pacman-only apply, AUR display-only).
+            TabContent::Updates(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })
     }

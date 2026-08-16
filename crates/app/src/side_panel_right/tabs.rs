@@ -11,33 +11,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_has_eighteen_tabs_in_fixed_order() {
-        // §4.1 spec: Developer sees System + 7 work tools (Files/Editor/
-        // Terminal/Preview/Inspector/Build/SourceControl) + 6 settings
-        // (AcpSettings/McpSettings/LspSettings/ApiProviders/EditorSettings/
-        // HyprlandBinds). §4.2 adds three Gamer at-rest hub tools
-        // (Library/Scenes/Captures) to the full catalog, slotted between the
-        // work tools and the settings group. `for_mode(Developer)` excludes
-        // them — they live in `ALL` for icon/label/coverage, not the dev rail.
-        assert_eq!(PanelTab::ALL.len(), 18);
+    fn all_has_nineteen_tabs_in_fixed_order() {
+        // §4.1 spec: Developer sees System + Updates (T294) + 7 work tools
+        // (Files/Editor/Terminal/Preview/Inspector/Build/SourceControl) + 6
+        // settings (AcpSettings/McpSettings/LspSettings/ApiProviders/
+        // EditorSettings/HyprlandBinds). §4.2 adds three Gamer at-rest hub
+        // tools (Library/Scenes/Captures) to the full catalog, slotted
+        // between the work tools and the settings group. `for_mode(Developer)`
+        // excludes them — they live in `ALL` for icon/label/coverage, not the
+        // dev rail.
+        assert_eq!(PanelTab::ALL.len(), 19);
         assert_eq!(PanelTab::ALL[0], PanelTab::System);
-        assert_eq!(PanelTab::ALL[1], PanelTab::Files);
-        assert_eq!(PanelTab::ALL[2], PanelTab::Editor);
-        assert_eq!(PanelTab::ALL[3], PanelTab::Terminal);
-        assert_eq!(PanelTab::ALL[4], PanelTab::Preview);
-        assert_eq!(PanelTab::ALL[5], PanelTab::Inspector);
-        assert_eq!(PanelTab::ALL[6], PanelTab::Build);
-        assert_eq!(PanelTab::ALL[7], PanelTab::SourceControl);
-        assert_eq!(PanelTab::ALL[8], PanelTab::Library);
-        assert_eq!(PanelTab::ALL[9], PanelTab::Scenes);
-        assert_eq!(PanelTab::ALL[10], PanelTab::Captures);
-        assert_eq!(PanelTab::ALL[11], PanelTab::AcpSettings);
-        assert_eq!(PanelTab::ALL[12], PanelTab::McpSettings);
-        assert_eq!(PanelTab::ALL[13], PanelTab::LspSettings);
-        assert_eq!(PanelTab::ALL[14], PanelTab::ApiProviders);
-        assert_eq!(PanelTab::ALL[15], PanelTab::EditorSettings);
-        assert_eq!(PanelTab::ALL[16], PanelTab::HyprlandBinds);
-        assert_eq!(PanelTab::ALL[17], PanelTab::Display);
+        assert_eq!(PanelTab::ALL[1], PanelTab::Updates);
+        assert_eq!(PanelTab::ALL[2], PanelTab::Files);
+        assert_eq!(PanelTab::ALL[3], PanelTab::Editor);
+        assert_eq!(PanelTab::ALL[4], PanelTab::Terminal);
+        assert_eq!(PanelTab::ALL[5], PanelTab::Preview);
+        assert_eq!(PanelTab::ALL[6], PanelTab::Inspector);
+        assert_eq!(PanelTab::ALL[7], PanelTab::Build);
+        assert_eq!(PanelTab::ALL[8], PanelTab::SourceControl);
+        assert_eq!(PanelTab::ALL[9], PanelTab::Library);
+        assert_eq!(PanelTab::ALL[10], PanelTab::Scenes);
+        assert_eq!(PanelTab::ALL[11], PanelTab::Captures);
+        assert_eq!(PanelTab::ALL[12], PanelTab::AcpSettings);
+        assert_eq!(PanelTab::ALL[13], PanelTab::McpSettings);
+        assert_eq!(PanelTab::ALL[14], PanelTab::LspSettings);
+        assert_eq!(PanelTab::ALL[15], PanelTab::ApiProviders);
+        assert_eq!(PanelTab::ALL[16], PanelTab::EditorSettings);
+        assert_eq!(PanelTab::ALL[17], PanelTab::HyprlandBinds);
+        assert_eq!(PanelTab::ALL[18], PanelTab::Display);
     }
 
     #[test]
@@ -138,6 +140,18 @@ mod tests {
         assert_eq!(PanelTab::parse_id("ACPSETTINGS"), Some(PanelTab::AcpSettings));
         assert_eq!(PanelTab::parse_id("acp_settings"), Some(PanelTab::AcpSettings));
         assert_eq!(PanelTab::parse_id("???"), None);
+    }
+
+    // --- T294: Updates tab round-trips parse_id ↔ id ---
+
+    #[test]
+    fn parse_id_updates_round_trip() {
+        assert_eq!(PanelTab::parse_id("updates"), Some(PanelTab::Updates));
+        assert_eq!(PanelTab::parse_id("UPDATES"), Some(PanelTab::Updates));
+        assert_eq!(PanelTab::parse_id("Updates"), Some(PanelTab::Updates));
+        assert_eq!(PanelTab::parse_id(PanelTab::Updates.id()), Some(PanelTab::Updates));
+        assert_eq!(PanelTab::Updates.id(), "updates");
+        assert_eq!(PanelTab::Updates.label(), "Updates");
     }
 
     // --- T169: new four work-tool tabs round-trip parse_id ↔ id (§4.1) ---
@@ -242,9 +256,9 @@ mod tests {
     // --- T169: composition rules per §4.1 + §5 ---
 
     #[test]
-    fn developer_rail_is_seven_product_tabs() {
-        // T192 product cut (docs/PRODUCT.md §2/§4): Developer default rail
-        // ships System, Files, Editor (Preview relabeled, real edit is
+    fn developer_rail_is_eight_product_tabs() {
+        // T192 product cut + T294 Updates: Developer default rail ships
+        // System, Updates, Files, Editor (Preview relabeled, real edit is
         // T194), Hyprland binds, ACP agents, Display, System settings.
         // Everything else (empty IDE tabs, LSP/MCP/API-providers settings,
         // Gamer hub tools) stays in `ALL` for parse/scene-override/icon
@@ -254,6 +268,7 @@ mod tests {
             dev,
             vec![
                 PanelTab::System,
+                PanelTab::Updates,
                 PanelTab::Files,
                 PanelTab::Preview,
                 PanelTab::HyprlandBinds,
@@ -283,18 +298,19 @@ mod tests {
     }
 
     #[test]
-    fn gamer_rail_is_seven_product_tabs() {
-        // T192 product cut: Gamer default rail ships System, Library,
-        // Captures (honest empty — no capture backend), Display, then the
-        // same three settings tabs as Developer. Scenes is a full product
-        // kill (docs/PRODUCT.md §4 — "сцены нахуй не нужны") and does not
-        // appear in any default rail, even though `scene.rs`/seed code may
-        // stay dormant.
+    fn gamer_rail_is_eight_product_tabs() {
+        // T192 product cut + T294 Updates: Gamer default rail ships System,
+        // Updates, Library, Captures (honest empty — no capture backend),
+        // Display, then the same three settings tabs as Developer. Scenes is
+        // a full product kill (docs/PRODUCT.md §4 — "сцены нахуй не нужны")
+        // and does not appear in any default rail, even though `scene.rs`/
+        // seed code may stay dormant.
         let gamer = PanelTab::for_mode(WorkspaceMode::Gamer);
         assert_eq!(
             gamer,
             vec![
                 PanelTab::System,
+                PanelTab::Updates,
                 PanelTab::Library,
                 PanelTab::Captures,
                 PanelTab::AcpSettings,
@@ -464,6 +480,10 @@ mod tests {
 pub enum PanelTab {
     #[default]
     System,
+    /// T294: Updates — pending repo + AUR updates. Sits right after System
+    /// (T293 Notifications is not in git yet; when it lands, this slot
+    /// becomes after Notifications per the shared spec rule).
+    Updates,
     // --- Work tools (§4.1) ---
     Files,
     Editor,
@@ -490,8 +510,9 @@ pub enum PanelTab {
 
 impl PanelTab {
     /// Full catalog — every tab that exists. Coverage tests iterate this.
-    pub const ALL: [PanelTab; 18] = [
+    pub const ALL: [PanelTab; 19] = [
         PanelTab::System,
+        PanelTab::Updates,
         PanelTab::Files,
         PanelTab::Editor,
         PanelTab::Terminal,
@@ -515,6 +536,7 @@ impl PanelTab {
     pub fn id(self) -> &'static str {
         match self {
             PanelTab::System => "system",
+            PanelTab::Updates => "updates",
             PanelTab::Files => "files",
             PanelTab::Editor => "editor",
             PanelTab::Terminal => "terminal",
@@ -540,6 +562,7 @@ impl PanelTab {
         let key = s.trim().to_ascii_lowercase().replace('-', "_");
         match key.as_str() {
             "system" => Some(PanelTab::System),
+            "updates" => Some(PanelTab::Updates),
             "files" => Some(PanelTab::Files),
             "editor" => Some(PanelTab::Editor),
             "terminal" => Some(PanelTab::Terminal),
@@ -586,6 +609,8 @@ impl PanelTab {
         match mode {
             WorkspaceMode::Developer => vec![
                 PanelTab::System,
+                // T294: Updates right after System (frequent entry point).
+                PanelTab::Updates,
                 PanelTab::Files,
                 PanelTab::Preview,
                 PanelTab::HyprlandBinds,
@@ -595,6 +620,8 @@ impl PanelTab {
             ],
             WorkspaceMode::Gamer => vec![
                 PanelTab::System,
+                // T294: Updates right after System (frequent entry point).
+                PanelTab::Updates,
                 PanelTab::Library,
                 PanelTab::Captures,
                 PanelTab::AcpSettings,
@@ -641,6 +668,8 @@ impl PanelTab {
     pub fn label(self) -> &'static str {
         match self {
             PanelTab::System => "System",
+            // T294: matches the bar updates widget's label.
+            PanelTab::Updates => "Updates",
             PanelTab::Files => "Files",
             PanelTab::Editor => "Editor",
             PanelTab::Terminal => "Terminal",
@@ -669,6 +698,10 @@ impl PanelTab {
     pub fn icon_path(self) -> &'static str {
         match self {
             PanelTab::System => "icons/rail-system.svg",
+            // T294: icon == the bar updates widget (`bar/widgets/updates.rs`,
+            // `icons/arrow-up.svg`) — the established pattern (T269) that bar
+            // and tab share one visual identity for the same action.
+            PanelTab::Updates => "icons/arrow-up.svg",
             PanelTab::Files => "icons/folder.svg",
             PanelTab::Editor => "icons/rail-editor.svg",
             PanelTab::Terminal => "icons/rail-terminal.svg",
@@ -695,6 +728,8 @@ impl PanelTab {
     pub fn preferred_content_width(self) -> f32 {
         match self {
             PanelTab::System => 400.,
+            // T294: Updates list — same comfortable column as System.
+            PanelTab::Updates => 420.,
             PanelTab::Editor | PanelTab::Terminal => super::DEFAULT_CONTENT_WIDTH,
             PanelTab::Files | PanelTab::SourceControl => 440.,
             // T296: Display tab (brightness + wallpaper) — fixed 440, not

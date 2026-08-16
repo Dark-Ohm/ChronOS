@@ -81,15 +81,17 @@ pub enum AurCommand {
     /// Force an immediate re-check instead of waiting for the next poll
     /// tick (bar click / popup open — mirrors `TrayCommand::FetchMenu`).
     Refresh,
-    /// Run the real system upgrade (`pkexec yay -Syu`/`pkexec pacman -Syu`).
+    /// Run the real system upgrade (`pkexec pacman -Syu --noconfirm`).
     /// The ONLY privileged operation in this service — never invoked by the
-    /// poll loop itself, only from the popup's "Upgrade all" button.
+    /// poll loop itself, only from the Updates tab's "Upgrade all" button.
+    /// T294: apply is always pacman (official repos); AUR is display-only.
     UpgradeAll,
-    /// Upgrade only the named packages — `pkexec yay -Sy --noconfirm --
-    /// <pkgs>` / `pkexec pacman -Sy --noconfirm -- <pkgs>` (`-y` refreshes
-    /// DBs so versions match what `checkupdates` reported; no `-u` → not a
-    /// full sysupgrade). Same streaming path as `UpgradeAll`. Empty list is
-    /// a no-op (popup + service both guard).
+    /// Upgrade only the named (Official) packages — `pkexec pacman -Sy
+    /// --noconfirm -- <pkgs>` (`-y` refreshes DBs so versions match what
+    /// `checkupdates` reported; no `-u` → not a full sysupgrade). Same
+    /// streaming path as `UpgradeAll`. Callers must send ONLY Official names
+    /// (AUR is display-only); an AUR-only selection dispatches `[]`, which is
+    /// a no-op here (UI + service both guard).
     UpgradeSelected { packages: Vec<String> },
 }
 

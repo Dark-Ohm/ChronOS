@@ -58,6 +58,8 @@ pub struct RightConfig {
 fn default_dev_top() -> Vec<String> {
     vec![
         "system".into(),
+        // T294: Updates right after System (frequent entry point).
+        "updates".into(),
         "files".into(),
         "preview".into(),
         "hyprland_binds".into(),
@@ -74,6 +76,8 @@ fn default_dev_bottom() -> Vec<String> {
 fn default_gamer_top() -> Vec<String> {
     vec![
         "system".into(),
+        // T294: Updates right after System (frequent entry point).
+        "updates".into(),
         "library".into(),
         "captures".into(),
         "acp_settings".into(),
@@ -591,12 +595,15 @@ mod tests {
         };
         let s = cfg.sanitized();
         let dev = &s.right.rail.developer;
-        // "system" deduped, "nope" dropped — then missing mode tabs appended.
+        // "system" deduped, "nope" dropped — then missing mode tabs appended
+        // in mode order. T294: `updates` is now a mode tab, so it is
+        // appended too (right after the already-present system/files).
         assert_eq!(
             dev.top,
             vec![
                 "system",
                 "files",
+                "updates",
                 "preview",
                 "hyprland_binds",
                 "acp_settings",
@@ -656,8 +663,9 @@ mod tests {
     #[test]
     fn move_within_top_group_swaps() {
         let mut cfg = PanelLayoutConfig::default();
-        // Developer top: [system, files, preview, hyprland_binds, acp_settings]
-        // Move files (index 1) up (delta -1) → [files, system, ...]
+        // Developer top: [system, updates, files, preview, hyprland_binds,
+        // acp_settings]. Move files (index 2) up (delta -1) → swaps with
+        // updates: [system, files, updates, ...].
         assert!(cfg.move_tab(WorkspaceMode::Developer, PanelTab::Files, -1));
         let top: Vec<&str> = cfg
             .right
@@ -667,8 +675,9 @@ mod tests {
             .iter()
             .map(|s| s.as_str())
             .collect();
-        assert_eq!(top[0], "files");
-        assert_eq!(top[1], "system");
+        assert_eq!(top[0], "system");
+        assert_eq!(top[1], "files");
+        assert_eq!(top[2], "updates");
     }
 
     #[test]
@@ -715,7 +724,10 @@ mod tests {
     fn resolve_grouped_uses_config_values() {
         let cfg = PanelLayoutConfig::default();
         let (top, bottom) = resolve_grouped(WorkspaceMode::Developer, &cfg);
-        assert_eq!(top.len(), 5); // system, files, preview, hyprland_binds, acp_settings
+        // system, updates, files, preview, hyprland_binds, acp_settings
+        assert_eq!(top.len(), 6);
+        assert_eq!(top[0], PanelTab::System);
+        assert_eq!(top[1], PanelTab::Updates); // T294
         assert_eq!(bottom.len(), 2); // display, editor_settings
         assert_eq!(bottom[0], PanelTab::Display);
         assert_eq!(bottom[1], PanelTab::EditorSettings);
