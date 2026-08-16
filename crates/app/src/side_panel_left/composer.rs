@@ -1,7 +1,7 @@
 use chronos_services::hermes_acp::StreamingEvent;
 use chronos_ui::{Theme, on_fill};
 use gpui::{
-    Context, ExternalPaths, IntoElement, SharedString, Window, div, img, prelude::*, px,
+    App, Context, ExternalPaths, IntoElement, SharedString, Window, div, img, prelude::*, px,
 };
 use gpui_component::input::Input;
 use gpui_component::searchable_list::{SearchableListItem, SearchableListDelegate, SearchableVec};
@@ -31,6 +31,19 @@ impl SearchableListItem for ModelSelectItem {
         } else {
             self.name.clone()
         }
+    }
+
+    fn render(&self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        // T298: truncate long model names with ellipsis instead of hard-clipping.
+        // w_full() makes the div take the row's available width so the text
+        // overflows and triggers text-overflow: ellipsis. min_w(px(0.))
+        // allows the flex item to shrink below its content size.
+        div()
+            .w_full()
+            .min_w(px(0.))
+            .whitespace_nowrap()
+            .truncate()
+            .child(self.title())
     }
 
     fn value(&self) -> &Self::Value {
@@ -74,6 +87,16 @@ impl SearchableListItem for ModeSelectItem {
         } else {
             self.name.clone()
         }
+    }
+
+    fn render(&self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        // T298: truncate long mode names with ellipsis instead of hard-clipping.
+        div()
+            .w_full()
+            .min_w(px(0.))
+            .whitespace_nowrap()
+            .truncate()
+            .child(self.title())
     }
 
     fn value(&self) -> &Self::Value {
@@ -447,6 +470,7 @@ fn model_picker(
                 .placeholder("Model")
                 .disabled(!has_data)
                 .search_placeholder("Search models…")
+                .menu_width(px(280.))
                 .with_size(KitSize::XSmall),
         )
 }
@@ -470,6 +494,7 @@ fn mode_picker(
             Select::new(&panel.composer_mode_select)
                 .placeholder("Mode")
                 .disabled(!has_data)
+                .menu_width(px(200.))
                 .with_size(KitSize::XSmall),
         )
 }
