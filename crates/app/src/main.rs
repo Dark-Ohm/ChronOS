@@ -29,6 +29,7 @@ mod tray_menu;
 mod updates_list;
 mod volume_popup;
 mod wallpaper_ctl;
+mod power;
 mod power_controls;
 
 use chronos_luau::PluginManager;

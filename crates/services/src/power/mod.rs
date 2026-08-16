@@ -32,6 +32,23 @@ pub fn shutdown_command() -> (&'static str, Vec<&'static str>) {
     ("systemctl", vec!["poweroff"])
 }
 
+/// `loginctl lock-session` — locks the session through systemd-logind. This is
+/// the only lock backend the tree has (no hyprlock/swaylock wrapper shipped);
+/// logind forwards to whatever lock helper the session configured.
+pub fn lock_command() -> (&'static str, Vec<&'static str>) {
+    ("loginctl", vec!["lock-session"])
+}
+
+/// `systemctl suspend` (sleep to RAM).
+pub fn suspend_command() -> (&'static str, Vec<&'static str>) {
+    ("systemctl", vec!["suspend"])
+}
+
+/// `systemctl hibernate` (sleep to disk).
+pub fn hibernate_command() -> (&'static str, Vec<&'static str>) {
+    ("systemctl", vec!["hibernate"])
+}
+
 fn spawn_command((bin, args): (&'static str, Vec<&'static str>)) {
     match Command::new(bin).args(&args).spawn() {
         Ok(_) => {}
@@ -60,6 +77,21 @@ impl PowerSubscriber {
     pub fn shutdown(&self) {
         spawn_command(shutdown_command());
     }
+
+    /// Lock the session via logind (`loginctl lock-session`).
+    pub fn lock(&self) {
+        spawn_command(lock_command());
+    }
+
+    /// Sleep to RAM (`systemctl suspend`).
+    pub fn suspend(&self) {
+        spawn_command(suspend_command());
+    }
+
+    /// Sleep to disk (`systemctl hibernate`).
+    pub fn hibernate(&self) {
+        spawn_command(hibernate_command());
+    }
 }
 
 #[cfg(test)]
@@ -79,5 +111,20 @@ mod tests {
     #[test]
     fn shutdown_command_is_systemctl_poweroff() {
         assert_eq!(shutdown_command(), ("systemctl", vec!["poweroff"]));
+    }
+
+    #[test]
+    fn lock_command_is_loginctl_lock_session() {
+        assert_eq!(lock_command(), ("loginctl", vec!["lock-session"]));
+    }
+
+    #[test]
+    fn suspend_command_is_systemctl_suspend() {
+        assert_eq!(suspend_command(), ("systemctl", vec!["suspend"]));
+    }
+
+    #[test]
+    fn hibernate_command_is_systemctl_hibernate() {
+        assert_eq!(hibernate_command(), ("systemctl", vec!["hibernate"]));
     }
 }

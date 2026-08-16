@@ -16,6 +16,7 @@
 //! click on a cell opens a Pin/Unpin menu (T275 Часть D).
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 use gpui::{
     self, App, Bounds, ClipboardItem, Entity, FocusHandle, ImageSource, MouseButton, Render,
@@ -26,7 +27,9 @@ use gpui::{
 use chronos_services::applications::frecency;
 use chronos_services::{AppEntry, Service};
 use chronos_ui::{Theme, WindowRootExt};
+use gpui_component::button::{Button, ButtonVariants, ButtonVariant};
 use gpui_component::input::{Input, InputEvent, InputState};
+use gpui_component::{Disableable, Sizable, Size as KitSize};
 
 use crate::icon_resolution::resolve_icon;
 use crate::launcher::favorites::{
@@ -42,6 +45,8 @@ use crate::launcher::launch::launch;
 use crate::launcher::launcher_config::{self, Folder, LauncherConfig};
 use crate::launcher::providers::{self, Provider, ProviderAction, ProviderResult};
 use crate::launcher::search::FuzzySearch;
+use crate::launcher::system_actions;
+use crate::power::{ARM_TIMEOUT, ArmState, PowerAction, is_confirming_click, on_click, on_timeout};
 use crate::state;
 
 const INPUT_HEIGHT: f32 = 44.;
@@ -161,6 +166,16 @@ pub struct LauncherView {
     provider: Provider,
     /// Rows returned by the active provider (empty for `Apps`).
     provider_results: Vec<ProviderResult>,
+    /// Arm/confirm state for the header's confirming actions (T265-F).
+    power_arm: ArmState,
+    /// Resolved header action order from `[system_actions]`.
+    system_actions: Vec<PowerAction>,
+    /// Display name (GECOS full name, else login).
+    display_name: String,
+    /// Fallback avatar glyph (first letter, uppercase).
+    user_initial: String,
+    /// Avatar file (`~/.face` / AccountsService), if present.
+    face_path: Option<PathBuf>,
 }
 
 impl LauncherView {
@@ -203,6 +218,11 @@ impl LauncherView {
             }
         });
 
+        let config = launcher_config::get();
+        let actions = system_actions::resolve_actions(&config);
+        let display_name = system_actions::user_full_name().unwrap_or_else(system_actions::user_name);
+        let initial = system_actions::user_initial();
+        let face = system_actions::face_path();
         let mut view = Self {
             search: FuzzySearch::new(),
             input,
@@ -215,7 +235,7 @@ impl LauncherView {
             raw_entries: Vec::new(),
             all: Vec::new(),
             by_id: HashMap::new(),
-            config: launcher_config::get(),
+            config,
             favorites: Vec::new(),
             recents: Vec::new(),
             folders: Vec::new(),
@@ -234,6 +254,11 @@ impl LauncherView {
             focus_handle: cx.focus_handle(),
             provider: Provider::Apps,
             provider_results: Vec::new(),
+            power_arm: ArmState::default(),
+            system_actions: actions,
+            display_name,
+            user_initial: initial,
+            face_path: face,
         };
         view.set_entries(entries);
         // Repaint after the synchronous seed so the first frame shows the
@@ -255,6 +280,8 @@ impl LauncherView {
             this.apply_hidden_filter();
             this.recompute_sections();
             this.refresh_results();
+            // T265-F: `[system_actions]` edits hot-reload the header order.
+            this.system_actions = system_actions::resolve_actions(&launcher_config::get());
             cx.notify();
         });
 
@@ -517,6 +544,55 @@ impl LauncherView {
         }
     }
 
+    // --- System actions (T265-F) ---
+
+    /// Handle a header action click. One-click actions (Lock / Sleep /
+    /// Hibernate) fire immediately; confirming actions (LogOut / Restart /
+    /// Shutdown) arm on the first click and confirm on the second within
+    /// `ARM_TIMEOUT` — the same state machine as the right panel footer.
+    fn on_system_action_click(&mut self, action: PowerAction, cx: &mut gpui::Context<Self>) {
+        if !action.needs_confirm() {
+            self.execute_system_action(action, cx);
+            return;
+        }
+        if is_confirming_click(&self.power_arm, action) {
+            self.execute_system_action(action, cx);
+            self.power_arm = ArmState::Idle;
+            cx.notify();
+            return;
+        }
+        let armed = on_click(self.power_arm, action);
+        self.power_arm = armed;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(ARM_TIMEOUT).await;
+            if let Err(err) = this.update(cx, |this, cx| {
+                if this.power_arm == armed {
+                    this.power_arm = on_timeout(armed);
+                    cx.notify();
+                }
+            }) {
+                tracing::warn!(
+                    "launcher: power arm timeout could not disarm ({err}) — \
+                     a tile may still read 'Confirm?'"
+                );
+            }
+        })
+        .detach();
+    }
+
+    /// Fire the actual backend for a system action (`AppState::power`).
+    fn execute_system_action(&self, action: PowerAction, cx: &App) {
+        match action {
+            PowerAction::Lock => state::AppState::power(cx).lock(),
+            PowerAction::LogOut => state::AppState::power(cx).log_out(),
+            PowerAction::Sleep => state::AppState::power(cx).suspend(),
+            PowerAction::Hibernate => state::AppState::power(cx).hibernate(),
+            PowerAction::Restart => state::AppState::power(cx).restart(),
+            PowerAction::Shutdown => state::AppState::power(cx).shutdown(),
+        }
+    }
+
     // --- DnD drop handlers (mutate `config`, then persist + recompute) ---
 
     /// Drop onto a favorite cell: reorder if the drag started in Favorites,
@@ -750,7 +826,7 @@ impl LauncherView {
             .overflow_hidden()
             .flex()
             .flex_col()
-            .child(self.render_header(theme))
+            .child(self.render_header(theme, entity.clone()))
             .child(self.render_search(theme))
             .when(is_apps, |el| {
                 el.child(self.render_category_bar(theme, entity.clone()))
@@ -760,66 +836,163 @@ impl LauncherView {
             .child(self.render_footer(theme))
     }
 
-    fn render_header(&self, theme: &Theme) -> impl IntoElement {
+    fn render_header(&self, theme: &Theme, entity: Entity<Self>) -> impl IntoElement {
         div()
-            .flex()
-            .items_center()
-            .gap(px(10.))
-            .px(px(14.))
-            .h(px(42.))
+            .flex_col()
             .border_b_1()
             .border_color(theme.border.subtle)
-            // Sigil.
-            .child(
-                svg()
-                    .path("icons/chronos-sigil.svg")
-                    .size(px(18.))
-                    .text_color(theme.accent.primary),
-            )
-            // Title "launcher".
-            .child(
-                div()
-                    .font_family(theme.font_mono)
-                    .text_xs()
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(theme.text.primary)
-                    .child("launcher"),
-            )
-            // Separator.
-            .child(div().w(px(1.)).h(px(15.)).bg(theme.border.subtle))
-            // Mode chip — reflects the active prefix provider (T265-E).
+            // Title row (unchanged): sigil + title + mode chip + hotkey.
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(6.))
-                    .px(px(8.))
-                    .h(px(22.))
-                    .rounded(px(6.))
-                    .border_1()
-                    .border_color(theme.border.subtle)
-                    .text_color(theme.text.muted)
+                    .gap(px(10.))
+                    .px(px(14.))
+                    .h(px(42.))
+                    .child(
+                        svg()
+                            .path("icons/chronos-sigil.svg")
+                            .size(px(18.))
+                            .text_color(theme.accent.primary),
+                    )
                     .child(
                         div()
                             .font_family(theme.font_mono)
+                            .text_xs()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.text.primary)
+                            .child("launcher"),
+                    )
+                    .child(div().w(px(1.)).h(px(15.)).bg(theme.border.subtle))
+                    // Mode chip — reflects the active prefix provider (T265-E).
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .px(px(8.))
+                            .h(px(22.))
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(theme.border.subtle)
+                            .text_color(theme.text.muted)
+                            .child(
+                                div()
+                                    .font_family(theme.font_mono)
+                                    .text_size(theme.font_sizes.xs)
+                                    .child(self.provider.label()),
+                            ),
+                    )
+                    .child(div().flex_1())
+                    // Hotkey hint: SUPER SPACE.
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(5.))
+                            .font_family(theme.font_mono)
                             .text_size(theme.font_sizes.xs)
-                            .child(self.provider.label()),
+                            .text_color(theme.text.faint)
+                            .child("invoke")
+                            .child(kbd("SUPER", theme))
+                            .child(kbd("SPACE", theme)),
                     ),
             )
-            .child(div().flex_1())
-            // Hotkey hint: SUPER SPACE.
+            // T265-F: system-action row — avatar + name + the six action tiles.
+            .child(self.render_system_actions(theme, entity))
+    }
+
+    /// Header system-action row: avatar + name on the left, action tiles on
+    /// the right. Buttons are real `gpui-component::Button`s, not bare divs.
+    fn render_system_actions(&self, theme: &Theme, entity: Entity<Self>) -> impl IntoElement {
+        div()
+            .id("launcher-system-actions")
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .px(px(14.))
+            .py(px(6.))
+            .min_h(px(40.))
+            .child(self.render_avatar(theme))
             .child(
                 div()
-                    .flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .font_family(theme.font_mono)
-                    .text_size(theme.font_sizes.xs)
-                    .text_color(theme.text.faint)
-                    .child("invoke")
-                    .child(kbd("SUPER", theme))
-                    .child(kbd("SPACE", theme)),
+                    .text_sm()
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(theme.text.primary)
+                    .whitespace_nowrap()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(self.display_name.clone()),
             )
+            .child(div().flex_1())
+            .children(self.system_actions.iter().map(|action| {
+                self.render_system_action_button(theme, entity.clone(), *action)
+            }))
+    }
+
+    /// Avatar: `~/.face` / AccountsService image if present, else an initial
+    /// circle — never a broken image (T265-F).
+    fn render_avatar(&self, theme: &Theme) -> impl IntoElement {
+        if let Some(path) = &self.face_path {
+            let src: ImageSource = path.clone().into();
+            return div()
+                .size(px(26.))
+                .rounded_full()
+                .overflow_hidden()
+                .border_1()
+                .border_color(theme.border.subtle)
+                .child(img(src).size(px(26.)))
+                .into_any_element();
+        }
+        div()
+            .size(px(26.))
+            .rounded_full()
+            .bg(theme.accent.secondary.opacity(0.2))
+            .flex()
+            .items_center()
+            .justify_center()
+            .text_color(theme.accent.secondary)
+            .text_size(px(12.))
+            .font_weight(gpui::FontWeight::SEMIBOLD)
+            .child(self.user_initial.clone())
+            .into_any_element()
+    }
+
+    /// One header action tile. Confirming actions show "Confirm?" when armed;
+    /// Shutdown is red; an unavailable backend is disabled with a tooltip reason.
+    fn render_system_action_button(
+        &self,
+        _theme: &Theme,
+        entity: Entity<Self>,
+        action: PowerAction,
+    ) -> impl IntoElement {
+        let armed = self.power_arm == ArmState::Armed(action);
+        let disabled = !system_actions::available(action);
+        let danger = action == PowerAction::Shutdown || armed;
+        let label = if armed { "Confirm?" } else { action.label() };
+        let variant = if danger {
+            ButtonVariant::Danger
+        } else {
+            ButtonVariant::Ghost
+        };
+
+        let mut button = Button::new(format!("launcher-action-{action:?}"))
+            .label(label)
+            .with_size(KitSize::XSmall)
+            .compact()
+            .with_variant(variant)
+            .disabled(disabled)
+            .on_click({
+                let entity = entity.clone();
+                move |_event, _window, cx: &mut App| {
+                    entity.update(cx, |this, cx| this.on_system_action_click(action, cx));
+                }
+            });
+
+        if let Some(reason) = system_actions::disabled_reason(action) {
+            button = button.tooltip(reason);
+        }
+        button
     }
 
     fn render_search(&self, theme: &Theme) -> impl IntoElement {

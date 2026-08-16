@@ -33,10 +33,8 @@ use gpui::{AnimationExt, AsyncApp, IntoElement, Render, Window, div, prelude::*,
 use crate::agent_follow::AgentFollowState;
 use crate::motion;
 use crate::side_panel_right::panels_config;
-use crate::side_panel_right::power_row::{
-    ARM_TIMEOUT, ArmState, PowerAction, is_confirming_click, on_click as arm_on_click, on_timeout,
-    render_footer,
-};
+use crate::power::{ARM_TIMEOUT, ArmState, PowerAction, is_confirming_click, on_click as arm_on_click, on_timeout};
+use crate::side_panel_right::power_row::render_footer;
 use crate::side_panel_right::preview_target::PreviewTarget;
 use crate::side_panel_right::surfaces;
 use crate::side_panel_right::tab::TabContent;
@@ -323,6 +321,10 @@ impl SidePanelRightView {
                 PowerAction::LogOut => AppState::power(cx).log_out(),
                 PowerAction::Restart => AppState::power(cx).restart(),
                 PowerAction::Shutdown => AppState::power(cx).shutdown(),
+                // Launcher-only one-click actions — never armed in this footer.
+                PowerAction::Lock | PowerAction::Sleep | PowerAction::Hibernate => {
+                    tracing::warn!("side_panel_right: unexpected confirm for {action:?}");
+                }
             }
             tracing::info!("side_panel_right: power confirmed {action:?}");
             self.power_arm = ArmState::Idle;

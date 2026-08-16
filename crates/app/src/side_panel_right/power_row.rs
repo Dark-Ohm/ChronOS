@@ -1,42 +1,16 @@
 //! Power footer grid: Switch / Log out / Restart / Power.
 //! Visual from mockup (4-col grid, red Power). Arm/confirm 3s preserved.
-
-use std::time::Duration;
+//!
+//! The `PowerAction`/`ArmState` model + arm helpers live in `crate::power`
+//! (shared with the launcher header, T265-F) — this file is UI only.
 
 use chrono::{Datelike, Local};
 use gpui::{Context, IntoElement, div, img, prelude::*, px};
 use chronos_ui::Theme;
 
+use crate::power::{ArmState, PowerAction};
 use crate::side_panel_right::surfaces;
 use crate::side_panel_right::view::SidePanelRightView;
-
-pub(crate) const ARM_TIMEOUT: Duration = Duration::from_secs(3);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PowerAction {
-    LogOut,
-    Restart,
-    Shutdown,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ArmState {
-    #[default]
-    Idle,
-    Armed(PowerAction),
-}
-
-pub fn on_click(_current: ArmState, clicked: PowerAction) -> ArmState {
-    ArmState::Armed(clicked)
-}
-
-pub fn is_confirming_click(current: &ArmState, clicked: PowerAction) -> bool {
-    *current == ArmState::Armed(clicked)
-}
-
-pub fn on_timeout(_current: ArmState) -> ArmState {
-    ArmState::Idle
-}
 
 fn label_for(action: PowerAction, arm: &ArmState) -> &'static str {
     if *arm == ArmState::Armed(action) {
@@ -46,6 +20,11 @@ fn label_for(action: PowerAction, arm: &ArmState) -> &'static str {
             PowerAction::LogOut => "Log out",
             PowerAction::Restart => "Restart",
             PowerAction::Shutdown => "Power",
+            // Never rendered in this footer (launcher-only), kept for an
+            // exhaustive match over the shared enum.
+            PowerAction::Lock => "Lock",
+            PowerAction::Sleep => "Sleep",
+            PowerAction::Hibernate => "Hibernate",
         }
     }
 }
@@ -204,36 +183,4 @@ pub fn render_footer(
                     })),
                 ),
         )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn clicking_idle_arms_that_action() {
-        let mut arm = ArmState::Idle;
-        arm = on_click(arm, PowerAction::Restart);
-        assert_eq!(arm, ArmState::Armed(PowerAction::Restart));
-    }
-
-    #[test]
-    fn clicking_the_same_armed_action_again_confirms() {
-        let arm = ArmState::Armed(PowerAction::Restart);
-        assert!(is_confirming_click(&arm, PowerAction::Restart));
-    }
-
-    #[test]
-    fn clicking_a_different_action_while_armed_rearms_to_the_new_one() {
-        let mut arm = ArmState::Armed(PowerAction::Restart);
-        assert!(!is_confirming_click(&arm, PowerAction::Shutdown));
-        arm = on_click(arm, PowerAction::Shutdown);
-        assert_eq!(arm, ArmState::Armed(PowerAction::Shutdown));
-    }
-
-    #[test]
-    fn timeout_disarms_to_idle() {
-        let arm = ArmState::Armed(PowerAction::LogOut);
-        assert_eq!(on_timeout(arm), ArmState::Idle);
-    }
 }

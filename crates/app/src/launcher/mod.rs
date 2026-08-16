@@ -7,6 +7,7 @@ pub mod launch;
 pub mod launcher_config;
 pub mod providers;
 pub mod search;
+pub mod system_actions;
 pub mod view;
 
 use gpui::{

@@ -51,6 +51,14 @@ fn default_recents_limit() -> usize {
     DEFAULT_RECENTS_LIMIT
 }
 
+/// Header system-action order (T265-F): `[system_actions] order = [...]`.
+/// Empty list = the built-in default order.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SystemActionsConfig {
+    #[serde(default)]
+    pub order: Vec<String>,
+}
+
 /// A user folder: a named, manual grouping of app ids.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Folder {
@@ -73,6 +81,9 @@ pub struct LauncherConfig {
     /// applications service and can be surfaced again later (T265-G).
     #[serde(default)]
     pub hidden: Vec<String>,
+    /// Header system-action order (T265-F). Empty → default order.
+    #[serde(default)]
+    pub system_actions: SystemActionsConfig,
 }
 
 /// Process-wide change signal: fires whenever the config mutates (favorites /
@@ -142,7 +153,7 @@ pub fn write_config(path: &Path, config: &LauncherConfig) -> std::io::Result<()>
     };
     let ours = toml::Value::try_from(config).expect("LauncherConfig is always serializable");
     if let toml::Value::Table(table) = ours {
-        for key in ["favorites", "recents", "folders", "hidden"] {
+        for key in ["favorites", "recents", "folders", "hidden", "system_actions"] {
             if let Some(value) = table.get(key) {
                 root.insert(key.to_string(), value.clone());
             }
@@ -277,6 +288,24 @@ mod tests {
         };
         write_config(&path, &cfg).unwrap();
         assert_eq!(read_config(&path).hidden, vec!["firefox", "org.gnome.eog"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn system_actions_round_trips() {
+        let dir = temp_dir("system-actions-roundtrip");
+        let path = dir.join("launcher.toml");
+        let cfg = LauncherConfig {
+            system_actions: SystemActionsConfig {
+                order: vec!["lock".into(), "shutdown".into(), "logout".into()],
+            },
+            ..LauncherConfig::default()
+        };
+        write_config(&path, &cfg).unwrap();
+        assert_eq!(
+            read_config(&path).system_actions.order,
+            vec!["lock", "shutdown", "logout"]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
