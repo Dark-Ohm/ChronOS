@@ -9,7 +9,7 @@ repos:
     name_pattern: "ChronOS-wt-t{ticket}"
     branch_pattern: "feat/t{ticket}-{slug}"
     task_glob: docs/orchestration/tasks/active/*.md
-    alias_bare: true          # read legacy wt-t### next to ecosystem
+    alias_bare: true
     alias_legacy: none
     exceptions: [ChronOS-wt-measure]
 
@@ -21,7 +21,7 @@ repos:
     branch_pattern: "feat/t{ticket}-{slug}"
     task_glob: docs/orchestration/tasks/active/*.md
     alias_bare: false
-    alias_legacy: t-slug      # t051-dnd
+    alias_legacy: t-slug
     exceptions: []
 
   Chronos-Engine:
