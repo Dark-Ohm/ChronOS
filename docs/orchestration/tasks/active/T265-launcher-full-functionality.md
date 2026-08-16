@@ -148,8 +148,8 @@ frecency**; различается только раскладка и разме
 | T265-0 | `done/T265-0-launcher-icons-and-scroll.md` | DONE |
 | T275 | `done/T275-launcher-input-frecency-pin.md` | DONE 2026-08-16 |
 | T265-A | `done/T265-A-launcher-desktop-fields-and-ranking.md` | DONE 2026-08-16 (`98bd08f`) |
-| T265-B | `active/T265-B-launcher-grid-and-categories.md` | В ПОЛЕ (запущена до формальной приёмки A — см. HANDOFF #19) |
-| T265-C | `active/T265-C-launcher-favorites-recents-folders.md` | BLOCKED на B |
+| T265-B | `done/T265-B-launcher-grid-and-categories.md` | DONE 2026-08-16 (`bcd08cc`) |
+| T265-C | `active/T265-C-launcher-favorites-recents-folders.md` | ГОТОВА К ВЫДАЧЕ (B закрыта) |
 | T265-D | `active/T265-D-launcher-context-menu-and-actions.md` | BLOCKED на C |
 | T265-E | `active/T265-E-launcher-prefix-modes.md` | BLOCKED на D |
 | T265-F | `active/T265-F-launcher-system-actions.md` | BLOCKED на E |
