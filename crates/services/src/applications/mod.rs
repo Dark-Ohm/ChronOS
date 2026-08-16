@@ -17,7 +17,7 @@ use tracing::{debug, info, warn};
 
 use crate::Service;
 use crate::ServiceStatus;
-pub use types::{AppEntry, ApplicationsCommand, ApplicationsState, strip_field_codes};
+pub use types::{AppEntry, ApplicationsCommand, ApplicationsState, DesktopAction, strip_field_codes};
 
 // `pub mod` so downstream crates (the app) can reach
 // `chronos_services::applications::frecency::*` directly (T275).
@@ -93,10 +93,26 @@ fn desktop_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// Scan all .desktop directories and return deduplicated entries.
-/// System dirs are scanned first; user dir entries override system entries
-/// with the same filename (XDG spec: user overrides system).
-fn scan_all() -> Vec<AppEntry> {
+/// Split scanned entries by visibility: default-visible first, hidden second.
+/// Hidden (`NoDisplay`/`Hidden`) entries stay in the service state (T265-G)
+/// but are not offered by the launcher by default (T265-A).
+fn partition_listed(entries: Vec<AppEntry>) -> (Vec<AppEntry>, Vec<AppEntry>) {
+    let mut listed = Vec::new();
+    let mut hidden = Vec::new();
+    for entry in entries {
+        if entry.is_listed() {
+            listed.push(entry);
+        } else {
+            hidden.push(entry);
+        }
+    }
+    (listed, hidden)
+}
+
+/// Scan all .desktop directories and return deduplicated entries, split into
+/// `(listed, hidden)`. System dirs are scanned first; user dir entries override
+/// system entries with the same filename (XDG spec: user overrides system).
+fn scan_all() -> (Vec<AppEntry>, Vec<AppEntry>) {
     let mut seen: HashMap<String, AppEntry> = HashMap::new();
 
     for dir in desktop_dirs() {
@@ -117,9 +133,9 @@ fn scan_all() -> Vec<AppEntry> {
         }
     }
 
-    let mut result: Vec<AppEntry> = seen.into_values().collect();
-    result.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    result
+    let mut all: Vec<AppEntry> = seen.into_values().collect();
+    all.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    partition_listed(all)
 }
 
 #[derive(Clone)]
@@ -145,9 +161,13 @@ impl ApplicationsSubscriber {
         let handle = Handle::current();
 
         // Initial scan (synchronous, fast — typical system has ~200-500 desktop files).
-        let entries = scan_all();
-        info!("ApplicationsSubscriber: loaded {} desktop entries", entries.len());
-        data.set(ApplicationsState { entries });
+        let (entries, hidden) = scan_all();
+        info!(
+            "ApplicationsSubscriber: loaded {} desktop entries ({} hidden)",
+            entries.len(),
+            hidden.len()
+        );
+        data.set(ApplicationsState { entries, hidden });
         status.set(ServiceStatus::Available);
 
         // Spawn inotify watcher + debounced rescan.
@@ -270,9 +290,13 @@ async fn run_watcher(data: Mutable<ApplicationsState>, status: Mutable<ServiceSt
                 }
             }
             _ = timer => {
-                let entries = scan_all();
-                debug!("ApplicationsSubscriber: rescanned {} entries", entries.len());
-                data.set(ApplicationsState { entries });
+                let (entries, hidden) = scan_all();
+                debug!(
+                    "ApplicationsSubscriber: rescanned {} entries ({} hidden)",
+                    entries.len(),
+                    hidden.len()
+                );
+                data.set(ApplicationsState { entries, hidden });
                 status.set(ServiceStatus::Available);
                 debounce_deadline = None;
             }
@@ -321,7 +345,9 @@ mod tests {
                 icon: None,
                 terminal: false,
                 categories: vec![],
+                ..AppEntry::default()
             }],
+            hidden: vec![],
         };
         let b = a.clone();
         assert_eq!(a, b);
@@ -329,7 +355,7 @@ mod tests {
 
     #[test]
     fn scan_all_returns_sorted() {
-        let entries = scan_all();
+        let (entries, _) = scan_all();
         for window in entries.windows(2) {
             assert!(
                 window[0].name.to_lowercase() <= window[1].name.to_lowercase(),
@@ -338,6 +364,40 @@ mod tests {
                 window[1].name
             );
         }
+    }
+
+    #[test]
+    fn scan_all_listed_excludes_hidden() {
+        // Every entry in the `listed` bucket is visible; everything in `hidden`
+        // is NoDisplay/Hidden. On a system without hidden entries the `hidden`
+        // bucket is simply empty — the invariant still holds.
+        let (listed, hidden) = scan_all();
+        for entry in &listed {
+            assert!(entry.is_listed(), "listed bucket leaked {:?}", entry.id);
+        }
+        for entry in &hidden {
+            assert!(!entry.is_listed(), "hidden bucket leaked listed entry {:?}", entry.id);
+        }
+    }
+
+    #[test]
+    fn partition_listed_splits_by_visibility() {
+        let visible = AppEntry::fixture("visible", "Visible");
+        let no_display = AppEntry {
+            no_display: true,
+            ..AppEntry::fixture("nodisplay", "NoDisplay")
+        };
+        let hidden = AppEntry {
+            hidden: true,
+            ..AppEntry::fixture("hidden", "Hidden")
+        };
+        let (listed, hidden_bucket) = partition_listed(vec![
+            hidden.clone(),
+            visible.clone(),
+            no_display.clone(),
+        ]);
+        assert_eq!(listed, vec![visible]);
+        assert_eq!(hidden_bucket, vec![hidden, no_display]);
     }
 
     // --- is_game_entry tests ---
@@ -350,6 +410,7 @@ mod tests {
             icon: None,
             terminal: false,
             categories: categories.iter().map(|s| s.to_string()).collect(),
+            ..AppEntry::default()
         }
     }
 

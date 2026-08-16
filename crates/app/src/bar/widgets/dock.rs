@@ -292,6 +292,7 @@ mod tests {
                 icon: Some("kitty".into()),
                 terminal: false,
                 categories: vec![],
+                ..AppEntry::default()
             },
             AppEntry {
                 id: "notpinned".into(),
@@ -300,6 +301,7 @@ mod tests {
                 icon: None,
                 terminal: false,
                 categories: vec![],
+                ..AppEntry::default()
             },
         ];
         // Pin present in catalog stays; pin absent is dropped (and warned).
@@ -319,6 +321,7 @@ mod tests {
             icon: Some("kitty".into()),
             terminal: false,
             categories: vec![],
+            ..AppEntry::default()
         }];
         assert_eq!(
             resolve_pin("firefox", &entries).unwrap_err(),
@@ -336,6 +339,7 @@ mod tests {
             icon: None,
             terminal: false,
             categories: vec![],
+            ..AppEntry::default()
         }];
         let (entry, icon) = resolve_pin("thunar", &entries).expect("entry exists");
         assert_eq!(entry.id, "thunar");

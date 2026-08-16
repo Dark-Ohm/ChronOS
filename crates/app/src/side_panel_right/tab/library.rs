@@ -328,6 +328,7 @@ mod tests {
             icon: None,
             terminal: false,
             categories: vec!["Game".into()],
+            ..AppEntry::default()
         }
     }
 
@@ -339,6 +340,7 @@ mod tests {
             icon: None,
             terminal: false,
             categories: categories.iter().map(|s| s.to_string()).collect(),
+            ..AppEntry::default()
         }
     }
 

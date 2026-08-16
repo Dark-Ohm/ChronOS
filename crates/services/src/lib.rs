@@ -27,7 +27,8 @@ pub mod upower;
 pub mod wallpaper;
 
 pub use applications::{
-    AppEntry, ApplicationsCommand, ApplicationsState, ApplicationsSubscriber, strip_field_codes,
+    AppEntry, ApplicationsCommand, ApplicationsState, ApplicationsSubscriber, DesktopAction,
+    strip_field_codes,
 };
 pub use files::{
     DIR_LISTING_LIMIT, FileEntryDto, ListParams, ListResult, SortKey, list_dir_sync, sort_entries,

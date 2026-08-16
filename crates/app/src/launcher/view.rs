@@ -295,6 +295,24 @@ impl LauncherView {
     }
 
     fn render_search(&self, theme: &Theme) -> impl IntoElement {
+        // T265-A: faint inline-completion tail (first result) at the end of
+        // the field. Purely a hint — Enter still launches the selected row and
+        // does not "complete then wait for a second Enter".
+        let mut input = Input::new(&self.input)
+            .appearance(false)
+            .cleanable(true)
+            .text_color(theme.text.primary)
+            .text_size(px(17.));
+        if let Some(ghost) = completion_hint(&self.pattern, &self.results) {
+            input = input.suffix(
+                div()
+                    .text_color(theme.text.faint)
+                    .text_size(px(17.))
+                    .whitespace_nowrap()
+                    .child(ghost),
+            );
+        }
+
         div()
             .flex()
             .items_center()
@@ -317,13 +335,7 @@ impl LauncherView {
                 div()
                     .flex_1()
                     .min_w(px(0.))
-                    .child(
-                        Input::new(&self.input)
-                            .appearance(false)
-                            .cleanable(true)
-                            .text_color(theme.text.primary)
-                            .text_size(px(17.)),
-                    ),
+                    .child(input),
             )
     }
 
@@ -577,4 +589,40 @@ fn resolve_app_icon(entry: &AppEntry, theme: &Theme) -> gpui::AnyElement {
         .bg(theme.bg.elevated)
         .child(div().text_sm().text_color(theme.text.primary).child(letter))
         .into_any_element()
+}
+
+/// Inline-completion hint: the first result's name, shown as a faint tail in
+/// the search field when there is a typed pattern and at least one match.
+/// Purely visual — Enter still launches the selected row (T265-A).
+fn completion_hint(pattern: &str, results: &[AppEntry]) -> Option<String> {
+    if pattern.trim().is_empty() || results.is_empty() {
+        return None;
+    }
+    Some(results[0].name.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn completion_hint_shows_first_result_when_typed() {
+        let results = vec![
+            AppEntry::fixture("firefox", "Firefox"),
+            AppEntry::fixture("files", "Files"),
+        ];
+        assert_eq!(completion_hint("fir", &results).as_deref(), Some("Firefox"));
+    }
+
+    #[test]
+    fn completion_hint_none_on_empty_pattern() {
+        let results = vec![AppEntry::fixture("firefox", "Firefox")];
+        assert_eq!(completion_hint("", &results), None);
+        assert_eq!(completion_hint("   ", &results), None);
+    }
+
+    #[test]
+    fn completion_hint_none_when_no_results() {
+        assert_eq!(completion_hint("fir", &[]), None);
+    }
 }

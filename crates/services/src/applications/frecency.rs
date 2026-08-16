@@ -196,9 +196,7 @@ mod tests {
                 id: id.into(),
                 name: name.into(),
                 exec: "x".into(),
-                icon: None,
-                terminal: false,
-                categories: vec![],
+                ..AppEntry::default()
             },
             score,
         )
