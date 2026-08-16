@@ -13,3 +13,14 @@ assert_fail() {
     return 1
   fi
 }
+
+make_git_repo() {
+  local d="$1" branch="${2:-master}"
+  mkdir -p "$d"
+  git -C "$d" init -q -b "$branch"
+  git -C "$d" config user.email t@t
+  git -C "$d" config user.name t
+  echo ok >"$d/README"
+  git -C "$d" add README
+  git -C "$d" commit -q -m init
+}
