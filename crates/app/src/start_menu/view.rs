@@ -310,12 +310,24 @@ impl StartMenuView {
     }
 
     fn launch_selected(&mut self, window: &mut Window, cx: &mut App) {
+        if self.nav == Nav::Files {
+            Self::open_files(window, cx);
+            return;
+        }
         if let Some(entry) = self.visible.get(self.selected).cloned() {
             frecency::record_launch(&entry.id);
             if let Err(err) = launch(&entry.exec) {
                 tracing::error!("start_menu: failed to launch {}: {:#}", entry.name, err);
             }
         }
+        crate::start_menu::close_this(window, cx);
+    }
+
+    fn open_files(window: &mut Window, cx: &mut App) {
+        crate::side_panel_right::select_tab(
+            crate::side_panel_right::tabs::PanelTab::Files,
+            cx,
+        );
         crate::start_menu::close_this(window, cx);
     }
 
@@ -706,6 +718,7 @@ impl StartMenuView {
             .when(is_files, |el| {
                 el.child(
                     div()
+                        .id("start-menu-files-empty")
                         .py(px(48.))
                         .flex()
                         .flex_col()
@@ -713,6 +726,11 @@ impl StartMenuView {
                         .gap(px(10.))
                         .text_color(theme.text.faint)
                         .text_sm()
+                        .cursor_pointer()
+                        .hover(|s| s.text_color(theme.text.primary))
+                        .on_click(|_event, window, cx| {
+                            StartMenuView::open_files(window, cx);
+                        })
                         .child(
                             svg()
                                 .path("icons/folder.svg")
@@ -1091,5 +1109,7 @@ mod tests {
         for action in rail_power_actions() {
             assert!(power_icon(action).starts_with("icons/"));
         }
+        assert_eq!(power_icon(PowerAction::Lock), "icons/lock.svg");
+        assert_eq!(power_icon(PowerAction::Sleep), "icons/suspend.svg");
     }
 }

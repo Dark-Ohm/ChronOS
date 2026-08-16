@@ -37,6 +37,7 @@ icons!(
     "gamepad.svg",
     "hexagon-core.svg",
     "hexagon-sigil.svg",
+    "lock.svg",
     "microphone.svg",
     "microphone-mute.svg",
     "mode-daily.svg",
@@ -69,6 +70,7 @@ icons!(
     "speaker-low.svg",
     "speaker-mute.svg",
     "speaker-none.svg",
+    "suspend.svg",
     "users.svg",
     "x.svg",
 );
