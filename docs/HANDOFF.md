@@ -1,5 +1,19 @@
 # HANDOFF — контекст для новой сессии Архитектора
 
+**Обновлено: 2026-08-16 (чекпоинт #28 — T297 принята).**
+HEAD `9da7b92`.
+
+**T297 ПРИНЯТА** `fix(launcher): submenu render, live favorites, curated categories`.
+A: Desktop Actions плоским списком, не `submenu()`. B: зеркало
+`self.config` в `apply_config_derived` (сигнал уже шёл — тикет устарел
+после G). C: эвристику не брали, Hide from list. D: 11 Main Categories.
+Зона 3 файла. Мой прогон (worktree, без WIP T287-B): launcher **84/84**.
+Live grim — долг.
+
+T265-H по-прежнему BLOCKED на мокап. T287-B грязный в дереве — не трогал.
+
+---
+
 **Обновлено: 2026-08-16 (чекпоинт #27 — T265-G принята, live открыт).**
 HEAD `35fbb035` (+ docs после неё).
 
