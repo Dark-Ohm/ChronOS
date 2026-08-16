@@ -69,6 +69,18 @@ original approved spec is kept as a historical record under
   (Vulkan loader/ICD, `libwayland`, `libxkbcommon`, `fontconfig`/`freetype`).
 - Runtime integrations expect the corresponding D-Bus services to be present
   (WirePlumber, UPower, a notification/tray host, etc.).
+- **Build tooling — `mold` linker + `sccache` (both required).**
+  `.cargo/config.toml` pins the linker to `mold` (`-fuse-ld=mold`) and
+  wraps `rustc` with `sccache` — without `mold` on `PATH`, linking fails
+  outright; it is not an optional speed-up here. Install both before your
+  first build:
+  ```sh
+  # Arch/CachyOS
+  sudo pacman -S mold sccache
+  ```
+  (Other distros: install the equivalent `mold`/`sccache` packages, or
+  build from source.) `sccache` needs no manual startup — `cargo` invokes
+  it as the `rustc` wrapper automatically per `.cargo/config.toml`.
 
 ## Building
 

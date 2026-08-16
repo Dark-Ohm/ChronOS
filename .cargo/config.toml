@@ -1,0 +1,15 @@
+# Build-speed tooling — sccache (object cache, survives across worktrees
+# and CARGO_TARGET_DIR overrides) + mold (linker, much faster than the
+# default bfd/lld for a binary this size). Neither changes what gets built,
+# only how fast.
+#
+# Requires both installed (Arch/CachyOS: `pacman -S sccache mold`). Without
+# mold on PATH, linking fails outright — this is a real requirement for
+# anyone building from source, not an optional nicety. Document it in
+# README/CONTRIBUTING alongside the rest of the build prerequisites.
+
+[build]
+rustc-wrapper = "sccache"
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
