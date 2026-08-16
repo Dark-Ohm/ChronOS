@@ -1,43 +1,47 @@
 # T271 — проглоченные `Result` в IPC (`let _ =`)
 
-**Статус:** OPEN, **не в поле**, пока T285 / T286 / T287-C в `active/`.
+**Статус:** OPEN. Блокеры сняты (T285 STOP, T286 / T287-A/B/C в `done/`).
+Можно параллелить с T298: зона T298 — `composer.rs` / `workspace_view.rs`,
+сюда лезть нельзя.
+**Нужен:** да. В `ipc/` по-прежнему глотается каждый `cx.update` и
+почти каждый `sender.send`. Правило из `CLAUDE.md` живое; это тот же
+класс, что прятал ghost-window. Не срочно, не фича — гигиена, пока не
+сгниёт в следующий раз.
 **Приоритет:** P2.
 **Роль:** BACKEND. Зона **только** `crates/app/src/ipc/`.
-**Правило-первоисточник:** `CLAUDE.md` — никогда не глушить ошибку через
-`let _ = fallible_call()`.
+**Правило:** никогда не глушить ошибку через `let _ = fallible_call()`.
 
-## Зона (жёстко)
+## Замер 2026-08-16 (не 2026-08-13)
 
-| Файл | Случаев (замер 2026-08-13) | Природа |
+| Файл | Живых `let _ =` | Природа |
 | --- | --- | --- |
-| `crates/app/src/ipc/mod.rs` | 15 | все — `let _ = cx.update(...)` |
-| `crates/app/src/ipc/service.rs` | 17 | cleanup сокета, timeout/flush/shutdown, `sender.send` |
+| `crates/app/src/ipc/mod.rs` | 16 | все — `cx.update(...)` (плюс arm `toggle-start-menu` после T265-H) |
+| `crates/app/src/ipc/service.rs` | 18 прод + 2 в `#[cfg(test)]` | Drop/acquire teardown; `sender.send` в `accept_loop` |
 
-**`crates/app/src/side_panel_left/**` — запрещён.** Там 14+ случаев, в том
-числе `let _ = this.update` в спавне `ChatTab::new` (`tabs/chat.rs`) и в
-`composer.rs` / `text_input.rs`. Это зона T285 (restore/`load_session`),
-T286 (композер, `text_input.rs` уйдёт) и T287-C (chrome). Чистить `let _ =`
-параллельно = ghost-window сага налево. Левую панель — отдельным тикетом
-после их `done/`, по мере касания файлов.
+Тестовые два `remove_file` в `second_acquire_on_same_path_becomes_secondary`
+не чистить.
 
-Остальные ~90 случаев по дереву — не эта задача.
+**`side_panel_left/**` — запрещён.** Там свои `let _ =` (chat/composer).
+Не этот тикет. После левого фронта — отдельно, по касанию файла.
 
-Карта «не пересекается с T263/T266/T269» устарела (2026-08-13). Актуальный
-конфликт — левый фронт, не трей.
+Остальные ~90 мест по дереву — не эта задача.
 
-## Что делать с каждым случаем в `ipc/`
+## Что делать с каждым случаем
 
 По смыслу, не шаблоном:
 
 1. **`?`** — функция `Result`, ошибка едет выше.
-2. **`.log_err()`** — результат осознанно игнорируется, нужен след.
-   Дефолт для `cx.update(...)` в `ipc/mod.rs`.
-3. **Явный `match` / `if let Err(...)`** — у ошибки своя логика
-   (сокет уже снят — норма).
+2. **`if let Err(e) = … { tracing::warn!(…); }`** — результат осознанно
+   игнорируется, нужен след. **Дефолт для `cx.update` и `sender.send`.**
+3. **Явный `match`** — у ошибки своя логика (сокет уже снят — норма).
 
-`ipc/service.rs`: teardown (`remove_file`, `flush`/`shutdown`) — `.log_err()`
-на debug, не `?`. `let _ = sender.send(...)` (~248–284) — «получатель умер»:
-обязано в лог, иначе IPC-команда исчезает.
+`.log_err()` из `gpui_ce_util` в крейт `chronos` **не подключён**
+(в дереве есть только комментарии в `osd/mod.rs`). **Не тащить
+`gpui_ce_util` ради этого тикета.** Не выдумывать хелпер на весь крейт.
+
+`ipc/service.rs`: teardown (`remove_file`, `flush`/`shutdown`) — warn
+на debug/info, не `?`. `sender.send` — «получатель умер»: в лог,
+иначе IPC-команда исчезает молча.
 
 **Запрещено:** `.unwrap()` / `.expect()`. Паника ≠ исправление.
 
@@ -47,17 +51,18 @@ T286 (композер, `text_input.rs` уйдёт) и T287-C (chrome). Чист
 - Не гребть `side_panel_left`.
 - `cargo test -p chronos --lib --bins` — без снижения числа тестов.
 - `cargo check -p chronos` — без новых предупреждений.
-- Живой смок: `chronos-ipc toggle-launcher`, `toggle-side-panel-right`,
-  `select-tab:system`, `set-workspace-mode:gamer`, `toggle-theme`.
+- Живой смок: `chronos-ipc toggle-launcher`, `toggle-start-menu`,
+  `toggle-side-panel-right`, `select-tab:system`, `toggle-theme`.
 
-В отчёте: 2–3 строки ДО/ПОСЛЕ и сколько ушло в каждый исход.
+В отчёте: сколько ушло в `?` / `warn` / `match`.
 
 ## Нельзя
 
-- `side_panel_left/**`, `composer.rs`, `text_input.rs`, `tabs/chat.rs`.
-- `tray_menu/**`, `dock/context_menu.rs` — не эта уборка.
+- `side_panel_left/**`, `composer.rs`, `workspace_view.rs`, `tabs/chat.rs`.
+- `tray_menu/**`, `dock/context_menu.rs`.
 - Остальные ~90 мест. `clone()` «по пути» — нет.
+- Dependency на `gpui_ce_util` / `Source/`.
 
 ## Коммит
 
-`ipc : не глушить Result — log_err/? вместо let _ (T271)`
+`ipc : не глушить Result — warn вместо let _ (T271)`
