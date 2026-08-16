@@ -11,7 +11,9 @@
 **Принято:** T194c · T199–T208 · T203 · T204 (+errata).
 T202 `82e100a` · T205–T208 done; live smoke residual on chrome/editor.
 
-**Активное:** нет. T292 **принят**. T296 **принят** `a2c072f`.
+**Активное:** T287 (`docs/orchestration/tasks/active/`). T287-C **принят**
+`220a05e2` (760 тестов зелёные, grep дерева чист, live smoke не гонялся —
+не блокер). T292 **принят**. T296 **принят** `a2c072f`.
 T285 slice A `f9cd9a2` в git; остаток — BACKEND (`hermes_acp/client.rs`), не брать.
 ~~T195~~ **done** `9268440`. Live smoke residual T206–T208 — не сейчас.
 
