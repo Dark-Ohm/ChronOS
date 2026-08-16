@@ -1,0 +1,58 @@
+# Worktree automation — per-repo config.
+# New repo in scope = new entry here, no script edits.
+
+repos:
+  ChronOS:
+    root: /home/neo/projects/chronos-ecosystem/ChronOS
+    default_branch: master
+    worktree_parent: /home/neo/projects/chronos-ecosystem
+    name_pattern: "ChronOS-wt-t{ticket}"
+    branch_pattern: "feat/t{ticket}-{slug}"
+    task_glob: docs/orchestration/tasks/active/*.md
+    alias_bare: true          # read legacy wt-t### next to ecosystem
+    alias_legacy: none
+    exceptions: [ChronOS-wt-measure]
+
+  Chronos-FM:
+    root: /home/neo/projects/chronos-ecosystem/Chronos-FM
+    default_branch: main
+    worktree_parent: /home/neo/projects/chronos-ecosystem/Chronos-FM/.worktrees
+    name_pattern: "FM-wt-t{ticket}"
+    branch_pattern: "feat/t{ticket}-{slug}"
+    task_glob: docs/orchestration/tasks/active/*.md
+    alias_bare: false
+    alias_legacy: t-slug      # t051-dnd
+    exceptions: []
+
+  Chronos-Engine:
+    root: /home/neo/projects/chronos-ecosystem/Chronos-Engine
+    default_branch: chronos-main
+    worktree_parent: /home/neo/projects/chronos-ecosystem
+    name_pattern: "Engine-wt-t{ticket}"
+    branch_pattern: "t{ticket}-{slug}"
+    task_glob: null
+    alias_bare: true
+    alias_legacy: none
+    exceptions: [Chronos-Engine-upstream-test]
+
+  Chronos-lm:
+    root: /home/neo/projects/chronos-ecosystem/Chronos-lm
+    default_branch: master
+    worktree_parent: /home/neo/projects/chronos-ecosystem
+    name_pattern: "lm-wt-t{ticket}"
+    branch_pattern: "feat/t{ticket}-{slug}"
+    task_glob: null
+    alias_bare: true
+    alias_legacy: none
+    exceptions: []
+
+  Source:
+    root: /home/neo/projects/chronos-ecosystem/Source
+    default_branch: main
+    worktree_parent: /home/neo/projects/chronos-ecosystem
+    name_pattern: "Source-wt-t{ticket}"
+    branch_pattern: "feat/t{ticket}-{slug}"
+    task_glob: null
+    alias_bare: true
+    alias_legacy: none
+    exceptions: []
