@@ -2,6 +2,7 @@ mod agent_follow;
 mod assets;
 mod bar;
 pub mod bar_settings;
+mod calendar_popup;
 mod desktop_terminal;
 mod dock;
 mod edit_mode;
@@ -98,6 +99,7 @@ fn main() {
         tray_menu::init(cx);
         project_switcher::init(cx);
         volume_popup::init(cx);
+        calendar_popup::init(cx);
         gaming_mode::init(cx);
         side_panel_right::init(cx);
         side_panel_left::init(cx);

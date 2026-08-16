@@ -54,7 +54,7 @@ fn instantiate(name: &str, section: BarSection) -> Option<Box<dyn BarWidget>> {
         "notification_bell" => Box::new(notification_bell::NotificationBellWidget::new()),
         "battery" => Box::new(battery::BatteryWidget),
         "keyboard_layout" => Box::new(keyboard_layout::KeyboardLayoutWidget),
-        "clock" => Box::new(clock::ClockWidget),
+        "clock" => Box::new(clock::ClockWidget::new()),
         _ => return None,
     };
     // Separator already carries section.

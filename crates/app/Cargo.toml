@@ -44,9 +44,10 @@ hot-lib-reloader = { version = "0.8", optional = true }
 chronos-hotview = { path = "../hotview", optional = true }
 
 [features]
-default = ["markdown"]
+default = ["markdown", "time"]
 hot-reload = ["dep:hot-lib-reloader", "dep:chronos-hotview"]
 markdown = ["gpui-component/markdown"]
+time = ["gpui-component/time"]
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }

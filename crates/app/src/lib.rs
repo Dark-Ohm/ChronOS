@@ -2,6 +2,8 @@
 
 pub mod agent_follow;
 pub mod bar_settings;
+// Lib-side twin of bin `mod calendar_popup` (main.rs).
+pub(crate) mod calendar_popup;
 // Desktop-terminal widget module — needed in the lib crate too: the System
 // tab (lib) references `desktop_terminal::add_widget` (T259) and the widget
 // tests run against the lib (`cargo test --lib`). The bin (main.rs) has its
