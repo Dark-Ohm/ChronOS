@@ -94,7 +94,7 @@ cargo build --release -p chronos
 ```
 
 **Dev CLI** (recommended day-to-day): install once, then rebuild/start/stop
-without remembering paths — see **[`docs/dev-cli.md`](docs/dev-cli.md)**.
+without remembering paths — see **[`docs/guides/dev-cli.md`](docs/guides/dev-cli.md)**.
 
 ```sh
 ./scripts/install-dev-cli.sh

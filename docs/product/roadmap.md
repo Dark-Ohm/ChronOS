@@ -187,7 +187,7 @@ GPU-accelerated retained-mode тулките с нуля). Личный инст
 
 ## Волна «добивка бара» — ЗАКРЫТА (2026-07-20)
 
-Свип попапов на docs/STYLE.md (Grok №15 `1d736da`), battery/mpris SVG +
+Свип попапов на docs/style/STYLE.md (Grok №15 `1d736da`), battery/mpris SVG +
 hover-свип + CAVA (Mimo №11 `6723493`), светлая тема Light C + hot-reload
 (GLM №1/№2 `0f0ee88`/`5bb6c77`), network — лампочка+спидометр (DeepSeek
 №1 `0838446`), трей-частокол (Hermes №16 `7eada8b`), upgrade-фидбек

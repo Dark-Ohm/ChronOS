@@ -43,7 +43,7 @@ Or with the dev CLI (`./scripts/install-dev-cli.sh` once, then):
 chronos-rebuild && chronos-stop && chronos-start
 ```
 
-See [`docs/dev-cli.md`](docs/dev-cli.md) for the full CLI reference.
+See [`docs/guides/dev-cli.md`](docs/guides/dev-cli.md) for the full CLI reference.
 
 ## Code style
 

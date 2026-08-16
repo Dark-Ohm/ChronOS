@@ -20,7 +20,7 @@ T285 slice A `f9cd9a2` в git; остаток — BACKEND (`hermes_acp/client.rs
 ~~T195~~ **done** `9268440`. Live smoke residual T206–T208 — не сейчас.
 
 **Pause:** T196 · T197 SUPERSEDED. **T195** unblocked (pickup when free).
-**Канон:** `docs/PRODUCT.md`.
+**Канон:** `docs/product/PRODUCT.md`.
 
 **Урок T179/T180, стоил двух приёмок:** доказывать надо тот путь, который
 порождает проблему. В T180 отчёт предъявлял «ноль сетевых запросов после

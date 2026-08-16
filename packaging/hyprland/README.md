@@ -3,7 +3,7 @@
 Modular **Lua** config pieces for Hyprland 0.55+ / 0.56. Goal: something we can
 ship next to the `chronos` package — not a developer's `~/.config/hypr/hyprland.lua`.
 
-See also `docs/PRODUCT.md` (Agent Shell DE; shell ships with Hyprland dots).
+See also `docs/product/PRODUCT.md` (Agent Shell DE; shell ships with Hyprland dots).
 
 ## Layout
 
