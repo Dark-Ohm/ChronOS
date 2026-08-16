@@ -15,7 +15,7 @@ reports, accepts or rejects, and keeps project docs honest.
 ## I do
 
 - Write task briefs (`docs/orchestration/tasks/active/TNNN-slug.md`) from the
-  approved roadmap + design mockups + `docs/DECISIONS.log`.
+  approved roadmap + design mockups + `.chronos-ops/checkpoint/REJECTED.md`.
 - Set scope boundaries, touch-lists, race-map notes (two tasks sharing a
   file), and verification gates per task.
 - Review reports in the inbox `docs/orchestration/tasks/report/`; re-run gates
@@ -23,7 +23,7 @@ reports, accepts or rejects, and keeps project docs honest.
 - Accept: report → `docs/orchestration/tasks/report-log/TNNN-slug-report.md`,
   brief → `docs/orchestration/tasks/done/TNNN-slug.md`. Reject: brief/report →
   `docs/orchestration/tasks/rejected/` with the reason stated in the file.
-- Maintain `docs/HANDOFF.md`, `docs/DECISIONS.log` (append-only), `docs/orchestration/
+- Maintain `.chronos-ops/checkpoint/HANDOFF.md`, `.chronos-ops/checkpoint/REJECTED.md` (append-only), `docs/orchestration/
   tasks/MIGRATION.md` (the T-ID ledger).
 - Cross-check every claim in a report against the tree myself — minions lie
   regularly (per-agent lie count before this ledger existed: Mimo twice,
@@ -139,7 +139,7 @@ reports, accepts or rejects, and keeps project docs honest.
 
 ## Authority order (binding)
 
-User instruction > `docs/ARCHITECTURE.md` + `docs/DECISIONS.log` > `docs/HANDOFF.md` >
+User instruction > `.chronos-ops/checkpoint/ARCHITECTURE.md` + `.chronos-ops/checkpoint/REJECTED.md` > `.chronos-ops/checkpoint/HANDOFF.md` >
 `docs/orchestration/tasks/MIGRATION.md` > `docs/roadmap.md` > agent preference.
 
 ## Agent docs lifecycle (mandatory)
@@ -181,7 +181,7 @@ Two boundaries that make this work rather than dilute it:
 1. **No "architect" role among minions.** There is one architect and it is
    me. A second one makes "the architect decided" unverifiable — and we
    already lost a round to an invented architect instruction (T146) and a
-   round to a minion editing `docs/HANDOFF.md` (T144). Recon brings facts,
+   round to a minion editing `.chronos-ops/checkpoint/HANDOFF.md` (T144). Recon brings facts,
    the architect decides.
 2. **QA does not accept work.** A report about someone else's work lies
    exactly as readily as a report about one's own. QA supplies evidence;
@@ -439,3 +439,39 @@ Round 3 T278 пришёл с тестом `on_dock_toggle_uses_pure_helper`, к�
    оказалось честным: подстрочный фильтр `side_panel_left` ловит
    `side_panel_right::view::tests::needs_width_resize_still_serves_side_panel_left`.
    Фильтровать по `module::`, а число в отчёте брать из вывода, не из головы.
+
+### Кухня в репо — протокол перевернулся дважды, и почему это стоило дороже, чем один вопрос (added 2026-08-17, чекпоинт #36)
+
+- **«Не нужна кухня в репо» ≠ «не под git».** Прочитал фразу владельца
+  как решение снять `.chronos-ops` с git-tracking (сделал: `git rm
+  --cached` + `.gitignore`). Через пару реплик — прямой откат:
+  «конечно же под гит, контрибьюторы должны откуда-то брать задания».
+  Обе трактовки грамматически валидны на одной фразе. Урок: решение,
+  которое разворачивает git-tracking сотен файлов, — не тот случай,
+  где стоит действовать на первом прочтении неоднозначной формулировки,
+  даже если фраза звучит как утверждение, а не вопрос. Один уточняющий
+  вопрос стоит дешевле, чем два прохода `git rm --cached`/`git add`
+  по 368 файлам.
+- **Read 6 строк файла ≠ прочитал файл.** Собрался удалить `docs/
+  MEMORY.md`, заявив пользователю «пустой шаблон» — посмотрел только
+  первые 6 строк (`head -6`), там была шаблонная шапка Claude Code
+  project-memory. В файле было 264 строки и **несохранённые правки**
+  от другого агента (чекпоинт от 2026-08-16). `git status` в самом
+  начале сессии уже показывал `M docs/MEMORY.md` — сигнал был, не
+  сопоставил его с содержимым файла, потому что не читал файл целиком
+  перед тем, как формулировать вывод о нём. Владелец поймал: «живую
+  инфу не уничтожаем конечно же». Правило CLAUDE.md «читать файл
+  ПОЛНОСТЬЮ до Write-перезаписи» защищает от перезаписи содержимого —
+  не защищает от неверного УТВЕРЖДЕНИЯ о содержимом на основе частичного
+  чтения. Это тот же риск в другом месте: не только Write ломает данные,
+  но и совет, данный на неполном чтении.
+- **`git merge-base --is-ancestor` не ловит cherry-picked work.** При
+  зачистке воркетри три ветки (`feat/t291-...` и др.) числились
+  unmerged по `git branch --no-merged`, хотя их код физически был уже
+  в `master` — попал туда через commit с другим сообщением/хэшем
+  (ручной cherry-pick или переприменение). Единственный надёжный тест —
+  сравнить содержимое затронутых файлов побайтово
+  (`diff <(git show master:$f) worktree/$f`), не полагаться на ancestor-
+  граф. Иначе рискуешь либо повторно смержить уже применённый код
+  (конфликт/дубликат), либо решить, что ветка «настоящая unmerged
+  работа», хотя это стухший локальный чекаут.

@@ -7,9 +7,9 @@ HEAD `0a2d6a64`, запушен `origin/master`.
 контрибьюторы берут задания отсюда. Весь рабочий канон архитектора
 физически переехал из `docs/` сюда же, в `.chronos-ops/checkpoint/`:
 этот `HANDOFF.md`, `ARCHITECTURE.md`, `ARCHITECT.md`, `TBD.md`,
-`SOUL.md`, `MEMORY.md`, `REJECTED.md` (бывший `docs/DECISIONS.log`,
-переименован). `docs/design/` → `.chronos-ops/design/`,
-`docs/superpowers/` → `.chronos-ops/superpowers/`, обе as-is. `docs/`
+`SOUL.md`, `MEMORY.md`, `REJECTED.md` (бывший `.chronos-ops/checkpoint/REJECTED.md`,
+переименован). `.chronos-ops/design/` → `.chronos-ops/design/`,
+`.chronos-ops/superpowers/` → `.chronos-ops/superpowers/`, обе as-is. `docs/`
 теперь только продукт+сайт: `product/`/`style/`/`guides/` подпапки,
 плюс `index.html`/`.nojekyll`/`landing/` (GitHub Pages, не переезжает
 никогда) и `hyprland/` (живой конфиг, не переезжает).
@@ -136,7 +136,7 @@ Live grim — долг.
 
 T265-H **в поле, тикет толстый** — приёмка слоями: ядро (Overlay +
 All Apps + поиск) обязательно; рейл и power-футер можно вынести в H2/H3
-из отчёта, не отклонять H. Канон `docs/design/chronos-start-menu.html`.
+из отчёта, не отклонять H. Канон `.chronos-ops/design/chronos-start-menu.html`.
 
 ---
 
@@ -576,7 +576,7 @@ docker-сокет) ≠ `podman-compose` (питоновский, которым 
 `side_panel_right::view::tests::needs_width_resize_still_serves_side_panel_left`).
 Задание → `tasks/done/`, отчёт → `tasks/report-log/`.
 
-**Главный урок T278 (записан в `docs/ARCHITECT.md`, раздел 2026-08-14):**
+**Главный урок T278 (записан в `.chronos-ops/checkpoint/ARCHITECT.md`, раздел 2026-08-14):**
 round 3 пришёл с тестом `on_dock_toggle_uses_pure_helper`, который не
 вызывал `on_dock_toggle` — присваивал результат хелпера в глобал и
 проверял, что глобал равен результату хелпера. Зелёный при любом
@@ -985,7 +985,7 @@ settings: reload `agents.toml`, пустой Editor на отсутствующ�
 **Почему не 5-й QA-заход.** Код слайса 4 (T175–T180) + T182/T183 приняты.
 Пять заходов T181, две фабрикации кадров, отстранение QA-роли, HANDOFF/память
 не обновлялись — поле крутилось на «готовом» три дня. Residual edge-states
-(§5.4/5.5/5.7/§6.1) → `docs/TBD.md`, не `active/`. Отчёт приёмки:
+(§5.4/5.5/5.7/§6.1) → `.chronos-ops/checkpoint/TBD.md`, не `active/`. Отчёт приёмки:
 `docs/orchestration/tasks/report-log/T181-slice-4-smoke-report.md`.
 
 **Роли 2026-08-02:** Lead Architect = Grok; Claude — исполнитель на брифах
@@ -1069,7 +1069,7 @@ Customization wave **closed** (accept by tree + tests; live grim N/V):
 параллель ok; T202 после T200; T203 после T201. Live smoke T194c/b residual.
 Customization plan approved. Hindsight :8888 **down** на момент чекпоинта.
 
-Customization plan **approved:** `docs/superpowers/plans/2026-08-02-live-customization.md`.
+Customization plan **approved:** `.chronos-ops/superpowers/plans/2026-08-02-live-customization.md`.
 
 
 **Четыре живые вкладки и три движка в `crates/services/` без единого
@@ -1156,7 +1156,7 @@ inbox и сам написал коммит «T177 принята» — чере
 следующая итерация**; пользователь сказал прямо «начинаем с B, улучшаем
 обновами». Отсюда требование, заложенное с первого коммита: `version = 1` в
 `scenes.toml` и зарезервированная секция `[scene.windows]`, которую парсер
-обязан переживать. План — `docs/superpowers/plans/2026-07-31-shell-composition-slice-2.md`.
+обязан переживать. План — `.chronos-ops/superpowers/plans/2026-07-31-shell-composition-slice-2.md`.
 
 **T164 (scene-модель) — принята с эрратой, два захода.** `crates/app/src/scene.rs`:
 глобал `SceneState`, `~/.config/chronos/scenes.toml`, чистые `parse_config` /
@@ -1305,7 +1305,7 @@ T167 ровно про то, что кадр надо смотреть глаз�
 
 ## Слайс 3 — модуляризация правой панели (в работе)
 
-План — `docs/superpowers/plans/2026-07-31-right-panel-modularization-slice-3.md`.
+План — `.chronos-ops/superpowers/plans/2026-07-31-right-panel-modularization-slice-3.md`.
 
 **T170 — ПРИНЯТА с первого захода** (`be6dcee`). Корень нашёл я при
 составлении задания: `bar::widgets::dock::register` была **мёртвой**, виджет
@@ -1484,7 +1484,7 @@ System занимают ~390 — слева ~110 px сквозной пусто�
 
 ## Слайс 4 — рабочий стол разработчика (открыт)
 
-План — `docs/superpowers/plans/2026-07-31-developer-workbench-slice-4.md`.
+План — `.chronos-ops/superpowers/plans/2026-07-31-developer-workbench-slice-4.md`.
 §14 пункт 4: Files, Terminal, Build/Logs, Preview (System сделана в слайсе 3).
 
 **Главное решение слайса: код у нас уже есть, писать с нуля нечего.**
@@ -1500,7 +1500,7 @@ System занимают ~390 — слева ~110 px сквозной пусто�
   фоновый терминал на обоях остаётся, это другой сценарий.
 - **Build/Logs и Preview** — вот это действительно новое.
 
-**yazi отвергнут** (запись в `docs/DECISIONS.log`). Лицензия у него чистая —
+**yazi отвергнут** (запись в `.chronos-ops/checkpoint/REJECTED.md`). Лицензия у него чистая —
 MIT, — но это TUI: слой отображения выкидывается целиком, а остаётся ровно
 то, что в Chronos-FM уже написано на GPUI. Отдельно верно: yazi прекрасно
 запустится **внутри** нашего PTY, когда появится вкладка Terminal, — бесплатно
@@ -1625,7 +1625,7 @@ app_id=smoke_app_t162`), `bar.toml` (виджет после `project`, `clock` 
   более жёсткий контракт.
 
 **Очередь: пусто.** Слайс 1 из восьми по спеке
-`docs/superpowers/specs/2026-07-30-adaptive-developer-gamer-shell-ide-design.md`
+`.chronos-ops/superpowers/specs/2026-07-30-adaptive-developer-gamer-shell-ide-design.md`
 закрыт. Остальные семь слайсов задач не имеют — каждый требует своего
 утверждённого плана (§14 спеки). Следующий шаг — выбрать слайс 2 и расписать.
 
@@ -1687,7 +1687,7 @@ T157. Воркетри осталось два: `ChronOS` (19G) и `ChronOS-wt-m
 дописывала. В стволе лок правильный, перемотка это починила. На будущее:
 после задач, добавляющих зависимость, сверять, что лок реально в коммите.
 
-**Спека Shell-IDE принята.** `docs/superpowers/specs/2026-07-30-adaptive-
+**Спека Shell-IDE принята.** `.chronos-ops/superpowers/specs/2026-07-30-adaptive-
 developer-gamer-shell-ide-design.md` (564 строки, коммит `8c80fc0`).
 Проверена по дереву — ничего не фабриковала: `#007acc`, Light C,
 `GamingModeState`, `PanelTab`, скаффолдинг T157 в `view.rs:78-92`, композиция
@@ -1712,7 +1712,7 @@ developer-gamer-shell-ide-design.md` (564 строки, коммит `8c80fc0`).
 live-smoke limitation» (T117 принят живьём, открыты ghost-trail item #8-bis
 и дропдаун-jank); дописана оговорка про `exclusive_zone: None` у hover-полосы.
 
-**План слайса 1** — `docs/superpowers/plans/2026-07-30-workspace-mode-slice-1.md`
+**План слайса 1** — `.chronos-ops/superpowers/plans/2026-07-30-workspace-mode-slice-1.md`
 (коммит `f52de4a`, 1107 строк): состояние Developer/Gamer, IPC, виджет бара,
 контракт предложения. Осознанно отложено: лаунчер и командная палитра как
 входы (§5 спеки перечисляет четыре, закрыты два). Осознанно вырезано:
@@ -1723,7 +1723,7 @@ live-smoke limitation» (T117 принят живьём, открыты ghost-tr
 на 76 коммитов, теперь `c688c11`); ствол `measure/gpui-component` и
 `spike/hot-reload-track-b` выложены на origin отдельными ветками. Воркетри
 `ChronOS-wt-shell-ide-design` и `-system-control` снесены вместе с ветками;
-13 закрытых спек и планов уехали в `docs/superpowers/*/done/` чистым move.
+13 закрытых спек и планов уехали в `.chronos-ops/superpowers/*/done/` чистым move.
 **`master` НЕ двигается до приёмки T157** — `ChronOS-baseline` стоит на нём и
 служит базой замера. Живых воркетри три: `ChronOS` (ствол), `ChronOS-baseline`,
 `ChronOS-wt-measure`.
@@ -1761,7 +1761,7 @@ AUR-треки T103–T106, вкладки IDE T113–T115 (снимутся п�
 T152 (иврит/RTL — с четвёртого захода, три правки в форке).
 
 **Решение дня:** `gpui-component` взят как инфраструктура IDE-панели,
-реверс июльского «варианта C» (`docs/DECISIONS.log`, `ee63c19`). Цена входа за
+реверс июльского «варианта C» (`.chronos-ops/checkpoint/REJECTED.md`, `ee63c19`). Цена входа за
 `Input` — **+1 822 848 байт (+1.74 MiB)** от базы **22 520 192**.
 
 **Уборка рабочего места (сделана).** Сняты worktrees
@@ -1795,7 +1795,7 @@ ChronOS (903 → 132 строки) и взят под git.
 
 **Курс подтверждён: строим полноценный Shell-IDE.** Отсюда решение по
 `gpui-component` — берём как инфраструктуру, не как «может пригодится»
-(`docs/DECISIONS.log` 29.07, коммит `ee63c19`). Реверс июльского «варианта C»
+(`.chronos-ops/checkpoint/REJECTED.md` 29.07, коммит `ee63c19`). Реверс июльского «варианта C»
 законен: там было прописано условие пересмотра, и оно сработало.
 
 **Цена входа измерена честно: `Input` с гейтами T156 = +1 822 848 байт
@@ -1910,7 +1910,7 @@ Ollama 4096 и лимит Jina «2 одновременных» — дроссе
 ### Где стоим (2026-07-29)
 
 **Очередь `docs/orchestration/tasks/active/` — три состояния, не одна куча**
-(коммит `7d3ff16`, канон в `docs/ARCHITECT.md`):
+(коммит `7d3ff16`, канон в `.chronos-ops/checkpoint/ARCHITECT.md`):
 
 | Каталог | Смысл |
 |---|---|
@@ -1952,7 +1952,7 @@ T154 требовал пятую. Пользователь решил: комп�
 - **`LICENSE-APACHE` неприкосновенен.** В T155 его снесли вместе с
   `README`/`docs`/`themes`; восстановлен `git checkout --`. Крейт под
   Apache-2.0, `Source/NOTICE:10-12` на него ссылается, §4 требует
-  сохранять copyright notice. Урок — в `docs/ARCHITECT.md` (`68c671f`).
+  сохранять copyright notice. Урок — в `.chronos-ops/checkpoint/ARCHITECT.md` (`68c671f`).
 
 **T152 (иврит/RTL) — отчёт отклонён.** Дефект B закрыли двумя
 `.overflow_hidden()` на пузырях (обрезка вместо починки: иврит теряет
@@ -1984,7 +1984,7 @@ T154 требовал пятую. Пользователь решил: комп�
 но НЕ приёмка), **RECON** (факты из чужих исходников, только чтение).
 Точки входа — `docs/orchestration/agents/{FRONTEND,BACKEND,QA,RECON}.md`, общие
 правила один раз в `docs/orchestration/agents/RULES.md`. Архитектор среди
-миньонов не заводится намеренно — обоснование в `docs/ARCHITECT.md` («Role
+миньонов не заводится намеренно — обоснование в `.chronos-ops/checkpoint/ARCHITECT.md` («Role
 model»). Старый `HERMES.md` — в `docs/orchestration/agents/archive/`.
 
 **Очередь:** T148 (транскрипт: тулы наверх, живое размышление, сворачивание,
@@ -2176,7 +2176,7 @@ D1 отделён по вине: сырой лог показал, что для
 
 ### Стратегия
 Доводить **шелл до daily driver**, не reddit/Q1 editor.  
-Некритичные хвосты → **`docs/TBD.md`**.  
+Некритичные хвосты → **`.chronos-ops/checkpoint/TBD.md`**.  
 **Не Plasma-edit** (DECISIONS 2026-07-24) — Shell-IDE + **config-backed
 chrome layout** + dev `hotview`.
 
@@ -2189,7 +2189,7 @@ chrome layout** + dev `hotview`.
 **User pain:** chat dead; no other agents (want Grok etc.); UI = Zed
 clone without ChronOS character.
 
-**Спека:** `docs/superpowers/specs/2026-07-26-acp-panel-revive-design.md`
+**Спека:** `.chronos-ops/superpowers/specs/2026-07-26-acp-panel-revive-design.md`
 
 | Phase | T | Verdict | Commit |
 |---|---|---|---|
@@ -2307,15 +2307,15 @@ clone without ChronOS character.
 ### Docs (канон)
 | Doc | Роль |
 |---|---|
-| **`docs/HANDOFF.md`** | оперативка / поле / статус T |
-| **`docs/ARCHITECTURE.md`** | принятая архитектура |
-| **`docs/DECISIONS.log`** | что отклонили / почему (append-only) |
-| **`docs/TBD.md`** | хвосты и хотелки без T-ID |
-| **`docs/MEMORY.md`** | durable knowledge cross-session |
+| **`.chronos-ops/checkpoint/HANDOFF.md`** | оперативка / поле / статус T |
+| **`.chronos-ops/checkpoint/ARCHITECTURE.md`** | принятая архитектура |
+| **`.chronos-ops/checkpoint/REJECTED.md`** | что отклонили / почему (append-only) |
+| **`.chronos-ops/checkpoint/TBD.md`** | хвосты и хотелки без T-ID |
+| **`.chronos-ops/checkpoint/MEMORY.md`** | durable knowledge cross-session |
 | **`docs/roadmap.md`** | квартальный порядок |
 
 **Обновлено: 2026-07-25 (ночь) — polish-to-daily-driver; visual depth T128–T132.**
-(см. блок 2026-07-26 выше: theme panels closed, docs/TBD.md.)
+(см. блок 2026-07-26 выше: theme panels closed, .chronos-ops/checkpoint/TBD.md.)
 
 **Обновлено: 2026-07-24 — T119 ПРИНЯТ WITH CAVEATS** (`eac0591`).
 Multi-select rows, footer Upgrade all↔selected, header Check→Refresh,
@@ -2352,7 +2352,7 @@ Anchored-позиционирование, реальный скролл, pixel-
 (420px, JetBrains Mono, outlined-кнопка, AUR-бейдж) — всё подтверждено
 живым кликом пользователя, не синтетикой (ydotool на этой машине
 подтверждённо нестабилен даже с правильными координатами — см.
-`docs/MEMORY.md`, попытки архитектора кликнуть синтетически дали
+`.chronos-ops/checkpoint/MEMORY.md`, попытки архитектора кликнуть синтетически дали
 противоречивые результаты на одних и тех же проверенных координатах).
 Осталось: скролл на реальном длинном списке (низкий риск, не
 проверен только за неимением момента) + **T118** — живой вывод во
@@ -2385,14 +2385,14 @@ MPRIS — предпосылка для T113, не после него) — по
 скролл был отложен, не отменён (сейчас hard-clip); визуал "MVP"; окно не
 подстраивается под контент. Пилот — `updates_popup` (самый маленький,
 один триггер). Прошли полный brainstorming→spec→plan цикл: спека
-`docs/superpowers/specs/2026-07-24-updates-popup-anchored-redesign-design.md`,
-план `docs/superpowers/plans/2026-07-24-updates-popup-anchored-redesign.md`
+`.chronos-ops/superpowers/specs/2026-07-24-updates-popup-anchored-redesign-design.md`,
+план `.chronos-ops/superpowers/plans/2026-07-24-updates-popup-anchored-redesign.md`
 (6 задач, TDD), задача **T116** роздана в `docs/orchestration/tasks/active/`
 (агент не назначен — T113/T114/T115 остаются замороженными, T116 НЕ
 заморожена, это и есть выбранный полироль-фронт). Механизм —
 `WindowKind::AnchoredPopup` (нативный форк, `anchored-popups` skill),
 реальный `overflow_y_scroll` вместо clip, визуал по мокапу
-`docs/design/Updates Popup.dc.html` (dark+light). Побочная находка при
+`.chronos-ops/design/Updates Popup.dc.html` (dark+light). Побочная находка при
 планировании: `docs/roadmap.md` ошибочно считал светлую тему непорченной —
 `light_scheme()` давно реализован (`0f0ee88`/`5bb6c77`), исправлено.
 Остальные 4 попапа — future T-задачи по этому же образцу после приёмки
@@ -2462,14 +2462,14 @@ master, 3 вкладки IDE-панели розданы (T113-T115).**
 **Обновлено: 2026-07-24 (день) — три новых фронта заведены (T107-T109 из
 вчера не переоткрывались, всё ещё приняты).** Сессия началась как «hot
 patch/ hot reload», после уточнений оказалась тремя разными вещами. Полный
-разбор решений — `docs/DECISIONS.log` 2026-07-24 (три записи).
+разбор решений — `.chronos-ops/checkpoint/REJECTED.md` 2026-07-24 (три записи).
 
 1. **Dev hot-reload bake-off (спайк, не продукт).** Полный hot-swap
    `crates/app` отклонён на берегу (GPUI-подписки держат указатели на
    код, `unsafe_code=deny` воркспейса) — вместо этого спайк-сравнение
    Track A (`hot-lib-reloader`, `crates/hotview` dylib) vs Track B
    (`subsecond`-стиль без выноса в крейт), полигон — `network.rs`.
-   Спека: `docs/superpowers/specs/2026-07-24-dev-hot-reload-bakeoff-design.md`.
+   Спека: `.chronos-ops/superpowers/specs/2026-07-24-dev-hot-reload-bakeoff-design.md`.
    **T110** (OpenCode, Track A) / **T111** (GLM, Track B) — розданы,
    оба в изолированных ворктри (`ChronOS-wt-hotreload-{a,b}`), отчётов
    пока нет.
@@ -2487,7 +2487,7 @@ patch/ hot reload», после уточнений оказалась тремя
    `shell-ide-panel.zip` принят после ручной правки того же
    gtk4-огрызка, коммит `545bcbb`). План фундамента (rail + System-таб
    без изменений + 9 честных заглушек, ширина 352→560px):
-   `docs/superpowers/plans/2026-07-24-ide-panel-tab-container.md`.
+   `.chronos-ops/superpowers/plans/2026-07-24-ide-panel-tab-container.md`.
    **T112** (DeepSeek) — роздан, отчёта пока нет. Остальные 9 вкладок —
    отдельные будущие T-задачи после приёмки фундамента.
 3. **Bar widget layout — конфиг поверх существующей lane-модели.**
@@ -2495,7 +2495,7 @@ patch/ hot reload», после уточнений оказалась тремя
    уже ровно та lane-модель, что у референса Noctalia v5
    (`start/center/end`) — порядок внутри секции просто хардкожен в
    `register_builtin`. Спека выносит его в `bar.toml` + hot-reload
-   (паттерн `theme.toml`): `docs/superpowers/specs/
+   (паттерн `theme.toml`): `.chronos-ops/superpowers/specs/
    2026-07-24-bar-widget-layout-config-design.md`. GUI-редактор/новые
    панели/per-monitor — явно вне этой фазы. **Не роздано миньону** —
    план и T-задача ещё впереди.
@@ -2519,15 +2519,15 @@ zone ПОПРОБОВАНА и ОТКЛОНЕНА в тот же вечер (п�
 Wayland — коммит `fbcadd6`). Открыто: ghost-trail (форк, отложено),
 дропдаун-jank, нет каретки в композере (`ccf-gpui-widgets` вендоринг —
 теперь на критическом пути, см. `docs/roadmap.md`). Детали ниже, раздел
-`### T107/T108/T109 — LEFT AGENT PANEL`, полный разбор — `docs/DECISIONS.log`
-2026-07-23 (три записи) и `docs/ARCHITECT.md` (два новых урока дисциплины).**
+`### T107/T108/T109 — LEFT AGENT PANEL`, полный разбор — `.chronos-ops/checkpoint/REJECTED.md`
+2026-07-23 (три записи) и `.chronos-ops/checkpoint/ARCHITECT.md` (два новых урока дисциплины).**
 
 > **Переворот оркестрации (2026-07-22):** per-agent журналы →
 > per-task T-ID. Брифы теперь `docs/orchestration/tasks/active/TNNN-slug.md`,
 > отчёты — `docs/orchestration/tasks/report/` (inbox) →
 > `docs/orchestration/tasks/report-log/`/`rejected/`. Полная сквозная
 > история (T001..T106+) — `docs/orchestration/tasks/MIGRATION.md`. Роль
-> архитектора и живой список дисциплины — `docs/ARCHITECT.md` (корень).
+> архитектора и живой список дисциплины — `.chronos-ops/checkpoint/ARCHITECT.md` (корень).
 > `docs/orchestration/agents/<ИМЯ>.md` теперь тонкий указатель на активный
 > T-номер, не журнал. Открытые сейчас задачи:
 >
@@ -2574,7 +2574,7 @@ Hermes ACP чат, sessions sidebar, tool-call карточки, drag-resize,
 
 **T108 — мульти-агентный свитчер.** Пользовательское решение, которое
 раньше дважды терялось при планировании (не зафиксировано ни принятым,
-ни отклонённым) — теперь явно записано в `docs/DECISIONS.log` (2026-07-23,
+ни отклонённым) — теперь явно записано в `.chronos-ops/checkpoint/REJECTED.md` (2026-07-23,
 "мульти-агентный свитчер"). Task1 (реестр агентов + multi-instance
 `HermesClient` + дропдаун в хедере) и Task2 (реальные модели/режимы из
 ACP `NewSessionResponse`, подтверждено по исходнику Hermes
@@ -2595,7 +2595,7 @@ ACP `NewSessionResponse`, подтверждено по исходнику Herme
   минимуме → хитбокс ручки в ноль. Фикс: `main-content`
   `.min_w(0).overflow_hidden()` + ручка `.flex_none()` (+ грэб-зона 4→10px).
   Вскрыто зондом `capture_any_mouse_down` на root. Разбор + метод — item #9
-  в `T108-...md`, дисциплинарный урок — `docs/ARCHITECT.md` (2026-07-23).
+  в `T108-...md`, дисциплинарный урок — `.chronos-ops/checkpoint/ARCHITECT.md` (2026-07-23).
 - **Открыто, вынесено отдельной задачей:** ghost-trail при быстром резайзе
   (item #8-bis) — форк-уровневый рассинхрон буфера
   (`gpui_linux/.../wayland/window.rs:1548-1559`: `set_size` синхронно,
@@ -2615,7 +2615,7 @@ ACP `NewSessionResponse`, подтверждено по исходнику Herme
   не должна жить дольше вызова.
 
 **T109 — Agent Thread canvas (2026-07-23 вечер), коммит `10fa206`.**
-Zed сдал чат-канвас по мокапу `docs/design/Agent Thread.dc.html` (единый
+Zed сдал чат-канвас по мокапу `.chronos-ops/design/Agent Thread.dc.html` (единый
 холст треда+композера, тёмная send-кнопка, YOLO=bypass-режим), с честно
 помеченным C-2 fallback (`gpui-component` не собрался против нашего
 форка — конфликт версий gpui, `E0432` на `AsyncApp/Result/SharedString`;
@@ -2634,7 +2634,7 @@ Zed сдал чат-канвас по мокапу `docs/design/Agent Thread.dc.
    два окна вместо одного; унифицировано на `#1e1e2e`.
 
 Затем живая переделка поведения панели по прямому запросу пользователя
-(полный разбор — `docs/DECISIONS.log` 2026-07-23, две записи):
+(полный разбор — `.chronos-ops/checkpoint/REJECTED.md` 2026-07-23, две записи):
 - **Model/mode пикеры были невидимы на свежем треде** — брифовое правило
   "прятать пикер, если данных нет" (по мотивам zed-thread-view) столкнулось
   с реальностью: наш Hermes ACP отдаёт capabilities только в ответе
@@ -2670,7 +2670,7 @@ Zed сдал чат-канвас по мокапу `docs/design/Agent Thread.dc.
 ### АКТУАЛЬНОЕ ПОЛЕ (2026-07-21)
 
 **1. Правая боковая панель — капстоун в полёте (2026-07-21).**
-План `docs/superpowers/plans/2026-07-20-right-side-panel.md`, спека
+План `.chronos-ops/superpowers/plans/2026-07-20-right-side-panel.md`, спека
 `…-right-side-panel-design.md`. Принято / готово:
   - **Task 1** `dbce8ac` — `net_stats` shared-модуль + бар-виджет.
   - **Task 2** `18c88f0` — `Theme::font_ui` (`"Inter"`) рядом с
@@ -2731,7 +2731,7 @@ arm/confirm, hover-peek) копятся на пользователя — ydotoo
 power-row 4 ровные плитки — **бейзлайн, на котором строится v2.**
 
 **⚡ РАЗВОРОТ — SIDEBAR V2 (2026-07-21).** Пользователь нарисовал мокап
-`docs/design/System Sidebar.dc.html` и решил: **пересобрать панель пиксель-в-пиксель
+`.chronos-ops/design/System Sidebar.dc.html` и решил: **пересобрать панель пиксель-в-пиксель
 на `gpui-rsx`** (флагман-тест «мокап→rsx»). Это v2 всей панели, шире текущей
 (352px, 24 бара, скроллируемая середина, header + пермишн-карта + media + метры +
 сеть + диски + footer со всеми). **Споры отложены («там решим»):** палитра — мокап
@@ -2916,9 +2916,9 @@ picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
   `report-log/mimo-report-10.md`.
 - **Уборка `8766c31`/`9c86a2c`/`7c8e2fd`** — battery `background_spawn`
   `.detach()` (был `let _=`, кровный факт); rustfmt-дрейф 6 файлов +
-  фикс exec doc-коммента; docs/MEMORY.md синхрон. Рабочее дерево ЧИСТОЕ.
+  фикс exec doc-коммента; .chronos-ops/checkpoint/MEMORY.md синхрон. Рабочее дерево ЧИСТОЕ.
 - **Уже на origin:** Hermes №13 visual parity `8d74583`; design-волна
-  `9119edd` (`docs/design/*.dc.html` в репо — user explicit; Light C
+  `9119edd` (`.chronos-ops/design/*.dc.html` в репо — user explicit; Light C
   принят; System Popup мокап принят).
 
 Активные отчёты после приёмки **переносятся** в
@@ -2991,7 +2991,7 @@ picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
     реентерабельность `update_window_id` (`app.rs:1728-1781`, точный
     механизм ghost-window саги), `Task`/`.detach()`, наблюдатели,
     таймеры. **Ценная находка (перепроверена лично):** easing-кривые
-    из Kael, которые docs/DECISIONS.log 2026-07-16 планировал портировать
+    из Kael, которые .chronos-ops/checkpoint/REJECTED.md 2026-07-16 планировал портировать
     отдельной задачей, — УЖЕ в форке (`gpui/src/easing.rs`, 658 строк,
     явная SPDX-атрибуция Kael). Планы на порт можно закрыть — уже
     сделано. Также подтверждено: `gpui_tokio` не имеет обёртки
@@ -3094,7 +3094,7 @@ picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
 
 - **Mimo №9** (project switcher) — **разблокирован** (№10 сел, бар
   консолидирован). Готов к раздаче. Пилюля = **имя проекта** + сигил/
-  шеврон (не git-ветка). Эталон: `docs/design/Project Switcher.dc.html`
+  шеврон (не git-ветка). Эталон: `.chronos-ops/design/Project Switcher.dc.html`
   (dark + Light C). Portal FileChooser / `projects.toml`. Бриф в MIMO.md.
 - **КАПСТОУН: перерисовка бара** против `Top Bar.dc.html` — делает
   Архитектор ЛИЧНО после №9 (порядок виджетов + visual parity). Аудит
@@ -3107,7 +3107,7 @@ picker `66d66c3`, dock.toml `8929f12`, notif clip `af4e348`, cava
   project-switcher; dock-иконки реальные vs стилизованные. Сначала
   реконсиляция набора, потом стиль.
 - **Направление chrome→один пультовый монитор — РЕАЛИЗОВАНО** (`0a99a67`,
-  `docs/DECISIONS.log` 2026-07-19). Второй монитор → холст (окна Hyprland +
+  `.chronos-ops/checkpoint/REJECTED.md` 2026-07-19). Второй монитор → холст (окна Hyprland +
   desktop-виджеты `plasminal`) — **роль ОТЛОЖЕНА** до готовности
   пультовой части. Пультовый = DP-1 uuid `09e7b298…` в
   `~/.config/chronos/monitor.toml`.
@@ -3149,9 +3149,9 @@ wallpaper_ctl/applications/types — **не коммитить** без осоз
 проверяй `readlink /proc/$(pgrep -x chronos)/exe` — не перепутать с
 master `target/release/chronos`. `pkill -x chronos` (не `-f`).
 
-Полный контекст волны — `docs/DECISIONS.log` 2026-07-19 «Top Bar redesign
-wave», канон — `docs/ARCHITECTURE.md` §14, обзор — `docs/roadmap.md`.
-При расхождении с docs/ARCHITECTURE.md/DECISIONS.log побеждают они.
+Полный контекст волны — `.chronos-ops/checkpoint/REJECTED.md` 2026-07-19 «Top Bar redesign
+wave», канон — `.chronos-ops/checkpoint/ARCHITECTURE.md` §14, обзор — `docs/roadmap.md`.
+При расхождении с .chronos-ops/checkpoint/ARCHITECTURE.md/DECISIONS.log побеждают они.
 
 ## Приёмка-разведка 2026-07-19 (сверка отчётов с деревом, БЕЗ билда/смока)
 
@@ -3182,7 +3182,7 @@ wave», канон — `docs/ARCHITECTURE.md` §14, обзор — `docs/roadmap
 ВАЖНО: 17 файлов виджетов + `tray_menu/` + `desktop_terminal` правки — это
 переплетённый WIP нескольких агентов в рабочем дереве. Перед любым «принять»
 — изолированный `git worktree` на нужном коммите, не верить «зелено» из чужого
-замеса. Канон при расхождении — docs/ARCHITECTURE.md/DECISIONS.log.
+замеса. Канон при расхождении — .chronos-ops/checkpoint/ARCHITECTURE.md/DECISIONS.log.
 
 ## ВОЛНА «Top Bar редизайн» — решения 2026-07-19
 
@@ -3193,7 +3193,7 @@ wave», канон — `docs/ARCHITECTURE.md` §14, обзор — `docs/roadmap
 > Ниже — **решения и рационализация**, не очередь «ещё не писали брифы».
 
 Пользователь оценил живой прогон против референс-мокапов Claude Design
-(`docs/design/*.dc.html` — Updates/Volume/Notifications/Top Bar) жёстко:
+(`.chronos-ops/design/*.dc.html` — Updates/Volume/Notifications/Top Bar) жёстко:
 «мне отвратно на это смотреть». Разбор показал два уровня проблемы:
 (1) мелкая визуальная отделка попапов — см. HERMES.md №13 ниже
 (бордер/badge/hover, брифинг готов); (2) Top Bar — это НЕ отделка, а
@@ -3243,7 +3243,7 @@ wave», канон — `docs/ARCHITECTURE.md` §14, обзор — `docs/roadmap
     отметка (паттерн `tray_menu`/`updates_popup` — открыть/закрыть,
     клик по пункту делает его активным, персист в `projects.toml`).
   - **Пилюля = имя проекта** (не git-ветка — design drift после
-    `docs/design/Project Switcher.dc.html` / Light C: сигил + `ChronOS` +
+    `.chronos-ops/design/Project Switcher.dc.html` / Light C: сигил + `ChronOS` +
     шеврон). Git-ветка в пилюле **отменена**.
 - **E. История уведомлений (bell + badge).** Подтверждено explicit:
   «строим историю» — сейчас в дереве НЕТ вообще никакого концепта

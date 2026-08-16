@@ -6,9 +6,9 @@
 > Stack: Rust + GPUI (gpui-ce chronos edition in `../Source`) + mLua-LuauJIT
 
 Canonical architecture doc. Full design rationale and source citations live in
-the original spec: `docs/superpowers/specs/2026-07-08-chronos-architecture-design.md`
+the original spec: `.chronos-ops/superpowers/specs/2026-07-08-chronos-architecture-design.md`
 (brainstorming output, kept as historical record — do not edit it after the fact,
-amend here instead). Rejected alternatives and why are tracked in `docs/DECISIONS.log`,
+amend here instead). Rejected alternatives and why are tracked in `.chronos-ops/checkpoint/REJECTED.md`,
 not duplicated here.
 
 Note: Luau is a typed dialect of Lua (developed by Roblox), not classic Lua.
@@ -33,7 +33,7 @@ passes it to `get_layer_surface`. This closes Zed issue #48501 (layer-shell
 window ignores target monitor) — still open in zed/main. gpui-ce also adds
 `input_region` + `exclusive_zone` (PR #82), required for dock/bar geometry.
 
-See `docs/DECISIONS.log` for why zed/main and crates.io were rejected.
+See `.chronos-ops/checkpoint/REJECTED.md` for why zed/main and crates.io were rejected.
 
 ### Pinned revisions (git, reproducible)
 
@@ -89,7 +89,7 @@ widgets (currently `network.rs`), reloaded at dev-time via
 `hot_lib_reloader::hot_module!` under the `hot-reload` Cargo feature
 (absent from the release profile). Winner of a bake-off against
 `subsecond`-style function patching (rejected: leaks `unsafe` into
-`crates/app` call sites, violates the workspace deny — `docs/DECISIONS.log`
+`crates/app` call sites, violates the workspace deny — `.chronos-ops/checkpoint/REJECTED.md`
 2026-07-24). Setup + pitfalls: `skills/hot-lib-reloader/`.
 
 ## 4. Layer-shell windowing
@@ -108,7 +108,7 @@ No manual `wl_surface` calls — GPUI encapsulates the protocol.
 ### 4.1 Layer-shell popup conventions (established 2026-07-19, all popups follow this)
 
 Three live-smoke bugs (`notifications`, launcher — see
-`docs/DECISIONS.log` 2026-07-19) converged on two standing rules for every
+`.chronos-ops/checkpoint/REJECTED.md` 2026-07-19) converged on two standing rules for every
 > **Notes**: The `updates_popup` was deleted in T294: apply is ALWAYS `pkexec pacman -Syu` (official repos only). AUR rows are display-only (hover hint `yay -S <name>`); the list lives on the Updates tab of the right panel. The old `updates_popup` fallback via canvas-bounds capture is no longer needed.
 layer-shell popup with dynamic content (`volume_popup`,
 `notifications`, `tray_menu`, `side_panel_right` skeleton `da744a2`, and
@@ -120,7 +120,7 @@ anything added later):
    never be pushed off-window regardless of how tall rows actually render
    in this GPUI fork. `.overflow_hidden()` (clip) works here; `.overflow_y_
    scroll()` (real scroll) **[CORRECTED 2026-07-20: DOES work — needs
-   `.id()`; see docs/DECISIONS.log]** was believed not to resolve in this fork — don't reach for
+   `.id()`; see .chronos-ops/checkpoint/REJECTED.md]** was believed not to resolve in this fork — don't reach for
    it.
 2. **Dismiss: explicit only, never on focus loss.** `follow_mouse=1` in
    Hyprland fires spurious keyboard-deactivation the instant the cursor
@@ -134,7 +134,7 @@ anything added later):
    fine).
 
 New popups also get the reentrant-close guard from §"СИСТЕМНЫЙ БАГ" in
-docs/HANDOFF.md (`close_this` pattern — never call `handle.update()` for
+.chronos-ops/checkpoint/HANDOFF.md (`close_this` pattern — never call `handle.update()` for
 `remove_window()` from inside that same window's own callback).
 
 Single-instance via Unix socket (`XDG_RUNTIME_DIR/chronos.sock`), hand-rolled
@@ -178,7 +178,7 @@ Chronos uses a runtime registry instead:
   `HashMap<String, Box<dyn BarWidget>>` (name-keyed replacement of individual
   widgets) is deferred until named widget replacement is actually needed.
   `LauncherView` similarly uses `Vec<Box<dyn LauncherView>>`. See
-  `docs/DECISIONS.log` (2026-07-09 — Bar registry: Vec, not HashMap).
+  `.chronos-ops/checkpoint/REJECTED.md` (2026-07-09 — Bar registry: Vec, not HashMap).
   The Vec registry now supports `replace_by_name(name, widget)` and
   `unregister_by_name(name)` for hot-reload — added 2026-07-09 for the
   luau plugin layer. `BarWidget` trait has `fn name() -> &str` (default: `"unnamed"`).
@@ -237,7 +237,7 @@ Services use `Result`/`expect` rigorously.
 **Audio (WirePlumber MVP, 2026-07-17):** default sink/source via `wpctl`
 poll (`AudioState` / `EndpointState`); device list via `pw-dump`
 (`AudioDevice`). **Per-app playback streams / `ToggleStreamMute` (panel
-Task 6)** — decided (docs/DECISIONS.log 2026-07-21: stay on `wpctl`+`pw-dump`,
+Task 6)** — decided (.chronos-ops/checkpoint/REJECTED.md 2026-07-21: stay on `wpctl`+`pw-dump`,
 no native pipewire) and **implemented in the working tree**
 (`AudioStream`, `parse_pw_dump_streams`, `find_stream_for_player`,
 `AudioCommand::ToggleStreamMute`) but **not on master until accepted
@@ -311,8 +311,8 @@ stays UI-only.
 
 ## 14. Top Bar redesign wave — DONE (2026-07-19…20)
 
-All wave pieces landed (rationale per piece in `docs/DECISIONS.log`
-2026-07-19/20; live status of anything newer — `docs/HANDOFF.md` top block):
+All wave pieces landed (rationale per piece in `.chronos-ops/checkpoint/REJECTED.md`
+2026-07-19/20; live status of anything newer — `.chronos-ops/checkpoint/HANDOFF.md` top block):
 cava visualizer (`c519e2e`), popup border/hover/badge polish (`8d74583`),
 dock absorbed into the bar's left cluster + Start button (`07df942`,
 standalone `dock/` window is gone; `dock/config.rs` persistence re-hosted

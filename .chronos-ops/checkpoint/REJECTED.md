@@ -2,7 +2,7 @@
 
 Append-only. Each entry: what was considered, what was rejected and why, what
 was decided. Full rationale for the currently-approved architecture lives in
-`docs/ARCHITECTURE.md`; this file is the history, including things docs/ARCHITECTURE.md
+`.chronos-ops/checkpoint/ARCHITECTURE.md`; this file is the history, including things .chronos-ops/checkpoint/ARCHITECTURE.md
 no longer needs to spell out because they're settled.
 
 If its empty\not full - its a fresh log. - see previous log in /home/neo/Projects/chronos/log-dump
@@ -57,7 +57,7 @@ If its empty\not full - its a fresh log. - see previous log in /home/neo/Project
     - `Monitor.scale: f32` forced dropping `Eq` from `Monitor` and
       `CompositorState` derives (f32 is not `Eq`). `Service::Data` only
       requires `Clone`, so this is safe — no consumer relied on `Eq`.
-  - **docs/ARCHITECTURE.md §4 impact**: this changes the implicit assumption that
+  - **.chronos-ops/checkpoint/ARCHITECTURE.md §4 impact**: this changes the implicit assumption that
     positioning happens only via layer-shell `exclusive_zone`/`display_id`.
     Desktop-widget plugins position absolutely via `Monitor` geometry; §4 is
     no longer the sole source of truth for plugin-window placement. §4 needs
@@ -215,13 +215,13 @@ If its empty\not full - its a fresh log. - see previous log in /home/neo/Project
     Fails fast if missing (non-POSIX environments).
 
 ## 2026-07-16 — Переезд в chronos-ecosystem: констатация фактов (приёмка минион-отчётов)
-- Репо переехал копированием в /home/neo/projects/chronos-ecosystem/ChronOS ~2026-07-12. .git утерян БЕЗВОЗВРАТНО (find по всему /home/neo: единственный .git экосистемы — Chronos-Engine; d7ab5a7 не существует ни в одном репо). История = git log больше не источник; источники — docs/ARCHITECTURE.md/DECISIONS.log/SESSION_REPORT.md.
+- Репо переехал копированием в /home/neo/projects/chronos-ecosystem/ChronOS ~2026-07-12. .git утерян БЕЗВОЗВРАТНО (find по всему /home/neo: единственный .git экосистемы — Chronos-Engine; d7ab5a7 не существует ни в одном репо). История = git log больше не источник; источники — .chronos-ops/checkpoint/ARCHITECTURE.md/DECISIONS.log/SESSION_REPORT.md.
 - gpui-ce расплющен в ../Source/ (9 крейтов siblings + gpui-component) БЕЗ workspace-корня → крейты не парсятся (все на .workspace=true). Path-deps ChronOS указывают на мёртвый /home/neo/Projects/SOURCE/gpui/gpui-ce-main. Сборка мертва двухуровнево. Fix поручен Cline (CLINE.md №2): workspace-корень Source/Cargo.toml (zed rev 876ec5a8 для internal deps, версии по Cargo.lock) + правка path-deps.
-- reference/gpui-shell пуст (код-стади копия не переехала) — ссылки docs/ARCHITECTURE.md §11 на конкретные файлы gpui-shell временно непроверяемы.
+- reference/gpui-shell пуст (код-стади копия не переехала) — ссылки .chronos-ops/checkpoint/ARCHITECTURE.md §11 на конкретные файлы gpui-shell временно непроверяемы.
 - Launcher keyboard focus (Critical, 2026-07-11): OMP-исследование показало — timing set_keyboard_interactivity в gpui_linux корректен (до commit, window.rs:170), wl_keyboard.enter обрабатывается пассивно, xdg_activation для layer-shell отклоняется (комментарий в самом gpui). Вариант (a) отпал. Рекомендация OMP: (c) XDG toplevel вместо layer-shell. РЕШЕНИЕ НЕ ПРИНЯТО — ждёт подтверждения Архитектора (моё мнение: принять (c), overlay-поведение добить windowrule pin/float).
 
 ## 2026-07-16 (вечер) — Source/ = собственный форк «gpui-ce chronos edition»
-- Инвентаризация (проверено лично + cline-report №2): Source/ содержит 18 gpui-директорий — 9 базовых + 9 forked zed-internal (gpui_collections/scheduler/sum_tree/refineable/derive_refineable/media/zed_util/ce_util/elements, v0.2.2, датированы 14.07). Это fork-in-progress: код gpui уже использует TypeIdHashMap/SpawnTime, реализации в форках нет. docs/ARCHITECTURE.md §2 (pinned rev 20340e14) устарел — зависимость теперь собственный форк, не пин апстрима.
+- Инвентаризация (проверено лично + cline-report №2): Source/ содержит 18 gpui-директорий — 9 базовых + 9 forked zed-internal (gpui_collections/scheduler/sum_tree/refineable/derive_refineable/media/zed_util/ce_util/elements, v0.2.2, датированы 14.07). Это fork-in-progress: код gpui уже использует TypeIdHashMap/SpawnTime, реализации в форках нет. .chronos-ops/checkpoint/ARCHITECTURE.md §2 (pinned rev 20340e14) устарел — зависимость теперь собственный форк, не пин апстрима.
 - Workspace-корень Source/Cargo.toml создан Cline (задание №2), path-deps ChronOS переведены на ../Source/*. chronos-services собирается; блокер — 5 missing API в форках.
 - Решения по завершению (задание №3): forked crates подключать по path с package-rename; util_macros/http_client/reqwest_client оставить на zed git 876ec5a8 (минимум хирургии); 5 API дописать в форки (~20 строк, образец zed main); Source/ взять под git. Отклонено: вырезание http_client-использований и форк util_macros — лишняя хирургия до зелёного билда.
 - Наблюдение: Source/ тасуется вне сессий (adk-rust исчез 16.07, крейты докопированы 15:07) — источник провенанса форка неизвестен, спросить Архитектора.
@@ -232,7 +232,7 @@ If its empty\not full - its a fresh log. - see previous log in /home/neo/Project
 - Отклонение от плана, принято: gpui_util НЕ заменён на gpui_ce_util — в gpui_ce_util нет TypeIdHashBuilder, в старом gpui_util есть и он, и Deferred. Выбор по факту API, не по имени.
 - gpui_elements исключён из workspace (7 API-drift ошибок, никем не используется) — re-enable, когда Source/gpui догонит.
 - accesskit += feature "enumn" (иначе Action::n приватна, E0624).
-- Source/ взят под git: initial commit 3ce3466. docs/ARCHITECTURE.md §2 переписан Архитектором (gpui-ce chronos edition вместо мёртвого пина 20340e14).
+- Source/ взят под git: initial commit 3ce3466. .chronos-ops/checkpoint/ARCHITECTURE.md §2 переписан Архитектором (gpui-ce chronos edition вместо мёртвого пина 20340e14).
 - Хвост риска (medium): util_macros/http_client/reqwest_client на zed git rev 876ec5a8 — форкнуть при следующем обслуживании.
 
 ## 2026-07-16 (поздний вечер) — Вырез из Kael: решение по hermes-report (принят, проверен грепами)
@@ -392,10 +392,10 @@ If its empty\not full - its a fresh log. - see previous log in /home/neo/Project
 ## 2026-07-19 — Top Bar redesign wave: decisions locked, briefs not yet written
 
 Context: user compared live shell against Claude Design mockups
-(`docs/design/*.dc.html`) and rejected the current visual state outright. Beyond
+(`.chronos-ops/design/*.dc.html`) and rejected the current visual state outright. Beyond
 per-popup polish (border/badge/hover — HERMES.md №13), the Top Bar mockup
 proposed genuinely new features. Each decided independently, full context in
-docs/HANDOFF.md "ВОЛНА «Top Bar редизайн»" — summarized here for the log:
+.chronos-ops/checkpoint/HANDOFF.md "ВОЛНА «Top Bar редизайн»" — summarized here for the log:
 
 - **Audio visualizer**: considered native PipeWire-monitor tap (no external
   binary, more work/risk) vs. shelling to the real `cava` binary (external
@@ -459,7 +459,7 @@ docs/HANDOFF.md "ВОЛНА «Top Bar редизайн»" — summarized here fo
   в заливке фона — поверхность остаётся спокойной holodной
   сине-лавандовой базой (`#dde0f2`/`#e6e9fa`, текст `#2c2e4a`
   индиго, не белый/не чёрный).
-- **Эталон принят живьём** (`docs/design/Project Switcher.dc.html`,
+- **Эталон принят живьём** (`.chronos-ops/design/Project Switcher.dc.html`,
   вариант "Light C"): сигил ChronOS в пилюле (гексагон + орбитальное
   кольцо + точка-центр + стрелка-хронометр), тонкая glow-линия по
   верхнему ребру карточки, светящаяся полоса текущего проекта
@@ -599,7 +599,7 @@ docs/HANDOFF.md "ВОЛНА «Top Bar редизайн»" — summarized here fo
 
 ## 2026-07-21 — Палитра панели: Catppuccin по мокапу (ОТМЕНЯЕТ «сине-циан/без радуги»)
 
-- **Контекст.** Sidebar v2 мокап `docs/design/System Sidebar.dc.html` + приёмка v2
+- **Контекст.** Sidebar v2 мокап `.chronos-ops/design/System Sidebar.dc.html` + приёмка v2
   (`7109860`). Пользователь: «the panel colors are good».
 - **Разворот.** Прежнее правило (DECISIONS 2026-07-20 / память «cool blue-cyan,
   forbids rainbow»: CPU `#5fd3e8`/RAM `#4fa3c9`/GPU `#33638a`) **отменено.**
@@ -641,7 +641,7 @@ docs/HANDOFF.md "ВОЛНА «Top Bar редизайн»" — summarized here fo
 ## 2026-07-22 — Оркестрация: per-agent журналы → per-task T-ID (по образцу Chronos-lm)
 
 - **Контекст.** Пользователь сравнил метод работы с сиблинг-проектом
-  Chronos-lm (`docs/ARCHITECT.md` + `docs/agents/{active,report,report-log,done,
+  Chronos-lm (`.chronos-ops/checkpoint/ARCHITECT.md` + `docs/agents/{active,report,report-log,done,
   rejected}/`, tNN-задачи) и решил повторить у ChronOS. Разведка вскрыла
   реальную цену старой схемы: номера заданий не глобальны
   (`hermes-report-22` и `zed-report-7` несопоставимы напрямую), нумерация
@@ -657,7 +657,7 @@ docs/HANDOFF.md "ВОЛНА «Top Bar редизайн»" — summarized here fo
   (не только новых задач). Реестр T001–T106 (сквозная хронология, вся
   прежняя история first-минионской эпохи + редизайн бара + правая панель +
   открытые Chronos-AUR треки) — `orchestration/tasks/MIGRATION.md`. Роль
-  архитектора переписана в новый `docs/ARCHITECT.md` (корень) — Role/I do/I do NOT
+  архитектора переписана в новый `.chronos-ops/checkpoint/ARCHITECT.md` (корень) — Role/I do/I do NOT
   (датированные уроки из реальных инцидентов, не абстрактная гигиена)/
   Authority order/lifecycle table/Wave map/Accept criteria/Language, скелет
   1:1 с Chronos-lm.
@@ -682,7 +682,7 @@ docs/HANDOFF.md "ВОЛНА «Top Bar редизайн»" — summarized here fo
 
 Пользователь: "мульти-агентный свитчер в хедере левой панели — моё
 изначальное решение, которое постоянно отклоняется агентами". Проверено:
-ни в `docs/superpowers/specs/2026-07-23-left-agent-panel-design.md`, ни в
+ни в `.chronos-ops/superpowers/specs/2026-07-23-left-agent-panel-design.md`, ни в
 этом логе решение никогда не фиксировалось — ни как принятое, ни как
 отклонённое с причиной. Молча терялось на каждом цикле планирования —
 не осознанный отказ, а институциональная забывчивость. Зафиксировано
@@ -691,7 +691,7 @@ docs/HANDOFF.md "ВОЛНА «Top Bar редизайн»" — summarized here fo
 **Решение:** хедер левой agent-панели получает выпадающий свитчер (клик
 по названию текущего агента → список ACP-совместимых бэкендов: Hermes,
 Cline, OpenCode, и т.д. — конкретный список уточняется на реализации).
-Источник визуала — `docs/design/Agent Panel.dc.html` кадр 1 (`showAgentMenu`),
+Источник визуала — `.chronos-ops/design/Agent Panel.dc.html` кадр 1 (`showAgentMenu`),
 принят Claude Design 2026-07-23 без правок макета.
 
 **Архитектурное следствие:** `crates/services/src/hermes_acp/` (спека
@@ -778,12 +778,12 @@ launcher/notifications/osd/tray_menu/обе side-панели/попапы). В�
 
 **Решение:** вместо выбора подхода вслепую — спайк-сравнение (тот же
 протокол, что дал результат с `gpui-component` recon+pilot,
-docs/DECISIONS.log 2026-07-21). Track A (`hot-lib-reloader`, вынос
+.chronos-ops/checkpoint/REJECTED.md 2026-07-21). Track A (`hot-lib-reloader`, вынос
 render-функции `bar/widgets/network.rs` в отдельный dylib-крейт
 `crates/hotview`, вне `workspace.lints`) vs Track B (`subsecond`-стиль
 function-level патчинг без выноса в крейт) — оба на одном полигоне,
 10 одинаковых правок, метрика — краши + время «сохранил→увидел».
-Спека: `docs/superpowers/specs/2026-07-24-dev-hot-reload-bakeoff-design.md`.
+Спека: `.chronos-ops/superpowers/specs/2026-07-24-dev-hot-reload-bakeoff-design.md`.
 Роздано T110 (OpenCode, Track A) / T111 (GLM, Track B), оба в изолированных
 ворктри (`ChronOS-wt-hotreload-{a,b}`, ветки `spike/hot-reload-track-{a,b}`).
 Проигравший трек архивируется веткой, не удаляется.
@@ -808,15 +808,15 @@ Hyprland binds), левая (`side_panel_left`, T107-T109) уже физичес
 `crates/services/src/` перед планированием) — значит первая задача НЕ
 может быть «сделать все 10 вкладок». Роздан только фундамент (rail +
 System-таб без изменений + 9 честных заглушек «Coming soon»), план
-`docs/superpowers/plans/2026-07-24-ide-panel-tab-container.md`, T112
+`.chronos-ops/superpowers/plans/2026-07-24-ide-panel-tab-container.md`, T112
 (DeepSeek). Остальные 9 вкладок — отдельные будущие спеки/задачи,
 каждая со своим backend где нужно.
 
 **Побочная находка при ревью дизайн-экспорта:** первый мокап
-(`docs/design/banani-ui-export.zip`, PNG, инструмент вне нашего пайплайна) —
+(`.chronos-ops/design/banani-ui-export.zip`, PNG, инструмент вне нашего пайплайна) —
 ОТКЛОНЁН целиком: чужая палитра (не Catppuccin Mocha) И полностью
 выдуманный код на GTK4 в кадре Editor (проект на GPUI, GTK4 в дереве нет
-нигде). Второй заход (`docs/design/shell-ide-panel.zip`, Next.js-превью,
+нигде). Второй заход (`.chronos-ops/design/shell-ide-panel.zip`, Next.js-превью,
 `components/panel/theme.ts` — буквальные канон-хексы) — принят после
 ручной правки: тот же gtk4-фрагмент выжил в `editor-tab.tsx` нетронутым
 из первой попытки, заменён на GPUI-стиль псевдокод перед коммитом
@@ -833,7 +833,7 @@ lane-модель, что даёт Noctalia v5 (`start/center/end`); поряд�
 drag-and-drop редактор, создание новых панелей на произвольном крае,
 per-monitor оверрайды — явно вне этой фазы, отдельные будущие спеки
 поверх готового конфига. Спека:
-`docs/superpowers/specs/2026-07-24-bar-widget-layout-config-design.md`.
+`.chronos-ops/superpowers/specs/2026-07-24-bar-widget-layout-config-design.md`.
 Не роздано миньону — спека написана, план и T-задача впереди.
 
 ## 2026-07-24 (вечер) — Hot-reload bake-off решён: Track A (hot-lib-reloader), не Track B (subsecond)
@@ -1075,17 +1075,17 @@ after their GUI; companion CTA when missing; no GPUI fallback gallery.
   («забей»). Code left in tree for a future re-brief; do not start T130
   on this partial foundation.
 
-**Docs:** tails → `docs/TBD.md`; ops → `docs/HANDOFF.md` (this date block).
+**Docs:** tails → `.chronos-ops/checkpoint/TBD.md`; ops → `.chronos-ops/checkpoint/HANDOFF.md` (this date block).
 
 ## 2026-07-26 — Canon doc roles (explicit)
 
 | Doc | Owns |
 |---|---|
-| `docs/ARCHITECTURE.md` | settled architecture (amend when structure changes) |
-| `docs/DECISIONS.log` | append-only considered/rejected/accepted decisions |
-| `docs/HANDOFF.md` | current field / T status / what not to re-smoke |
-| `docs/TBD.md` | non-blocking polish + wishlist (no T-ID required) |
-| `docs/MEMORY.md` | durable cross-session facts (not daily queue) |
+| `.chronos-ops/checkpoint/ARCHITECTURE.md` | settled architecture (amend when structure changes) |
+| `.chronos-ops/checkpoint/REJECTED.md` | append-only considered/rejected/accepted decisions |
+| `.chronos-ops/checkpoint/HANDOFF.md` | current field / T status / what not to re-smoke |
+| `.chronos-ops/checkpoint/TBD.md` | non-blocking polish + wishlist (no T-ID required) |
+| `.chronos-ops/checkpoint/MEMORY.md` | durable cross-session facts (not daily queue) |
 | `docs/roadmap.md` | quarterly order of work |
 
 ## 2026-07-26 — Edit Mode + hot-reload front (not Plasma)
@@ -1105,7 +1105,7 @@ full `crates/app` dylib hot-swap.
 
 **Rejected again:** Plasma applet slots; full app hot-swap; subsecond.
 
-**Spec:** `docs/superpowers/specs/2026-07-26-edit-mode-and-hot-reload-design.md`
+**Spec:** `.chronos-ops/superpowers/specs/2026-07-26-edit-mode-and-hot-reload-design.md`
 builds on `2026-07-24-bar-widget-layout-config-design.md`.
 
 ## 2026-07-28 — Thread persistence: SQLite locally, agent stays source of truth
@@ -1173,7 +1173,7 @@ list, load/resume, rename/pin/archive, search) — T151 depends on T150.
   **12 213 строк** ровно про это.
 - **Что изменилось со стороны цены.** Копия компонента лежит в нашем форке
   (`Source/gpui-component`, 787 файлов под git, апстрим не отслеживается —
-  `docs/ARCHITECTURE.md`). «Обрезать нечем» — утверждение про чужой крейт, не
+  `.chronos-ops/checkpoint/ARCHITECTURE.md`). «Обрезать нечем» — утверждение про чужой крейт, не
   про свой: безусловные депы делаются опциональными правкой их же
   `Cargo.toml`.
 - **Решено (пользователь, 2026-07-28): компонент правим под себя.** Не
@@ -1251,7 +1251,7 @@ list, load/resume, rename/pin/archive, search) — T151 depends on T150.
 - **Разведка сделана архитектором заранее** (карта деп по файлам, образец
   гейтинга `tree-sitter` в самом крейте, ловушка `inspector` +
   `debug_assertions`) и вписана в бриф — чтобы заход не утонул в поиске
-  того, что уже известно. Детали — `docs/HANDOFF.md`, раздел «Где стоим».
+  того, что уже известно. Детали — `.chronos-ops/checkpoint/HANDOFF.md`, раздел «Где стоим».
 - **База замера:** `target/release/chronos` = 22 475 648 байт на `44d365e`.
 
 ## 2026-07-29 — gpui-component берём как инфраструктуру IDE-панели (реверс июльского «вариант C»)
