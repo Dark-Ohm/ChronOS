@@ -138,3 +138,23 @@ wt_task_state() {
   done
   echo none
 }
+
+wt_scope_block() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  awk '
+    /^## Scope \(machine\)/ {p=1}
+    p && /^## / && !/^## Scope \(machine\)/ {exit}
+    p {print}
+  ' "$file"
+}
+
+wt_extract_scope_base() {
+  local file="$1" block
+  block="$(wt_scope_block "$file")"
+  printf '%s\n' "$block" | awk '/^base:[[:space:]]*/ {
+    sub(/^base:[[:space:]]*/, "")
+    print
+    exit
+  }'
+}
