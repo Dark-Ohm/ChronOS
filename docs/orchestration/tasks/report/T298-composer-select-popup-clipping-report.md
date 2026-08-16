@@ -50,12 +50,12 @@ Overrode `SearchableListItem::render()` on `ModelSelectItem` and `ModeSelectItem
 ## Remaining work
 
 1. **Text ellipsis** — The `.truncate()` override on `SearchableListItem::render()` doesn't produce visible `…`. May need change in `gpui-component`'s `render_list_item` or `SearchableListItemElement`.
-2. **Commit the GPUI fork fix** — The `content_size()` change in `gpui_linux` needs to be committed separately.
 
 ## Commits
 
-**GPUI fork:**
-`fix(wayland): content_size returns window_bounds for layer-shell surfaces (T298)`
+**GPUI fork (`Source/`):**
+`cf34cf6 fix(wayland): content_size returns window_bounds for layer-shell surfaces (T298)`
 
-**ChronOS:**
-`fix(left-panel): composer Select popup wider menu_width and truncate override (T298)`
+**ChronOS (`ChronOS/`):**
+`48eefb8 fix(left-panel): composer Select popup wider menu_width and truncate override (T298)`
+`d238fa4 docs : T298 report — vertical clipping fixed, text truncation partial`
