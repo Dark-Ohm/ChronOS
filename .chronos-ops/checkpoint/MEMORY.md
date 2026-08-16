@@ -264,3 +264,40 @@ _Cross-session durable: these are explicitly deferred, each tied to a named futu
 - **Параллель T298:** T271 или T284 без `side_panel_left`. Не T266.
 - **Не коммитить** без спроса: README/AGENTS/CONTRIBUTING (тон).
 
+## 2026-08-17 — чекпоинт #36 (кухня под git, дерево прибрано, HEAD `a98139b4`)
+
+- **`.chronos-ops` окончательно ПОД git**, 368+ файлов. Протокол
+  перевернулся дважды в диалоге за один заход — снят/возвращён, финал
+  задокументирован в `REJECTED.md` (см. запись «снятие с git-tracking»).
+- **Весь канон архитектора физически в `.chronos-ops/checkpoint/`:**
+  этот файл, `HANDOFF.md`, `ARCHITECTURE.md`, `ARCHITECT.md`, `TBD.md`,
+  `SOUL.md`, `DECISIONS.log` → `REJECTED.md` (переименован — старое имя
+  было двусмысленным). `docs/design/` → `.chronos-ops/design/`,
+  `docs/superpowers/` → `.chronos-ops/superpowers/`, обе as-is. `docs/`
+  теперь только продукт+сайт: `product/`/`style/`/`guides/`, плюс
+  `index.html`/`.nojekyll`/`landing/` (GitHub Pages) и `hyprland/`
+  (живой конфиг) — эти два **не переезжают никогда**, правило в
+  `.chronos-ops/README.md`.
+- **Архив кухни:** 334 тикета расклассифицированы по ролям (`git mv`,
+  история цела), 167 непонятых эвристикой — **T299** (RECON). **T300**
+  (BACKEND) — `docs/hyprland/chronos-launcher.lua` vs
+  `packaging/hyprland/40-windowrules-chronos.lua` разошлись, коммент
+  "canonical copy" в packaging врёт, не смержено намеренно.
+- **Дерево воркетри и веток вычищено целиком.** 7 воркетри снесены
+  (сверка не по `git branch --merged` — часть кода попала в master
+  через cherry-pick с другим commit message, поэтому сверял побайтовым
+  `diff` содержимого файлов), 8 мёртвых веток удалены. В поле осталась
+  только основная копия + живая некоммиченная правка T298
+  (`composer.rs`, чужая параллельная сессия) + парковая ветка
+  `feat/t285-acp-load-session` (T285 STOP, см. `REJECTED.md`).
+- **Мой промах сессии:** чуть не удалил `docs/MEMORY.md` (сейчас этот
+  же файл) как «пустой шаблон» — прочитал только первые 6 строк.
+  Владелец поймал: там были несохранённые правки от 2026-08-16 (запись
+  про T265-H выше). Урок и полный разбор — `ARCHITECT.md`, раздел
+  «Кухня в репо — протокол перевернулся дважды».
+- **Три коммита за сессию** (все запушены `origin/master`): `d1b1242`
+  (кухня под git), `658a74c` (`docs/` по папкам), `0a2d6a6` (периметр
+  сайта в README), `ce44e6b0`+`a98139b4` (сам чекпоинт, две волны —
+  сперва только `HANDOFF.md`, потом вся папка после того как поймали
+  на неполноте).
+
