@@ -1,7 +1,7 @@
 use chronos_services::hermes_acp::StreamingEvent;
 use chronos_ui::{Theme, on_fill};
 use gpui::{
-    Context, ExternalPaths, IntoElement, SharedString, Window, div, prelude::*, px,
+    Context, ExternalPaths, IntoElement, SharedString, Window, div, img, prelude::*, px,
 };
 use gpui_component::input::{Escape as InputEscape, Input};
 
@@ -69,7 +69,8 @@ pub fn render_composer(
         .gap(px(6.))
         .children(model_picker(panel, cx))
         .children(mode_picker(panel, cx))
-        .children(yolo_button(panel, is_yolo_active, has_modes, cx));
+        .children(yolo_button(panel, is_yolo_active, has_modes, cx))
+        .child(follow_button(panel, cx));
 
     // ── Textarea ────────────────────────────────────────────────────
     let enabled = panel.state.agent_status != AgentStatus::Disconnected;
@@ -223,6 +224,44 @@ fn yolo_button(
         }
         .child("YOLO"),
     )
+}
+
+// ── Follow button ─────────────────────────────────────────────────────
+// T287-C: Follow moved off the Zed-style thread header into the pickers
+// row (T195 logic untouched — same `follow_enabled` / `AgentFollowState`).
+fn follow_button(
+    panel: &ChatTab,
+    cx: &mut Context<ChatTab>,
+) -> impl IntoElement {
+    let theme = *Theme::global(cx);
+    div()
+        .id("composer-follow")
+        .flex_none()
+        .w(px(26.))
+        .h(px(20.))
+        .rounded(px(5.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(panel.follow_enabled, |el| {
+            el.bg(theme.accent.primary.opacity(0.16)).text_color(theme.accent.primary)
+        })
+        .when(!panel.follow_enabled, |el| {
+            el.text_color(theme.text.muted)
+        })
+        .cursor_pointer()
+        .hover(|s| s.bg(theme.border.subtle).text_color(theme.text.primary))
+        .on_click(cx.listener(|this, _, _, cx| {
+            this.follow_enabled = !this.follow_enabled;
+            cx.update_global::<crate::agent_follow::AgentFollowState, _>(|state, _| {
+                state.enabled = this.follow_enabled;
+                if !this.follow_enabled {
+                    state.last_tool = None;
+                }
+            });
+            cx.notify();
+        }))
+        .child(img("icons/rail-preview.svg").w(px(16.)).h(px(16.)))
 }
 
 // ── Model picker ───────────────────────────────────────────────────────
