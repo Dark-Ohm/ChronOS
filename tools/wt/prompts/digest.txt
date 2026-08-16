@@ -1,0 +1,2 @@
+Summarize STATUS.md and DRIFT.md for a morning briefing in Russian.
+No actions. No git. Markdown only.
