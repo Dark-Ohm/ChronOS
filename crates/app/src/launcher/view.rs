@@ -79,6 +79,10 @@ impl LauncherView {
             _input_sub: sub,
         };
         view.refresh_results();
+        // Repaint after the synchronous seed so the first frame shows the
+        // populated list, not the empty `results` the view was built with
+        // (T275: empty query rendered "No matches" without this notify).
+        cx.notify();
 
         // Subscribe to desktop entry changes — live updates without restart.
         let signal = state::AppState::applications(cx).subscribe();
