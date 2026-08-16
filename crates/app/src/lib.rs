@@ -33,6 +33,10 @@ pub(crate) mod project_switcher;
 pub mod scene;
 pub mod side_panel_left;
 pub mod side_panel_right;
+// Lib-side twin of bin `mod start_menu` (main.rs): the bar's dock widget
+// (lib) toggles it via `crate::start_menu`. Same twin pattern as
+// `dock` / `calendar_popup` so the path resolves in either crate.
+pub(crate) mod start_menu;
 pub mod state;
 mod gaming_mode;
 pub mod theme_config;

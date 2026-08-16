@@ -83,7 +83,9 @@ impl BarWidget for DockWidget {
             .cursor_pointer()
             .hover(|s| s.bg(theme.interactive.hover))
             .on_click(move |_event, _window, cx: &mut App| {
-                crate::launcher::toggle(cx);
+                // T265-H: the Start button opens the compact start menu, not
+                // the OSD launcher (SUPER+R keeps that surface).
+                crate::start_menu::toggle(cx);
             })
             .child(
                 gpui::svg()

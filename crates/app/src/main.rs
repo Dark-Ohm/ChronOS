@@ -22,6 +22,7 @@ mod project_switcher;
 mod popup_click_catcher;
 mod side_panel_left;
 mod side_panel_right;
+mod start_menu;
 pub mod state;
 mod gaming_mode;
 mod theme_config;
@@ -115,6 +116,8 @@ fn main() {
 
         // Initialize launcher global state (desktop entries come from AppState::applications)
         launcher::init(cx);
+        // T265-H: the compact Start-menu surface (shares the launcher's model).
+        start_menu::init(cx);
 
         let plugin_dirs = vec![
             dirs::config_dir().unwrap().join("chronos/plugins"),
