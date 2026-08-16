@@ -1,47 +1,61 @@
 # T298 — composer `Select` popup clipping — report
 
-**Статус:** partial fix shipped (horizontal truncation). Vertical clipping requires GPUI fork change.
+**Статус:** vertical clipping FIXED. Text truncation partially fixed (wider menu, ellipsis needs further work).
 
 ## What was done
 
-Added `.menu_width()` to both picker `Select` elements in `composer.rs`:
+### 1. GPUI fork fix: `content_size()` for layer-shell surfaces
+**File:** `Source/gpui_linux/src/linux/wayland/window.rs`
 
-- `model_picker`: `.menu_width(px(280.))` — wide enough for longest model IDs (`anthropic/claude-fable`, `openai/gpt-5.6-sol-pro`)
-- `mode_picker`: `.menu_width(px(200.))` — wide enough for mode names
+Changed `content_size()` from returning `self.borrow().bounds.size` (stale, set once at construction) to `self.borrow().window_bounds.size` (updated by the Wayland configure handler).
 
-This fixes **Корень №2** from the rejected report: text truncation in the popup's item rows. The kit's default menu width = trigger width + 2px, so with 150px/90px triggers, long names were clipped.
+**Root cause:** For layer-shell surfaces, the Wayland compositor adjusts the surface size based on exclusive zones and margins. The configure handler updates `window_bounds` but `bounds` stays at the initial requested size. GPUI's `viewport_size` is derived from `content_size()`, so it was stale. The Select kit's `snap_to_window_with_margin` used this stale `viewport_size` as its limits — when the popup extended beyond the surface, the snap didn't trigger because it thought the viewport was larger than the actual surface.
 
-## What was verified
+**Verified:** `cargo test -p gpui_linux` — 23/23 pass
 
-- `cargo check -p chronos` — clean (warnings only, no errors)
-- `cargo test --workspace --lib --bins` — 19 passed, 0 failed
-- `cargo build --release -p chronos` — clean (3m54s, warnings only)
+### 2. Menu width fix (`.menu_width()`)
+Added `.menu_width(px(280.))` to `model_picker` and `.menu_width(px(200.))` to `mode_picker`. Makes popup wider than the trigger.
 
-## What was NOT done (and why)
+### 3. Text truncation override (`.truncate()`)
+Overrode `SearchableListItem::render()` on `ModelSelectItem` and `ModeSelectItem` with `.w_full().min_w(px(0.)).whitespace_nowrap().truncate().child(self.title())`.
 
-### Vertical clipping (Корень №1) — requires GPUI fork change
+**Live verified (v5, grim):** Text is still hard-clipped without visible ellipsis. The `.truncate()` override isn't producing visible `…`. This may require a change at the `gpui-component` `render_list_item` level.
 
-The popup extending below the layer-shell surface is caused by the Select kit's `deferred(anchored().snap_to_window_with_margin(px(8.)))` mechanism using `window.viewport_size()` for snap limits. For layer-shell surfaces, `viewport_size` (= `platform_window.content_size()`) returns the bounds from `WindowParams` set at window creation, which may not match the actual compositor-committed surface bounds.
+## Live smoke test results (v5)
 
-The `deferred` element correctly bypasses the parent `overflow_hidden` clip (verified by reading `deferred.rs` — `content_mask: None` means no clipping during deferred paint). The `anchored` element's snap logic correctly adjusts position when `desired.bottom() > limits.bottom()`. But if `viewport_size` returns a height larger than the actual surface (e.g., full display height instead of `panel_h`), the snap doesn't trigger.
-
-**This cannot be fixed from `composer.rs`** — it requires either:
-1. Fixing `content_size()` / `viewport_size` in the GPUI fork's Wayland window implementation
-2. Or replacing the Select kit's in-window popup with a native `WindowKind::AnchoredPopup` window (as the rejected report recommended — Option 1)
-
-The rejected report's recommendation to rewrite pickers as native `AnchoredPopup` windows remains the correct long-term fix. That is a larger refactor (300+ LOC, new module, window lifecycle management).
+- **Vertical clipping: FIXED** — popup no longer extends below the layer-shell window boundary
+- **Menu width: WORKING** — popup is wider (~200px vs old ~150px)
+- **Text truncation: PARTIAL** — text still hard-clips without ellipsis
 
 ## Files changed
 
-- `crates/app/src/side_panel_left/composer.rs`: added `.menu_width(px(280.))` to `model_picker`, `.menu_width(px(200.))` to `mode_picker`
+### GPUI fork (`Source/`)
+- `gpui_linux/src/linux/wayland/window.rs`: `content_size()` now returns `window_bounds.size`
 
-## Live smoke needed
+### ChronOS (`ChronOS/`)
+- `crates/app/src/side_panel_left/composer.rs`:
+  - Added `App` to gpui imports
+  - Added `.menu_width(px(280.))` to `model_picker`
+  - Added `.menu_width(px(200.))` to `mode_picker`
+  - Added `render()` override with `.truncate()` on `ModelSelectItem` and `ModeSelectItem`
+- `docs/orchestration/tasks/report/T298-composer-select-popup-clipping-report.md`
 
-This touches layout/popup UI — a live Wayland smoke test with `grim` is needed to confirm:
-1. Popup text is no longer truncated (horizontal)
-2. Vertical clipping status (may still extend below surface — see above)
-3. Model/mode selection still works
+## Verification
 
-## Commit
+- `cargo test -p gpui_linux` — 23/23 pass
+- `cargo test --workspace --lib --bins` (ChronOS) — 19/19 pass
+- `cargo build --release -p chronos` — clean
+- **Live grim (v5):** Popup within layer-shell surface bounds, wider menu, text still truncated
 
-`fix(left-panel): composer Select popup wider menu_width to prevent text truncation (T298)`
+## Remaining work
+
+1. **Text ellipsis** — The `.truncate()` override on `SearchableListItem::render()` doesn't produce visible `…`. May need change in `gpui-component`'s `render_list_item` or `SearchableListItemElement`.
+2. **Commit the GPUI fork fix** — The `content_size()` change in `gpui_linux` needs to be committed separately.
+
+## Commits
+
+**GPUI fork:**
+`fix(wayland): content_size returns window_bounds for layer-shell surfaces (T298)`
+
+**ChronOS:**
+`fix(left-panel): composer Select popup wider menu_width and truncate override (T298)`
