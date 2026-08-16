@@ -1,6 +1,11 @@
 # T275 — остаток live: пустой query и pin
 
-**Статус:** OPEN remainder. Код A–D принят 2026-08-15 — **не переписывать**.
+**Статус:** ЗАКРЫТ 2026-08-16. Оба живых пункта подтверждены владельцем:
+empty-query (grim, заход 3) и pin (заход 4, `162798b4` — реальная фиксация
+через `chronos_services::compositor::hyprland::window_position`, не
+`window.bounds()`). Детали — `report-log/T275-launcher-input-frecency-pin-report.md`.
+
+**Было:** Код A–D принят 2026-08-15 — **не переписывать**.
 **Приоритет:** P1 — хвост приёмки, не новая волна лаунчера.
 **Родитель:** эпик `T265-launcher-full-functionality.md`.
 **Роль:** FRONTEND (`crates/app/src/launcher/**`), только если empty-query
