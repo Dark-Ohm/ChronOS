@@ -1,15 +1,37 @@
 # HANDOFF — контекст для новой сессии Архитектора
 
-**Обновлено: 2026-08-17 (чекпоинт #36 — кухня под git, дерево прибрано).**
-HEAD `0a2d6a64`, запушен `origin/master`.
+**Обновлено: 2026-08-17 (конец дня) — T298 принят частично, T301/T302
+заведены, live smoke архитектора.** HEAD — см. `git log -1`, запушен
+`origin/master`.
+
+**T298 (composer Select popup) ПРИНЯТ частично.** Вертикальный
+клиппинг исправлен по корню — `content_size()` в
+`Source/gpui_linux/.../window.rs` теперь возвращает `window_bounds.size`
+вместо стухшего `bounds.size` (форк, коммит `cf34cf6`, тащит
+`Co-Authored-By: Codebuff` — не почищено, отдельная эррата). Прочитан
+и подтверждён на уровне источника (не с чужих слов): `window_bounds`
+реально обновляется в `handle_xdg_surface_event`, layer-shell configure
+роутится туда же. `cargo test -p gpui_linux` 23/23, `cargo test
+--workspace --lib --bins` (ChronOS) 575/576 (1 фейл — доказанный флейк
+не по теме, изолированный прогон зелёный), `cargo build --release`
+чисто. Живой смок архитектора не дошёл до самого попапа — **найдена
+отдельная находка T302** (контентная зона левой панели рендерится
+пустой). Текст в попапе всё ещё без эллипсиса — **T301**. Тикет
+`done/`, отчёт `report-log/`.
+
+**Новые тикеты:** T301 (FRONTEND, P3, хвост T298 — эллипсис текста),
+T302 (FRONTEND, P1, живая находка — левая панель открывается, но
+контент не рисуется, сквозь него видны обои; логи чистые, без
+panic/error). Оба в `.chronos-ops/active/front/`, `FRONTEND.md`
+заполнена.
 
 **Кухня `.chronos-ops` окончательно ПОД git** (368+ файлов) —
 контрибьюторы берут задания отсюда. Весь рабочий канон архитектора
 физически переехал из `docs/` сюда же, в `.chronos-ops/checkpoint/`:
 этот `HANDOFF.md`, `ARCHITECTURE.md`, `ARCHITECT.md`, `TBD.md`,
-`SOUL.md`, `MEMORY.md`, `REJECTED.md` (бывший `.chronos-ops/checkpoint/REJECTED.md`,
-переименован). `.chronos-ops/design/` → `.chronos-ops/design/`,
-`.chronos-ops/superpowers/` → `.chronos-ops/superpowers/`, обе as-is. `docs/`
+`SOUL.md`, `MEMORY.md`, `REJECTED.md` (бывший `docs/DECISIONS.log`,
+переименован). `docs/design/` → `.chronos-ops/design/`,
+`docs/superpowers/` → `.chronos-ops/superpowers/`, обе as-is. `docs/`
 теперь только продукт+сайт: `product/`/`style/`/`guides/` подпапки,
 плюс `index.html`/`.nojekyll`/`landing/` (GitHub Pages, не переезжает
 никогда) и `hyprland/` (живой конфиг, не переезжает).
@@ -21,12 +43,15 @@ chronos-launcher.lua` vs `packaging/hyprland/40-windowrules-chronos.lua`
 
 Дерево воркетри полностью прибрано: 7 стухших/уже-смерженных воркетри
 снесены (сверено побайтовым diff, не только `git merge-base`), 8
-мёртвых веток удалены. В поле — только основная копия с живой правкой
-T298 (`composer.rs`, чужая сессия, не трогать) и парковая ветка
+мёртвых веток удалены. В поле — только основная копия (T298 уже
+закрыт, живой правки в дереве не осталось) и парковая ветка
 `feat/t285-acp-load-session` (T285 STOP).
 
 `CLAUDE.md` чекпоинт-протокол расширен до 5 слоёв — добавлен lean-ctx
 `ctx_knowledge`.
+
+**Дальше:** T302 (P1, живая находка) → T301 → T299/T300 разбор
+(RECON/BACKEND) по готовности исполнителей.
 
 ---
 
