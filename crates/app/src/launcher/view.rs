@@ -1,9 +1,12 @@
-//! Launcher overlay view: search input + category bar + app grid.
+//! Launcher overlay view: search input + category bar + sections + app grid.
 //!
 //! Redesigned per `docs/design/Chronos-OSD-Launcher.dc.html` (T261): a centered
 //! 720px card on a gradient backdrop with header, search row, footer (luau
 //! badge + reload dot). T265-B replaced the flat result list with an app grid
-//! (icon + label) and an XDG category bar (hover-open + click-lock).
+//! (icon + label) and an XDG category bar (hover-open + click-lock). T265-C
+//! adds three curated sections above the grid — Favorites (manual order, DnD),
+//! Recents (top-N frecency), Folders (DnD-create, expand, component-Input
+//! rename) — plus a "new" badge on recently-installed `.desktop` entries.
 //!
 //! T275 (волна 1): the search field is a real `gpui-component` `Input` bound
 //! to an `InputState` — caret, cursor movement, selection, IME, paste and
@@ -11,6 +14,8 @@
 //! navigation keys; text editing is delegated to the `Input`. Results are
 //! ranked by frecency (T275 Часть C), and launching records frecency. Right-
 //! click on a cell opens a Pin/Unpin menu (T275 Часть D).
+
+use std::collections::{HashMap, HashSet};
 
 use gpui::{
     self, App, Bounds, Entity, FocusHandle, ImageSource, MouseButton, Render, ScrollHandle,
@@ -24,11 +29,16 @@ use chronos_ui::{Theme, WindowRootExt};
 use gpui_component::input::{Input, InputEvent, InputState};
 
 use crate::icon_resolution::resolve_icon;
+use crate::launcher::favorites::{
+    desktop_dirs, desktop_mtime, folder_add_app, index_by_id, is_new, move_item, next_folder_id,
+    resolve_folder_apps, resolve_favorites, top_recents, NEW_DAYS,
+};
 use crate::launcher::grid::{
     build_categories, filter_by_category, move_2d, CELL_HEIGHT, CELL_WIDTH, GRID_COLUMNS, GRID_GAP,
     PAGE_ROWS, Move2D,
 };
 use crate::launcher::launch::launch;
+use crate::launcher::launcher_config::{self, Folder, LauncherConfig};
 use crate::launcher::pin_menu;
 use crate::launcher::search::FuzzySearch;
 use crate::state;
@@ -41,6 +51,12 @@ const CATEGORY_BAR_HEIGHT: f32 = 40.;
 const MAX_RESULTS: usize = 200;
 /// App icon size inside a grid cell.
 const GRID_ICON: f32 = 36.;
+/// Section (favorites / recents / folders) cell geometry — denser than grid
+/// cells, wrapping at `SECTION_COLUMNS` per row.
+const SECTION_CELL_WIDTH: f32 = 80.;
+const SECTION_CELL_HEIGHT: f32 = 76.;
+const SECTION_COLUMNS: usize = 8;
+const SECTION_ICON: f32 = 28.;
 
 /// Which region of the launcher owns the keyboard (T265-B Tab cycling).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -50,11 +66,52 @@ enum FocusSection {
     Grid,
 }
 
+/// Where a drag payload originated — decides reorder vs add vs create-folder.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum DragFrom {
+    Favorites,
+    Recents,
+    Grid,
+}
+
+/// Internal DnD payload (GPUI in-window drag, NOT a file drag — T270).
+#[derive(Clone, Debug)]
+struct LauncherDrag {
+    app_id: String,
+    app_name: String,
+    from: DragFrom,
+}
+
+impl Render for LauncherDrag {
+    /// Ghost pill shown under the cursor while dragging.
+    fn render(&mut self, _window: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
+        let theme = Theme::global(cx);
+        div()
+            .pl(px(14.))
+            .pt(px(6.))
+            .child(
+                div()
+                    .px(px(10.))
+                    .py(px(5.))
+                    .rounded(px(6.))
+                    .bg(theme.bg.elevated)
+                    .border_1()
+                    .border_color(theme.border.subtle)
+                    .shadow_md()
+                    .text_color(theme.text.primary)
+                    .text_xs()
+                    .child(self.app_name.clone()),
+            )
+    }
+}
+
 /// Centered overlay view showing a searchable app grid over desktop entries.
 pub struct LauncherView {
     search: FuzzySearch,
     /// Real editable text buffer (replaces the old `String` pattern).
     input: Entity<InputState>,
+    /// Second component input for folder rename (T265-C).
+    rename_input: Entity<InputState>,
     /// Mirror of the input text, updated on `InputEvent::Change`.
     pattern: String,
     /// Flat index of the selected cell in `visible` (row-major).
@@ -65,9 +122,31 @@ pub struct LauncherView {
     categories: Vec<(String, usize)>,
     /// `results` filtered by the effective category — what the grid shows.
     visible: Vec<AppEntry>,
+    /// Every listed entry (full set, uncapped) — source for sections + id map.
+    all: Vec<AppEntry>,
+    /// id → entry for resolving favorites/folders.
+    by_id: HashMap<String, AppEntry>,
+    /// Persisted favorites/recents/folders config (view's working copy).
+    config: LauncherConfig,
+    /// Resolved favorites in display order.
+    favorites: Vec<AppEntry>,
+    /// Top-N recents (frecency).
+    recents: Vec<AppEntry>,
+    /// Folders (persisted model).
+    folders: Vec<Folder>,
+    /// The single expanded folder id, if any.
+    expanded: Option<String>,
+    /// The folder id currently being renamed, if any.
+    rename: Option<String>,
+    /// ids of entries whose `.desktop` is "new" (badge).
+    new_ids: HashSet<String>,
+    /// Number of section children rendered before the grid (scroll indexing).
+    grid_row_offset: usize,
     scroll: ScrollHandle,
     /// Subscription to `InputState` change events (drives re-search).
     _input_sub: Subscription,
+    /// Subscription to rename-input events (Enter/Blur commit).
+    _rename_sub: Subscription,
     /// Category locked via click/Enter (`None` = "All").
     selected_category: Option<String>,
     /// Category hovered with the mouse — wins over `selected_category` while set.
@@ -83,13 +162,17 @@ pub struct LauncherView {
 }
 
 impl LauncherView {
-    /// Build a launcher view seeded with the current desktop entries from the
-    /// applications service and the live `InputState` created by the opener.
-    pub fn new(cx: &mut Context<Self>, input: Entity<InputState>) -> Self {
+    /// Build a launcher view seeded with the current desktop entries, the live
+    /// search `InputState`, the rename `InputState`, and the window (for
+    /// `subscribe_in` on the rename input).
+    pub fn new(
+        cx: &mut gpui::Context<Self>,
+        input: Entity<InputState>,
+        rename_input: Entity<InputState>,
+        window: &Window,
+    ) -> Self {
         let svc = state::AppState::applications(cx);
         let entries = svc.get().entries;
-        let mut search = FuzzySearch::new();
-        search.set_items(entries);
 
         let pattern = input.read(cx).text().to_string();
 
@@ -103,16 +186,43 @@ impl LauncherView {
             }
         });
 
+        let rename_sub = cx.subscribe_in(&rename_input, window, {
+            move |this: &mut Self, _state, event: &InputEvent, window, cx| {
+                match event {
+                    // Clicking away commits the rename (blur); guard so a commit
+                    // that already cleared `rename` does not double-fire.
+                    InputEvent::Blur => {
+                        if this.rename.is_some() {
+                            this.commit_rename(window, cx);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        });
+
         let mut view = Self {
-            search,
+            search: FuzzySearch::new(),
             input,
+            rename_input,
             pattern,
             selected: 0,
             results: Vec::new(),
             categories: Vec::new(),
             visible: Vec::new(),
+            all: Vec::new(),
+            by_id: HashMap::new(),
+            config: launcher_config::get(),
+            favorites: Vec::new(),
+            recents: Vec::new(),
+            folders: Vec::new(),
+            expanded: None,
+            rename: None,
+            new_ids: HashSet::new(),
+            grid_row_offset: 0,
             scroll: ScrollHandle::new(),
             _input_sub: sub,
+            _rename_sub: rename_sub,
             selected_category: None,
             hover_category: None,
             compact: false,
@@ -120,7 +230,7 @@ impl LauncherView {
             category_index: 0,
             focus_handle: cx.focus_handle(),
         };
-        view.refresh_results();
+        view.set_entries(entries);
         // Repaint after the synchronous seed so the first frame shows the
         // populated grid, not the empty `results` the view was built with
         // (T275: empty query rendered "No matches" without this notify).
@@ -129,12 +239,69 @@ impl LauncherView {
         // Subscribe to desktop entry changes — live updates without restart.
         let signal = state::AppState::applications(cx).subscribe();
         state::watch(cx, signal, |this, state, cx| {
-            this.search.set_items(state.entries);
-            this.refresh_results();
+            this.set_entries(state.entries);
             cx.notify();
         });
 
         view
+    }
+
+    /// Replace the full listed entry set (initial seed + inotify rescan).
+    fn set_entries(&mut self, entries: Vec<AppEntry>) {
+        self.all = entries.clone();
+        self.by_id = index_by_id(&entries);
+        self.search.set_items(entries);
+        self.recompute_new_ids();
+        self.recompute_sections();
+        self.refresh_results();
+    }
+
+    /// Which listed entries carry the "new" badge (`.desktop` mtime < NEW_DAYS).
+    fn recompute_new_ids(&mut self) {
+        let now = frecency::now();
+        let dirs = desktop_dirs();
+        self.new_ids = self
+            .all
+            .iter()
+            .filter(|e| is_new(desktop_mtime(&e.id, &dirs), now, NEW_DAYS))
+            .map(|e| e.id.clone())
+            .collect();
+    }
+
+    /// Recompute the three sections + scroll offset from the current config and
+    /// entry set. Called on entry/config changes, not on every keystroke.
+    fn recompute_sections(&mut self) {
+        self.favorites = resolve_favorites(
+            &self.config.favorites.order,
+            &self.by_id,
+            self.config.favorites.sort_alpha,
+        );
+        let data = frecency::cached();
+        let now = frecency::now();
+        self.recents = top_recents(&self.all, &data, now, self.config.recents.limit);
+        self.folders = self.config.folders.clone();
+        // Drop stale expansion/rename references if the folder vanished.
+        if let Some(id) = &self.expanded {
+            if !self.folders.iter().any(|f| &f.id == id) {
+                self.expanded = None;
+            }
+        }
+        if let Some(id) = &self.rename {
+            if !self.folders.iter().any(|f| &f.id == id) {
+                self.rename = None;
+            }
+        }
+        // Number of children rendered before the grid in the scroll container:
+        // one block per non-empty section (must match `render_content`'s `.when`).
+        self.grid_row_offset = usize::from(!self.favorites.is_empty())
+            + usize::from(!self.recents.is_empty())
+            + usize::from(!self.folders.is_empty());
+    }
+
+    /// Persist the view's config into the debounced store, then refresh sections.
+    fn persist_config(&mut self) {
+        launcher_config::update(|c| *c = self.config.clone());
+        self.recompute_sections();
     }
 
     /// Focus the launcher's input field (the component `InputState`) and put
@@ -191,12 +358,13 @@ impl LauncherView {
         self.scroll_to_selected();
     }
 
-    /// Scroll the selected cell into view. The grid's scroll container children
-    /// are ROWS (one per `GRID_COLUMNS` cells), so the scroll index is the row,
-    /// not the flat cell index. Safe before first layout — the request stays
-    /// pending until the child exists.
+    /// Scroll the selected cell into view. The scroll container's children are
+    /// the section blocks followed by ROWS (one per `GRID_COLUMNS` cells), so
+    /// the scroll index is `grid_row_offset` + the flat cell's row. Safe before
+    /// first layout — the request stays pending until the child exists.
     fn scroll_to_selected(&self) {
-        self.scroll.scroll_to_item(self.selected / GRID_COLUMNS);
+        self.scroll
+            .scroll_to_item(self.grid_row_offset + self.selected / GRID_COLUMNS);
     }
 
     /// Category at bar position `index` (0 = "All" = `None`).
@@ -275,8 +443,124 @@ impl LauncherView {
         crate::launcher::close_this(window, cx);
     }
 
+    /// Launch an entry from a section cell / folder (mouse path).
+    fn launch_entry(&self, entry: &AppEntry) {
+        frecency::record_launch(&entry.id);
+        if let Err(err) = launch(&entry.exec) {
+            tracing::error!("Failed to launch {}: {:#}", entry.name, err);
+        }
+    }
+
+    // --- DnD drop handlers (mutate `config`, then persist + recompute) ---
+
+    /// Drop onto a favorite cell: reorder if the drag started in Favorites,
+    /// otherwise insert the dragged app at that position.
+    fn handle_drop_on_favorite_cell(&mut self, drag: &LauncherDrag, target_index: usize) {
+        let order = &self.config.favorites.order;
+        let from = order.iter().position(|id| id == &drag.app_id);
+        match from {
+            Some(from) => {
+                let new_order = move_item(order, from, target_index);
+                self.config.favorites.order = new_order;
+            }
+            None => {
+                let at = target_index.min(self.config.favorites.order.len());
+                self.config.favorites.order.insert(at, drag.app_id.clone());
+            }
+        }
+        self.persist_config();
+    }
+
+    /// Drop onto the Favorites section's empty area: append.
+    fn handle_drop_on_favorites_append(&mut self, drag: &LauncherDrag) {
+        if !self.config.favorites.order.iter().any(|id| id == &drag.app_id) {
+            self.config.favorites.order.push(drag.app_id.clone());
+            self.persist_config();
+        }
+    }
+
+    /// Drop an app icon onto another app icon: create a folder with both.
+    fn handle_drop_create_folder(&mut self, drag: &LauncherDrag, target_id: &str) {
+        if drag.app_id == target_id {
+            return;
+        }
+        let id = next_folder_id(&self.folders);
+        let name = format!("Folder {}", self.folders.len() + 1);
+        self.config.folders.push(Folder {
+            id,
+            name,
+            apps: vec![target_id.to_string(), drag.app_id.clone()],
+        });
+        self.persist_config();
+    }
+
+    /// Drop an app icon onto a folder tile: add to that folder.
+    fn handle_drop_on_folder(&mut self, drag: &LauncherDrag, folder_id: &str) {
+        let mut added = false;
+        if let Some(folder) = self.config.folders.iter_mut().find(|f| f.id == folder_id) {
+            added = folder_add_app(folder, &drag.app_id);
+        }
+        if added {
+            self.persist_config();
+        }
+    }
+
+    // --- Folder interactions ---
+
+    fn toggle_folder(&mut self, folder_id: &str) {
+        if self.expanded.as_deref() == Some(folder_id) {
+            self.expanded = None;
+        } else {
+            self.expanded = Some(folder_id.to_string());
+        }
+    }
+
+    fn start_rename(&mut self, folder_id: String, window: &mut Window, cx: &mut App) {
+        let name = self
+            .config
+            .folders
+            .iter()
+            .find(|f| f.id == folder_id)
+            .map(|f| f.name.clone())
+            .unwrap_or_default();
+        self.rename = Some(folder_id);
+        self.rename_input.update(cx, |input, cx| input.set_value(name, window, cx));
+        self.rename_input.update(cx, |input, cx| input.focus(window, cx));
+    }
+
+    fn commit_rename(&mut self, window: &mut Window, cx: &mut App) {
+        let Some(folder_id) = self.rename.take() else {
+            return;
+        };
+        let text = self.rename_input.read(cx).text().to_string();
+        let text = text.trim().to_string();
+        if !text.is_empty() {
+            if let Some(folder) = self.config.folders.iter_mut().find(|f| f.id == folder_id) {
+                folder.name = text;
+            }
+            self.persist_config();
+        }
+        self.focus_input(window, cx);
+    }
+
+    fn cancel_rename(&mut self, window: &mut Window, cx: &mut App) {
+        self.rename = None;
+        self.focus_input(window, cx);
+    }
+
     fn handle_key(&mut self, event: &gpui::KeyDownEvent, window: &mut Window, cx: &mut App) {
         let key = event.keystroke.key.as_str();
+
+        // Rename mode swallows launcher keys: Enter commits, Esc cancels, all
+        // else is left to the focused rename Input.
+        if self.rename.is_some() {
+            match key {
+                "escape" => self.cancel_rename(window, cx),
+                "enter" => self.commit_rename(window, cx),
+                _ => {}
+            }
+            return;
+        }
 
         match key {
             "escape" => {
@@ -337,7 +621,7 @@ impl LauncherView {
 }
 
 impl Render for LauncherView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
         let theme = Theme::global(cx);
         let entity = cx.entity();
 
@@ -375,7 +659,7 @@ impl LauncherView {
     fn render_card(&self, theme: &Theme, entity: Entity<Self>) -> impl IntoElement {
         div()
             .w(px(720.))
-            // Bounded height, so the grid child has a leftover to flex into.
+            // Bounded height, so the content child has a leftover to flex into.
             // Without it the card grows with the grid and its header slides off
             // the top of the window (T265-0 raised the row cap to 200).
             .h_full()
@@ -389,8 +673,8 @@ impl LauncherView {
             .flex_col()
             .child(self.render_header(theme))
             .child(self.render_search(theme))
-            .child(self.render_category_bar(theme, entity))
-            .when(!self.compact, |el| el.child(self.render_grid(theme)))
+            .child(self.render_category_bar(theme, entity.clone()))
+            .when(!self.compact, |el| el.child(self.render_content(theme, entity)))
             .child(self.render_footer(theme))
     }
 
@@ -619,12 +903,15 @@ impl LauncherView {
             )
     }
 
-    fn render_grid(&self, theme: &Theme) -> impl IntoElement {
+    /// The single scroll region: section blocks (favorites / recents / folders)
+    /// then the "All apps" grid rows. `grid_row_offset` (the number of section
+    /// blocks) keeps keyboard scroll-to-selected indexing correct.
+    fn render_content(&self, theme: &Theme, entity: Entity<Self>) -> impl IntoElement {
         let selected = self.selected;
         let rows: Vec<&[AppEntry]> = self.visible.chunks(GRID_COLUMNS).collect();
 
         div()
-            .id("launcher-grid")
+            .id("launcher-content")
             .flex_1()
             // A flex child sizes to its content unless it may shrink below it.
             // `min_h(0)` makes `flex_1` mean "take the leftover height" instead
@@ -638,13 +925,22 @@ impl LauncherView {
             .flex()
             .flex_col()
             .gap(px(GRID_GAP))
+            .when(!self.favorites.is_empty(), |el| {
+                el.child(self.render_favorites_block(theme, entity.clone()))
+            })
+            .when(!self.recents.is_empty(), |el| {
+                el.child(self.render_recents_block(theme, entity.clone()))
+            })
+            .when(!self.folders.is_empty(), |el| {
+                el.child(self.render_folders_block(theme, entity.clone()))
+            })
             .children(rows.into_iter().enumerate().map(|(ri, row)| {
                 div()
                     .flex()
                     .gap(px(GRID_GAP))
                     .children(row.iter().enumerate().map(|(ci, entry)| {
                         let flat = ri * GRID_COLUMNS + ci;
-                        self.render_cell(theme, entry, flat, flat == selected)
+                        self.render_cell(theme, entry, flat, flat == selected, entity.clone())
                     }))
             }))
             .when(self.visible.is_empty(), |el| {
@@ -661,16 +957,376 @@ impl LauncherView {
             })
     }
 
-    fn render_cell(&self, theme: &Theme, entry: &AppEntry, flat: usize, is_selected: bool) -> impl IntoElement {
+    // --- Sections ---
+
+    fn render_section_header(&self, theme: &Theme, title: &'static str, count: usize) -> impl IntoElement {
+        div()
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .px(px(2.))
+            .child(
+                div()
+                    .font_family(theme.font_mono)
+                    .text_size(px(10.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(theme.text.muted)
+                    .child(title),
+            )
+            .child(
+                div()
+                    .font_family(theme.font_mono)
+                    .text_size(px(10.))
+                    .text_color(theme.text.faint)
+                    .child(count.to_string()),
+            )
+    }
+
+    fn render_favorites_block(&self, theme: &Theme, entity: Entity<Self>) -> impl IntoElement {
+        let hide_labels = self.config.favorites.hide_labels;
+        let block = div()
+            .id("launcher-favorites")
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(self.render_section_header(theme, "Favorites", self.favorites.len()))
+            .children(self.favorites.chunks(SECTION_COLUMNS).map(|row| {
+                div().flex().gap(px(GRID_GAP)).children(
+                    row.iter()
+                        .enumerate()
+                        .map(|(ci, entry)| {
+                            self.render_section_cell(
+                                theme,
+                                entity.clone(),
+                                entry,
+                                DragFrom::Favorites,
+                                hide_labels,
+                                true,
+                                ci,
+                            )
+                        }),
+                )
+            }));
+
+        // Drop on the block's empty area appends to favorites.
+        let entity_for_drop = entity.clone();
+        block.on_drop::<LauncherDrag>(move |drag, _window, cx: &mut App| {
+            let drag = drag.clone();
+            entity_for_drop.update(cx, |this, cx| {
+                this.handle_drop_on_favorites_append(&drag);
+                cx.notify();
+            });
+        })
+    }
+
+    fn render_recents_block(&self, theme: &Theme, entity: Entity<Self>) -> impl IntoElement {
+        div()
+            .id("launcher-recents")
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(self.render_section_header(theme, "Recents", self.recents.len()))
+            .children(self.recents.chunks(SECTION_COLUMNS).map(|row| {
+                div().flex().gap(px(GRID_GAP)).children(row.iter().map(|entry| {
+                    self.render_section_cell(theme, entity.clone(), entry, DragFrom::Recents, false, false, 0)
+                }))
+            }))
+    }
+
+    fn render_folders_block(&self, theme: &Theme, entity: Entity<Self>) -> impl IntoElement {
+        let expanded_apps: Vec<AppEntry> = self
+            .expanded
+            .as_ref()
+            .map(|id| {
+                self.folders
+                    .iter()
+                    .find(|f| &f.id == id)
+                    .map(|f| resolve_folder_apps(f, &self.by_id))
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+
+        div()
+            .id("launcher-folders")
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(self.render_section_header(theme, "Folders", self.folders.len()))
+            .children(self.folders.chunks(SECTION_COLUMNS).map(|row| {
+                div()
+                    .flex()
+                    .gap(px(GRID_GAP))
+                    .children(row.iter().map(|folder| {
+                        self.render_folder_tile(theme, entity.clone(), folder)
+                    }))
+            }))
+            .when(!expanded_apps.is_empty(), |el| {
+                el.child(div().flex().gap(px(GRID_GAP)).children(expanded_apps.iter().map(|entry| {
+                    self.render_section_cell(theme, entity.clone(), entry, DragFrom::Recents, false, false, 0)
+                })))
+            })
+    }
+
+    /// A favorite / recents / folder-app cell. `is_favorite` enables reorder-on-drop
+    /// (target = `index`); otherwise a drop creates a folder with the target app.
+    fn render_section_cell(
+        &self,
+        theme: &Theme,
+        entity: Entity<Self>,
+        entry: &AppEntry,
+        from: DragFrom,
+        hide_label: bool,
+        is_favorite: bool,
+        index: usize,
+    ) -> impl IntoElement {
+        let icon_el = resolve_app_icon(entry, theme, SECTION_ICON);
+        let name = SharedString::from(entry.name.clone());
+        let launch_entry = entry.clone();
+        let pin_entry = entry.clone();
+        let drag_payload = LauncherDrag {
+            app_id: entry.id.clone(),
+            app_name: entry.name.clone(),
+            from,
+        };
+        let drop_target = entry.id.clone();
+        let entity_for_drop = entity.clone();
+        let entity_for_launch = entity.clone();
+
+        let mut cell = div()
+            .id(format!("launcher-sec-{}", entry.id))
+            .w(px(SECTION_CELL_WIDTH))
+            .h(px(SECTION_CELL_HEIGHT))
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(px(4.))
+            .rounded(px(8.))
+            .cursor_pointer()
+            .hover(|s| s.bg(theme.interactive.hover))
+            .on_mouse_down(
+                MouseButton::Right,
+                move |event, window, cx: &mut App| {
+                    let anchor = Bounds::new(event.position, Size::new(px(1.), px(1.)));
+                    pin_menu::open(cx, anchor, event.position, window.window_handle(), pin_entry.id.clone());
+                },
+            )
+            .child(
+                div()
+                    .size(px(SECTION_ICON))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_color(theme.text.muted)
+                    .child(icon_el),
+            )
+            .when(!hide_label, |el| {
+                el.child(
+                    div()
+                        .max_w(px(SECTION_CELL_WIDTH - 6.))
+                        .text_size(px(10.))
+                        .whitespace_nowrap()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .child(name),
+                )
+            })
+            .on_drag(drag_payload, |info, _pos, _window, cx: &mut App| {
+                cx.new(|_| info.clone())
+            })
+            .on_click(move |_event, window, cx: &mut App| {
+                let launch_entry = launch_entry.clone();
+                entity_for_launch.update(cx, |this, cx| {
+                    this.launch_entry(&launch_entry);
+                    cx.notify();
+                });
+                crate::launcher::close_this(window, cx);
+            });
+
+        if is_favorite {
+            cell = cell.on_drop::<LauncherDrag>(move |drag, _window, cx: &mut App| {
+                let drag = drag.clone();
+                entity_for_drop.update(cx, |this, cx| {
+                    this.handle_drop_on_favorite_cell(&drag, index);
+                    cx.notify();
+                });
+            });
+        } else {
+            cell = cell.on_drop::<LauncherDrag>(move |drag, _window, cx: &mut App| {
+                let drag = drag.clone();
+                let target = drop_target.clone();
+                entity_for_drop.update(cx, |this, cx| {
+                    this.handle_drop_create_folder(&drag, &target);
+                    cx.notify();
+                });
+            });
+        }
+
+        cell
+    }
+
+    fn render_folder_tile(&self, theme: &Theme, entity: Entity<Self>, folder: &Folder) -> impl IntoElement {
+        let is_expanded = self.expanded.as_deref() == Some(folder.id.as_str());
+        let is_renaming = self.rename.as_deref() == Some(folder.id.as_str());
+        let letter = folder
+            .name
+            .chars()
+            .next()
+            .unwrap_or('?')
+            .to_uppercase()
+            .to_string();
+        let name = SharedString::from(folder.name.clone());
+        let folder_id = folder.id.clone();
+        let entity_for_drop = entity.clone();
+        let entity_for_toggle = entity.clone();
+        let entity_for_rename = entity.clone();
+
+        let mut tile = div()
+            .id(format!("launcher-folder-{}", folder.id))
+            .w(px(SECTION_CELL_WIDTH))
+            .h(px(SECTION_CELL_HEIGHT))
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(px(4.))
+            .rounded(px(8.))
+            .cursor_pointer()
+            .when(is_expanded, |el| el.bg(theme.bg.selection))
+            .when(!is_expanded, |el| el.hover(|s| s.bg(theme.interactive.hover)))
+            .on_drop::<LauncherDrag>({
+                let folder_id = folder_id.clone();
+                move |drag, _window, cx: &mut App| {
+                    let drag = drag.clone();
+                    entity_for_drop.update(cx, |this, cx| {
+                        this.handle_drop_on_folder(&drag, &folder_id);
+                        cx.notify();
+                    });
+                }
+            })
+            .child(
+                div()
+                    .size(px(SECTION_ICON))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(7.))
+                    .bg(theme.accent.secondary.opacity(0.18))
+                    .child(
+                        div()
+                            .text_size(px(14.))
+                            .text_color(theme.accent.secondary)
+                            .child(letter),
+                    ),
+            );
+
+        // Name label, or the rename Input when renaming.
+        if is_renaming {
+            tile = tile.child(
+                div()
+                    .max_w(px(SECTION_CELL_WIDTH - 6.))
+                    .child(
+                        Input::new(&self.rename_input)
+                            .appearance(false)
+                            .text_color(theme.text.primary)
+                            .text_size(px(11.)),
+                    ),
+            );
+        } else {
+            tile = tile.child(
+                div()
+                    .max_w(px(SECTION_CELL_WIDTH - 6.))
+                    .text_size(px(10.))
+                    .whitespace_nowrap()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(name.clone()),
+            );
+        }
+
+        // Click on the tile body toggles expand — but NOT while renaming
+        // (a click into the rename Input must not collapse the folder).
+        if !is_renaming {
+            tile = tile.on_click({
+                let folder_id = folder_id.clone();
+                move |_event, _window, cx: &mut App| {
+                    entity_for_toggle.update(cx, |this, cx| {
+                        this.toggle_folder(&folder_id);
+                        cx.notify();
+                    });
+                }
+            });
+        }
+
+        // Decorative expand chevron (sits in the tile's toggle hit area).
+        tile = tile.child(
+            div()
+                .id(format!("launcher-folder-chevron-{}", folder.id))
+                .h(px(14.))
+                .px(px(4.))
+                .rounded(px(4.))
+                .cursor_pointer()
+                .hover(|s| s.bg(theme.bg.elevated))
+                .text_color(theme.text.faint)
+                .text_size(px(9.))
+                .child(if is_expanded { "▾" } else { "▸" }),
+        );
+
+        // Pencil enters rename mode. `stop_propagation` keeps the tile's toggle
+        // from also firing on the same click (nested on_click bubbles).
+        tile = tile.child(
+            div()
+                .id(format!("launcher-folder-pencil-{}", folder.id))
+                .h(px(14.))
+                .px(px(4.))
+                .rounded(px(4.))
+                .cursor_pointer()
+                .hover(|s| s.bg(theme.bg.elevated))
+                .text_color(theme.text.faint)
+                .text_size(px(9.))
+                .child("✎")
+                .on_click({
+                    let folder_id = folder.id.clone();
+                    move |_event, window, cx: &mut App| {
+                        cx.stop_propagation();
+                        entity_for_rename.update(cx, |this, cx| {
+                            this.start_rename(folder_id.clone(), window, cx);
+                            cx.notify();
+                        });
+                    }
+                }),
+        );
+
+        tile
+    }
+
+    fn render_cell(
+        &self,
+        theme: &Theme,
+        entry: &AppEntry,
+        flat: usize,
+        is_selected: bool,
+        entity: Entity<Self>,
+    ) -> impl IntoElement {
         let entry_for_click = entry.clone();
         let entry_for_menu = entry.clone();
         let icon_el = resolve_app_icon(entry, theme, GRID_ICON);
         let name = SharedString::from(entry.name.clone());
+        let is_new = self.new_ids.contains(&entry.id);
+        let drag_payload = LauncherDrag {
+            app_id: entry.id.clone(),
+            app_name: entry.name.clone(),
+            from: DragFrom::Grid,
+        };
+        let drop_target = entry.id.clone();
+        let entity_for_drop = entity.clone();
+        let entity_for_launch = entity.clone();
 
         div()
             .id(format!("launcher-cell-{flat}"))
             .w(px(CELL_WIDTH))
             .h(px(CELL_HEIGHT))
+            .relative()
             .flex()
             .flex_col()
             .items_center()
@@ -680,19 +1336,24 @@ impl LauncherView {
             .cursor_pointer()
             .when(is_selected, |el| el.bg(theme.bg.selection))
             .when(!is_selected, |el| el.hover(|s| s.bg(theme.interactive.hover)))
+            // T265-C "new" badge: dot in the cell corner for a fresh .desktop.
+            .when(is_new, |el| {
+                el.child(
+                    div()
+                        .absolute()
+                        .top(px(5.))
+                        .right(px(5.))
+                        .size(px(6.))
+                        .rounded_full()
+                        .bg(theme.accent.primary),
+                )
+            })
             // T275 Часть D: right-click a cell to pin/unpin it.
             .on_mouse_down(
                 MouseButton::Right,
-                {
-                    let menu_id = entry_for_menu.id.clone();
-                    move |event, window, cx: &mut App| {
-                        // anchor_rect (AnchoredPopup) is window-local;
-                        // pin_menu::open() derives the click-catcher's
-                        // output-local hole itself — see `catcher_anchor_for`
-                        // in pin_menu.rs (T275).
-                        let anchor = Bounds::new(event.position, Size::new(px(1.), px(1.)));
-                        pin_menu::open(cx, anchor, event.position, window.window_handle(), menu_id.clone());
-                    }
+                move |event, window, cx: &mut App| {
+                    let anchor = Bounds::new(event.position, Size::new(px(1.), px(1.)));
+                    pin_menu::open(cx, anchor, event.position, window.window_handle(), entry_for_menu.id.clone());
                 },
             )
             // App icon (SVG via system theme, or letter fallback).
@@ -716,14 +1377,24 @@ impl LauncherView {
                     .when(is_selected, |el| el.text_color(theme.accent.primary))
                     .child(name),
             )
+            // Internal DnD source + drop target (folder creation).
+            .on_drag(drag_payload, |info, _pos, _window, cx: &mut App| {
+                cx.new(|_| info.clone())
+            })
+            .on_drop::<LauncherDrag>(move |drag, _window, cx: &mut App| {
+                let drag = drag.clone();
+                let target = drop_target.clone();
+                entity_for_drop.update(cx, |this, cx| {
+                    this.handle_drop_create_folder(&drag, &target);
+                    cx.notify();
+                });
+            })
             .on_click(move |_event, window, cx: &mut App| {
-                // T275 Часть C: record the launch on click too. Use the
-                // already-cloned entry so the closure owns its data and
-                // `self` does not escape the `render` method body.
-                frecency::record_launch(&entry_for_click.id);
-                if let Err(err) = launch(&entry_for_click.exec) {
-                    tracing::error!("Failed to launch {}: {:#}", entry_for_click.name, err);
-                }
+                let entry_for_click = entry_for_click.clone();
+                entity_for_launch.update(cx, |this, cx| {
+                    this.launch_entry(&entry_for_click);
+                    cx.notify();
+                });
                 crate::launcher::close_this(window, cx);
             })
     }

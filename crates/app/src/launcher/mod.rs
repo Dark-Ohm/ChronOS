@@ -1,7 +1,9 @@
 //! Launcher module: fuzzy search, overlay view, launch.
 
+pub mod favorites;
 pub mod grid;
 pub mod launch;
+pub mod launcher_config;
 pub mod pin_menu;
 pub mod search;
 pub mod view;
@@ -15,6 +17,7 @@ use gpui_component::input::InputState;
 
 use chronos_services::applications::frecency;
 
+use crate::launcher::launcher_config as launcher_config_mod;
 use crate::launcher::view::LauncherView;
 
 const LAUNCHER_WIDTH: f32 = 720.;
@@ -98,7 +101,10 @@ pub fn open(cx: &mut App) {
         input.update(cx, |s, cx| {
             s.set_placeholder("Search applications, commands, files…", window, cx);
         });
-        let entity = cx.new(|cx| LauncherView::new(cx, input.clone()));
+        // T265-C: a second component Input for the folder rename field (created
+        // up-front so rename never has to lazily build an InputState with a window).
+        let rename_input = cx.new(|cx| InputState::new(window, cx));
+        let entity = cx.new(|cx| LauncherView::new(cx, input.clone(), rename_input.clone(), window));
 
         // Focus the input immediately so typing works without a click.
         input.update(cx, |s, cx| s.focus(window, cx));
@@ -138,6 +144,8 @@ pub fn close(cx: &mut App) {
     tracing::info!("launcher::close called");
     // T275 Часть C: persist any pending frecency writes before the window goes.
     frecency::flush();
+    // T265-C: persist any pending favorites/folders writes too.
+    launcher_config_mod::flush();
     if let Some(handle) = cx.global_mut::<LauncherState>().handle.take() {
         let _ = handle.update(cx, |_, window: &mut Window, _| window.remove_window());
     } else {
@@ -159,6 +167,8 @@ pub fn close(cx: &mut App) {
 pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
     // T275 Часть C: flush frecency on launch/escape close paths.
     frecency::flush();
+    // T265-C: flush favorites/folders on the same close paths.
+    launcher_config_mod::flush();
     let this = window.window_handle();
     let tracked = cx
         .global::<LauncherState>()
