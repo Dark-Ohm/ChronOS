@@ -1,6 +1,6 @@
 # T265-D — лаунчер: контекст-меню и Desktop Actions
 
-**Статус:** BLOCKED — после T265-C в git.
+**Статус:** DONE 2026-08-16 (`0405711`). Live grim ещё открыт.
 **Приоритет:** P2.
 **Родитель:** `T265-launcher-full-functionality.md`.
 **Роль:** FRONTEND. Меню — наш `gpui-component::PopupMenu`, как pin.

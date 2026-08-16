@@ -150,8 +150,8 @@ frecency**; различается только раскладка и разме
 | T265-A | `done/T265-A-launcher-desktop-fields-and-ranking.md` | DONE 2026-08-16 (`98bd08f`) |
 | T265-B | `done/T265-B-launcher-grid-and-categories.md` | DONE 2026-08-16 (`bcd08cc`) |
 | T265-C | `done/T265-C-launcher-favorites-recents-folders.md` | DONE 2026-08-16 (`1577aaa`) |
-| T265-D | `active/T265-D-launcher-context-menu-and-actions.md` | ГОТОВА К ВЫДАЧЕ (C закрыта) |
-| T265-E | `active/T265-E-launcher-prefix-modes.md` | BLOCKED на D |
+| T265-D | `done/T265-D-launcher-context-menu-and-actions.md` | DONE 2026-08-16 (`0405711`) — live grim ещё открыт |
+| T265-E | `active/T265-E-launcher-prefix-modes.md` | ГОТОВА К ВЫДАЧЕ (D закрыта) |
 | T265-F | `active/T265-F-launcher-system-actions.md` | BLOCKED на E |
 | T265-G | `active/T265-G-launcher-settings-right-panel.md` | BLOCKED на F |
 | T265-H | `active/pause/T265-H-launcher-start-menu-surface.md` | PAUSE, после A+B (лучше после G) |

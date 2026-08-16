@@ -1,5 +1,23 @@
 # HANDOFF — контекст для новой сессии Архитектора
 
+**Обновлено: 2026-08-16 (чекпоинт #21 — T265-D принята, live открыт).**
+HEAD `2ab4578` (+ T294 после D).
+
+**T265-D ПРИНЯТА** `0405711` `feat(launcher): app context menu and desktop actions`.
+Зона ровно `launcher/{app_menu.rs←pin_menu.rs, favorites.rs, launcher_config.rs, mod.rs, view.rs}`. Cargo.lock / Source / tray_menu не тронуты. Сверил сам, не со слов:
+
+- одно меню, `grab: false`, catcher через `catcher_anchor_for` / hyprctl (не `bounds().origin`);
+- Launch = frecency + `launch` + `launcher::close`; Desktop Actions = submenu, пусто → секции нет;
+- favorite / pin / hide — честный toggle; Properties / other-user disabled с причиной в лейбле;
+- `hidden: Vec<String>` top-level в `launcher.toml`, RMW ключ `hidden`, сигнал `subscribe()` → `apply_hidden_filter`;
+- `.unwrap()` на launch/hide нет.
+
+Мой прогон: `cargo test -p chronos --lib launcher` → **47/47**; `--lib` → **522/522**. Свежий `--release` **не собирается** — чужой T295: `clock.rs` зовёт `crate::calendar_popup`, модуля в crate нет (1 ошибка, не 7 — WIP сдвинулся). Это не зона D. Существующий `target/release/chronos` 18:29 уже содержит `chronos-launcher-app-menu` / `Hide from list` — им можно live, не пересобирая.
+
+**Live grim D не закрыт** (меню rest/hover, Launch закрывает лаунчер+меню без `window not found`, action, favorite, hide→сетка, pin→`dock.toml`). Юнит это не ловит. T265-E разблокирована, не выдана.
+
+---
+
 **Обновлено: 2026-08-16 (чекпоинт #20 — T265-A/B/C приняты, T285 STOP).**
 HEAD `56c9c1a`.
 

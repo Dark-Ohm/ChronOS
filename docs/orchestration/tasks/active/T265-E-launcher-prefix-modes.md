@@ -1,6 +1,6 @@
 # T265-E — лаунчер: префиксные режимы
 
-**Статус:** BLOCKED — после T265-D в git.
+**Статус:** ГОТОВА К ВЫДАЧЕ — T265-D в git (`0405711`). Live grim D ещё открыт, на код E не блокер.
 **Приоритет:** P2.
 **Родитель:** `T265-launcher-full-functionality.md`.
 **Роль:** FRONTEND (`crates/app/src/launcher/**`). Одно поле `Input` T275.
