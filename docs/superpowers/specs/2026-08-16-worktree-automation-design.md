@@ -60,6 +60,8 @@ repos:
     name_pattern: "ChronOS-wt-t{ticket}"
     branch_pattern: "feat/t{ticket}-{slug}"
     task_glob: docs/orchestration/tasks/active/*.md
+    alias_bare: true          # читать старые wt-t### рядом с экосистемой
+    alias_legacy: none
     exceptions: [ChronOS-wt-measure]   # долгоживущие, не тикетные — T272
 
   Chronos-FM:
@@ -69,6 +71,8 @@ repos:
     name_pattern: "FM-wt-t{ticket}"
     branch_pattern: "feat/t{ticket}-{slug}"
     task_glob: docs/orchestration/tasks/active/*.md
+    alias_bare: false
+    alias_legacy: t-slug      # t051-dnd
     exceptions: []
 
   Chronos-Engine:
@@ -78,6 +82,8 @@ repos:
     name_pattern: "Engine-wt-t{ticket}"
     branch_pattern: "t{ticket}-{slug}"
     task_glob: null
+    alias_bare: true
+    alias_legacy: none
     exceptions: [Chronos-Engine-upstream-test]
 
   Chronos-lm:
@@ -87,6 +93,8 @@ repos:
     name_pattern: "lm-wt-t{ticket}"
     branch_pattern: "feat/t{ticket}-{slug}"
     task_glob: null
+    alias_bare: true
+    alias_legacy: none
     exceptions: []
 
   Source:
@@ -96,12 +104,18 @@ repos:
     name_pattern: "Source-wt-t{ticket}"
     branch_pattern: "feat/t{ticket}-{slug}"
     task_glob: null
+    alias_bare: true
+    alias_legacy: none
     exceptions: []
 ```
 
 Новый репо в скоуп = новая запись, без изменения кода скриптов.
 `task_glob: null` — Engine/lm/Source сейчас без `docs/orchestration`; когда
 появится, добавляется тем же способом, что у FM.
+`alias_bare: true` включает чтение `wt-t###` (старая безрепная схема).
+Не хардкодить путь экосистемы в `lib.sh` — иначе scratch-фикстуры и
+переезд корня ломают парсер. `alias_legacy: t-slug` — только FM
+(`t051-dnd`).
 
 **Столкновение имён (почему `name_pattern` несёт префикс репо).** Все пять
 репозиториев делят `worktree_parent` = корень экосистемы (сосед), а номера
@@ -227,10 +241,12 @@ Cron: `hermes cron create "*/15 * * * *" --no-agent --script /home/neo/projects/
 
 Вместо этого: `--no-agent --script`, скрипт сам делает один HTTP-запрос к
 уже работающему на машине OmniRoute-гейтвею (`127.0.0.1:20128`,
-`/v1/chat/completions`, модель и URL зашиты явно в скрипте — не «текущий
-дефолт Гермеса») и сам атомарно пишет файл. Никакого agent-loop — значит
-физически нет terminal/file-тулов, гарантия read-only сильнее, чем
-отсутствие `--workdir`.
+`/v1/chat/completions`). URL и модель зашиты явно — не «текущий дефолт
+Гермеса». Модель — отдельное комбо **`cron`** (не `hindsight-combo`: тот
+для retain Hindsight). В теле запроса обязательно `"stream": false`
+(шлюз по умолчанию отдаёт SSE). Никакого agent-loop — значит физически
+нет terminal/file-тулов, гарантия read-only сильнее, чем отсутствие
+`--workdir`.
 
 ### `tools/wt/wt-drift.sh`
 
