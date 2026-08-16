@@ -1,6 +1,6 @@
 # T265-F — лаунчер: системные действия в шапке
 
-**Статус:** BLOCKED — после T265-E в git.
+**Статус:** ГОТОВА К ВЫДАЧЕ — T265-E в git (`52866c6`). Live grim E ещё открыт, на код F не блокер.
 **Приоритет:** P2.
 **Родитель:** `T265-launcher-full-functionality.md`.
 **Роль:** FRONTEND (`crates/app/src/launcher/**`).

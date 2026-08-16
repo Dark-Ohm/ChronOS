@@ -1,5 +1,23 @@
 # HANDOFF — контекст для новой сессии Архитектора
 
+**Обновлено: 2026-08-16 (чекпоинт #23 — T265-E принята, live открыт).**
+HEAD `52866c6`.
+
+**T265-E ПРИНЯТА** `feat(launcher): prefix providers shell, files, calc, help`.
+Зона: `launcher/providers/{mod,calc,shell,files,sysinfo,help}.rs` + `mod.rs` + `view.rs`. Cargo.lock / Cargo.toml / Source не тронуты. Сверил сам:
+
+- `parse_prefix` + один `results()`-диспетчер; `view.rs` не раздут match'ем;
+- `>` Enter-only `setsid $SHELL -lc` cwd `$HOME`; `/`/`~` → listing + `xdg-open`;
+- `=` свой парсер, `1/0` → строка-ошибка; `?` 6 строк; `i:` hostname/kernel/compositor;
+- невалидный префикс → app-search; Esc закрывает из любого режима;
+- история `>` и «терминал+cd» не делались — спека разрешает.
+
+Мой прогон: launcher **70/70**, `--lib` **547/547**, `--release` чисто (incremental 0.41s, дерево без чужого WIP).
+
+**Live grim E не закрыт:** `> echo hi`, `~/Dow`, `= 1/0`, `i:`, Esc. T265-F разблокирована, не выдана.
+
+---
+
 **Обновлено: 2026-08-16 (чекпоинт #22 — живой смок владельца PASS).**
 T294 (вкладка Updates), T295 (календарь по клику на часы), T265-A..D
 (поля `.desktop`, сетка+категории, favorites/recents/folders, контекст-
