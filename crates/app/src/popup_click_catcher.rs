@@ -106,13 +106,21 @@ pub(crate) fn protected_popup_bounds(
     let output_h = f32::from(output.height).max(0.0);
     let anchor_left = f32::from(anchor_rect.origin.x);
     let anchor_right = f32::from(anchor_rect.bottom_right().x);
+    let anchor_top = f32::from(anchor_rect.origin.y);
     let anchor_bottom = f32::from(anchor_rect.bottom_right().y);
     let popup_w = f32::from(popup_size.width).max(0.0);
     let popup_h = f32::from(popup_size.height).max(0.0);
     let left = (anchor_left - popup_w).clamp(0.0, output_w);
     let right = (anchor_right + popup_w).clamp(left, output_w);
-    let top = anchor_bottom.clamp(0.0, output_h);
-    let bottom = (top + popup_h + 16.0).clamp(top, output_h);
+    // FLIP_Y (not just FLIP_X) is a constraint adjustment callers request —
+    // near the bottom of a tall surface (e.g. the launcher's result list)
+    // the compositor renders the popup ABOVE the anchor instead of below.
+    // A one-sided hole (below only) missed that case entirely: the menu was
+    // visible but the click-catcher still owned the pointer over it, so
+    // hover never got a cursor and clicks never reached "Pin to dock"
+    // (T275). Cover both sides, same as X.
+    let top = (anchor_top - popup_h - 16.0).clamp(0.0, output_h);
+    let bottom = (anchor_bottom + popup_h + 16.0).clamp(top, output_h);
     Bounds::from_corners(point(px(left), px(top)), point(px(right), px(bottom)))
 }
 
@@ -167,8 +175,27 @@ mod tests {
         let anchor = Bounds::new(point(px(900.), px(0.)), Size::new(px(24.), px(32.)));
         let hole = protected_popup_bounds(anchor, Size::new(px(230.), px(180.)), output);
 
-        assert_eq!(hole.origin, point(px(670.), px(32.)));
+        // Anchor sits at the top edge, so the "above" half of the vertical
+        // hole clamps to 0 — only the horizontal split is exercised here.
+        assert_eq!(hole.origin, point(px(670.), px(0.)));
         assert_eq!(hole.bottom_right(), point(px(1000.), px(228.)));
+    }
+
+    #[test]
+    fn protected_popup_bounds_covers_both_possible_vertical_placements() {
+        // Anchor near the bottom of a tall surface (e.g. a launcher row):
+        // FLIP_Y renders the popup ABOVE the anchor. A one-sided hole
+        // (below only) would miss it — the exact bug this test guards
+        // against (T275: menu visible, but click-catcher still owned it).
+        let output = Size::new(px(1000.), px(800.));
+        let anchor = Bounds::new(point(px(100.), px(760.)), Size::new(px(200.), px(32.)));
+        let hole = protected_popup_bounds(anchor, Size::new(px(220.), px(180.)), output);
+
+        // top reaches up to cover a popup flipped above the anchor (anchor
+        // top 760 minus popup height 180 minus the same 16px slack used on
+        // the "below" side); bottom clamps to the output edge.
+        assert_eq!(hole.origin.y, px(564.));
+        assert_eq!(hole.bottom_right().y, px(800.), "clamped to output height");
     }
 
     #[test]
