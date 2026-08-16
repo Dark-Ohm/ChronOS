@@ -89,6 +89,18 @@ pub fn available(action: PowerAction) -> bool {
     }
 }
 
+/// Canonical `launcher.toml` id for an action (inverse of `parse_action`).
+pub fn action_id(action: PowerAction) -> &'static str {
+    match action {
+        PowerAction::Lock => "lock",
+        PowerAction::LogOut => "logout",
+        PowerAction::Sleep => "sleep",
+        PowerAction::Hibernate => "hibernate",
+        PowerAction::Restart => "restart",
+        PowerAction::Shutdown => "shutdown",
+    }
+}
+
 /// Human reason shown when a tile is disabled (tooltip/label).
 pub fn disabled_reason(action: PowerAction) -> Option<&'static str> {
     match action {

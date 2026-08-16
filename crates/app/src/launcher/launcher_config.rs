@@ -13,12 +13,15 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use futures_signals::signal::{Mutable, Signal};
+use gpui::App;
 use serde::{Deserialize, Serialize};
 
 /// Default number of recents surfaced when the config has no `[recents]`.
 pub const DEFAULT_RECENTS_LIMIT: usize = 8;
 /// Max one disk write per window — batches a DnD reorder burst.
 pub const SAVE_DEBOUNCE: Duration = Duration::from_millis(600);
+/// File-watcher debounce (frame/bar pattern) — T265-G hot-reload.
+pub const WATCH_DEBOUNCE_MS: u64 = 300;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FavoritesConfig {
@@ -59,6 +62,95 @@ pub struct SystemActionsConfig {
     pub order: Vec<String>,
 }
 
+/// Launcher appearance (T265-G): `[appearance]`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppearanceConfig {
+    /// Open the launcher with the grid collapsed (compact mode).
+    #[serde(default)]
+    pub compact_default: bool,
+    /// Hide labels under grid cells (icons only).
+    #[serde(default)]
+    pub hide_labels: bool,
+}
+
+/// Grid geometry (T265-G): `[grid] columns/rows/icon_size`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridConfig {
+    #[serde(default = "default_columns")]
+    pub columns: usize,
+    #[serde(default = "default_rows")]
+    pub rows: usize,
+    #[serde(default = "default_icon_size")]
+    pub icon_size: u32,
+}
+
+impl Default for GridConfig {
+    fn default() -> Self {
+        Self {
+            columns: default_columns(),
+            rows: default_rows(),
+            icon_size: default_icon_size(),
+        }
+    }
+}
+
+impl GridConfig {
+    /// Clamp raw toml values into sane ranges (T265-G sanitize): columns
+    /// 1..=12, rows 1..=10, icon 16..=64px. Garbage in the file must not
+    /// divide-by-zero (`move_2d` with columns=0) or render a zero-size cell.
+    pub fn sanitized(&self) -> Self {
+        Self {
+            columns: self.columns.clamp(1, 12),
+            rows: self.rows.clamp(1, 10),
+            icon_size: self.icon_size.clamp(16, 64),
+        }
+    }
+}
+
+fn default_columns() -> usize {
+    7
+}
+
+fn default_rows() -> usize {
+    4
+}
+
+fn default_icon_size() -> u32 {
+    36
+}
+
+/// Search behavior (T265-G): `[search]`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchConfig {
+    /// Include user-hidden apps in results.
+    #[serde(default)]
+    pub include_hidden: bool,
+    /// Show the inline-completion tail in the field.
+    #[serde(default = "default_true")]
+    pub inline_completion: bool,
+}
+
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self {
+            include_hidden: false,
+            inline_completion: true,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Category visibility (T265-G): `[categories] hide = [...]`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CategoriesConfig {
+    /// Category names to hide from the bar (empty = show all).
+    #[serde(default)]
+    pub hide: Vec<String>,
+}
+
 /// A user folder: a named, manual grouping of app ids.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Folder {
@@ -84,6 +176,18 @@ pub struct LauncherConfig {
     /// Header system-action order (T265-F). Empty → default order.
     #[serde(default)]
     pub system_actions: SystemActionsConfig,
+    /// Appearance (T265-G): compact default + grid labels.
+    #[serde(default)]
+    pub appearance: AppearanceConfig,
+    /// Grid geometry (T265-G).
+    #[serde(default)]
+    pub grid: GridConfig,
+    /// Search behavior (T265-G).
+    #[serde(default)]
+    pub search: SearchConfig,
+    /// Category visibility (T265-G).
+    #[serde(default)]
+    pub categories: CategoriesConfig,
 }
 
 /// Process-wide change signal: fires whenever the config mutates (favorites /
@@ -153,7 +257,17 @@ pub fn write_config(path: &Path, config: &LauncherConfig) -> std::io::Result<()>
     };
     let ours = toml::Value::try_from(config).expect("LauncherConfig is always serializable");
     if let toml::Value::Table(table) = ours {
-        for key in ["favorites", "recents", "folders", "hidden", "system_actions"] {
+        for key in [
+            "favorites",
+            "recents",
+            "folders",
+            "hidden",
+            "system_actions",
+            "appearance",
+            "grid",
+            "search",
+            "categories",
+        ] {
             if let Some(value) = table.get(key) {
                 root.insert(key.to_string(), value.clone());
             }
@@ -199,6 +313,111 @@ pub fn flush() {
     }
 }
 
+/// Reload config from disk and notify subscribers (file watcher hot-reload,
+/// T265-G). The OSD and the settings page both subscribe to `subscribe()`; a
+/// file change re-reads config and re-renders them without a restart.
+pub fn reload() {
+    let mut s = store().lock().unwrap();
+    s.config = load();
+    bump_changed();
+}
+
+/// inotify hot-reload for `launcher.toml` (frame/bar pattern, 300 ms debounce).
+pub fn spawn_watcher(cx: &mut App) {
+    let path = config_path();
+    let Some(parent) = path.parent().map(|p| p.to_path_buf()) else {
+        return;
+    };
+    if !parent.is_dir() {
+        tracing::debug!(
+            "launcher_config: parent dir {} missing, hot-reload disabled",
+            parent.display()
+        );
+        return;
+    }
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+    let watch_target = parent.clone();
+    let basename = path
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
+
+    std::thread::Builder::new()
+        .name("launcher-config-inotify".into())
+        .spawn(move || {
+            let mut inotify = match inotify::Inotify::init() {
+                Ok(i) => i,
+                Err(e) => {
+                    tracing::error!("launcher_config: inotify init failed: {e}");
+                    return;
+                }
+            };
+            let mask = inotify::WatchMask::CLOSE_WRITE
+                .union(inotify::WatchMask::MOVED_TO)
+                .union(inotify::WatchMask::CREATE)
+                .union(inotify::WatchMask::DELETE)
+                .union(inotify::WatchMask::MODIFY);
+            if let Err(e) = inotify.watches().add(&watch_target, mask) {
+                tracing::error!(
+                    "launcher_config: failed to watch {}: {e}",
+                    watch_target.display()
+                );
+                return;
+            }
+            let mut buf = [0u8; 4096];
+            loop {
+                let events = match inotify.read_events_blocking(&mut buf) {
+                    Ok(e) => e,
+                    Err(e) => {
+                        tracing::error!("launcher_config: inotify read error: {e}");
+                        break;
+                    }
+                };
+                let mut changed = false;
+                for ev in events {
+                    if ev.mask.contains(inotify::EventMask::ISDIR) {
+                        continue;
+                    }
+                    if ev.name.as_deref() == Some(basename.as_os_str()) {
+                        changed = true;
+                    }
+                }
+                if changed && tx.send(()).is_err() {
+                    break;
+                }
+            }
+        })
+        .expect("launcher_config: failed to spawn inotify thread");
+
+    cx.spawn(async move |cx| {
+        let mut deadline: Option<tokio::time::Instant> = None;
+        loop {
+            let timer = async {
+                match deadline {
+                    Some(d) => tokio::time::sleep_until(d).await,
+                    None => std::future::pending::<()>().await,
+                }
+            };
+            tokio::select! {
+                _ = rx.recv() => {
+                    deadline = Some(tokio::time::Instant::now() + Duration::from_millis(WATCH_DEBOUNCE_MS));
+                }
+                _ = timer => {
+                    deadline = None;
+                    let _ = cx.update(|_cx| {
+                        reload();
+                        tracing::info!(
+                            "launcher_config: hot-reloaded {}",
+                            config_path().display()
+                        );
+                    });
+                }
+            }
+        }
+    })
+    .detach();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,6 +436,54 @@ mod tests {
         assert!(!cfg.favorites.hide_labels);
         assert!(cfg.favorites.order.is_empty());
         assert!(cfg.folders.is_empty());
+        assert_eq!(cfg.grid.columns, 7);
+        assert_eq!(cfg.grid.rows, 4);
+        assert_eq!(cfg.grid.icon_size, 36);
+        assert!(!cfg.appearance.compact_default);
+        assert!(!cfg.appearance.hide_labels);
+        assert!(!cfg.search.include_hidden);
+        assert!(cfg.search.inline_completion, "inline completion is on by default (T265-A)");
+        assert!(cfg.categories.hide.is_empty());
+    }
+
+    #[test]
+    fn grid_and_search_and_categories_round_trip() {
+        let dir = temp_dir("gsc-roundtrip");
+        let path = dir.join("launcher.toml");
+        let cfg = LauncherConfig {
+            grid: GridConfig {
+                columns: 5,
+                rows: 3,
+                icon_size: 28,
+            },
+            search: SearchConfig {
+                include_hidden: true,
+                inline_completion: false,
+            },
+            categories: CategoriesConfig {
+                hide: vec!["Dev".into()],
+            },
+            ..LauncherConfig::default()
+        };
+        write_config(&path, &cfg).unwrap();
+        let back = read_config(&path);
+        assert_eq!(back.grid, cfg.grid);
+        assert_eq!(back.search, cfg.search);
+        assert_eq!(back.categories, cfg.categories);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn garbage_grid_values_sanitize_to_defaults() {
+        let dir = temp_dir("grid-sanitize");
+        let path = dir.join("launcher.toml");
+        std::fs::write(&path, "[grid]\ncolumns = 0\nrows = 999\nicon_size = 3\n").unwrap();
+        let cfg = read_config(&path);
+        let s = cfg.grid.sanitized();
+        assert_eq!(s.columns, 1, "columns=0 clamps to 1");
+        assert_eq!(s.rows, 10, "rows=999 clamps to 10");
+        assert_eq!(s.icon_size, 16, "icon_size=3 clamps to 16");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

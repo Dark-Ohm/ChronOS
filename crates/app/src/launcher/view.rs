@@ -176,6 +176,20 @@ pub struct LauncherView {
     user_initial: String,
     /// Avatar file (`~/.face` / AccountsService), if present.
     face_path: Option<PathBuf>,
+    /// Grid column count (from `[grid] columns`, sanitized).
+    columns: usize,
+    /// PageUp/PageDown row stride (from `[grid] rows`).
+    page_rows: usize,
+    /// Grid icon size (from `[grid] icon_size`).
+    grid_icon: f32,
+    /// Hide grid cell labels (`[appearance] hide_labels`).
+    hide_labels: bool,
+    /// Include user-hidden apps in search (`[search] include_hidden`).
+    include_hidden: bool,
+    /// Inline-completion tail on/off (`[search] inline_completion`).
+    inline_completion: bool,
+    /// Category names to hide from the bar (`[categories] hide`).
+    hidden_categories: HashSet<String>,
 }
 
 impl LauncherView {
@@ -220,6 +234,7 @@ impl LauncherView {
 
         let config = launcher_config::get();
         let actions = system_actions::resolve_actions(&config);
+        let compact_default = config.appearance.compact_default;
         let display_name = system_actions::user_full_name().unwrap_or_else(system_actions::user_name);
         let initial = system_actions::user_initial();
         let face = system_actions::face_path();
@@ -248,7 +263,7 @@ impl LauncherView {
             _rename_sub: rename_sub,
             selected_category: None,
             hover_category: None,
-            compact: false,
+            compact: compact_default,
             focus_section: FocusSection::Search,
             category_index: 0,
             focus_handle: cx.focus_handle(),
@@ -259,7 +274,15 @@ impl LauncherView {
             display_name,
             user_initial: initial,
             face_path: face,
+            columns: GRID_COLUMNS,
+            page_rows: PAGE_ROWS,
+            grid_icon: GRID_ICON,
+            hide_labels: false,
+            include_hidden: false,
+            inline_completion: true,
+            hidden_categories: HashSet::new(),
         };
+        view.apply_config_derived();
         view.set_entries(entries);
         // Repaint after the synchronous seed so the first frame shows the
         // populated grid, not the empty `results` the view was built with
@@ -277,6 +300,9 @@ impl LauncherView {
         // hidden set and refresh sections immediately, without a restart.
         let config_signal = launcher_config::subscribe();
         state::watch(cx, config_signal, |this, _, cx| {
+            // T265-G: layout/search knobs + header order + hidden set all
+            // re-read from config on any mutation (page edit or file watcher).
+            this.apply_config_derived();
             this.apply_hidden_filter();
             this.recompute_sections();
             this.refresh_results();
@@ -297,16 +323,34 @@ impl LauncherView {
         self.refresh_results();
     }
 
+    /// Re-read the launcher-config-derived layout knobs (T265-G). Every key
+    /// here has a reader below — no dead toml keys.
+    fn apply_config_derived(&mut self) {
+        let cfg = launcher_config::get();
+        let grid = cfg.grid.sanitized();
+        self.columns = grid.columns;
+        self.page_rows = grid.rows;
+        self.grid_icon = grid.icon_size as f32;
+        self.hide_labels = cfg.appearance.hide_labels;
+        self.include_hidden = cfg.search.include_hidden;
+        self.inline_completion = cfg.search.inline_completion;
+        self.hidden_categories = cfg.categories.hide.iter().cloned().collect();
+    }
+
     /// Re-filter the listed set by user-hidden ids (T265-D) and rebuild the id
-    /// map + search index from the visible remainder.
+    /// map + search index from the visible remainder. `[search] include_hidden`
+    /// skips the filter (T265-G).
     fn apply_hidden_filter(&mut self) {
         let hidden: HashSet<String> = launcher_config::get().hidden.iter().cloned().collect();
-        self.all = self
-            .raw_entries
-            .iter()
-            .filter(|e| !hidden.contains(&e.id))
-            .cloned()
-            .collect();
+        self.all = if self.include_hidden {
+            self.raw_entries.clone()
+        } else {
+            self.raw_entries
+                .iter()
+                .filter(|e| !hidden.contains(&e.id))
+                .cloned()
+                .collect()
+        };
         self.by_id = index_by_id(&self.all);
         self.search.set_items(self.all.clone());
     }
@@ -401,7 +445,10 @@ impl LauncherView {
         let now = frecency::now();
         self.results = frecency::rank(raw, &self.pattern, &data, now);
 
-        self.categories = build_categories(&self.results);
+        self.categories = build_categories(&self.results)
+            .into_iter()
+            .filter(|(cat, _)| !self.hidden_categories.contains(cat))
+            .collect();
         // Category bar = "All" (index 0) + `categories`. Clamp the keyboard
         // cursor if the bar shrank (e.g. typing removed a category).
         if self.category_index > self.categories.len() {
@@ -432,7 +479,7 @@ impl LauncherView {
     /// first layout — the request stays pending until the child exists.
     fn scroll_to_selected(&self) {
         self.scroll
-            .scroll_to_item(self.grid_row_offset + self.selected / GRID_COLUMNS);
+            .scroll_to_item(self.grid_row_offset + self.selected / self.columns);
     }
 
     /// Category at bar position `index` (0 = "All" = `None`).
@@ -492,7 +539,7 @@ impl LauncherView {
     }
 
     fn navigate_grid(&mut self, mv: Move2D, window: &mut Window) {
-        let next = move_2d(self.selected, GRID_COLUMNS, self.visible.len(), mv, PAGE_ROWS);
+        let next = move_2d(self.selected, self.columns, self.visible.len(), mv, self.page_rows);
         if next != self.selected {
             self.selected = next;
             self.scroll_to_selected();
@@ -1004,14 +1051,17 @@ impl LauncherView {
             .cleanable(true)
             .text_color(theme.text.primary)
             .text_size(px(17.));
-        if let Some(ghost) = completion_hint(&self.pattern, &self.visible) {
-            input = input.suffix(
-                div()
-                    .text_color(theme.text.faint)
-                    .text_size(px(17.))
-                    .whitespace_nowrap()
-                    .child(ghost),
-            );
+        // T265-G: `[search] inline_completion` gates the ghost tail.
+        if self.inline_completion {
+            if let Some(ghost) = completion_hint(&self.pattern, &self.visible) {
+                input = input.suffix(
+                    div()
+                        .text_color(theme.text.faint)
+                        .text_size(px(17.))
+                        .whitespace_nowrap()
+                        .child(ghost),
+                );
+            }
         }
 
         div()
@@ -1251,7 +1301,7 @@ impl LauncherView {
     /// blocks) keeps keyboard scroll-to-selected indexing correct.
     fn render_content(&self, theme: &Theme, entity: Entity<Self>) -> impl IntoElement {
         let selected = self.selected;
-        let rows: Vec<&[AppEntry]> = self.visible.chunks(GRID_COLUMNS).collect();
+        let rows: Vec<&[AppEntry]> = self.visible.chunks(self.columns).collect();
 
         div()
             .id("launcher-content")
@@ -1282,7 +1332,7 @@ impl LauncherView {
                     .flex()
                     .gap(px(GRID_GAP))
                     .children(row.iter().enumerate().map(|(ci, entry)| {
-                        let flat = ri * GRID_COLUMNS + ci;
+                        let flat = ri * self.columns + ci;
                         self.render_cell(theme, entry, flat, flat == selected, entity.clone())
                     }))
             }))
@@ -1642,7 +1692,7 @@ impl LauncherView {
     ) -> impl IntoElement {
         let entry_for_click = entry.clone();
         let entry_for_menu = entry.clone();
-        let icon_el = resolve_app_icon(entry, theme, GRID_ICON);
+        let icon_el = resolve_app_icon(entry, theme, self.grid_icon);
         let name = SharedString::from(entry.name.clone());
         let is_new = self.new_ids.contains(&entry.id);
         let drag_payload = LauncherDrag {
@@ -1690,7 +1740,7 @@ impl LauncherView {
             // App icon (SVG via system theme, or letter fallback).
             .child(
                 div()
-                    .size(px(GRID_ICON))
+                    .size(px(self.grid_icon))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -1698,16 +1748,19 @@ impl LauncherView {
                     .child(icon_el),
             )
             // Label (centered by the cell's `items_center`, truncated).
-            .child(
-                div()
-                    .max_w(px(CELL_WIDTH - 8.))
-                    .text_xs()
-                    .whitespace_nowrap()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .when(is_selected, |el| el.text_color(theme.accent.primary))
-                    .child(name),
-            )
+            // Hidden entirely when `[appearance] hide_labels` is on (T265-G).
+            .when(!self.hide_labels, |el| {
+                el.child(
+                    div()
+                        .max_w(px(CELL_WIDTH - 8.))
+                        .text_xs()
+                        .whitespace_nowrap()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .when(is_selected, |el| el.text_color(theme.accent.primary))
+                        .child(name),
+                )
+            })
             // Internal DnD source + drop target (folder creation).
             .on_drag(drag_payload, |info, _pos, _window, cx: &mut App| {
                 cx.new(|_| info.clone())
@@ -1731,6 +1784,21 @@ impl LauncherView {
     }
 
     fn render_footer(&self, theme: &Theme) -> impl IntoElement {
+        // T265-G: the "tune" button returns with a real backend — it opens the
+        // right panel's Launcher settings page via the same select-tab path the
+        // IPC command and the rail use (T246 "no control without a backend").
+        let tune = Button::new("launcher-tune")
+            .label("Tune")
+            .with_size(KitSize::XSmall)
+            .compact()
+            .with_variant(ButtonVariant::Ghost)
+            .on_click(|_event, _window, cx: &mut App| {
+                crate::launcher::close(cx);
+                crate::side_panel_right::select_tab(
+                    crate::side_panel_right::tabs::PanelTab::LauncherSettings,
+                    cx,
+                );
+            });
         div()
             .flex()
             .items_center()
@@ -1740,10 +1808,7 @@ impl LauncherView {
             .border_t_1()
             .border_color(theme.border.subtle)
             .bg(theme.bg.tertiary)
-            // NOTE (T275 Часть B): the old "tune" button was removed — it had
-            // no `on_click` and only pretended to be a settings control, which
-            // violates the T246 "no control without a backend" rule. It returns
-            // only with a real launcher settings panel.
+            .child(tune)
             .child(div().flex_1())
             // Luau plugin badge.
             .child(

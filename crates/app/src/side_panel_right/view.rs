@@ -673,6 +673,8 @@ impl Render for SidePanelRightView {
                         TabContent::Updates(entity) => col.child(entity.clone()),
                         // T293: Notifications history list.
                         TabContent::Notifications(entity) => col.child(entity.clone()),
+                        // T265-G: Launcher settings page.
+                        TabContent::LauncherSettings(entity) => col.child(entity.clone()),
                         TabContent::Placeholder(entity) => col.child(entity.clone()),
                     };
                     // Enter animation belongs to the content column alone.
@@ -737,6 +739,8 @@ impl SidePanelRightView {
             TabContent::Updates(e) => e.entity_id(),
             // T293: Notifications history list.
             TabContent::Notifications(e) => e.entity_id(),
+            // T265-G: Launcher settings page.
+            TabContent::LauncherSettings(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })
     }

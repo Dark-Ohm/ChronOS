@@ -967,7 +967,10 @@ fn slider_face(theme: Theme, frac: f32) -> AnyElement {
 /// Full slider control: step buttons + draggable track + numeric readout.
 /// Generic over the drag marker so Height and Radius share one helper while
 /// `on_drag` still routes to the right marker type.
-fn slider_control<D, F1, F2>(
+///
+/// `pub(crate)` so the launcher settings page (T265-G) reuses the same slider
+/// instead of forking its own (spec: "свой слайдер не писать").
+pub(crate) fn slider_control<D, F1, F2>(
     theme: Theme,
     frac: f32,
     minus: F1,

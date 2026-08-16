@@ -20,7 +20,7 @@ mod tests {
         // full catalog, slotted between the work tools and the settings
         // group. `for_mode(Developer)` excludes them — they live in `ALL` for
         // icon/label/coverage, not the dev rail.
-        assert_eq!(PanelTab::ALL.len(), 20);
+        assert_eq!(PanelTab::ALL.len(), 21);
         assert_eq!(PanelTab::ALL[0], PanelTab::System);
         assert_eq!(PanelTab::ALL[1], PanelTab::Updates);
         assert_eq!(PanelTab::ALL[2], PanelTab::Notifications);
@@ -41,6 +41,7 @@ mod tests {
         assert_eq!(PanelTab::ALL[17], PanelTab::EditorSettings);
         assert_eq!(PanelTab::ALL[18], PanelTab::HyprlandBinds);
         assert_eq!(PanelTab::ALL[19], PanelTab::Display);
+        assert_eq!(PanelTab::ALL[20], PanelTab::LauncherSettings);
     }
 
     #[test]
@@ -519,11 +520,13 @@ pub enum PanelTab {
     HyprlandBinds,
     // T293: Notifications — history list, replaces the history popup.
     Notifications,
+    // T265-G: launcher settings — grid/search/favorites/hidden apps page.
+    LauncherSettings,
 }
 
 impl PanelTab {
     /// Full catalog — every tab that exists. Coverage tests iterate this.
-    pub const ALL: [PanelTab; 20] = [
+    pub const ALL: [PanelTab; 21] = [
         PanelTab::System,
         PanelTab::Updates,
         PanelTab::Notifications,
@@ -544,6 +547,7 @@ impl PanelTab {
         PanelTab::EditorSettings,
         PanelTab::HyprlandBinds,
         PanelTab::Display,
+        PanelTab::LauncherSettings,
     ];
 
     /// Stable id for scene overrides (`scenes.toml` `rail_tabs`).
@@ -569,6 +573,7 @@ impl PanelTab {
             PanelTab::Display => "display",
             PanelTab::HyprlandBinds => "hyprland_binds",
             PanelTab::Notifications => "notifications",
+            PanelTab::LauncherSettings => "launcher_settings",
         }
     }
 
@@ -596,6 +601,7 @@ impl PanelTab {
             "display" => Some(PanelTab::Display),
             "hyprland_binds" | "hyprlandbinds" => Some(PanelTab::HyprlandBinds),
             "notifications" => Some(PanelTab::Notifications),
+            "launcher_settings" | "launchersettings" => Some(PanelTab::LauncherSettings),
             _ => None,
         }
     }
@@ -714,6 +720,8 @@ impl PanelTab {
             PanelTab::HyprlandBinds => "Hyprland binds",
             // T293: Notifications — history list.
             PanelTab::Notifications => "Notifications",
+            // T265-G: launcher settings page.
+            PanelTab::LauncherSettings => "Launcher",
         }
     }
 
@@ -743,6 +751,8 @@ impl PanelTab {
             PanelTab::HyprlandBinds => "icons/rail-binds.svg",
             // T293: bell icon — same as the bar notification bell.
             PanelTab::Notifications => "icons/bell.svg",
+            // T265-G: the launcher's sigil (already used in the OSD header).
+            PanelTab::LauncherSettings => "icons/chronos-sigil.svg",
         }
     }
 
@@ -785,6 +795,9 @@ impl PanelTab {
             | PanelTab::LspSettings
             | PanelTab::ApiProviders
             | PanelTab::HyprlandBinds => 320.,
+            // T265-G: launcher settings — same comfortable column as the Bar
+            // page it mirrors (sliders + switches + lists).
+            PanelTab::LauncherSettings => 410.,
             // 410 — the exact width the user asked for (2026-08-05 live
             // screenshot of the "Bar" appearance page this tab hosts as
             // `BarSettingsTab`, see `tab/mod.rs::create`). Not resizable

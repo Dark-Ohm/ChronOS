@@ -13,6 +13,7 @@ pub(crate) mod display;
 pub(crate) mod build;
 pub(crate) mod files;
 pub(crate) mod hypr_binds;
+pub(crate) mod launcher_settings;
 pub(crate) mod library;
 pub(crate) mod notifications;
 pub(crate) mod preview;
@@ -32,6 +33,7 @@ use build::BuildTab;
 use display::DisplayTab;
 use files::FilesTab;
 use hypr_binds::HyprBindsTab;
+use launcher_settings::LauncherSettingsTab;
 use library::LibraryTab;
 use notifications::NotificationsTab;
 use preview::PreviewTab;
@@ -65,6 +67,8 @@ pub(crate) enum TabContent {
     Updates(gpui::Entity<UpdatesTab>),
     // T293: Notifications — history list (replaces the history popup).
     Notifications(gpui::Entity<NotificationsTab>),
+    // T265-G: Launcher settings — grid/search/favorites/hidden-apps page.
+    LauncherSettings(gpui::Entity<LauncherSettingsTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
 
@@ -110,6 +114,10 @@ impl TabContent {
             // T293: Notifications — history list, shared renderer with the popup.
             PanelTab::Notifications => {
                 TabContent::Notifications(cx.new(|cx| NotificationsTab::new(cx)))
+            }
+            // T265-G: Launcher settings — live view, reads/writes launcher.toml.
+            PanelTab::LauncherSettings => {
+                TabContent::LauncherSettings(cx.new(|cx| LauncherSettingsTab::new(cx)))
             }
             PanelTab::Scenes
             | PanelTab::Captures => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
@@ -177,6 +185,8 @@ pub fn placeholder_description(tab: PanelTab) -> &'static str {
         // T293: Notifications is a real tab (not empty), but the match
         // must stay exhaustive — this arm is unreachable in practice.
         PanelTab::Notifications => "Notification history",
+        // T265-G: LauncherSettings is a real tab (not empty) — same note.
+        PanelTab::LauncherSettings => "App grid, search, category and favorites settings",
     }
 }
 

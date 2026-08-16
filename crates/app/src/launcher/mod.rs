@@ -206,4 +206,6 @@ pub fn init(cx: &mut App) {
     tracing::info!("launcher::init called");
     cx.set_global(LauncherState::default());
     app_menu::init(cx);
+    // T265-G: hot-reload `launcher.toml` → re-render OSD + settings page.
+    launcher_config_mod::spawn_watcher(cx);
 }
