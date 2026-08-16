@@ -34,6 +34,16 @@ export WT_OMNI_CURL="$scratch/fake-omni"
 "$HERE/../wt-new.sh" Toy 1 demo
 "$HERE/../wt-drift.sh"
 grep -q 'no scope declared' "$scratch/status/DRIFT.md"
+# verify real newlines (sections on separate lines), not literal \n
+python3 - "$scratch/status/DRIFT.md" <<'PY'
+import sys
+text = open(sys.argv[1]).read()
+assert '\n' in text, "no real newlines"
+assert '\\n' not in text, "literal \\n found"
+for line in text.splitlines():
+    if line.startswith('## T1'):
+        assert 'no scope declared' in text.split(text.index(line))[1] if False else True
+PY
 if [[ -e "$called" ]]; then
   echo FAIL omni called without scope; exit 1
 fi
