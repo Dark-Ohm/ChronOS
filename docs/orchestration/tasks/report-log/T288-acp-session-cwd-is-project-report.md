@@ -1,3 +1,5 @@
+**Принято архитектором 2026-08-15.** Live закрыт владельцем; store `c9f033fc` cwd=project=ChronOS.
+
 # T288 — ACP session cwd is the active project — Report
 
 **Date:** 2026-08-15

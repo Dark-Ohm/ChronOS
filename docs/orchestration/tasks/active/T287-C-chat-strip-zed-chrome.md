@@ -4,8 +4,8 @@
 **Приоритет:** P1 — мёртвый хром, дубль IA.
 **Роль:** FRONTEND. `tabs/chat.rs` (`render_panel`, `build_sessions_sidebar`)
 + кнопка Follow в `composer.rs` (ряд пикеров, не `text_input`).
-**Не** T285. С T286 не драться за одно поле ввода; кнопку сажать в
-`composer-pickers-row`.
+**Не** T285. **После T286 в git** — Follow садится в `composer-pickers-row`,
+тот же `composer.rs`, который T286 переписывает. Параллелить нельзя.
 
 ## Симптом (кадры владельца, 2026-08-15)
 
@@ -51,10 +51,10 @@
 
 ## Верификация
 
-Live grim: Chat без колонки сессий, без полоски `✦ ＋☰👁⋯`, без X
-в углу. Sessions-вкладка жива. В `render_panel` нет
-`thread-header` / `thread-new-chat` / `thread-history` / `thread-follow` /
-`thread-more` / `side-panel-left-close`.
+Live grim: нет `thread-header` и X; Follow внизу у композера, иконка
+preview, не глаз; ON/OFF видно. Sessions-вкладка жива.
+В `render_panel` нет `thread-header` / `thread-follow` /
+`side-panel-left-close`.
 
 ## Коммит
 

@@ -16,7 +16,7 @@
 | 5 | Dock/undock + tab policy matrix | ✅ | **Fixed in `75358a2`**: docked tab-switch preserves dock+width; active-docked click = no-op; undock keeps width until next ordinary tab-switch |
 | 6 | Session select → Chat + focus composer | ✅ | **Fixed in `75358a2`**: `on_sessions_event` calls `request_focus_composer`; verified blinking cursor + focus accent `#2754B1` |
 | 7 | `compose-and-send` from rail-only / content-open / docked | ⚠️ | IPC fires + single submit per state; **external model 404** (`tencent/hy3:free` became paid); fallback to `nous:meituan/longcat-2.0:free` works |
-| 8 | **Restart restores last valid session** | ✅ (code + unit) / live ⏳ | `restore_active_project_on_startup` + `ChatTab::new` now restore the persisted active project's last valid thread on startup; 2 new reducer tests green. **Live Hyprland restore pending owner run.** |
+| 8 | **Restart restores last valid session** | ✅ code+unit / live ⏳ | `23bf89f`: `restore_active_project_on_startup` в `init` (после `project_switcher::init`) сеет SoT из `ProjectsConfig.active`; `ChatTab::new` зовёт `restore_project_thread`. Тесты `restore_on_startup_*` прогнал сам — 2/2. ChatTab::new в TestApp не поднимается (ACP) — сессию юнит не доказал, только path. Live — за владельцем. |
 | 9 | Project pill gone from bar | ✅ | `~/.config/chronos/bar.toml` has no project widget |
 | 10 | Slice B/C shells self-identify | ✅ | `shell.rs:47-48`: Plan/ContextFiles = "Coming in Slice B"; Tools/Skills/Archive = "Coming in Slice C" |
 

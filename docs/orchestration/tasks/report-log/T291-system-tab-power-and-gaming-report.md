@@ -1,3 +1,5 @@
+**Принято архитектором 2026-08-15.** Live System-вкладка ок. Тумблер Gaming → T291-E (`refresh_windows` в apply/revert). Попап grim не требовали.
+
 # T291 — System справа: power profile и Gaming Mode с бара
 
 **Роль:** FRONTEND. **Статус:** done (на проверке архитектора — не принимал сам).

@@ -1,3 +1,5 @@
+**Принято архитектором 2026-08-16.** Live `+` владельца.
+
 # T296 — Display tab belongs on the right rail — Report
 
 **Date:** 2026-08-16

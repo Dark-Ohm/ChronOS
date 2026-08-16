@@ -1501,3 +1501,49 @@ severity)` — замена всех перечисленных вхождени
 в Chronos-GPUI, гейты в `main` с `57f582f`. Скилл
 `gpui-component-in-chronos` больше не указывает на мёртвый path.
 
+---
+## 2026-08-15 — Frame Hide|Wrap это Appearance, не пресет бара
+
+- Considered: ещё один пресет бара / смена shell-геометрии вместе с T268.
+- Rejected: T268 уже Hide-path (`d572657`). Wrap — другая тема оформления
+  при спрятанных рельсах; клиенты сидят внутри рамы; рама живёт и с
+  рельсами внутри. Hyprland-конфиг не трогать.
+- Decided: сегмент Appearance Frame Hide|Wrap (T284). Один мат + три
+  exclusive dummy. `set_margin` нет — recreate. style=строка+RMW.
+
+---
+## 2026-08-15 — T287-C: Zed-хром срезать, Follow не убивать
+
+- Considered: выкинуть весь ряд `✦＋☰👁⋯` вместе с close X и внутренним
+  Sessions rail.
+- Rejected for Follow: 👁 — это T195 `AgentFollowState` → Preview,
+  нужная фича. Переезжает вниз, к композеру, нормальная иконка
+  (`icons/rail-preview.svg`), тот же `follow_enabled`.
+- Decided: T287-C = rail + thread-header + close X out; Follow в
+  composer-pickers-row. Пикеры моделей — T287-A, не этот срез.
+
+---
+## 2026-08-15 — IA: два gaming, вкладки вместо бар-попапов, pacman apply
+
+- **Два gaming не склеивать.** Perf Gaming = `GamingModeState` (производительность, T291). Shell Gamer = `WorkspaceMode::Gamer` (рельса/сцены/док, T292). Имена в брифах обязательны.
+- **Бар-попап System разбирается:** яркость+обои налево (T290); power+Perf Gaming направо в System (T291); пустой попап снести (T246).
+- **Колокольчик и updates** не теряют бейдж на баре, но открывают вкладки (T293/T294), не попапы.
+- **Updates apply:** `pkexec pacman -Syu` / `-Sy pkgs`. `yay` только read (`-Qua`) и hover-подсказка. Отклонено: `pkexec yay -Syu` (сейчас дефолт если yay на PATH).
+- **Правый dock (T289):** T221 «docked + same tab = no-op» отвергнут владельцем. Dock = exclusive zone, не замок контента.
+- **Календарь (T295):** kit `Calendar`, не своя сетка; не планировщик событий.
+- Спеки в `active/T288`–`T295` + T265-A…G. Код не в этом чекпоинте.
+
+---
+## 2026-08-16 — Display не на левой рельсе
+
+- Considered / shipped T290: `LeftTab::Display` (спека чекпоинта #14:
+  «яркость+waytrogen налево»).
+- **Rejected владельцем:** слева только ИИ; справа ежедневное и ОС.
+  Display = настройки дисплея, v1 яркость+фон, расширять эту же вкладку.
+  Кнопка в **нижней** группе правой рельсы, над System settings; над доком
+  — T292 (не вкладка). Бар-hexagon яркости снести (T246).
+- Decided: T296 `a2c072f` (live +). T290 оставлен как снос попапа +
+  `gaming_mode` в корне; сторона SUPERSEDED.
+- Sanitize `panels.toml` без `display` пока дописывает в **top** — не
+  блокер (живой toml уже bottom).
+

@@ -9,8 +9,8 @@
 ## Это не T268
 
 T268 закрыл стык «полоска между рельсами» без exclusive zone. Бриф T268
-в `active/` — исторический, **не исполнять**. Обёртка — отдельная тема
-оформления. Дефолтный шелл не переписывать.
+в `done/T268-desktop-frame-bottom-strip.md` — исторический, **не исполнять**.
+Обёртка — отдельная тема оформления. Дефолтный шелл не переписывать.
 
 ## Задача
 
@@ -64,9 +64,9 @@ T268 закрыл стык «полоска между рельсами» без
   parse и `load()` подменяет конфиг дефолтом (тест T268 это фиксирует).
 - Геометрия Wrap определена для **Top exclusive** бара. Bottom/floating:
   верхний inset мата = `wrap_inset()`, тумблер не блокировать.
-- T281 OPEN (`active/T281-left-workspace-ipc-live-acceptance.md`): не
-  параллелить правки `side_panel_left/mod.rs`. Правая vs T277 — ок,
-  T277 review-only и код не пишет.
+- T281 PARK (`active/pause/T281-left-workspace-ipc-live-acceptance.md`).
+  Пока T285 в `active/` — не параллелить правки `side_panel_left/mod.rs`.
+  Правая vs T277 — ок, T277 review-only и код не пишет.
 
 ## Конфиг
 
@@ -88,8 +88,8 @@ inner_radius = 16.0  # clamp 0..=64; в UI крутилку не обязате�
 
 - `crates/app/src/frame.rs` (+ опционально `frame/wrap.rs`)
 - `crates/app/src/side_panel_left/mod.rs` — только inset рельсы/контента +
-  `set_rail_mapped`. **Не** IPC, tabs, `workspace_transition`. Пока T281
-  в `active/` — эти строки не начинать, если T281 уже в поле.
+  `set_rail_mapped`. **Не** IPC, tabs, `workspace_transition`. Пока T285
+  в `active/` — эти строки не начинать.
 - `crates/app/src/side_panel_right/mod.rs` — то же. Не аудит поверхностей
   (T277).
 - `crates/app/src/bar/mod.rs` — снять границу в карточку только при Wrap.
