@@ -1,5 +1,82 @@
 # T285 — restore треда: ACP `load_session`, не `create_session` — Report
 
+---
+
+## SLICE B — ACP backend: cold `load_session` → seat `ActiveSession` (STOP, dead-end)
+
+**Date:** 2026-08-16
+**Role:** BACKEND + ACP.
+**Zone:** `crates/services/src/hermes_acp/client.rs`
+(`load_session_command` / `load_session`), только то, что нужно для сборки.
+
+### Status
+
+**STOP (тупик публичного API), код не менён.** Сработал гейт из таска:
+*«Если публичного пути нет — стоп, в отчёт: что искал, какие API, почему тупик.
+Не форкай SDK, не бампь крейт молча, не зови start_session "чтобы заполнить слот".»*
+Бэкенд-фикс в пределах таска невозможен; фронтенд slice A (ниже) живёт как есть —
+bind на восстановленный тред уходит в fallback `create_session` и сессия не та,
+но это единственное поведение, доступное без форка/бампа.
+
+### Что искал (порядок проверки)
+
+1. `agent-client-protocol` 2.0.0 — последняя опубликованная версия на crates.io
+   (max_stable_version = newest = 2.0.0, не yanked). Бамп не из чего делать.
+2. Публичный путь `LoadSessionResponse` → `ActiveSession` в 2.0.0:
+   - `attach_session(NewSessionResponse)` — **`pub(crate)`** (`session.rs:80`). В
+     `0.11.1` был `pub` (`0.11.1/src/session.rs:79`) — регресс при переходе на 2.0.0.
+   - Поля `ActiveSession` (`session.rs:506-529`) — все приватные, публичного
+     конструктора нет. Производители только `SessionBuilder::start_session` /
+     `run_until` / `on_session_start` / `start_session_proxy` — все шлют `session/new`.
+   - `ActiveSessionHandler` (`session.rs:730`) — **приватный struct** (без `pub`),
+     его `pub fn new` (`session.rs:736`) наружу недостижим. Подсказка таска
+     «ActiveSessionHandler::new публичен» для 2.0.0 неверна. В `lib.rs:135-136`
+     только `pub use session::{ActiveSession, McpClient, McpServer, SessionMessage,...}`
+     — хендлера там нет.
+   - `ConnectionTo::add_dynamic_handler` — публичен (`jsonrpc.rs:3569`), но
+     регистрирует только `HandleDispatchFrom`-хендлер и не умеет собрать
+     `ActiveSession`. Сам по себе недостаточен.
+   - v1 `SessionBuilder::load_session` / `resume_session` — **не существует**.
+   - v2 `resume_session` — есть в `SessionBuilder` (за фичей `unstable_protocol_v2`),
+     но: возвращает `V2Session`, не `ActiveSession`; требует v2-wire (переговоры
+     v2 в `Client::v2`); Hermes говорит v1 (наш клиент шлёт `schema::v1::LoadSessionRequest`).
+   - v1 `LoadSessionResponse` (`agent-client-protocol-schema-1.5.0/src/v1/agent.rs:1248`)
+     несёт `modes` / `config_options` / `meta`, **без** `session_id` (id только в
+     запросе). Даже если бы `attach_session` был публичным, конверсии
+     `LoadSessionResponse` → `NewSessionResponse` нет.
+3. git main rust-sdk (`zed-industries/agent-client-protocol`): `attach_session` всё ещё
+   `pub(crate)`; публичного v1 load-билдера нет. Признаков будущего PR нет.
+
+### Почему тупик
+
+Единственный способ посадить `ActiveSession` в `SharedSession` — публично
+сконструировать значение типа, у которого приватны все поля, а единственный
+фабричный путь (`attach_session`) закрыт `pub(crate)`. Доступные альтернативы
+нарушают ограничения таска: форк SDK, бамп крейта (некуда — 2.0.0 уже max),
+`start_session` вместо load (даёт новый id — ровно баг, который чиним), v2-wire
+(ломает совместимость с Hermes v1 и меняет тип слота).
+
+### Следствие для пользователя
+
+На холодном старте восстановленный тред не bind-ится к загруженной сессии:
+`load_session_command` по-прежнему падает на `session.lock().take().context("no
+active session for load")?`, fallback `create_session` даёт новый id
+(`362cd7c5-…`), SQLite-лента остаётся, но агентная память пуста. Вопрос «что я
+просил запомнить?» ответит Hindsight-дамп, не лента. Это блокер UX до тех пор,
+пока SDK не откроет публичный load-путь (или пока не будет принято решение
+форкнуть/завести upstream-issue).
+
+### Рекомендация (вне рамок таска)
+
+Завести upstream-issue в `agentclientprotocol/rust-sdk`: сделать
+`attach_session` публичным (или добавить публичный `load_session`-билдер,
+принимающий `LoadSessionResponse` + `session_id` из запроса). В 0.11.1 API был
+публичным — регресс 2.0.0, просить вернуть.
+
+---
+
+## Slice A — FRONTEND (не трогать)
+
 **Date:** 2026-08-16
 **Role:** FRONTEND + ACP.
 **Zone:** `crates/app/src/side_panel_left/tabs/chat.rs`
