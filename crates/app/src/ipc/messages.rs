@@ -1,5 +1,6 @@
 pub const PING_PAYLOAD: &str = "ping";
 pub const TOGGLE_LAUNCHER_PAYLOAD: &str = "toggle-launcher";
+pub const TOGGLE_START_MENU_PAYLOAD: &str = "toggle-start-menu";
 pub const TOGGLE_SIDE_PANEL_LEFT_PAYLOAD: &str = "toggle-side-panel-left";
 pub const WALLPAPER_NEXT_PAYLOAD: &str = "wallpaper-next";
 pub const WALLPAPER_GALLERY_PAYLOAD: &str = "wallpaper-gallery";
@@ -24,6 +25,17 @@ pub fn encode_toggle_launcher() -> String {
 
 pub fn is_toggle_launcher(payload: &str) -> bool {
     payload.trim() == TOGGLE_LAUNCHER_PAYLOAD
+}
+
+// Same contract as `encode_toggle_launcher` — Super tap (Hyprland `bindr`)
+// opens the compact Start menu, not the OSD launcher.
+#[allow(dead_code)]
+pub fn encode_toggle_start_menu() -> String {
+    TOGGLE_START_MENU_PAYLOAD.to_string()
+}
+
+pub fn is_toggle_start_menu(payload: &str) -> bool {
+    payload.trim() == TOGGLE_START_MENU_PAYLOAD
 }
 
 // Same contract as `encode_toggle_launcher` above — external keybind
@@ -270,6 +282,14 @@ mod tests {
     #[test]
     fn rejects_non_toggle_launcher_payload() {
         assert!(!is_toggle_launcher("ping"));
+    }
+
+    #[test]
+    fn encodes_and_recognizes_toggle_start_menu() {
+        let payload = encode_toggle_start_menu();
+        assert!(is_toggle_start_menu(&payload));
+        assert!(!is_toggle_start_menu("toggle-launcher"));
+        assert!(!is_toggle_launcher(&payload));
     }
 
     #[test]

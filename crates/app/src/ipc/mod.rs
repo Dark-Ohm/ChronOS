@@ -24,6 +24,7 @@ impl IpcSubscriber {
             mut preview_target_receiver,
             mut expand_left_receiver,
             mut compose_and_send_receiver,
+            mut start_menu_toggle_receiver,
         ) = self.start_listener();
 
         cx.spawn(async move |cx| {
@@ -44,6 +45,8 @@ impl IpcSubscriber {
             let mut last_select_tab_at =
                 std::time::Instant::now() - std::time::Duration::from_secs(1);
             let mut last_expand_left_at =
+                std::time::Instant::now() - std::time::Duration::from_secs(1);
+            let mut last_start_menu_toggle_at =
                 std::time::Instant::now() - std::time::Duration::from_secs(1);
 
             loop {
@@ -197,6 +200,22 @@ impl IpcSubscriber {
                                 tracing::info!("IPC expand-left received");
                                 let _ = cx.update(|cx| {
                                     crate::side_panel_left::expand_with_composer(cx);
+                                });
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    start_menu_toggle = start_menu_toggle_receiver.recv() => {
+                        if start_menu_toggle.is_some() {
+                            let now = std::time::Instant::now();
+                            if now.duration_since(last_start_menu_toggle_at)
+                                >= std::time::Duration::from_millis(200)
+                            {
+                                last_start_menu_toggle_at = now;
+                                tracing::info!("IPC toggle received, calling start_menu::toggle");
+                                let _ = cx.update(|cx| {
+                                    crate::start_menu::toggle(cx);
                                 });
                             }
                         } else {

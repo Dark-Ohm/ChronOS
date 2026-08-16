@@ -8,8 +8,9 @@ use tokio::sync::mpsc;
 use super::messages::{
     WallpaperIpcCmd, WorkspaceModeIpcCmd, classify_select_tab, classify_set_workspace_mode,
     classify_wallpaper, encode_ping, is_expand_left, is_ping, is_toggle_edit_mode,
-    is_toggle_launcher, is_toggle_side_panel_left, is_toggle_side_panel_right, is_toggle_theme,
-    is_toggle_workspace_mode, parse_compose_and_send, parse_preview_target,
+    is_toggle_launcher, is_toggle_side_panel_left, is_toggle_side_panel_right,
+    is_toggle_start_menu, is_toggle_theme, is_toggle_workspace_mode, parse_compose_and_send,
+    parse_preview_target,
 };
 use crate::side_panel_right::tabs::PanelTab;
 
@@ -25,6 +26,7 @@ pub type IpcSelectTabReceiver = mpsc::UnboundedReceiver<PanelTab>;
 pub type IpcPreviewTargetReceiver = mpsc::UnboundedReceiver<std::path::PathBuf>;
 pub type IpcExpandLeftReceiver = mpsc::UnboundedReceiver<()>;
 pub type IpcComposeAndSendReceiver = mpsc::UnboundedReceiver<String>;
+pub type IpcStartMenuToggleReceiver = mpsc::UnboundedReceiver<()>;
 
 pub enum AcquireResult {
     Primary(IpcSubscriber),
@@ -75,6 +77,7 @@ impl IpcSubscriber {
         IpcPreviewTargetReceiver,
         IpcExpandLeftReceiver,
         IpcComposeAndSendReceiver,
+        IpcStartMenuToggleReceiver,
     ) {
         let (ping_sender, ping_receiver) = mpsc::unbounded_channel();
         let (toggle_sender, toggle_receiver) = mpsc::unbounded_channel();
@@ -89,6 +92,7 @@ impl IpcSubscriber {
         let (preview_target_sender, preview_target_receiver) = mpsc::unbounded_channel();
         let (expand_left_sender, expand_left_receiver) = mpsc::unbounded_channel();
         let (compose_and_send_sender, compose_and_send_receiver) = mpsc::unbounded_channel();
+        let (start_menu_toggle_sender, start_menu_toggle_receiver) = mpsc::unbounded_channel();
 
         if let Some(std_listener) = self.listener.take() {
             // `from_std` requires a running tokio reactor, which is active here.
@@ -109,6 +113,7 @@ impl IpcSubscriber {
                     preview_target_sender,
                     expand_left_sender,
                     compose_and_send_sender,
+                    start_menu_toggle_sender,
                 )
                         .await;
                     });
@@ -130,6 +135,7 @@ impl IpcSubscriber {
             preview_target_receiver,
             expand_left_receiver,
             compose_and_send_receiver,
+            start_menu_toggle_receiver,
         )
     }
 }
@@ -213,6 +219,7 @@ async fn accept_loop(
     preview_target_sender: mpsc::UnboundedSender<std::path::PathBuf>,
     expand_left_sender: mpsc::UnboundedSender<()>,
     compose_and_send_sender: mpsc::UnboundedSender<String>,
+    start_menu_toggle_sender: mpsc::UnboundedSender<()>,
 ) {
     use tokio::io::AsyncReadExt;
 
@@ -231,6 +238,7 @@ async fn accept_loop(
                 let preview_target_sender = preview_target_sender.clone();
                 let expand_left_sender = expand_left_sender.clone();
                 let compose_and_send_sender = compose_and_send_sender.clone();
+                let start_menu_toggle_sender = start_menu_toggle_sender.clone();
                 tokio::spawn(async move {
                     let mut buffer = Vec::with_capacity(64);
                     let read = tokio::time::timeout(
@@ -250,6 +258,9 @@ async fn accept_loop(
                         } else if is_toggle_launcher(&payload) {
                             let _ = toggle_sender.send(());
                             tracing::info!("IPC toggle-launcher received");
+                        } else if is_toggle_start_menu(&payload) {
+                            let _ = start_menu_toggle_sender.send(());
+                            tracing::info!("IPC toggle-start-menu received");
                         } else if is_toggle_side_panel_left(&payload) {
                             let _ = side_panel_toggle_sender.send(());
                             tracing::info!("IPC toggle-side-panel-left received");

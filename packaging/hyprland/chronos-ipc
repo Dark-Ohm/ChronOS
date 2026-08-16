@@ -4,6 +4,7 @@
 #
 # Usage:
 #   chronos-ipc toggle-launcher
+#   chronos-ipc toggle-start-menu
 #   chronos-ipc toggle-side-panel-left
 #   chronos-ipc toggle-side-panel-right
 #   chronos-ipc toggle-theme
