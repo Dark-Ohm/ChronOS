@@ -174,9 +174,16 @@ fn toggle_hidden_in(config: &mut LauncherConfig, id: &str) -> bool {
 
 /// Number of "rows" (items + separators) the menu renders, for the catcher hole.
 fn menu_row_count(entry: &AppEntry) -> usize {
-    // Launch + favorite + pin + hide + show-in-FM + properties + other-user
-    // + (Desktop Actions submenu if present) + 2 separators.
-    7 + usize::from(!entry.actions.is_empty()) + 2
+    // 7 fixed items (Launch, favorite, pin, hide, show-in-FM, Properties,
+    // Launch-as-other-user) + 2 always-present separators. Desktop Actions,
+    // when present, add a leading separator + a header label + one flat item
+    // per action (T297: actions are inline items, not a flyout submenu).
+    let action_rows = if entry.actions.is_empty() {
+        0
+    } else {
+        2 + entry.actions.len() // separator + "Desktop Actions" header + N items
+    };
+    9 + action_rows
 }
 
 /// Conservative menu height estimate for the click-catcher hole.
@@ -259,7 +266,7 @@ fn build_app_menu(window: &mut Window, cx: &mut App, entry: AppEntry) -> Entity<
     let is_favorite = config.favorites.order.iter().any(|id| id == &entry.id);
     let is_hidden = config.hidden.iter().any(|id| id == &entry.id);
 
-    PopupMenu::build(window, cx, |menu, window, cx| {
+    PopupMenu::build(window, cx, |menu, _window, _cx| {
         let mut menu = menu.min_w(px(MENU_MIN_WIDTH)).max_w(px(MENU_MAX_WIDTH));
 
         // Launch.
@@ -271,23 +278,26 @@ fn build_app_menu(window: &mut Window, cx: &mut App, entry: AppEntry) -> Entity<
             }));
         }
 
-        // Desktop Actions submenu — only when the entry has actions.
+        // Desktop Actions — flat list (T297). The native `submenu()` flyout
+        // opens right/down OUTSIDE the fixed-size popup surface, and Wayland
+        // delivers no pointer events to content past the buffer edge — the
+        // child submenu was clipped and physically unclickable. Flattening
+        // keeps every action inside the single sized window (actions are 1-3
+        // items; nesting is not worth the extra surface).
         if !entry.actions.is_empty() {
-            let actions = entry.actions.clone();
+            menu = menu.separator();
+            menu = menu.item(PopupMenuItem::label("Desktop Actions"));
             let entry_id = entry.id.clone();
-            menu = menu.submenu("Desktop Actions", window, cx, move |sub, _w, _cx| {
-                let mut sub = sub.min_w(px(MENU_MIN_WIDTH)).max_w(px(MENU_MAX_WIDTH));
-                for action in &actions {
-                    let exec = action.exec.clone();
-                    let id = entry_id.clone();
-                    sub = sub.item(
-                        PopupMenuItem::new(action.name.clone()).on_click(move |_e, _w, cx: &mut App| {
-                            launch_entry_and_close(&id, &exec, cx);
-                        }),
-                    );
-                }
-                sub
-            });
+            for action in &entry.actions {
+                let exec = action.exec.clone();
+                let id = entry_id.clone();
+                let name = action.name.clone();
+                menu = menu.item(
+                    PopupMenuItem::new(name).on_click(move |_e, _w, cx: &mut App| {
+                        launch_entry_and_close(&id, &exec, cx);
+                    }),
+                );
+            }
         }
 
         menu = menu.separator();
@@ -758,10 +768,13 @@ mod tests {
         let no_actions = AppEntry::fixture("x", "X");
         assert_eq!(menu_row_count(&no_actions), 9);
         assert!(estimate_menu_height(&no_actions) > 0.0);
+        let with_actions = entry_with_actions();
         assert!(
-            estimate_menu_height(&entry_with_actions()) > estimate_menu_height(&no_actions),
-            "Desktop Actions submenu must add height"
+            estimate_menu_height(&with_actions) > estimate_menu_height(&no_actions),
+            "Desktop Actions must add height"
         );
+        // Two actions → separator + header + 2 flat items = 4 extra rows.
+        assert_eq!(menu_row_count(&with_actions), 13);
     }
 
     #[test]

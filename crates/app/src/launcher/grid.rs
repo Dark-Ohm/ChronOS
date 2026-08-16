@@ -61,14 +61,34 @@ pub fn move_2d(selected: usize, columns: usize, len: usize, mv: Move2D, page_row
     }
 }
 
-/// Distinct categories present in `entries`, with counts, sorted by count
-/// descending then name ascending. Empty (`""`) categories are dropped; a
-/// category with no entries never appears, so the bar never shows empties.
+/// Main Categories from the freedesktop Desktop Menu Specification — the ones
+/// meant for user-facing menus. Everything else (`IDE`, `TextEditor`, `Qt`,
+/// `GTK`, `Building`, `Debugger`, …) is an "Additional Category" for distro
+/// menu merging, not for display. T297: filter the bar down from the raw
+/// category dump ("тьма") to these.
+const MAIN_CATEGORIES: &[&str] = &[
+    "AudioVideo",
+    "Development",
+    "Education",
+    "Game",
+    "Graphics",
+    "Network",
+    "Office",
+    "Science",
+    "Settings",
+    "System",
+    "Utility",
+];
+
+/// Distinct Main Categories present in `entries`, with counts, sorted by count
+/// descending then name ascending. Non-main categories are dropped; an entry
+/// whose categories are all non-main simply doesn't appear on the bar (it stays
+/// reachable under "All"). Empty categories never appear.
 pub fn build_categories(entries: &[AppEntry]) -> Vec<(String, usize)> {
     let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     for entry in entries {
         for cat in &entry.categories {
-            if !cat.is_empty() {
+            if MAIN_CATEGORIES.contains(&cat.as_str()) {
                 *counts.entry(cat.clone()).or_insert(0) += 1;
             }
         }
@@ -133,14 +153,38 @@ mod tests {
     #[test]
     fn build_categories_counts_sorts_and_drops_empty() {
         let entries = vec![
-            entry("a", &["Dev", "System"]),
-            entry("b", &["Dev"]),
-            entry("c", &["Web"]),
+            entry("a", &["Development", "System"]),
+            entry("b", &["Development"]),
+            entry("c", &["Network"]),
             entry("d", &[""]),
             entry("e", &[]),
         ];
         let cats = build_categories(&entries);
-        assert_eq!(cats, vec![("Dev".to_string(), 2), ("System".to_string(), 1), ("Web".to_string(), 1)]);
+        assert_eq!(
+            cats,
+            vec![
+                ("Development".to_string(), 2),
+                ("Network".to_string(), 1),
+                ("System".to_string(), 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn build_categories_drops_non_main_but_keeps_main() {
+        // Additional Categories (IDE/TextEditor/GTK) are dropped; the Main
+        // Category (Development) on the same entry survives. An entry whose
+        // categories are ALL additional does not leak into the bar at all.
+        let entries = vec![
+            entry("a", &["Development", "IDE", "GTK"]),
+            entry("b", &["IDE", "TextEditor"]),
+            entry("c", &["Graphics", "2DGraphics"]),
+        ];
+        let cats = build_categories(&entries);
+        assert_eq!(
+            cats,
+            vec![("Development".to_string(), 1), ("Graphics".to_string(), 1)]
+        );
     }
 
     #[test]

@@ -327,6 +327,13 @@ impl LauncherView {
     /// here has a reader below — no dead toml keys.
     fn apply_config_derived(&mut self) {
         let cfg = launcher_config::get();
+        // T297: `self.config` is the view's working mirror (DnD/folder ops
+        // mutate it then persist). When OTHER code writes the store — the
+        // context-menu favorite/hide toggle, the settings page, the file
+        // watcher — the mirror goes stale and `recompute_sections` would
+        // rebuild Favorites/Recents/Folders from the OLD order. Re-read it
+        // here so the config watcher sees the latest state live.
+        self.config = cfg.clone();
         let grid = cfg.grid.sanitized();
         self.columns = grid.columns;
         self.page_rows = grid.rows;
