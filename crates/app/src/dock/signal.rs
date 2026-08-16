@@ -3,7 +3,7 @@
 //! A global `Mutable<()>` that fires whenever the pinned list changes
 //! (e.g. after unpin). The dock watches this to rebuild its icon list.
 
-use futures_signals::signal::Mutable;
+use futures_signals::signal::{Mutable, MutableSignal};
 use gpui::Global;
 
 /// Global signal for dock config changes.
@@ -20,6 +20,15 @@ impl Default for DockConfigSignal {
 }
 
 impl Global for DockConfigSignal {}
+
+impl DockConfigSignal {
+    /// Stream of dock config changes, for `state::watch` in bar/mod.rs.
+    /// Callers must ensure the global is already registered (`dock::widgets
+    /// register()` at bar init, before any window opens).
+    pub fn signal(cx: &gpui::App) -> MutableSignal<()> {
+        cx.global::<DockConfigSignal>().signal.signal()
+    }
+}
 
 /// Notify all dock views that the config changed.
 pub fn notify_config_changed(cx: &mut gpui::App) {

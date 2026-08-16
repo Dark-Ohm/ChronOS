@@ -238,9 +238,17 @@ fn window_closed_is_tracked(tracked: Option<WindowId>, closed: WindowId) -> bool
 }
 
 /// Open the pin/unpin menu for `entry_id`, anchored at the right-clicked row.
+///
+/// `anchor_rect` is surface-local — it positions the `AnchoredPopup` (the
+/// Wayland positioner expects window coords). `catcher_anchor` is the same
+/// point in output-local coords — it positions the pass-through hole of the
+/// transparent click-catcher. For the launcher (a centered Normal window)
+/// the two differ by `window.bounds().origin`; reusing one anchor for both
+/// put the menu at one place and the click hole at another (T275).
 pub fn open(
     cx: &mut App,
     anchor_rect: Bounds<Pixels>,
+    catcher_anchor: Bounds<Pixels>,
     parent: AnyWindowHandle,
     entry_id: String,
 ) {
@@ -272,7 +280,7 @@ pub fn open(
             });
         }
         None => {
-            let click_catcher = open_click_catcher(cx, anchor_rect).ok();
+            let click_catcher = open_click_catcher(cx, catcher_anchor).ok();
             let mut opened_view: Option<gpui::WeakEntity<LauncherPinMenuView>> = None;
             let mut open = |cx: &mut App, options: WindowOptions| {
                 cx.open_window(options, |window, view_cx| {

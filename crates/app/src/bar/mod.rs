@@ -58,6 +58,18 @@ impl Bar {
         watch(cx, AppState::cava(cx).subscribe(), |_, _, cx| {
             cx.notify();
         });
+        // Dock pin/unpin (launcher context menu) writes dock.toml on a
+        // separate window and only flips `DockConfigSignal` — nothing else
+        // told the bar to repaint, so a freshly pinned/unpinned icon never
+        // appeared until some unrelated event (e.g. the clock tick) forced
+        // a redraw. Watch the signal directly like the other services.
+        watch(
+            cx,
+            crate::dock::signal::DockConfigSignal::signal(cx),
+            |_, _, cx| {
+                cx.notify();
+            },
+        );
 
         // 1-second ticker for clock and other time-dependent widgets.
         // Uses the background executor, not tokio.

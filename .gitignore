@@ -1,5 +1,9 @@
 # Rust / GPUI build output
 target/
+# Ad-hoc CARGO_TARGET_DIR overrides for one-off debug builds (e.g.
+# target-t263-debug/ during T263 investigation) — same junk as target/,
+# just not caught by the plain prefix match. 15G+ left untracked once.
+target-*/
 rust_out
 
 # Nix build outputs

@@ -375,17 +375,28 @@ impl LauncherView {
                         {
                             let menu_id = entry_for_menu.id.clone();
                             move |event, window, cx| {
-                                // Output-local: the Overlay click-catcher
-                                // covers this Normal launcher. Window-local
-                                // `event.position` put the pass-through hole
-                                // at the wrong screen coords, so Left click
-                                // on "Pin" hit the catcher and only closed.
-                                let origin = window.bounds().origin + event.position;
+                                // Two coordinate spaces, one surface (T275):
+                                // the AnchoredPopup anchors in window-local
+                                // coords (`event.position`), but the Overlay
+                                // click-catcher's pass-through hole is
+                                // output-local. The launcher is a centered
+                                // Normal window, so the two differ by
+                                // `window.bounds().origin`.
                                 let anchor = Bounds::new(
-                                    origin,
+                                    event.position,
                                     Size::new(px(1.), px(1.)),
                                 );
-                                pin_menu::open(cx, anchor, window.window_handle(), menu_id.clone());
+                                let catcher_anchor = Bounds::new(
+                                    window.bounds().origin + event.position,
+                                    Size::new(px(1.), px(1.)),
+                                );
+                                pin_menu::open(
+                                    cx,
+                                    anchor,
+                                    catcher_anchor,
+                                    window.window_handle(),
+                                    menu_id.clone(),
+                                );
                             }
                         },
                     )
