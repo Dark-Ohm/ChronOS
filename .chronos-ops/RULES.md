@@ -2,10 +2,11 @@
 
 Кухня **этого репозитория**. Не экосистемная.
 
-- ChronOS: `ChronOS/.chronos-ops/` — очередь и приёмка работы **внутри ChronOS**.
+- ChronOS: `ChronOS/.chronos-ops/` — очередь и приёмка работы **внутри
+  ChronOS**. Под git — контрибьюторы берут задания отсюда.
 - Экосистема: `/home/neo/projects/chronos-ecosystem/.chronos-ops/` — только
-  работа, которая пересекает границы репо. Другая нумерация, другой
-  HANDOFF. Сюда не тащить.
+  работа, которая пересекает границы репо. Вне git (корень экосистемы —
+  не репозиторий). Другая нумерация, другой HANDOFF. Сюда не тащить.
 
 После cutover эта кухня **заменяет** `docs/orchestration/` для новых
 тикетов ChronOS. Старый каталог — архив до переноса, не вторая очередь.
@@ -27,11 +28,17 @@
 | `reports-log/<role>/` | Принятые отчёты. Двигает только архитектор. |
 | `done/<role>/` | Тикеты после приёмки. |
 | `rework/<role>/` | На доработку. Причина в файле. Чинить → назад в `active/<role>/`. |
-| `reject/<role>/` | Не продолжать. Причина в файле + `checkpoint/DECISIONS.log`. Финал. |
+| `reject/<role>/` | Не продолжать. Причина в файле + `checkpoint/REJECTED.md`. Финал. |
 | `dump/` | Заметки не на тикет. Если тянет на работу — в `active/<role>/`. |
 | `checkpoint/HANDOFF.md` | Состояние ChronOS и очередь. Первое чтение сессии. |
-| `checkpoint/ARCHITECTURE.md` | Принятые решения ChronOS (или указатель на `docs/ARCHITECTURE.md`). |
-| `checkpoint/DECISIONS.log` | Отклонённое. Можно держать канон в `docs/DECISIONS.log` и не дублировать. |
+| `checkpoint/ARCHITECTURE.md` | Принятые решения ChronOS. Канон, не указатель. |
+| `checkpoint/ARCHITECT.md` | Канон роли архитектора + дисциплина. |
+| `checkpoint/TBD.md` | Хвосты/wishlist, некритичное. |
+| `checkpoint/SOUL.md` | Записки себе-будущему, не регламент. |
+| `checkpoint/MEMORY.md` | Cross-session durable факты (Claude Code project memory). |
+| `checkpoint/REJECTED.md` | Отклонённое (бывший `DECISIONS.log`, переименован — файл только про отклонённое). Append-only. |
+| `design/` | Макеты (`.dc.html` и т.п.), не тикеты. Перенесены as-is из `docs/design/`. |
+| `superpowers/` | Planning-скиллы (`plans/`, `specs/`). Перенесены as-is из `docs/superpowers/`. |
 
 ## Поток
 
@@ -53,7 +60,7 @@ active/<role>/  --работа-->  reports-fresh/  --принято-->      done
 | `BACKEND` | `active/back/` | сервисы, протоколы, IPC, скрипты в этом репо |
 | `QA` | `active/qa/` | улики: живые прогоны, логи. Код продукта — только со своим тикетом |
 | `RECON` | `active/recon/` | факты из чужих деревьев, read-only |
-| `DESIGN` | `active/design/` | макеты `docs/design/` — не пишет продуктовый код |
+| `DESIGN` | `active/design/` | макеты `.chronos-ops/design/` — не пишет продуктовый код |
 
 Нет роли «архитектор» среди исполнителей. QA не принимает работу.
 

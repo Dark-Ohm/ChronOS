@@ -1,66 +1,103 @@
 # Contributing
 
-**[Dark-Ohm](https://github.com/Dark-Ohm)** · [site](https://dark-ohm.github.io/ChronOS/) · [GPUI fork](https://github.com/Dark-Ohm/Chronos-GPUI)
+Thanks for the interest. ChronOS is maintained by
+**[Dark-Ohm](https://github.com/Dark-Ohm)** — bug reports and PRs are
+welcome; here's how to make one that lands cleanly.
 
-Не «AI-проект». Мой шелл. Агенты — чернорабочие под приёмкой; в коммитах их нет.
+If you're an AI coding agent working in this repo, read
+[`AGENTS.md`](AGENTS.md) instead — it covers the task-ticket workflow and
+zone discipline this project uses for agent-assisted development.
 
-## Docs
+## Before you start
 
-`docs/HANDOFF.md` → `docs/ARCHITECTURE.md` → `docs/DECISIONS.log`. Чат и бриф агента проигрывают.
+- **Read the docs in priority order:** [`.chronos-ops/checkpoint/HANDOFF.md`](.chronos-ops/checkpoint/HANDOFF.md)
+  (current state) → [`.chronos-ops/checkpoint/ARCHITECTURE.md`](.chronos-ops/checkpoint/ARCHITECTURE.md) (why
+  things are built the way they are) → [`.chronos-ops/checkpoint/REJECTED.md`](.chronos-ops/checkpoint/REJECTED.md)
+  (what was tried and rejected, and why). A design question you're about to
+  raise may already have a documented answer there.
+- **Check [`docs/orchestration/tasks/`](docs/orchestration/tasks/)** for
+  open work before starting something from scratch — someone may already
+  be on it, or it may be intentionally deferred.
 
-## Done
+## Building
 
-Release + живой Wayland + `grim`. Зелёный `cargo test` сам по себе — ничего.
+See [`README.md#building`](README.md#building) for build commands and
+requirements (`mold` + `sccache` are required, not optional).
+
+## Definition of done
+
+For anything that touches a window, a popup, layout, or user input:
+**a green `cargo test` is not sufficient.** This project has shipped
+visually broken UI behind passing tests more than once. Verify with a
+release binary against a live Wayland session before calling it done:
 
 ```sh
 cargo build --release -p chronos
-pkill -x chronos          # не -f
+pkill -x chronos          # not `-f` — matches only this binary by name
 RUST_LOG=info ./target/release/chronos
 ```
 
-CLI: `./scripts/install-dev-cli.sh` → `chronos-rebuild && chronos-stop && chronos-start`  
-Гайд: [`docs/dev-cli.md`](docs/dev-cli.md)
+Or with the dev CLI (`./scripts/install-dev-cli.sh` once, then):
 
-## Code
+```sh
+chronos-rebuild && chronos-stop && chronos-start
+```
 
-- `let _ = fallible` — запрещено (`?` / `.log_err()` / match).
-- Workspace lints: `[lints] workspace = true` на новых крейтах.
-- Коммент = *why*, не пересказ строки.
-- Bleeding-edge deps. Чужие пины не тащить.
+See [`docs/dev-cli.md`](docs/dev-cli.md) for the full CLI reference.
+
+## Code style
+
+- **Never swallow a fallible call silently.** `let _ = might_fail()` has
+  caused real, hard-to-diagnose bugs here — propagate the error with `?`,
+  log it explicitly with `.log_err()` if it's genuinely fine to ignore, or
+  handle it with a real `match`.
+- **New crates** must opt into the workspace lints: add `[lints] workspace
+  = true` to the crate's `Cargo.toml`, or the workspace-level lints (`deny
+  unsafe_code`, `warn unwrap_used`/`expect_used`, etc.) silently don't apply.
+- **Comments explain *why*, not *what*.** If a comment just restates the
+  line below it, delete it.
+- **Dependencies are bleeding-edge.** Take the newest version; don't
+  inherit a pin from another project just because it's convenient.
 
 ## Git
 
-`area : what` · named `git add` · `git diff --staged` · без AI-trailer · `reference/` gpui-shell не коммитить.
+- Commit messages: `area : what changed`, present tense, no fluff.
+- No AI-authorship trailers (`Co-Authored-By`, `Assisted-by`, etc.) in
+  commit messages, regardless of how the change was produced.
+- Stage files by name and read `git diff --staged` before committing —
+  especially for files shared across concurrent work. Sweeping an unrelated
+  file into your commit with `git add -A` has broken things here before.
+- `reference/` (unlicensed third-party study material — see
+  [`NOTICE`](NOTICE)) is never committed. Look at it for inspiration, never
+  copy from it.
 
-## Skills
+## Skills / documentation proofs
 
-Proof-ссылки (`file:line`) в скиллах — гейт, не пожелание. `./skills/check-proofs.sh`
-гоняется в CI (job `skill-proofs`, push/PR) и pre-commit хуком локально; битый реф =
-фейл. Ссылки на внешние деревья (Zed upstream, Hermes checkout, philip, fable-примеры,
-плейсхолдеры writing-plans) — в allowlist скрипта, отчитываются как `EXT`, прогон не валят.
-
-Pre-commit хук (проверяет staged `SKILL.md` / `*.eval.md` / `references/*.md`), активация один раз на клон:
+Skill and documentation files under `skills/` carry `file:line` references
+back to real code — a proof gate, not a suggestion. `./skills/check-proofs.sh`
+validates them; it runs in CI on every push/PR and, once you enable it
+locally, as a pre-commit hook:
 
 ```sh
-git config core.hooksPath scripts/git-hooks
+git config core.hooksPath scripts/git-hooks   # once per clone
 ```
 
-Отключить: `git config --unset core.hooksPath`. Проверить вручную весь vault:
-`./skills/check-proofs.sh` (exit 0 = чисто). В CI форк `Chronos-GPUI` клонируется
-в sibling `../Source` (best-effort): при успехе fork-ссылки проверяются строго,
-при провале — деградируют в informational. Корни, которых нет на свежем раннере,
-тоже informational: `reference/` (gitignored снапшоты). Кит
-`gpui-component` живёт в `../Source/gpui-component/` (тот же форк, что
-`gpui`) — ссылки `Source/gpui-component/…` строгие, если `../Source`
-склонирован. Коммитящиеся корни (`crates/…`, `docs/…`, `skills/…`)
-строгие всегда.
+Broken proof links fail the check. External references (upstream Zed,
+third-party checkouts, illustrative placeholders) are allow-listed and
+reported as informational, not hard failures.
 
 ## Plugins
 
-`crates/plugins/<name>/{manifest.toml,init.luau}` · id = путь каталога.
+Luau plugins live under `crates/plugins/<name>/{manifest.toml,init.luau}` —
+the plugin id is the directory name.
 
-## PR
+## Opening a PR
 
-Не переизобретай то, что уже в `docs/DECISIONS.log`. Вопрос лучше, чем 400 LOC мимо архитектуры.
+Skim [`.chronos-ops/checkpoint/REJECTED.md`](.chronos-ops/checkpoint/REJECTED.md) first — if your approach
+was already considered and rejected, a short PR description explaining why
+it's different beats 400 lines that get closed for going against an
+existing decision. When in doubt, open an issue with the question before
+writing the code.
 
-Apache-2.0 — `LICENSE` / `NOTICE`.
+All contributions are licensed under **Apache-2.0** — see
+[`LICENSE`](LICENSE) / [`NOTICE`](NOTICE).

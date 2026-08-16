@@ -34,7 +34,7 @@
 
 ## Чужие файлы
 
-- **`docs/HANDOFF.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.log` не трогает никто,
+- **`.chronos-ops/checkpoint/HANDOFF.md`, `.chronos-ops/checkpoint/ARCHITECTURE.md`, `.chronos-ops/checkpoint/REJECTED.md` не трогает никто,
   кроме архитектора.** Это документы состояния проекта. Нужно, чтобы там
   что-то появилось — пиши в отчёт, попадёт туда после проверки.
 - **Зона файлов задания — граница.** Правка тянет за её пределы — остановись

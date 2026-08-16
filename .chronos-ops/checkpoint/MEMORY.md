@@ -249,3 +249,18 @@ _Cross-session durable: these are explicitly deferred, each tied to a named futu
 - **Next:** live smoke T205–T208 **or** T195 agent follow. T196 unblocked (T202 done).
 - **Hindsight :8888** was down at checkpoint.
 
+## 2026-08-16 — чекпоинт #34 (Grok, зона T265-H / кухня)
+
+- **T265-H v1 LIVE PASS.** Ядро + рейл, Overlay, Super tap / Super+Space,
+  flush к монитору, меню поверх левой, мокап `(1)` канон, Lock/Sleep в
+  `assets.rs`, Files → `select_tab(Files)`. Эпик T265 в `done/`. Полир —
+  новый тикет.
+- **Кухня:** у каждого репо своя `.chronos-ops/`; экосистемная отдельно.
+  Скелет ChronOS в git (`4aac176`). Очередь пока `docs/orchestration/`.
+  `kitchen-status.sh` подходит (T287-B имена ловит). STATUS.md — генерилка.
+- **T287-B** принят другим архитектором (`8e84d3fb` / `05cd0dd`).
+- **T271** ещё нужен: 16+18 `let _ =` в ipc. `.log_err()` в chronos нет —
+  warn, не `gpui_ce_util`. С T298 не пересекается.
+- **Параллель T298:** T271 или T284 без `side_panel_left`. Не T266.
+- **Не коммитить** без спроса: README/AGENTS/CONTRIBUTING (тон).
+

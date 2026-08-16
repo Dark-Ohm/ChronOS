@@ -8,7 +8,7 @@
 > Подписка Chronos agent / BYO API·ACP. Со временем — кандидат DE в
 > CachyOS installer. Поставка **с dotfiles** Hyprland.
 
-При расхождении с `docs/superpowers/specs/2026-07-30-adaptive-…` и планами
+При расхождении с `.chronos-ops/superpowers/specs/2026-07-30-adaptive-…` и планами
 слайсов 5–8 **побеждает этот файл** для product scope. Спека остаётся
 историей/идеями, не backlog’ом.
 

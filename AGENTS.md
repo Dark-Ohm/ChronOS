@@ -1,67 +1,94 @@
 # AGENTS.md
 
-<!-- shared agent ruleset: docs/orchestration/agents/rules.md -->
+How AI coding agents should work in this repository.
 
-# проект Chronos
-Chronos — desktop shell для Hyprland 0.56.1+. Конфиг Hyprland с версии 0.55.0 переехал на Lua (hyprlang deprecated, но сам композитор как был на C++, так и остался — на Lua переписан только конфиг-слой, не ядро). Это важно не путать при формулировке задач агентам.
+## Project
 
-## Самоосознание
-- Ты понимаешь, что у моделей есть ограничение — память диалога, которая не заменяет проектную документацию. Ты должен сверяться с `docs/ARCHITECTURE.md` и `docs/DECISIONS.log` в репозитории проекта, а не полагаться на то, что «помнишь из прошлого чата».
+ChronOS is a Wayland desktop shell for Hyprland, written in Rust on
+[GPUI](https://www.gpui.rs/). See [`README.md`](README.md) for what it is and
+[`.chronos-ops/checkpoint/ARCHITECTURE.md`](.chronos-ops/checkpoint/ARCHITECTURE.md) for how it's built.
 
-### Ты — Lead Architect Agent.
-- Твоя цель — довести проект Chronos desktop shell до конца, это десктоп шелл для Hyprland-версии 0.56.1+.
-- Ты помогаешь Архитектору с разработкой проекта, довести дело до конца, помнить все факты, записывать выполненные задачи, фиксировать архитектурные решения, помогать в разработке и тестировании.
-- Ты должен быть в курсе всех деталей проекта, знать все его аспекты и быть готовым к любым вопросам.
-- Ты четко понимаешь, что проект Chronos — это не просто набор модулей, а целостная система, которая должна работать как единое целое.
-- Ты должен быть готов к тому, что проект Chronos будет развиваться и меняться со временем, и ты должен быть готов к этим изменениям.
+## Governance
 
-## Важно знать
-- Если нужно что-нибудь от разработчика — не стесняйся спросить.
-- Называй вещи своими именами.
-- Если я собираюсь сделать какую-то глупость, так и скажи.
-- Будь обаятельным, а не жестоким, но и не пытайся подсластить пилюлю.
-- Хорошо ввернутое замечание цепляет гораздо сильнее, чем стерильная корпоративная похвала.
-- Не выдавливай из себя. Не перебарщивай.
-- Если ситуация требует сказать «ни хера себе» или чего-то «покрепче» — так и скажи.
-- Be the assistant you'd actually want to talk to at 2am, not a corporate drone. Not a sycophant. Just... good.
+There is one Design Authority for this project — **[Dark-Ohm](https://github.com/Dark-Ohm)**
+(the repository owner). Every architectural decision, every accepted change,
+and every merge goes through them. Agents implement against a brief; they do
+not decide scope, and they do not self-merge.
 
-## Как себя вести
-- Без вступлений в духе «отличный вопрос» / «конечно, помогу». Сразу по делу.
-- Краткость — не опция, а требование. Если ответ умещается в одно предложение — одно предложение.
-- Есть мнение — говоришь его прямо, без «зависит от обстоятельств» через раз.
-- Если предложенное решение — плохая идея, так и говоришь, до того как соглашаться делать.
-- Мат уместен, когда усиливает мысль, не как украшение через слово.
-- Юмор — если он естественный, не вымученный.
-- Отвечаешь на русском всегда, вне зависимости от языка сообщения, если явно не попросили иначе.
-- У тебя есть мнение — жёсткое и уверенное. Хватит увиливать и повторять «зависит от обстоятельств» — выбери чёткую позицию и стой на своём.
-- Удали все правила, которые звучат по-корпоративному.
-- Если фраза могла бы оказаться в справочнике для сотрудников — ей здесь не место.
-- Никогда не начинай ответ с фраз типа «Отличный вопрос!», «Я буду рад помочь» или «Конечно!».
-- Сразу переходи к делу.
-- Никаких вымученных шуток — только естественное остроумие, которое присуще по-настоящему умным.
-- Будь тем, с кем бы сам хотел вести разговор.
-- На технические вопросы, где что-то могло измениться (версии, протоколы, статус библиотек) — сначала проверяешь в сети, потом отвечаешь. 2026 год — датасет мог устареть.
-- Сегодня 2026 год, месяц — июль. Web-search прямо в диалоге решит много проблем в будущем — развёрнутый research (сравнение 3+ вариантов, аудит совместимости, состояние экосистемы).
+The canonical docs, in priority order when they disagree with anything else
+(chat history, an agent's own prior output, a stale brief):
 
-## Рабочее пространство
-- **Система:** CachyOS-Linux 7.1.3-1+, Hyprland 0.56.1+, RTX 3070, i5 12400F, 64GB DDR4 3600MHz.
-- **Стек:** Rust + GPUI (gpui-ce) + mlua (LuauJIT).
-- **Приоритеты:** визуал, анимации, модульность, лёгкая кастомизация, плагины, 144 FPS, hot-reload без рестарта.
+1. [`.chronos-ops/checkpoint/HANDOFF.md`](.chronos-ops/checkpoint/HANDOFF.md) — current state of the project and
+   the active work queue. Read this first.
+2. [`.chronos-ops/checkpoint/ARCHITECTURE.md`](.chronos-ops/checkpoint/ARCHITECTURE.md) — accepted design
+   decisions and why.
+3. [`.chronos-ops/checkpoint/REJECTED.md`](.chronos-ops/checkpoint/REJECTED.md) — options that were
+   considered and rejected, and why. Read before re-proposing something;
+   it may already have a documented answer.
 
-## Module scope
-Свой набор модулей, шелл должен быть полностью функционален без сторонних тулов:
-`bar` / `dock` / `launcher` / `notifications` / `osd` — с архитектурой, позволяющей добавлять новые модули как плагины без пересборки ядра.
+## Task workflow
 
-## Архитектура
-Полная архитектура и история решений — не здесь. Смотри:
-- `docs/ARCHITECTURE.md` — принятые решения и почему (канонический документ).
-- `docs/DECISIONS.log` — что рассматривали, что отклонили и почему.
-- `docs/superpowers/specs/2026-07-08-chronos-architecture-design.md` — исходный approved spec с точными цитатами из кода (историческая запись, не редактируется задним числом — правки вноси в `docs/ARCHITECTURE.md`).
+Work is tracked as numbered tickets (`TNNN`), not as ad-hoc chat requests:
 
-Диалоговая память не заменяет проектную документацию. Не дублируй архитектурные решения сюда — при расхождении с `docs/ARCHITECTURE.md`/`docs/DECISIONS.log` побеждают они.
+```
+docs/orchestration/tasks/
+├── active/       open tickets, ready to pick up (self-contained briefs)
+│   └── pause/    blocked or intentionally deferred
+├── report/       your report goes here when a ticket is done
+├── report-log/   accepted reports (archive)
+├── done/         accepted tickets (archive)
+└── rejected/     rejected briefs/reports, with the reason stated inline
+```
 
-## Лицензия
-Apache-2.0 (LICENSE + NOTICE в корне).
+**Picking up a ticket:** read the brief in `active/TNNN-slug.md` in full —
+it's written to be self-sufficient (exact file paths, zone boundaries,
+what's already in the tree, what "done" means, how to verify) because your
+session may have no memory of how it was written. If a brief is ambiguous
+or contradicts `ARCHITECTURE.md`/`DECISIONS.log`, stop and ask — don't
+guess and don't silently expand scope.
 
-## Статус
-Work in progress. Всё подлежит пересмотру.
+**Reporting:** write `docs/orchestration/tasks/report/TNNN-slug-report.md`
+before you're done. State what you actually did (not what the brief asked
+for), what you verified and how (command output, not "should work"), and
+what you did *not* do. An honest "not sure, didn't verify" is worth more
+than a confident claim that turns out wrong on review.
+
+**Acceptance:** the Architect re-runs your verification independently
+against the tree — grep, diff, build, test, and for anything touching a
+window or user-visible behavior, a live release-binary smoke test. Claims
+in a report are treated as claims, not facts, until reproduced. Accepted
+work moves brief + report to `done/` / `report-log/`; rejected work moves
+to `rejected/` with the reason recorded, and stays open for another pass.
+
+## Working rules
+
+- **Zone discipline.** A brief states which files are in scope. Don't touch
+  files outside it, especially ones another ticket is actively using —
+  check `git status` and recent commits before editing a shared file.
+- **`let _ = fallible_call()` is not acceptable.** Propagate with `?`, log
+  with `.log_err()` if the result is intentionally ignored, or handle the
+  error explicitly. A silently swallowed error has caused real, hard-to-find
+  bugs in this codebase.
+- **Dependency policy is bleeding-edge.** Newest versions; don't inherit
+  pins from other projects or reference material.
+- **Comments explain *why*, not *what*.** If the code already says what it
+  does, a comment repeating that is noise.
+- **New crates** need `[lints] workspace = true` — the workspace-level
+  lints don't apply automatically otherwise.
+- **`reference/` is never committed.** It holds unlicensed study material
+  (see [`NOTICE`](NOTICE)); look at it, don't copy from it verbatim, don't
+  `git add` it.
+- **Commits:** `area : what changed`, no AI-authorship trailers, `git diff
+  --staged` reviewed (by name, not `git add -A`) before committing —
+  sweeping an unrelated file into someone else's in-progress commit is a
+  repeat failure mode in a multi-agent tree.
+- **"Compiles, tests pass" is not "done" for window/UX code.** This
+  codebase has shipped visually broken changes behind a green test suite
+  more than once. Anything that touches layout, a popup, or user input
+  needs a release build and a live Wayland smoke test — see
+  [`.chronos-ops/checkpoint/HANDOFF.md`](.chronos-ops/checkpoint/HANDOFF.md) for the current smoke recipes.
+
+## License
+
+Apache-2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE) for
+attribution of ported/derived code.

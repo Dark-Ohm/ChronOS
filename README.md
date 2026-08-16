@@ -55,10 +55,10 @@ crates/
 └── plugins    Luau plugins (data, not a Rust crate) — e.g. clock/
 ```
 
-Canonical design lives in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); rejected
-alternatives and their rationale in [`docs/DECISIONS.log`](docs/DECISIONS.log). The
+Canonical design lives in [`.chronos-ops/checkpoint/ARCHITECTURE.md`](.chronos-ops/checkpoint/ARCHITECTURE.md); rejected
+alternatives and their rationale in [`.chronos-ops/checkpoint/REJECTED.md`](.chronos-ops/checkpoint/REJECTED.md). The
 original approved spec is kept as a historical record under
-[`docs/superpowers/specs/`](docs/superpowers/specs/).
+[`.chronos-ops/superpowers/specs/`](.chronos-ops/superpowers/specs/).
 
 ## Requirements
 
@@ -117,21 +117,32 @@ cargo test --workspace --lib --bins
 > **Note on verification.** For window/UX code, "compiles + green unit tests" is
 > not sufficient — changes are validated with a release binary against a live
 > Wayland session (`RUST_LOG=info`, `grim` screenshots). See
-> [`docs/HANDOFF.md`](docs/HANDOFF.md) for the smoke recipes.
+> [`.chronos-ops/checkpoint/HANDOFF.md`](.chronos-ops/checkpoint/HANDOFF.md) for the smoke recipes.
 
 ## Status
 
 **Work in progress — everything is subject to revision.** The shell already runs
 with a working bar (clock, workspaces, network, volume, MPRIS, tray), dock,
 launcher, notifications, OSD, wallpaper control and an SNI/DBusMenu tray. See
-[`docs/HANDOFF.md`](docs/HANDOFF.md) for the current state and open work.
+[`.chronos-ops/checkpoint/HANDOFF.md`](.chronos-ops/checkpoint/HANDOFF.md) for the current state and open work.
 
 ## Development
 
-**[Dark-Ohm](https://github.com/Dark-Ohm)** · rules in [`CONTRIBUTING.md`](CONTRIBUTING.md) ·
-agent tasks under [`docs/orchestration/`](docs/orchestration/).
+Maintained by **[Dark-Ohm](https://github.com/Dark-Ohm)**. Contribution
+guidelines live in [`CONTRIBUTING.md`](CONTRIBUTING.md) — read that before
+opening a PR.
 
-`docs/HANDOFF.md` → `docs/ARCHITECTURE.md` → `docs/DECISIONS.log`.
+Changes are developed against numbered task briefs under [`docs/orchestration/tasks/`](docs/orchestration/tasks/) —
+every accepted change is reviewed against the running shell before it
+lands, not merged on green tests alone. If you're an agent working in this
+repo, [`AGENTS.md`](AGENTS.md) is the entry point.
+
+Canonical project knowledge, read in this order when in doubt:
+[`.chronos-ops/checkpoint/HANDOFF.md`](.chronos-ops/checkpoint/HANDOFF.md) (current state) →
+[`.chronos-ops/checkpoint/ARCHITECTURE.md`](.chronos-ops/checkpoint/ARCHITECTURE.md) (accepted design) →
+[`.chronos-ops/checkpoint/REJECTED.md`](.chronos-ops/checkpoint/REJECTED.md) (what was tried and rejected,
+and why).
+
 ## License
 
 Licensed under the **Apache License, Version 2.0** — see [`LICENSE`](LICENSE).

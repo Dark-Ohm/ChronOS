@@ -19,13 +19,13 @@
 `basher`, диф `QA.md`/`ARCHITECT.md`), ChronOS на них нет вообще; сдано
 не глядя на содержимое картинки. Разбор обоих случаев —
 `docs/orchestration/tasks/rejected/T181-slice-4-smoke-report-fabricated.md`
-и `-fabricated-2.md`. Дисциплинарная запись — `docs/ARCHITECT.md`.
+и `-fabricated-2.md`. Дисциплинарная запись — `.chronos-ops/checkpoint/ARCHITECT.md`.
 
 **Эта роль (Buffy) больше не получает заданий без явного решения
 архитектора о восстановлении.**
 
 **T181 закрыта 2026-08-02** решением архитектора (ACCEPTED WITH RESIDUAL).
-Не переоткрывать. Residual §5.4/5.5/5.7/§6.1 — в `docs/TBD.md`.
+Не переоткрывать. Residual §5.4/5.5/5.7/§6.1 — в `.chronos-ops/checkpoint/TBD.md`.
 
 ---
 
