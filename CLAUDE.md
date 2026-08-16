@@ -42,7 +42,9 @@ GPUI «gpui-ce chronos edition», path-deps). **Первое чтение каж
 - **«Чекпоинт»** — команда: немедленно сохранить состояние сессии во ВСЕ
   слои памяти, без переспроса и не дожидаясь конца работы. Слои: файловая
   память Claude (`memory/` + `.chronos-ops/checkpoint/MEMORY.md`), Honcho (`create_conclusion`),
-  Hindsight (REST :8888, банк chronos-ecosystem), документы проекта
+  Hindsight (REST :8888, банк chronos-ecosystem), lean-ctx knowledge
+  (`ctx_knowledge` MCP-тул — session-scoped заметки поверх контекст-движка,
+  переживают компрессию контекста), документы проекта
   (.chronos-ops/checkpoint/HANDOFF.md/TBD.md — оперативка, .chronos-ops/checkpoint/ARCHITECTURE.md — решения,
   .chronos-ops/checkpoint/REJECTED.md — отклонённое). Отчитаться строкой на слой: что и куда.
   Слой недоступен — сказать прямо, а не проглотить. Причина правила:
