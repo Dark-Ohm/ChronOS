@@ -4,7 +4,6 @@ mod hover_strip;
 pub mod sessions_list;
 mod state;
 pub mod tabs;
-pub mod text_input;
 mod tool_card;
 
 /// Detects RTL base direction by the first strong (directional) character.
@@ -307,7 +306,7 @@ fn open_window(cx: &mut App, pinned: bool) {
     let mut opened_panel: Option<Entity<ChatTab>> = None;
 
     let content_result = cx.open_window(content_window_options(display_id, cx), |window, view_cx| {
-        let panel = view_cx.new(|cx| ChatTab::new(cx));
+        let panel = view_cx.new(|cx| ChatTab::new(window, cx));
         let workspace = view_cx.new(|cx| WorkspaceView::new(panel.clone(), cx));
         opened_panel = Some(panel);
         opened_workspace = Some(workspace.clone());
@@ -841,19 +840,16 @@ pub fn compose_and_send(text: String, cx: &mut App) {
     let transition = tabs::workspace_transition(workspace_snapshot(cx), tabs::WorkspaceAction::ComposeAndSend);
     workspace.update(cx, |view, cx| {
         view.set_panel_width(transition.panel_width, transition.dock_content, transition.active_tab, cx);
-        view.chat.update(cx, |child, _cx| {
-            child.composer_input.clear();
-            child.composer_input.content = text.into();
-            child.composer_input.selected_range =
-                child.composer_input.content.len()..child.composer_input.content.len();
-        });
         // Send the message via the legacy child. This reaches the same
         // `Window` through the parent entity — `send_composer` is
-        // identical to the UI button path.
+        // identical to the UI button path. T286: the composer text lives
+        // in the kit `InputState`, whose setters need a `Window`, so the
+        // write and the send both happen inside the window lease.
         let content_handle = cx.global::<SidePanelLeftState_>().content_handle.clone();
         if let Some(handle) = content_handle {
             let _ = handle.update(cx, |_root, window, cx| {
                 view.chat.update(cx, |child, cx| {
+                    child.composer_input.update(cx, |s, cx| s.set_value(text.clone(), window, cx));
                     child.send_composer(window, cx);
                 });
             });

@@ -133,9 +133,6 @@ impl WorkspaceView {
     /// context with no `&mut Window` in scope. The render path holds
     /// the window and calls `window.focus(...)` directly.
     pub fn request_focus_composer(&mut self, cx: &mut Context<Self>) {
-        self.chat.update(cx, |child, _cx| {
-            child.composer_focused = true;
-        });
         self.focus_composer_pending = true;
         cx.notify();
     }
@@ -215,8 +212,9 @@ impl WorkspaceView {
         }
         self.focus_composer_pending = false;
         self.chat.update(cx, |child, cx| {
-            window.focus(&child.composer_focus, cx);
-            child.start_blink(cx);
+            // T286: the composer is the kit `Input` — focus its InputState
+            // (caret/blink/IME come with it), not the panel hub handle.
+            child.composer_input.update(cx, |s, cx| s.focus(window, cx));
         });
     }
 

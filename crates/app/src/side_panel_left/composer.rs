@@ -1,30 +1,13 @@
 use chronos_services::hermes_acp::StreamingEvent;
 use chronos_ui::{Theme, on_fill};
 use gpui::{
-    Context, CursorStyle, ExternalPaths, IntoElement, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, Point, SharedString, Window, div, prelude::*, px,
+    Context, ExternalPaths, IntoElement, SharedString, Window, div, prelude::*, px,
 };
+use gpui_component::input::{Escape as InputEscape, Input};
 
 use crate::side_panel_left::ChatTab;
 use super::chat_view::{ChatMessage, MessageRole, Segment};
-use super::is_rtl_text;
-use super::text_input::{TextInputElement, next_word_boundary, prev_word_boundary};
 use super::state::AgentStatus;
-
-/// Compute cursor byte-offset from a mouse position, using last prepaint geometry.
-fn mouse_offset(
-    line: &Option<gpui::ShapedLine>,
-    bounds: &Option<gpui::Bounds<gpui::Pixels>>,
-    position: &Point<gpui::Pixels>,
-    actual_content: &str,
-) -> usize {
-    if actual_content.is_empty() { return 0; }
-    let Some(line) = line else { return 0 };
-    let Some(bounds) = bounds else { return 0 };
-    if position.y < bounds.top() { return 0; }
-    if position.y > bounds.bottom() { return actual_content.len(); }
-    line.closest_index_for_x(position.x - bounds.left()).min(actual_content.len())
-}
 
 impl ChatTab {
     /// Scan available_modes for a mode whose `id` contains "bypass", "dont",
@@ -66,7 +49,7 @@ pub fn render_composer(
     cx: &mut Context<ChatTab>,
 ) -> impl IntoElement {
     let theme = *Theme::global(cx);
-    let text = &panel.composer_input.content;
+    let text: SharedString = panel.composer_input.read(cx).value();
     let has_text = !text.is_empty();
 
     let send_active = has_text && panel.state.agent_status != AgentStatus::Thinking;
@@ -78,15 +61,6 @@ pub fn render_composer(
         .map(|yid| panel.composer_selected_mode == *yid)
         .unwrap_or(false);
 
-    // ── Text display (placeholder or content) ───────────────────────
-    let agent_display_name = panel
-        .agents
-        .iter()
-        .find(|a| a.id == panel.active_agent_id)
-        .map(|a| a.display_name.as_str())
-        .unwrap_or("Agent");
-
-    // ── Pickers row (above textarea) ────────────────────────────────
     let pickers_row = div()
         .id("composer-pickers-row")
         .flex_none()
@@ -101,122 +75,55 @@ pub fn render_composer(
     let enabled = panel.state.agent_status != AgentStatus::Disconnected;
     let focus = panel.composer_focus.clone();
 
-    let placeholder: SharedString = format!("Message {agent_display_name} — @ to include context, / for commands").into();
-
-    let panel_content_width = panel.state.width - 24.0;
-    let glyph_approx_px = 7.0;
-    let max_chars_per_line = (panel_content_width / glyph_approx_px).max(10.0) as usize;
-
-    let lines: usize = text
-        .lines()
-        .map(|l| {
-            let raw = l.len();
-            if raw == 0 {
-                1
-            } else {
-                (raw + max_chars_per_line - 1) / max_chars_per_line
-            }
-        })
-        .sum();
-    let visible_lines = lines.max(3).min(100);
-    let line_height_px = 18.0;
-    let input_height = px((visible_lines as f32 * line_height_px).min(panel.state.height * 0.45));
-
+    // T286: the composer field is the kit `Input` — wrap, caret, selection,
+    // IME and text editing come from the component (auto_grow + soft_wrap
+    // set on the InputState in `ChatTab::new`). The wrapper keeps the panel
+    // keyboard hub (`composer_focus` + `handle_composer_key`): opening a
+    // picker or starting a rename focuses the hub, closing refocuses the
+    // Input, so the model-search / sidebar-search keys keep flowing.
     let text_input = div()
         .id("composer-input-canvas")
         .flex_1()
+        .min_w(px(0.))
         .min_h(px(48.))
         .max_h(px(panel.state.height * 0.45))
-        .h(input_height)
-        .px(px(6.))
-        .py(px(2.))
-        .overflow_y_scroll()
         .text_size(px(12.5))
         .line_height(px(18.))
-        .text_color(theme.text.primary)
-        .when(is_rtl_text(text), |el| el.text_right())
         .track_focus(&focus)
-        .on_click(cx.listener(|this, _, window, cx| {
-            this.composer_focused = true;
-            this.composer_model_dropdown_open = false;
-            this.composer_mode_dropdown_open = false;
-            this.composer_model_search.clear();
-            window.focus(&this.composer_focus, cx);
-            this.start_blink(cx);
-            cx.notify();
-        }))
-        .cursor(CursorStyle::IBeam)
         .on_key_down(cx.listener(|this, event, window, cx| {
             this.handle_composer_key(event, window, cx);
         }))
-        .on_mouse_down(
-            MouseButton::Left,
-            cx.listener(|this, event: &MouseDownEvent, _window, cx| {
-                let content = this.composer_input.content.clone();
-                let offset = mouse_offset(&this.composer_last_layout, &this.composer_last_bounds, &event.position, &content);
-                let shift = event.modifiers.shift;
-                this.composer_input.on_mouse_down(offset, shift);
-                // Double-click detection: select word (only when actual content exists)
-                let now = std::time::Instant::now();
-                let last = this.composer_last_click;
-                this.composer_last_click = Some((now, event.position));
-                let double = last.map_or(false, |(t, p)| {
-                    now.duration_since(t).as_millis() < 500
-                        && (p.x - event.position.x).abs() < px(5.)
-                        && (p.y - event.position.y).abs() < px(5.)
-                });
-                if double && !content.is_empty() {
-                    this.composer_input.move_to(prev_word_boundary(&content, offset));
-                    this.composer_input.select_to(next_word_boundary(&content, offset));
-                }
+        .on_action(cx.listener(|this, _: &InputEscape, _window, cx| {
+            // Escape propagated out of the kit Input (its own handler had
+            // nothing to clean): close pickers if open.
+            if this.composer_model_dropdown_open || this.composer_mode_dropdown_open {
+                this.composer_model_dropdown_open = false;
+                this.composer_mode_dropdown_open = false;
+                this.composer_model_search.clear();
                 cx.notify();
-            }),
-        )
-        .on_mouse_up(
-            MouseButton::Left,
-            cx.listener(|this, _: &MouseUpEvent, _, cx| {
-                this.composer_input.on_mouse_up();
-                cx.notify();
-            }),
-        )
-        .on_mouse_up_out(
-            MouseButton::Left,
-            cx.listener(|this, _: &MouseUpEvent, _, cx| {
-                this.composer_input.on_mouse_up();
-                cx.notify();
-            }),
-        )
-        .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
-            let content = this.composer_input.content.clone();
-            let offset = mouse_offset(&this.composer_last_layout, &this.composer_last_bounds, &event.position, &content);
-            this.composer_input.on_mouse_move(offset);
-            cx.notify();
+            }
         }))
-        .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
+        .on_drop(cx.listener(|this, paths: &ExternalPaths, window, cx| {
             let text = paths.paths().iter()
                 .map(|p| p.display().to_string())
                 .collect::<Vec<_>>()
                 .join(" ");
-            this.composer_input.insert_char(&text);
-            this.composer_input.has_drop_hover = false;
+            this.composer_input.update(cx, |s, cx| s.insert(text, window, cx));
+            this.composer_drop_hover = false;
             cx.notify();
         }))
         .on_drag_move::<ExternalPaths>(cx.listener(|this, _event: &gpui::DragMoveEvent<ExternalPaths>, _, cx| {
-            this.composer_input.has_drop_hover = true;
+            this.composer_drop_hover = true;
             cx.notify();
         }))
-        .when(panel.composer_input.has_drop_hover, |el| {
+        .when(panel.composer_drop_hover, |el| {
             el.bg(theme.accent.primary.opacity(0.08))
         })
         .child(
-            TextInputElement {
-                content: if text.is_empty() { placeholder.clone() } else { text.clone() },
-                selected_range: panel.composer_input.selected_range.clone(),
-                selection_reversed: panel.composer_input.selection_reversed,
-                cursor_visible: panel.composer_input.cursor_visible,
-                is_focused: panel.composer_focused,
-                entity: cx.weak_entity(),
-            },
+            Input::new(&panel.composer_input)
+                .appearance(false)
+                .text_color(theme.text.primary)
+                .text_size(px(12.5)),
         );
 
     // ── Input container (bordered box: attach + textarea + send) ─────
@@ -393,10 +300,11 @@ fn model_picker(
                 .when(is_active, |el| el.bg(theme.border.default))
                 .when(!is_active, |el| el.hover(|s| s.bg(theme.border.subtle)))
                 .cursor_pointer()
-                .on_click(cx.listener(move |this, _, _, cx| {
+                .on_click(cx.listener(move |this, _, window, cx| {
                     this.composer_selected_model = m_id.clone();
                     this.composer_model_dropdown_open = false;
                     this.composer_model_search.clear();
+                    this.composer_input.update(cx, |s, cx| s.focus(window, cx));
                     if let Some(client) = this.clients.get(&this.active_agent_id).cloned() {
                         let model = m_id.clone();
                         cx.spawn(async move |this, cx| {
@@ -529,11 +437,17 @@ fn model_picker(
                     .when(has_data, |el| {
                         el.cursor_pointer()
                             .hover(|s| s.bg(theme.border.subtle))
-                            .on_click(cx.listener(|this, _, _, cx| {
+                            .on_click(cx.listener(|this, _, window, cx| {
                                 this.composer_model_dropdown_open =
                                     !this.composer_model_dropdown_open;
                                 if !this.composer_model_dropdown_open {
                                     this.composer_model_search.clear();
+                                    // Reopen path (toggle off): back to typing.
+                                    this.composer_input.update(cx, |s, cx| s.focus(window, cx));
+                                } else {
+                                    // T286: the search inside the dropdown is
+                                    // driven by the panel hub, not the kit Input.
+                                    window.focus(&this.composer_focus, cx);
                                 }
                                 this.composer_mode_dropdown_open = false;
                                 cx.notify();
@@ -585,9 +499,10 @@ fn mode_picker(panel: &ChatTab, cx: &mut Context<ChatTab>) -> Option<impl IntoEl
                 .when(is_active, |el| el.bg(theme.border.default))
                 .when(!is_active, |el| el.hover(|s| s.bg(theme.border.subtle)))
                 .cursor_pointer()
-                .on_click(cx.listener(move |this, _, _, cx| {
+                .on_click(cx.listener(move |this, _, window, cx| {
                     this.composer_selected_mode = m_id.clone();
                     this.composer_mode_dropdown_open = false;
+                    this.composer_input.update(cx, |s, cx| s.focus(window, cx));
                     cx.notify();
                 }))
                 .child(m_name)
@@ -617,9 +532,14 @@ fn mode_picker(panel: &ChatTab, cx: &mut Context<ChatTab>) -> Option<impl IntoEl
                     .when(has_data, |el| {
                         el.cursor_pointer()
                             .hover(|s| s.bg(theme.border.subtle))
-                            .on_click(cx.listener(|this, _, _, cx| {
+                            .on_click(cx.listener(|this, _, window, cx| {
                                 this.composer_mode_dropdown_open =
                                     !this.composer_mode_dropdown_open;
+                                if !this.composer_mode_dropdown_open {
+                                    this.composer_input.update(cx, |s, cx| s.focus(window, cx));
+                                } else {
+                                    window.focus(&this.composer_focus, cx);
+                                }
                                 this.composer_model_dropdown_open = false;
                                 this.composer_model_search.clear();
                                 cx.notify();
@@ -712,34 +632,17 @@ fn send_button(
 
 // ── Existing helper methods (unchanged) ─────────────────────────────────
 impl ChatTab {
-    pub(crate) fn start_blink(&mut self, cx: &mut gpui::Context<Self>) {
-        self.composer_input.cursor_visible = true;
-        self.composer_blink_task.take();
-        let handle = cx.weak_entity();
-        let interval = super::text_input::CURSOR_BLINK_INTERVAL;
-        let task = cx.spawn(async move |_, cx| {
-            loop {
-                cx.background_executor().timer(interval).await;
-                let Ok(()) = handle.update(cx, |this, cx| {
-                    this.composer_input.cursor_visible = !this.composer_input.cursor_visible;
-                    cx.notify();
-                }) else { break };
-            }
-        });
-        self.composer_blink_task = Some(task);
-    }
-
-    pub(crate) fn stop_blink(&mut self) {
-        self.composer_input.cursor_visible = false;
-        self.composer_blink_task.take();
-    }
-
     pub(crate) fn handle_composer_key(
         &mut self,
         event: &gpui::KeyDownEvent,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // T286: the composer text editing itself is owned by the kit `Input`
+        // (its own focus handle). This handler is the PANEL keyboard hub
+        // (`composer_focus`): it only routes keys for the sidebar search /
+        // rename field and the model-picker search, which borrow the hub
+        // while active. Closing any of those returns focus to the Input.
         // ── Sidebar search / rename input ────────────────────────────────
         if self.search_focused {
             let key = event.keystroke.key.as_str();
@@ -753,6 +656,7 @@ impl ChatTab {
                         self.thread_search.clear();
                         self.search_threads("", cx);
                     }
+                    self.composer_input.update(cx, |s, cx| s.focus(window, cx));
                     return;
                 }
                 "return" | "enter" => {
@@ -763,6 +667,7 @@ impl ChatTab {
                         let q = self.thread_search.clone();
                         self.search_threads(&q, cx);
                     }
+                    self.composer_input.update(cx, |s, cx| s.focus(window, cx));
                     return;
                 }
                 "backspace" => {
@@ -799,11 +704,10 @@ impl ChatTab {
                 self.composer_model_dropdown_open = false;
                 self.composer_mode_dropdown_open = false;
                 self.composer_model_search.clear();
+                self.composer_input.update(cx, |s, cx| s.focus(window, cx));
                 cx.notify();
                 return;
             }
-            self.composer_focused = false;
-            cx.notify();
             return;
         }
 
@@ -815,6 +719,7 @@ impl ChatTab {
                 "escape" => {
                     self.composer_model_dropdown_open = false;
                     self.composer_model_search.clear();
+                    self.composer_input.update(cx, |s, cx| s.focus(window, cx));
                 }
                 "return" | "enter" => {
                     let q = self.composer_model_search.to_lowercase();
@@ -827,6 +732,7 @@ impl ChatTab {
                         self.composer_selected_model = m_id.clone();
                         self.composer_model_dropdown_open = false;
                         self.composer_model_search.clear();
+                        self.composer_input.update(cx, |s, cx| s.focus(window, cx));
                         if let Some(client) = self.clients.get(&self.active_agent_id).cloned() {
                             cx.spawn(async move |this, cx| {
                                 if let Err(e) = client.set_model(&m_id).await {
@@ -858,69 +764,18 @@ impl ChatTab {
         if self.composer_mode_dropdown_open {
             self.composer_model_dropdown_open = false;
             self.composer_mode_dropdown_open = false;
+            self.composer_input.update(cx, |s, cx| s.focus(window, cx));
             cx.notify();
             return;
         }
-
-        let key = event.keystroke.key.as_str();
-        let modifiers = &event.keystroke.modifiers;
-
-        use super::text_input::TextInputState;
-
-        match key {
-            "backspace" if modifiers.platform => self.composer_input.delete_word_backward(),
-            "backspace" => self.composer_input.backspace(),
-            "delete" => self.composer_input.delete_forward(),
-            "left" if modifiers.control => self.composer_input.cursor_left_word(),
-            "left" if modifiers.shift => self.composer_input.select_left(),
-            "left" => self.composer_input.cursor_left(),
-            "right" if modifiers.control => self.composer_input.cursor_right_word(),
-            "right" if modifiers.shift => self.composer_input.select_right(),
-            "right" => self.composer_input.cursor_right(),
-            "home" if modifiers.shift => self.composer_input.select_home(),
-            "home" => self.composer_input.home(),
-            "end" if modifiers.shift => self.composer_input.select_end(),
-            "end" => self.composer_input.end(),
-            "escape" => {
-                self.composer_focused = false;
-                self.stop_blink();
-            }
-            "enter" if modifiers.shift => self.composer_input.insert_char("\n"),
-            "enter" => {
-                self.send_composer(_window, cx);
-                return;
-            }
-            "up" | "down" => {}
-            _ => {
-                // Printable character insertion is owned by the IME path
-                // (`replace_text_in_range` via the `EntityInputHandler` in
-                // text_input.rs) — do NOT insert `key_char` here too, or every
-                // keystroke lands twice. Only clipboard/select shortcuts, which
-                // the IME path never commits, are handled here.
-                //
-                // Clipboard uses `control || platform`: on Linux the clipboard
-                // is Ctrl (`control`); `platform` (Super/Cmd) is kept so the
-                // same binding works if ever run on macOS. Matches select-all.
-                if (modifiers.control || modifiers.platform) && key == "a" {
-                    self.composer_input.select_all();
-                } else if (modifiers.control || modifiers.platform) && key == "c" {
-                    self.composer_input.copy_selection(cx);
-                } else if (modifiers.control || modifiers.platform) && key == "x" {
-                    self.composer_input.cut_selection(cx);
-                } else if (modifiers.control || modifiers.platform) && key == "v" {
-                    self.composer_input.paste(cx);
-                }
-            }
-        }
-        cx.notify();
     }
 
-    pub(crate) fn send_composer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let text = self.composer_input.content.trim().to_string();
+    pub(crate) fn send_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self.composer_input.read(cx).value().trim().to_string();
         if text.is_empty() {
             return;
         }
-        self.composer_input.clear();
+        self.composer_input.update(cx, |s, cx| s.set_value("", window, cx));
 
         // The client is only ever absent during the initial connect (first
         // HermesClient::new + create_session can take seconds). `agent_status`

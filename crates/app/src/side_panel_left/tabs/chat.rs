@@ -12,20 +12,15 @@
 //! deleted — prod never called it (the render path branches on the
 //! mirrored width directly), so it was green-test theatre.
 
-use chronos_services::hermes_acp::{
-    AgentDescriptor, HermesClient, StreamingEvent, known_agents, load_shared_env,
-};
+use chronos_services::hermes_acp::{AgentDescriptor, HermesClient, StreamingEvent, known_agents};
 use chronos_services::threads::{ThreadRecord, ThreadStore};
-use chronos_services::{ModelInfo, SessionMode};
 use gpui::{
-    App, Bounds, Context, Focusable, Global, Task, UTF16Selection, Window,
-    FocusHandle, Pixels, ShapedLine, Hsla,
-    point, prelude::*, px,
+    Context, Focusable, Window,
+    prelude::*, px,
 };
 use gpui::{AnimationExt, AnyElement, IntoElement, div, img, svg};
 use chronos_ui::{Theme, WindowRootExt, elevation_glow_bar};
 use std::collections::HashMap;
-use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use crate::motion;
@@ -96,12 +91,12 @@ pub struct ChatTab {
     pub(crate) available_models: Vec<chronos_services::ModelInfo>,
     pub(crate) chat: chat_view::ChatView,
     pub(crate) composer_focus: gpui::FocusHandle,
-    pub(crate) composer_input: crate::side_panel_left::text_input::TextInputState,
-    /// Shaped line from the last TextInputElement prepaint; needed by
-    /// EntityInputHandler::bounds_for_range / character_index_for_point
-    /// for IME candidate window positioning.
-    pub(crate) composer_last_layout: Option<gpui::ShapedLine>,
-    pub(crate) composer_last_bounds: Option<gpui::Bounds<gpui::Pixels>>,
+    /// T286: the composer field is a `gpui-component` `Input` bound to this
+    /// `InputState` — wrap, caret, selection, IME and blink come from the kit.
+    pub(crate) composer_input: gpui::Entity<gpui_component::input::InputState>,
+    /// Subscription to composer `InputState` events (send on PressEnter,
+    /// repaint on Change so the send button tracks the text).
+    _composer_events: gpui::Subscription,
     pub(crate) composer_selected_model: String,
     pub(crate) composer_selected_mode: String,
     /// The mode ID that was active before YOLO toggle, to restore on toggle-off.
@@ -111,10 +106,8 @@ pub struct ChatTab {
     pub(crate) composer_model_dropdown_open: bool,
     pub(crate) composer_mode_dropdown_open: bool,
     pub(crate) composer_model_search: String,
-    pub(crate) composer_focused: bool,
-    pub(crate) composer_last_click: Option<(std::time::Instant, gpui::Point<gpui::Pixels>)>,
-    pub(crate) composer_blink_task: Option<gpui::Task<()>>,
-    /// Streaming state for the current ACP prompt turn.
+    /// File-drag hover highlight on the composer (T286, was on TextInputState).
+    pub(crate) composer_drop_hover: bool,
     pub(crate) streaming: state::StreamingState,
     /// T247: a message that arrived while the ACP client was still connecting
     /// (agent_status Thinking). The user message is pushed immediately; the
@@ -149,150 +142,47 @@ impl Focusable for ChatTab {
     }
 }
 
-impl gpui::EntityInputHandler for ChatTab {
-    fn text_for_range(
-        &mut self,
-        range_utf16: Range<usize>,
-        actual_range: &mut Option<Range<usize>>,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<String> {
-        let range = self.composer_input.range_from_utf16(&range_utf16);
-        actual_range.replace(self.composer_input.range_to_utf16(&range));
-        Some(self.composer_input.content[range].to_string())
-    }
-
-    fn selected_text_range(
-        &mut self,
-        _ignore_disabled_input: bool,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<UTF16Selection> {
-        Some(UTF16Selection {
-            range: self.composer_input.range_to_utf16(&self.composer_input.selected_range),
-            reversed: self.composer_input.selection_reversed,
-        })
-    }
-
-    fn marked_text_range(
-        &self,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<Range<usize>> {
-        self.composer_input
-            .marked_range
-            .as_ref()
-            .map(|range| self.composer_input.range_to_utf16(range))
-    }
-
-    fn unmark_text(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
-        self.composer_input.marked_range = None;
-    }
-
-    fn replace_text_in_range(
-        &mut self,
-        range_utf16: Option<Range<usize>>,
-        new_text: &str,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        // While a sub-input owns the keyboard — the sidebar thread search /
-        // rename field (`search_focused`) or the model-picker search
-        // (`composer_model_dropdown_open`) — its text lives in a separate
-        // String driven by `on_key_down`. The composer's IME handler is still
-        // bound to `composer_focus`, so without this guard those keystrokes
-        // also land in `composer_input` and leak into the message box behind
-        // the popup.
-        if self.search_focused || self.composer_model_dropdown_open {
-            return;
-        }
-        let range = range_utf16
-            .as_ref()
-            .map(|r| self.composer_input.range_from_utf16(r))
-            .or(self.composer_input.marked_range.clone())
-            .unwrap_or(self.composer_input.selected_range.clone());
-        self.composer_input.replace_range(range, new_text);
-        cx.notify();
-    }
-
-    fn replace_and_mark_text_in_range(
-        &mut self,
-        range_utf16: Option<Range<usize>>,
-        new_text: &str,
-        new_selected_range_utf16: Option<Range<usize>>,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        // Same guard as `replace_text_in_range`: don't let IME compose land in
-        // `composer_input` while a sub-input (thread search/rename or model
-        // search) owns the keyboard.
-        if self.search_focused || self.composer_model_dropdown_open {
-            return;
-        }
-        let range = range_utf16
-            .as_ref()
-            .map(|r| self.composer_input.range_from_utf16(r))
-            .or(self.composer_input.marked_range.clone())
-            .unwrap_or(self.composer_input.selected_range.clone());
-        self.composer_input.content =
-            (self.composer_input.content[..range.start].to_owned()
-                + new_text
-                + &self.composer_input.content[range.end..])
-                .into();
-        if !new_text.is_empty() {
-            self.composer_input.marked_range = Some(range.start..range.start + new_text.len());
-        } else {
-            self.composer_input.marked_range = None;
-        }
-        let new_range = new_selected_range_utf16
-            .as_ref()
-            .map(|r| self.composer_input.range_from_utf16(r))
-            .map(|r| r.start + range.start..r.end + range.end)
-            .unwrap_or(range.start + new_text.len()..range.start + new_text.len());
-        self.composer_input.selected_range = new_range;
-        cx.notify();
-    }
-
-    fn bounds_for_range(
-        &mut self,
-        range_utf16: Range<usize>,
-        bounds: Bounds<gpui::Pixels>,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<Bounds<gpui::Pixels>> {
-        let layout = self.composer_last_layout.as_ref()?;
-        let range = self.composer_input.range_from_utf16(&range_utf16);
-        Some(Bounds::from_corners(
-            gpui::point(
-                bounds.left() + layout.x_for_index(range.start),
-                bounds.top(),
-            ),
-            gpui::point(
-                bounds.left() + layout.x_for_index(range.end),
-                bounds.bottom(),
-            ),
-        ))
-    }
-
-    fn character_index_for_point(
-        &mut self,
-        point: gpui::Point<gpui::Pixels>,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<usize> {
-        let bounds = self.composer_last_bounds.as_ref()?;
-        let line_point = bounds.localize(&point)?;
-        let layout = self.composer_last_layout.as_ref()?;
-        let utf8_index = layout.index_for_x(point.x - line_point.x)?;
-        Some(self.composer_input.offset_to_utf16(utf8_index))
-    }
-}
-
 impl ChatTab {
-    pub(crate) fn new(cx: &mut Context<Self>) -> Self {
+    pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let agents = known_agents();
         let shared_env = chronos_services::hermes_acp::load_shared_env();
         let active_agent_id = agents.first().map(|a| a.id.to_string()).unwrap_or_default();
+
+        // T286: the composer field is a `gpui-component` `Input`. The state is
+        // created here (the panel opens inside `open_window`, so a window is
+        // available) — auto_grow gives min 3 rows growing to a cap, soft_wrap
+        // wraps at the column width, submit_on_enter makes plain Enter a send
+        // (PressEnter) while Shift+Enter inserts a newline.
+        let composer_input = cx.new(|cx| {
+            gpui_component::input::InputState::new(window, cx)
+                .auto_grow(3, 30)
+                .soft_wrap(true)
+                .submit_on_enter(true)
+        });
+        let agent_display_name = agents
+            .first()
+            .map(|a| a.display_name.as_str())
+            .unwrap_or("Agent");
+        composer_input.update(cx, |s, cx| {
+            s.set_placeholder(
+                format!("Message {agent_display_name} — @ to include context, / for commands"),
+                window,
+                cx,
+            );
+        });
+        // Send on the kit's PressEnter (primary Enter only — Shift+Enter
+        // already inserted a newline inside the Input) and repaint on Change
+        // so the send button's active state tracks the text.
+        let composer_events = cx.subscribe_in(&composer_input, window, |this, _, event, window, cx| {
+            match event {
+                gpui_component::input::InputEvent::PressEnter {
+                    secondary: false,
+                    shift: false,
+                } => this.send_composer(window, cx),
+                gpui_component::input::InputEvent::Change => cx.notify(),
+                _ => {}
+            }
+        });
 
         // Open the thread store (T150). Falls back to None if the DB can't
         // be opened — the panel still works with in-memory sessions.
@@ -482,11 +372,8 @@ impl ChatTab {
             available_models: Vec::new(),
             chat: chat_view::ChatView::new(),
             composer_focus: cx.focus_handle(),
-            composer_last_click: None,
-            composer_blink_task: None,
-            composer_input: crate::side_panel_left::text_input::TextInputState::new(),
-            composer_last_layout: None,
-            composer_last_bounds: None,
+            composer_input,
+            _composer_events: composer_events,
             composer_selected_model: String::new(),
             composer_selected_mode: String::new(),
             composer_previous_mode: String::new(),
@@ -494,7 +381,7 @@ impl ChatTab {
             composer_model_dropdown_open: false,
             composer_mode_dropdown_open: false,
             composer_model_search: String::new(),
-            composer_focused: false,
+            composer_drop_hover: false,
             streaming: state::StreamingState::new(),
             pending_send: None,
         };
@@ -2026,7 +1913,7 @@ fn build_sessions_sidebar(
             // Build each menu item with its own cx.listener (on_click expects
             // a closure, not a ClickEvent — see E0277 fix).
             let mid_rename = mid.clone();
-            let rename_handler = cx.listener(move |this, _, _, cx| {
+            let rename_handler = cx.listener(move |this, _, window, cx| {
                 let tid = mid_rename.clone();
                 let title = this
                     .sessions
@@ -2035,6 +1922,10 @@ fn build_sessions_sidebar(
                     .map(|t| t.display_title().to_string())
                     .unwrap_or_default();
                 this.begin_rename(&tid, &title, cx);
+                // T286: the rename field is driven by the panel keyboard hub
+                // (`handle_composer_key`), not the kit Input — park focus on
+                // the hub so typing lands in the rename field.
+                window.focus(&this.composer_focus, cx);
             });
             let mid_pin = mid.clone();
             let pin_handler = cx.listener(move |this, _, _, cx| {
