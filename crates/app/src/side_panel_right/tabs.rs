@@ -11,35 +11,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_has_nineteen_tabs_in_fixed_order() {
-        // §4.1 spec: Developer sees System + Updates (T294) + 7 work tools
-        // (Files/Editor/Terminal/Preview/Inspector/Build/SourceControl) + 6
-        // settings (AcpSettings/McpSettings/LspSettings/ApiProviders/
-        // EditorSettings/HyprlandBinds). §4.2 adds three Gamer at-rest hub
-        // tools (Library/Scenes/Captures) to the full catalog, slotted
-        // between the work tools and the settings group. `for_mode(Developer)`
-        // excludes them — they live in `ALL` for icon/label/coverage, not the
-        // dev rail.
-        assert_eq!(PanelTab::ALL.len(), 19);
+    fn all_has_twenty_tabs_in_fixed_order() {
+        // §4.1 spec: Developer sees System + Updates (T294) + Notifications
+        // (T293) + 7 work tools (Files/Editor/Terminal/Preview/Inspector/
+        // Build/SourceControl) + 6 settings (AcpSettings/McpSettings/
+        // LspSettings/ApiProviders/EditorSettings/HyprlandBinds). §4.2 adds
+        // three Gamer at-rest hub tools (Library/Scenes/Captures) to the
+        // full catalog, slotted between the work tools and the settings
+        // group. `for_mode(Developer)` excludes them — they live in `ALL` for
+        // icon/label/coverage, not the dev rail.
+        assert_eq!(PanelTab::ALL.len(), 20);
         assert_eq!(PanelTab::ALL[0], PanelTab::System);
         assert_eq!(PanelTab::ALL[1], PanelTab::Updates);
-        assert_eq!(PanelTab::ALL[2], PanelTab::Files);
-        assert_eq!(PanelTab::ALL[3], PanelTab::Editor);
-        assert_eq!(PanelTab::ALL[4], PanelTab::Terminal);
-        assert_eq!(PanelTab::ALL[5], PanelTab::Preview);
-        assert_eq!(PanelTab::ALL[6], PanelTab::Inspector);
-        assert_eq!(PanelTab::ALL[7], PanelTab::Build);
-        assert_eq!(PanelTab::ALL[8], PanelTab::SourceControl);
-        assert_eq!(PanelTab::ALL[9], PanelTab::Library);
-        assert_eq!(PanelTab::ALL[10], PanelTab::Scenes);
-        assert_eq!(PanelTab::ALL[11], PanelTab::Captures);
-        assert_eq!(PanelTab::ALL[12], PanelTab::AcpSettings);
-        assert_eq!(PanelTab::ALL[13], PanelTab::McpSettings);
-        assert_eq!(PanelTab::ALL[14], PanelTab::LspSettings);
-        assert_eq!(PanelTab::ALL[15], PanelTab::ApiProviders);
-        assert_eq!(PanelTab::ALL[16], PanelTab::EditorSettings);
-        assert_eq!(PanelTab::ALL[17], PanelTab::HyprlandBinds);
-        assert_eq!(PanelTab::ALL[18], PanelTab::Display);
+        assert_eq!(PanelTab::ALL[2], PanelTab::Notifications);
+        assert_eq!(PanelTab::ALL[3], PanelTab::Files);
+        assert_eq!(PanelTab::ALL[4], PanelTab::Editor);
+        assert_eq!(PanelTab::ALL[5], PanelTab::Terminal);
+        assert_eq!(PanelTab::ALL[6], PanelTab::Preview);
+        assert_eq!(PanelTab::ALL[7], PanelTab::Inspector);
+        assert_eq!(PanelTab::ALL[8], PanelTab::Build);
+        assert_eq!(PanelTab::ALL[9], PanelTab::SourceControl);
+        assert_eq!(PanelTab::ALL[10], PanelTab::Library);
+        assert_eq!(PanelTab::ALL[11], PanelTab::Scenes);
+        assert_eq!(PanelTab::ALL[12], PanelTab::Captures);
+        assert_eq!(PanelTab::ALL[13], PanelTab::AcpSettings);
+        assert_eq!(PanelTab::ALL[14], PanelTab::McpSettings);
+        assert_eq!(PanelTab::ALL[15], PanelTab::LspSettings);
+        assert_eq!(PanelTab::ALL[16], PanelTab::ApiProviders);
+        assert_eq!(PanelTab::ALL[17], PanelTab::EditorSettings);
+        assert_eq!(PanelTab::ALL[18], PanelTab::HyprlandBinds);
+        assert_eq!(PanelTab::ALL[19], PanelTab::Display);
     }
 
     #[test]
@@ -154,6 +155,18 @@ mod tests {
         assert_eq!(PanelTab::Updates.label(), "Updates");
     }
 
+    // --- T293: Notifications tab round-trips parse_id ↔ id ---
+
+    #[test]
+    fn parse_id_notifications_round_trip() {
+        assert_eq!(PanelTab::parse_id("notifications"), Some(PanelTab::Notifications));
+        assert_eq!(PanelTab::parse_id("NOTIFICATIONS"), Some(PanelTab::Notifications));
+        assert_eq!(PanelTab::parse_id("Notifications"), Some(PanelTab::Notifications));
+        assert_eq!(PanelTab::parse_id(PanelTab::Notifications.id()), Some(PanelTab::Notifications));
+        assert_eq!(PanelTab::Notifications.id(), "notifications");
+        assert_eq!(PanelTab::Notifications.label(), "Notifications");
+    }
+
     // --- T169: new four work-tool tabs round-trip parse_id ↔ id (§4.1) ---
 
     #[test]
@@ -256,19 +269,18 @@ mod tests {
     // --- T169: composition rules per §4.1 + §5 ---
 
     #[test]
-    fn developer_rail_is_eight_product_tabs() {
-        // T192 product cut + T294 Updates: Developer default rail ships
-        // System, Updates, Files, Editor (Preview relabeled, real edit is
-        // T194), Hyprland binds, ACP agents, Display, System settings.
-        // Everything else (empty IDE tabs, LSP/MCP/API-providers settings,
-        // Gamer hub tools) stays in `ALL` for parse/scene-override/icon
-        // coverage but is not in the default rail.
+    fn developer_rail_is_nine_product_tabs() {
+        // T192 product cut + T294 Updates + T293 Notifications: Developer
+        // default rail ships System, Updates, Notifications, Files, Editor
+        // (Preview relabeled, real edit is T194), Hyprland binds, ACP agents,
+        // Display, System settings.
         let dev = PanelTab::for_mode(WorkspaceMode::Developer);
         assert_eq!(
             dev,
             vec![
                 PanelTab::System,
                 PanelTab::Updates,
+                PanelTab::Notifications,
                 PanelTab::Files,
                 PanelTab::Preview,
                 PanelTab::HyprlandBinds,
@@ -298,19 +310,18 @@ mod tests {
     }
 
     #[test]
-    fn gamer_rail_is_eight_product_tabs() {
-        // T192 product cut + T294 Updates: Gamer default rail ships System,
-        // Updates, Library, Captures (honest empty — no capture backend),
-        // Display, then the same three settings tabs as Developer. Scenes is
-        // a full product kill (docs/PRODUCT.md §4 — "сцены нахуй не нужны")
-        // and does not appear in any default rail, even though `scene.rs`/
-        // seed code may stay dormant.
+    fn gamer_rail_is_nine_product_tabs() {
+        // T192 product cut + T294 Updates + T293 Notifications: Gamer
+        // default rail ships System, Updates, Notifications, Library,
+        // Captures (honest empty — no capture backend), Display, then the
+        // same three settings tabs as Developer.
         let gamer = PanelTab::for_mode(WorkspaceMode::Gamer);
         assert_eq!(
             gamer,
             vec![
                 PanelTab::System,
                 PanelTab::Updates,
+                PanelTab::Notifications,
                 PanelTab::Library,
                 PanelTab::Captures,
                 PanelTab::AcpSettings,
@@ -506,13 +517,16 @@ pub enum PanelTab {
     // rail's bottom group, immediately above shell settings.
     Display,
     HyprlandBinds,
+    // T293: Notifications — history list, replaces the history popup.
+    Notifications,
 }
 
 impl PanelTab {
     /// Full catalog — every tab that exists. Coverage tests iterate this.
-    pub const ALL: [PanelTab; 19] = [
+    pub const ALL: [PanelTab; 20] = [
         PanelTab::System,
         PanelTab::Updates,
+        PanelTab::Notifications,
         PanelTab::Files,
         PanelTab::Editor,
         PanelTab::Terminal,
@@ -554,6 +568,7 @@ impl PanelTab {
             PanelTab::EditorSettings => "editor_settings",
             PanelTab::Display => "display",
             PanelTab::HyprlandBinds => "hyprland_binds",
+            PanelTab::Notifications => "notifications",
         }
     }
 
@@ -580,6 +595,7 @@ impl PanelTab {
             "editor_settings" | "editorsettings" => Some(PanelTab::EditorSettings),
             "display" => Some(PanelTab::Display),
             "hyprland_binds" | "hyprlandbinds" => Some(PanelTab::HyprlandBinds),
+            "notifications" => Some(PanelTab::Notifications),
             _ => None,
         }
     }
@@ -611,6 +627,8 @@ impl PanelTab {
                 PanelTab::System,
                 // T294: Updates right after System (frequent entry point).
                 PanelTab::Updates,
+                // T293: Notifications — history list, replaces the popup.
+                PanelTab::Notifications,
                 PanelTab::Files,
                 PanelTab::Preview,
                 PanelTab::HyprlandBinds,
@@ -622,6 +640,8 @@ impl PanelTab {
                 PanelTab::System,
                 // T294: Updates right after System (frequent entry point).
                 PanelTab::Updates,
+                // T293: Notifications — history list, replaces the popup.
+                PanelTab::Notifications,
                 PanelTab::Library,
                 PanelTab::Captures,
                 PanelTab::AcpSettings,
@@ -692,6 +712,8 @@ impl PanelTab {
             PanelTab::EditorSettings => "System settings",
             PanelTab::Display => "Display",
             PanelTab::HyprlandBinds => "Hyprland binds",
+            // T293: Notifications — history list.
+            PanelTab::Notifications => "Notifications",
         }
     }
 
@@ -719,6 +741,8 @@ impl PanelTab {
             PanelTab::EditorSettings => "icons/rail-editor-settings.svg",
             PanelTab::Display => "icons/rail-display.svg",
             PanelTab::HyprlandBinds => "icons/rail-binds.svg",
+            // T293: bell icon — same as the bar notification bell.
+            PanelTab::Notifications => "icons/bell.svg",
         }
     }
 
@@ -749,6 +773,8 @@ impl PanelTab {
             // set now so the panel does not jump when real content lands.
             PanelTab::Library => 480.,
             PanelTab::Scenes => 400.,
+            // T293: Notifications — same comfortable column as System/Updates.
+            PanelTab::Notifications => 420.,
             // Empty-state tabs: icon + label + one-line description.
             // Captures is honestly unavailable this slice (no capture
             // backend — slice 6), so it stays an empty-state 320.

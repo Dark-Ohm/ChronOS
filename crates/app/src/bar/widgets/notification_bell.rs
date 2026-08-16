@@ -1,15 +1,11 @@
 //! Bell widget for the bar — glyph + unread-count badge, click opens the
-//! notification-history popup (`crate::notifications::history_popup`).
+//! Notifications tab on the right panel (T293).
 //!
 //! Data comes from `AppState::notification(cx)` (`NotificationState`,
 //! `crates/services/src/notification/`). The unread badge is shown only when
-//! `unread > 0`; opening the popup dispatches `MarkAllRead`, clearing it.
+//! `unread > 0`; opening the tab dispatches `MarkAllRead`, clearing it.
 
-use gpui::{
-    AnyElement, App, Bounds, MouseButton, Pixels, Window, canvas, div, prelude::*, px, svg,
-};
-use std::cell::Cell;
-use std::rc::Rc;
+use gpui::{AnyElement, App, MouseButton, Window, div, prelude::*, px, svg};
 
 use chronos_luau::bar::{BarSection, BarWidget};
 use chronos_services::{NotificationState, Service};
@@ -33,16 +29,11 @@ fn describe(state: &NotificationState) -> BellView {
     }
 }
 
-pub struct NotificationBellWidget {
-    /// Captured bell bounds for the anchored popup (T117 pattern).
-    bounds: Rc<Cell<Bounds<Pixels>>>,
-}
+pub struct NotificationBellWidget;
 
 impl NotificationBellWidget {
     pub fn new() -> Self {
-        Self {
-            bounds: Rc::new(Cell::new(Bounds::default())),
-        }
+        Self
     }
 }
 
@@ -102,36 +93,17 @@ impl BarWidget for NotificationBellWidget {
             );
         }
 
-        // T117 lessons: (1) `.relative()` wrapping canvas + hit target;
-        // (2) `on_mouse_down(Left)` for grab-popups, not `on_click`;
-        // (3) bounds captured into a `Rc<Cell<…>>` field, not a local
-        // that dies when `render` returns.
-        let bounds_cell = self.bounds.clone();
-        div()
-            .relative()
-            .child(
-                canvas(
-                    move |bounds, _window, _cx| bounds,
-                    move |bounds, captured, _window, _cx| {
-                        bounds_cell.set(captured);
-                        let _ = bounds;
-                    },
-                )
-                .absolute()
-                .size_full(),
-            )
-            .child(bell.on_mouse_down(MouseButton::Left, {
-                let bounds_cell = self.bounds.clone();
-                move |_event, window, cx: &mut App| {
-                    if crate::edit_mode::is_active(cx) {
-                        return;
-                    }
-                    let anchor_rect = bounds_cell.get();
-                    let parent = window.window_handle();
-                    crate::notifications::history_popup::toggle(anchor_rect, parent, window, cx);
-                }
-            }))
-            .into_any_element()
+        // T293: bell click opens the Notifications tab on the right panel.
+        bell.on_mouse_down(MouseButton::Left, move |_event, _window, cx: &mut App| {
+            if crate::edit_mode::is_active(cx) {
+                return;
+            }
+            crate::side_panel_right::select_tab(
+                crate::side_panel_right::tabs::PanelTab::Notifications,
+                cx,
+            );
+        })
+        .into_any_element()
     }
 }
 

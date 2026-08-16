@@ -14,6 +14,7 @@ pub(crate) mod build;
 pub(crate) mod files;
 pub(crate) mod hypr_binds;
 pub(crate) mod library;
+pub(crate) mod notifications;
 pub(crate) mod preview;
 pub(crate) mod system;
 pub(crate) mod terminal;
@@ -32,6 +33,7 @@ use display::DisplayTab;
 use files::FilesTab;
 use hypr_binds::HyprBindsTab;
 use library::LibraryTab;
+use notifications::NotificationsTab;
 use preview::PreviewTab;
 use system::SystemTab;
 use terminal::TerminalTab;
@@ -61,6 +63,8 @@ pub(crate) enum TabContent {
     Display(gpui::Entity<DisplayTab>),
     // T294: Updates — pending repo + AUR updates, apply via pacman.
     Updates(gpui::Entity<UpdatesTab>),
+    // T293: Notifications — history list (replaces the history popup).
+    Notifications(gpui::Entity<NotificationsTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
 
@@ -103,6 +107,10 @@ impl TabContent {
             PanelTab::Display => TabContent::Display(cx.new(|cx| DisplayTab::new(cx))),
             // T294: Updates — live view, apply is pacman-only (AUR display-only).
             PanelTab::Updates => TabContent::Updates(cx.new(|cx| UpdatesTab::new(cx))),
+            // T293: Notifications — history list, shared renderer with the popup.
+            PanelTab::Notifications => {
+                TabContent::Notifications(cx.new(|cx| NotificationsTab::new(cx)))
+            }
             PanelTab::Scenes
             | PanelTab::Captures => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
             _ => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
@@ -166,6 +174,9 @@ pub fn placeholder_description(tab: PanelTab) -> &'static str {
         PanelTab::EditorSettings => "Shell and OS settings: appearance, keybindings, integrations",
         PanelTab::Display => "Display settings: brightness and wallpaper",
         PanelTab::HyprlandBinds => "View and search active Hyprland keybindings",
+        // T293: Notifications is a real tab (not empty), but the match
+        // must stay exhaustive — this arm is unreachable in practice.
+        PanelTab::Notifications => "Notification history",
     }
 }
 

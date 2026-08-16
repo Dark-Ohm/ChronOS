@@ -28,6 +28,7 @@ use std::{
 };
 
 use chronos_services::net_stats::{self, NetState};
+use chronos_services::NotificationCommand;
 use gpui::{AnimationExt, AsyncApp, IntoElement, Render, Window, div, prelude::*, px};
 
 use crate::agent_follow::AgentFollowState;
@@ -357,6 +358,17 @@ impl SidePanelRightView {
     }
 
     pub(crate) fn on_tab_select(&mut self, tab: PanelTab, cx: &mut Context<Self>) {
+        // T293: when the Notifications tab is selected, mark the history
+        // read so the bell's unread dot clears the moment the inbox is
+        // viewed — same behavior as the former history popup.
+        if tab == PanelTab::Notifications {
+            let svc = AppState::notification(cx).clone();
+            cx.background_spawn(async move {
+                let _ = svc.dispatch(NotificationCommand::MarkAllRead).await;
+            })
+            .detach();
+        }
+
         // T221 — rail icon is the single affordance. Three actions, in order:
         //
         //   1. Same tab, `dock_content = true`  → no-op. Dock keeps content
@@ -659,6 +671,8 @@ impl Render for SidePanelRightView {
                         TabContent::Display(entity) => col.child(entity.clone()),
                         // T294: Updates list (pacman-only apply, AUR display-only).
                         TabContent::Updates(entity) => col.child(entity.clone()),
+                        // T293: Notifications history list.
+                        TabContent::Notifications(entity) => col.child(entity.clone()),
                         TabContent::Placeholder(entity) => col.child(entity.clone()),
                     };
                     // Enter animation belongs to the content column alone.
@@ -721,6 +735,8 @@ impl SidePanelRightView {
             TabContent::Display(e) => e.entity_id(),
             // T294: Updates list (pacman-only apply, AUR display-only).
             TabContent::Updates(e) => e.entity_id(),
+            // T293: Notifications history list.
+            TabContent::Notifications(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })
     }

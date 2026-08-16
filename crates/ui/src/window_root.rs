@@ -67,10 +67,6 @@ mod tests {
             include_str!("../../app/src/notifications/view.rs"),
         ),
         (
-            "notifications/history_popup/view.rs",
-            include_str!("../../app/src/notifications/history_popup/view.rs"),
-        ),
-        (
             "volume_popup/view.rs",
             include_str!("../../app/src/volume_popup/view.rs"),
         ),

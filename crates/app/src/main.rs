@@ -95,7 +95,6 @@ fn main() {
         bar::init(cx);
         frame::init(cx);
         notifications::init(cx);
-        notifications::history_popup::init(cx);
         osd::init(cx);
         tray_menu::init(cx);
         project_switcher::init(cx);

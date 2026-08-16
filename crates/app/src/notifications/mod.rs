@@ -29,7 +29,7 @@
 //! no matter how tall rows actually render. This mirrors the `updates_popup`
 //! fix (commit `67f7d10`). T124 raised the cap to 480 px for taller cards.
 
-pub mod history_popup;
+pub mod history_list;
 pub mod view;
 
 use gpui::{

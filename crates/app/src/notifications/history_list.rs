@@ -1,208 +1,150 @@
-//! History-popup view — mockup-faithful notification log (feature №14).
+//! Shared notification-history renderer — used by both the (transient)
+//! history popup and the right-panel Notifications tab (T293).
 //!
-//! Pixel reference: `design/Notifications Popup.dc.html` (dark only).
-//! Layout: scrollable card list, each card has a 3px urgency strip + app
-//! monogram + summary/body + optional outlined actions + row ✕ (history-
-//! only delete). Footer "Clear all" appears when `len > 1`. Empty state
-//! shows centered "No notifications". **No panel header / title row** —
-//! dismiss is the bar bell re-toggle, the per-row ✕, or "Clear all".
-//!
-//! `HistoryPopupView` carries a `ScrollHandle` so a long history really
-//! scrolls instead of being hard-clipped (`overflow_hidden` was the
-//! pre-T120 bug — see plan T120 §Task 4 Step 2).
+//! This module owns the card geometry, the urgency/monogram helpers, and the
+//! list+footer renderer. The popup wraps it in a chrome panel (border, blur,
+//! glow); the tab wraps it in the right panel's scroll viewport. Neither
+//! side re-implements the card — the canon lives here.
 
-use gpui::{
-    AnyElement, App, Context, Corners, InteractiveElement, IntoElement, Render, ScrollHandle,
-    Styled, Window, canvas, div, prelude::*, px,
-};
+use gpui::{AnyElement, App, IntoElement, Window, div, prelude::*, px};
 
 use chronos_services::{Notification, NotificationCommand, Service, Urgency};
 
 use crate::state::AppState;
 
-use chronos_ui::{Theme, WindowRootExt, elevation_blur_layer, elevation_glow_bar};
-use crate::motion;
+// ── Mockup-faithful geometry (shared) ──────────────────────────────
 
-// ── Mockup-faithful geometry ────────────────────────────────────────
-const PADDING: f32 = 10.;
-const FOOTER_PAD: f32 = 12.;
-const FOOTER_BTN_PY: f32 = 8.;
-const URGENCY_STRIP_W: f32 = 3.;
-const URGENCY_STRIP_MY: f32 = 10.;
-const URGENCY_STRIP_ML: f32 = 8.;
-const MONOGRAM_SIZE: f32 = 16.;
-const MONOGRAM_RADIUS: f32 = 4.;
-const APP_NAME_FZ: f32 = 10.5;
-const SUMMARY_FZ: f32 = 12.5;
-const BODY_FZ: f32 = 11.5;
-const ACTIONS_FZ: f32 = 11.;
-const BTN_PAD_X: f32 = 11.;
-const BTN_PAD_Y: f32 = 5.;
-const BTN_GAP: f32 = 6.;
-const ROW_DISMISS_BTN: f32 = 18.; // 18x18 row ✕ hit area
-const ROW_DISMISS_RADIUS: f32 = 5.;
-const FOOTER_BTN_RADIUS: f32 = 6.;
-const FOOTER_BTN_PY_OUTER: f32 = 8.;
-const EMPTY_PY: f32 = 36.;
-const EMPTY_FZ: f32 = 12.;
+pub const PADDING: f32 = 10.;
+pub const FOOTER_PAD: f32 = 12.;
+pub const FOOTER_BTN_PY: f32 = 8.;
+pub const URGENCY_STRIP_W: f32 = 3.;
+pub const URGENCY_STRIP_MY: f32 = 10.;
+pub const URGENCY_STRIP_ML: f32 = 8.;
+pub const MONOGRAM_SIZE: f32 = 16.;
+pub const MONOGRAM_RADIUS: f32 = 4.;
+pub const APP_NAME_FZ: f32 = 10.5;
+pub const SUMMARY_FZ: f32 = 12.5;
+pub const BODY_FZ: f32 = 11.5;
+pub const ACTIONS_FZ: f32 = 11.;
+pub const BTN_PAD_X: f32 = 11.;
+pub const BTN_PAD_Y: f32 = 5.;
+pub const BTN_GAP: f32 = 6.;
+pub const ROW_DISMISS_BTN: f32 = 18.;
+pub const ROW_DISMISS_RADIUS: f32 = 5.;
+pub const FOOTER_BTN_RADIUS: f32 = 6.;
+pub const FOOTER_BTN_PY_OUTER: f32 = 8.;
+pub const EMPTY_PY: f32 = 36.;
+pub const EMPTY_FZ: f32 = 12.;
 
-pub struct HistoryPopupView {
-    scroll: ScrollHandle,
-    /// View-driven enter progress 0..=1 (T129).
-    enter_t: f32,
-}
+/// Render the notification history list (newest-first) with a "Clear all"
+/// footer when `len > 1`, or a centered "No notifications" empty state.
+///
+/// The list itself does not scroll — the caller wraps it in a scroll
+/// container appropriate to its surface (popup chrome caps at MAX_LIST_H,
+/// the right-panel tab scrolls on the full canvas height).
+pub fn render_history_list(window: &mut Window, cx: &mut App) -> AnyElement {
+    let state = AppState::notification(cx).get();
+    let ordered: Vec<Notification> = state.history.iter().rev().cloned().collect();
 
-impl HistoryPopupView {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        motion::arm_enter_progress(cx, |this, t| {
-            this.enter_t = t;
-        });
-        Self {
-            scroll: ScrollHandle::new(),
-            enter_t: 0.0,
-        }
-    }
-}
+    let theme = *chronos_ui::Theme::global(cx);
+    let text_muted = theme.text.muted;
+    let font_mono = theme.font_mono;
 
-impl Render for HistoryPopupView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let state = AppState::notification(cx).get();
-        // Newest first (history is push-order; reverse == newest on top).
-        let ordered: Vec<Notification> = state.history.iter().rev().cloned().collect();
+    // ── Body: scroll list OR empty state ─────────────────────────
+    let body: AnyElement = if ordered.is_empty() {
+        div()
+            .w_full()
+            .py(px(EMPTY_PY))
+            .text_color(text_muted)
+            .font_family(font_mono)
+            .text_size(px(EMPTY_FZ))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child("No notifications")
+            .into_any_element()
+    } else {
+        let cards: Vec<AnyElement> = ordered
+            .iter()
+            .map(|n| render_history_card(n, window, cx))
+            .collect();
+        div()
+            .id("notif-history-list")
+            .w_full()
+            .flex_col()
+            .children(cards)
+            .into_any_element()
+    };
 
-        let theme = *Theme::global(cx);
-        let bg = theme.bg.primary;
-        let border = theme.border.default;
-        let border_subtle = theme.border.subtle;
-        let text_primary = theme.text.primary;
-        let text_muted = theme.text.muted;
+    // ── Footer: Clear all (mockup: `len > 1`) ────────────────────
+    let footer: AnyElement = if ordered.len() > 1 {
         let text_secondary = theme.text.secondary;
-        let hover = theme.interactive.hover;
         let accent = theme.accent.primary;
-        let radius = theme.radius;
-        let radius_lg = theme.radius_lg; // 10px mockup panel radius
-        let font_mono = theme.font_mono;
-
-        // ── Body: scroll list OR empty state ─────────────────────────
-        let body: AnyElement = if ordered.is_empty() {
-            div()
-                .w_full()
-                .py(px(EMPTY_PY))
-                .text_color(text_muted)
-                .font_family(font_mono)
-                .text_size(px(EMPTY_FZ))
-                .flex()
-                .items_center()
-                .justify_center()
-                .child("No notifications")
-                .into_any_element()
-        } else {
-            let cards: Vec<AnyElement> = ordered
-                .iter()
-                .map(|n| {
-                    render_history_card(
-                        n,
-                        text_primary,
-                        text_muted,
-                        text_secondary,
-                        hover,
-                        accent,
-                        border_subtle,
-                        font_mono,
-                        radius,
-                    )
-                })
-                .collect();
-            div()
-                .id("notif-history-list")
-                .w_full()
-                .max_h(px(crate::notifications::history_popup::MAX_LIST_H))
-                .overflow_y_scroll()
-                .track_scroll(&self.scroll)
-                .flex_col()
-                .children(cards)
-                .into_any_element()
-        };
-
-        // ── Footer: Clear all (mockup: `len > 1`) ────────────────────
-        let footer: AnyElement = if ordered.len() > 1 {
-            div()
-                .w_full()
-                .px(px(FOOTER_PAD))
-                .py(px(FOOTER_PAD))
-                .child(
-                    div()
-                        .id("notif-history-clear-all")
-                        .w_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .py(px(FOOTER_BTN_PY_OUTER))
-                        .rounded(px(FOOTER_BTN_RADIUS))
-                        .border_1()
-                        .border_color(theme.accent.primary)
-                        .text_color(theme.accent.primary)
-                        .font_family(font_mono)
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_size(px(SUMMARY_FZ))
-                        .hover(|s| s.border_color(accent).text_color(accent))
-                        .child("Clear all")
-                        .on_click(|_event, _window, cx: &mut App| {
+        div()
+            .w_full()
+            .px(px(FOOTER_PAD))
+            .py(px(FOOTER_PAD))
+            .child(
+                div()
+                    .id("notif-history-clear-all")
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .py(px(FOOTER_BTN_PY_OUTER))
+                    .rounded(px(FOOTER_BTN_RADIUS))
+                    .border_1()
+                    .border_color(accent)
+                    .text_color(accent)
+                    .font_family(font_mono)
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_size(px(SUMMARY_FZ))
+                    .hover(|s| s.border_color(accent).text_color(accent))
+                    .child("Clear all")
+                    .on_click({
+                        move |_event, _window, cx: &mut App| {
                             let svc = AppState::notification(cx).clone();
                             cx.background_spawn(async move {
                                 let _ = svc.dispatch(NotificationCommand::ClearHistory).await;
                             })
                             .detach();
-                        }),
-                )
-                .into_any_element()
-        } else {
-            div().into_any_element()
-        };
+                        }
+                    }),
+            )
+            .into_any_element()
+    } else {
+        div().into_any_element()
+    };
 
-        // ── Card chrome: panel, bg, border, radius 10px ──────────────
-        // Тени / blur / glow — из `theme.elevation_popup()` (T128):
-        // light-схема получает Light-C рецепт, тёмная — frosted blur-only.
-        let elev = theme.elevation_popup();
-        let blur_layer = elevation_blur_layer(&elev, radius_lg);
-
-        let mut panel = div()
-            .window_font(&theme)
-            .relative()
-            .flex_col()
-            .rounded(radius_lg)
-            .bg(bg)
-            .border_1()
-            .border_color(border)
-            .shadow(elev.shadows.to_vec())
-            .child(blur_layer)
-            .overflow_hidden();
-
-        // History: glow strip only (no watermark — dense list, mockup has none).
-        if let Some(glow) = elev.glow {
-            panel = panel.child(elevation_glow_bar(glow));
-        }
-
-        let panel = panel.child(body).child(footer);
-        motion::apply_enter_rise(panel, self.enter_t)
-    }
+    // The outer column is NOT scrollable — the caller (popup chrome or
+    // tab) wraps this in a scroll container so the list can fill the
+    // available space without imposing its own scroll policy.
+    div()
+        .w_full()
+        .flex_col()
+        .child(body)
+        .child(footer)
+        .into_any_element()
 }
 
-// ── History card ────────────────────────────────────────────────────
-
-#[allow(clippy::too_many_arguments)]
-fn render_history_card(
+/// Render a single history card (urgency strip + monogram + app name +
+/// summary + body + actions + row dismiss).
+pub fn render_history_card(
     n: &Notification,
-    text_primary: gpui::Hsla,
-    text_muted: gpui::Hsla,
-    text_secondary: gpui::Hsla,
-    hover: gpui::Hsla,
-    accent: gpui::Hsla,
-    border_subtle: gpui::Hsla,
-    font_mono: &'static str,
-    _radius: gpui::Pixels,
+    _window: &mut Window,
+    cx: &mut App,
 ) -> AnyElement {
+    let theme = *chronos_ui::Theme::global(cx);
+    let text_primary = theme.text.primary;
+    let text_muted = theme.text.muted;
+    let text_secondary = theme.text.secondary;
+    let hover = theme.interactive.hover;
+    let accent = theme.accent.primary;
+    let border_subtle = theme.border.subtle;
+    let font_mono = theme.font_mono;
+    let _radius = theme.radius;
+
     let urgency_color = urgency_hsla(n.urgency);
     let icon_color = monogram_color(&n.app_name);
     let initials = app_initials(&n.app_name);
@@ -296,14 +238,6 @@ fn render_history_card(
                 .font_family(font_mono)
                 .text_size(px(BODY_FZ))
                 .line_height(px(BODY_FZ * 1.45))
-                // Clamp body to ~4 lines (mockup line-clamp:4) via
-                // multiple-line text height — we approx with `max_h` ==
-                // 4 * line-height and `overflow_hidden`. True ellipsis-
-                // on-line-N is not in this fork yet (cosmic-text
-                // limitation); the hard cap is the acceptable
-                // compromise (multiline `text_ellipsis` would render
-                // `…` on the last visible line *if* it could — see
-                // `examples/`).
                 .max_h(px(BODY_FZ * 1.45 * 4.))
                 .overflow_hidden()
                 .child(n.body.clone())
@@ -378,7 +312,7 @@ fn render_history_card(
 // ── Color / string helpers ──────────────────────────────────────────
 
 /// Urgency strip color from the mockup URGENCY_COLORS map.
-fn urgency_hsla(u: Urgency) -> gpui::Hsla {
+pub fn urgency_hsla(u: Urgency) -> gpui::Hsla {
     match u {
         Urgency::Low => gpui::Hsla::from(gpui::rgba(0x6c7086ff)),
         Urgency::Normal => gpui::Hsla::from(gpui::rgba(0xf9e2_afff)),
@@ -389,7 +323,7 @@ fn urgency_hsla(u: Urgency) -> gpui::Hsla {
 /// Monogram bg color — hash `app_name`'s first byte into the mockup's
 /// palette so a per-app color is stable across renders without carrying
 /// palette state. Falls back to accent if empty.
-fn monogram_color(app_name: &str) -> gpui::Hsla {
+pub fn monogram_color(app_name: &str) -> gpui::Hsla {
     const PALETTE: [u32; 8] = [
         0x89b4faff, 0xa6e3a1ff, 0xf38ba8ff, 0xcba6f7ff, 0x89dcebff, 0xfab387ff, 0xa6e3a1ff,
         0x45475aff,
@@ -402,7 +336,7 @@ fn monogram_color(app_name: &str) -> gpui::Hsla {
 }
 
 /// One- or two-letter initials from `app_name` (mockup style "Z", "M").
-fn app_initials(app_name: &str) -> String {
+pub fn app_initials(app_name: &str) -> String {
     let trimmed = app_name.trim();
     if trimmed.is_empty() {
         return "?".to_string();
@@ -421,9 +355,6 @@ mod tests {
 
     #[test]
     fn urgency_colors_match_mockup() {
-        // Mockup URGENCY_COLORS: low=#6c7086, normal=#f9e2af, critical=#f38ba8.
-        // We can't easily assert Hsla equality via green-channel, so just
-        // verify these don't all collapse to one color.
         let low = urgency_hsla(Urgency::Low);
         let normal = urgency_hsla(Urgency::Normal);
         let crit = urgency_hsla(Urgency::Critical);
