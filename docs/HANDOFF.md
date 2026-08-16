@@ -1,5 +1,23 @@
 # HANDOFF — контекст для новой сессии Архитектора
 
+**Обновлено: 2026-08-16 (чекпоинт #25 — T293 принята).**
+HEAD `2ffe9e5`.
+
+**T293 ПРИНЯТА** `feat(right-panel): Notifications tab replaces history popup`.
+Колокольчик → `select_tab(Notifications)`, попап снесён, общий `history_list`.
+`for_mode` оба режима после Updates, width 420, `icons/bell.svg`, MarkAllRead
+при открытии. Тосты не тронуты. Left-panel WIP не в коммите.
+
+Эррата моя: `default_dev_top`/`default_gamer_top` не содержали вкладку
+(спека требовала тот же слот); у вкладки не было скролла — колонка
+`overflow_hidden`, длинная лента обрезалась. Дописал. Empty T269-hero
+с `bell` не сделали — остался текст «No notifications»; не блокер.
+
+Мой прогон: `--lib` **558/558**. Live grim: колокольчик → вкладка, попапа
+в hyprctl нет, тост жив — не закрыт.
+
+---
+
 **Обновлено: 2026-08-16 (чекпоинт #24 — T265-F принята с эрратой, live открыт).**
 HEAD `ba810d8` + однострочная эррата теста.
 
