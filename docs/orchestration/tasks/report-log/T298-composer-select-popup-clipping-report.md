@@ -57,5 +57,4 @@ Overrode `SearchableListItem::render()` on `ModelSelectItem` and `ModeSelectItem
 `cf34cf6 fix(wayland): content_size returns window_bounds for layer-shell surfaces (T298)`
 
 **ChronOS (`ChronOS/`):**
-`48eefb8 fix(left-panel): composer Select popup wider menu_width and truncate override (T298)`
-`d238fa4 docs : T298 report — vertical clipping fixed, text truncation partial`
+`a4e46109 fix(left-panel): composer Select popup wider menu_width and truncate override (T298)`

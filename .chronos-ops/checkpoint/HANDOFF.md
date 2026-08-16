@@ -29,9 +29,9 @@ panic/error). Оба в `.chronos-ops/active/front/`, `FRONTEND.md`
 контрибьюторы берут задания отсюда. Весь рабочий канон архитектора
 физически переехал из `docs/` сюда же, в `.chronos-ops/checkpoint/`:
 этот `HANDOFF.md`, `ARCHITECTURE.md`, `ARCHITECT.md`, `TBD.md`,
-`SOUL.md`, `MEMORY.md`, `REJECTED.md` (бывший `docs/DECISIONS.log`,
-переименован). `docs/design/` → `.chronos-ops/design/`,
-`docs/superpowers/` → `.chronos-ops/superpowers/`, обе as-is. `docs/`
+`SOUL.md`, `MEMORY.md`, `REJECTED.md` (бывший `.chronos-ops/checkpoint/REJECTED.md`,
+переименован). `.chronos-ops/design/` → `.chronos-ops/design/`,
+`.chronos-ops/superpowers/` → `.chronos-ops/superpowers/`, обе as-is. `docs/`
 теперь только продукт+сайт: `product/`/`style/`/`guides/` подпапки,
 плюс `index.html`/`.nojekyll`/`landing/` (GitHub Pages, не переезжает
 никогда) и `hyprland/` (живой конфиг, не переезжает).
