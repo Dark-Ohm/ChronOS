@@ -5,6 +5,7 @@ pub mod favorites;
 pub mod grid;
 pub mod launch;
 pub mod launcher_config;
+pub mod providers;
 pub mod search;
 pub mod view;
 

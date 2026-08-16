@@ -18,9 +18,9 @@
 use std::collections::{HashMap, HashSet};
 
 use gpui::{
-    self, App, Bounds, Entity, FocusHandle, ImageSource, MouseButton, Render, ScrollHandle,
-    SharedString, Size, Subscription, Window, div, img, linear_color_stop, linear_gradient,
-    prelude::*, px, svg,
+    self, App, Bounds, ClipboardItem, Entity, FocusHandle, ImageSource, MouseButton, Render,
+    ScrollHandle, SharedString, Size, Subscription, Window, div, img, linear_color_stop,
+    linear_gradient, prelude::*, px, svg,
 };
 
 use chronos_services::applications::frecency;
@@ -40,6 +40,7 @@ use crate::launcher::grid::{
 use crate::launcher::app_menu;
 use crate::launcher::launch::launch;
 use crate::launcher::launcher_config::{self, Folder, LauncherConfig};
+use crate::launcher::providers::{self, Provider, ProviderAction, ProviderResult};
 use crate::launcher::search::FuzzySearch;
 use crate::state;
 
@@ -156,6 +157,10 @@ pub struct LauncherView {
     category_index: usize,
     /// Focus target for Categories/Grid sections (the Input is focused in Search).
     focus_handle: FocusHandle,
+    /// Active prefix provider (Apps = no prefix), parsed from the field text.
+    provider: Provider,
+    /// Rows returned by the active provider (empty for `Apps`).
+    provider_results: Vec<ProviderResult>,
 }
 
 impl LauncherView {
@@ -227,6 +232,8 @@ impl LauncherView {
             focus_section: FocusSection::Search,
             category_index: 0,
             focus_handle: cx.focus_handle(),
+            provider: Provider::Apps,
+            provider_results: Vec::new(),
         };
         view.set_entries(entries);
         // Repaint after the synchronous seed so the first frame shows the
@@ -343,6 +350,19 @@ impl LauncherView {
     }
 
     fn refresh_results(&mut self) {
+        // T265-E: a typed prefix switches the field's provider. Provider modes
+        // replace the app grid entirely; only `Apps` reaches the fuzzy search.
+        let (provider, payload) = providers::parse_prefix(&self.pattern);
+        self.provider = provider;
+        if provider != Provider::Apps {
+            self.provider_results = providers::results(provider, &payload);
+            self.results.clear();
+            self.categories.clear();
+            self.visible.clear();
+            self.selected = 0;
+            return;
+        }
+
         self.search.update_pattern(&self.pattern);
         // `results()` returns `(AppEntry, nucleo_score)`; the score becomes the
         // primary ranking key inside `frecency::rank` for typed queries.
@@ -472,6 +492,31 @@ impl LauncherView {
         }
     }
 
+    /// Move the provider-list cursor by `delta` (+1 / -1), clamped to the rows.
+    fn navigate_provider(&mut self, delta: isize, window: &mut Window) {
+        let len = self.provider_results.len();
+        if len == 0 {
+            return;
+        }
+        let next = if delta < 0 {
+            self.selected.saturating_sub(1)
+        } else {
+            (self.selected + 1).min(len - 1)
+        };
+        if next != self.selected {
+            self.selected = next;
+            window.refresh();
+        }
+    }
+
+    /// Run the selected provider row's action (Enter). Read-only rows (help,
+    /// sysinfo, calc error) stay open; everything else closes the launcher.
+    fn run_provider_selected(&mut self, window: &mut Window, cx: &mut App) {
+        if let Some(action) = self.provider_results.get(self.selected).map(|r| r.action.clone()) {
+            run_provider_action(&action, window, cx);
+        }
+    }
+
     // --- DnD drop handlers (mutate `config`, then persist + recompute) ---
 
     /// Drop onto a favorite cell: reorder if the drag started in Favorites,
@@ -587,9 +632,17 @@ impl LauncherView {
             "escape" => {
                 crate::launcher::close_this(window, cx);
             }
-            "tab" => self.cycle_focus_section(window, cx),
+            // In a prefix mode the category bar + grid are hidden, so Tab has
+            // nothing to cycle to — the Input keeps focus for further typing.
+            "tab" => {
+                if self.provider == Provider::Apps {
+                    self.cycle_focus_section(window, cx);
+                }
+            }
             "enter" => {
-                if self.focus_section == FocusSection::Categories {
+                if self.provider != Provider::Apps {
+                    self.run_provider_selected(window, cx);
+                } else if self.focus_section == FocusSection::Categories {
                     let pos = self.category_index;
                     self.select_category_at(pos);
                     self.sync_focus(window, cx);
@@ -608,7 +661,9 @@ impl LauncherView {
                 // In Search, left/right are the Input's cursor keys — ignored here.
             }
             "up" | "down" => {
-                if self.focus_section == FocusSection::Categories {
+                if self.provider != Provider::Apps {
+                    self.navigate_provider(if key == "up" { -1 } else { 1 }, window);
+                } else if self.focus_section == FocusSection::Categories {
                     self.focus_section = FocusSection::Grid;
                     self.sync_focus(window, cx);
                     window.refresh();
@@ -678,6 +733,9 @@ impl Render for LauncherView {
 
 impl LauncherView {
     fn render_card(&self, theme: &Theme, entity: Entity<Self>) -> impl IntoElement {
+        // T265-E: in a prefix mode the category bar + app grid (and its
+        // sections) are replaced by the provider's own result list.
+        let is_apps = self.provider == Provider::Apps;
         div()
             .w(px(720.))
             // Bounded height, so the content child has a leftover to flex into.
@@ -694,8 +752,11 @@ impl LauncherView {
             .flex_col()
             .child(self.render_header(theme))
             .child(self.render_search(theme))
-            .child(self.render_category_bar(theme, entity.clone()))
-            .when(!self.compact, |el| el.child(self.render_content(theme, entity)))
+            .when(is_apps, |el| {
+                el.child(self.render_category_bar(theme, entity.clone()))
+                    .when(!self.compact, |el| el.child(self.render_content(theme, entity.clone())))
+            })
+            .when(!is_apps, |el| el.child(self.render_provider_results(theme)))
             .child(self.render_footer(theme))
     }
 
@@ -726,7 +787,7 @@ impl LauncherView {
             )
             // Separator.
             .child(div().w(px(1.)).h(px(15.)).bg(theme.border.subtle))
-            // Mode chip "APPS" (static — scope cycling out of T261).
+            // Mode chip — reflects the active prefix provider (T265-E).
             .child(
                 div()
                     .flex()
@@ -742,7 +803,7 @@ impl LauncherView {
                         div()
                             .font_family(theme.font_mono)
                             .text_size(theme.font_sizes.xs)
-                            .child("APPS"),
+                            .child(self.provider.label()),
                     ),
             )
             .child(div().flex_1())
@@ -804,6 +865,94 @@ impl LauncherView {
                     .min_w(px(0.))
                     .child(input),
             )
+    }
+
+    /// Provider-mode result list (replaces the category bar + grid). A simple
+    /// column of rows — glyph + label + faint detail — navigated by up/down.
+    fn render_provider_results(&self, theme: &Theme) -> impl IntoElement {
+        let selected = self.selected;
+        div()
+            .id("launcher-provider-results")
+            .flex_1()
+            .min_h(px(0.))
+            .overflow_y_scroll()
+            .py(px(8.))
+            .flex()
+            .flex_col()
+            .when(self.provider_results.is_empty(), |el| {
+                el.child(
+                    div()
+                        .py(px(34.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_color(theme.text.faint)
+                        .text_sm()
+                        .child("No results"),
+                )
+            })
+            .children(self.provider_results.iter().enumerate().map(|(i, r)| {
+                self.render_provider_row(theme, r, i == selected)
+            }))
+    }
+
+    fn render_provider_row(
+        &self,
+        theme: &Theme,
+        result: &ProviderResult,
+        is_selected: bool,
+    ) -> impl IntoElement {
+        let label = SharedString::from(result.label.clone());
+        let action = result.action.clone();
+
+        let row = div()
+            .id(format!("launcher-provider-{}", result.id))
+            .px(px(14.))
+            .h(px(40.))
+            .flex()
+            .items_center()
+            .gap(px(10.))
+            .rounded(px(7.))
+            .cursor_pointer()
+            .when(is_selected, |el| el.bg(theme.bg.selection))
+            .when(!is_selected, |el| el.hover(|s| s.bg(theme.interactive.hover)))
+            .child(
+                div()
+                    .w(px(20.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .font_family(theme.font_mono)
+                    .text_size(px(13.))
+                    .text_color(if is_selected { theme.accent.primary } else { theme.text.muted })
+                    .child(result.glyph.to_string()),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(theme.text.primary)
+                    .whitespace_nowrap()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(label),
+            );
+
+        let row = match result.detail.clone() {
+            Some(detail) => row
+                .child(div().flex_1())
+                .child(
+                    div()
+                        .text_size(px(11.))
+                        .text_color(theme.text.faint)
+                        .whitespace_nowrap()
+                        .child(SharedString::from(detail)),
+                ),
+            None => row,
+        };
+
+        row.on_click(move |_event, window, cx: &mut App| {
+            run_provider_action(&action, window, cx);
+        })
     }
 
     fn render_category_bar(&self, theme: &Theme, entity: Entity<Self>) -> impl IntoElement {
@@ -1516,6 +1665,32 @@ fn resolve_app_icon(entry: &AppEntry, theme: &Theme, size: f32) -> gpui::AnyElem
         .bg(theme.bg.elevated)
         .child(div().text_size(px(size * 0.45)).text_color(theme.text.primary).child(letter))
         .into_any_element()
+}
+
+/// Execute a provider result's action from Enter or a click (T265-E).
+/// Read-only rows (`None`) do nothing; the rest close the launcher after their
+/// side effect. A free function because the view entity is not needed — only
+/// `window` (for close) and `cx` (for the clipboard).
+fn run_provider_action(action: &ProviderAction, window: &mut Window, cx: &mut App) {
+    match action {
+        ProviderAction::RunCommand(cmd) => {
+            if let Err(err) = providers::shell::run(cmd) {
+                tracing::error!("Failed to run command: {:#}", err);
+            }
+            crate::launcher::close_this(window, cx);
+        }
+        ProviderAction::OpenPath(path) => {
+            if let Err(err) = providers::files::open(path) {
+                tracing::error!("Failed to open path: {:#}", err);
+            }
+            crate::launcher::close_this(window, cx);
+        }
+        ProviderAction::Copy(text) => {
+            cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
+            crate::launcher::close_this(window, cx);
+        }
+        ProviderAction::None => {}
+    }
 }
 
 /// Inline-completion hint: the first visible result's name, shown as a faint
