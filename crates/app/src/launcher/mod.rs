@@ -1,5 +1,6 @@
 //! Launcher module: fuzzy search, overlay view, launch.
 
+pub mod grid;
 pub mod launch;
 pub mod pin_menu;
 pub mod search;
