@@ -5,7 +5,7 @@
 //! these.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
 use chronos_services::applications::frecency::{score, FrecencyData};
@@ -99,18 +99,20 @@ pub fn desktop_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// mtime (unix seconds) of `<dir>/<id>.desktop`; first existing dir wins.
+/// Resolve `<dir>/<id>.desktop`; first existing file wins (used for the
+/// "Show in file manager" action, T265-D).
+pub fn desktop_file_path(id: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+    dirs.iter()
+        .map(|dir| dir.join(format!("{id}.desktop")))
+        .find(|path| path.is_file())
+}
+
+/// mtime (unix seconds) of `<dir>/<id>.desktop`; first existing file wins.
 pub fn desktop_mtime(id: &str, dirs: &[PathBuf]) -> Option<i64> {
-    for dir in dirs {
-        let path = dir.join(format!("{id}.desktop"));
-        if let Ok(meta) = std::fs::metadata(&path)
-            && let Ok(modified) = meta.modified()
-            && let Ok(dur) = modified.duration_since(UNIX_EPOCH)
-        {
-            return Some(dur.as_secs() as i64);
-        }
-    }
-    None
+    let path = desktop_file_path(id, dirs)?;
+    let meta = std::fs::metadata(&path).ok()?;
+    let modified = meta.modified().ok()?;
+    modified.duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs() as i64)
 }
 
 /// Smallest unused `folder-<n>` id (1-based), deterministic given the folders.
@@ -249,6 +251,19 @@ mod tests {
             .as_secs() as i64;
         assert!(mtime <= now && now - mtime < 10, "mtime must be ~now");
         assert!(desktop_mtime("missing", &[dir.clone()]).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn desktop_file_path_finds_first_existing_dir() {
+        let dir = std::env::temp_dir().join("launcher-file-path-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("firefox.desktop");
+        std::fs::write(&file, "[Desktop Entry]\n").unwrap();
+
+        let found = desktop_file_path("firefox", &[dir.clone()]).expect("file must resolve");
+        assert_eq!(found, file);
+        assert!(desktop_file_path("missing", &[dir.clone()]).is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

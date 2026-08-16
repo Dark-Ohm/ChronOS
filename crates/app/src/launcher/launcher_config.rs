@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use futures_signals::signal::{Mutable, Signal};
 use serde::{Deserialize, Serialize};
 
 /// Default number of recents surfaced when the config has no `[recents]`.
@@ -67,6 +68,29 @@ pub struct LauncherConfig {
     pub recents: RecentsConfig,
     #[serde(default)]
     pub folders: Vec<Folder>,
+    /// User-hidden app ids (T265-D "Hide from list") — launcher-level
+    /// NoDisplay, NOT a `.desktop` edit on disk. Hidden entries stay in the
+    /// applications service and can be surfaced again later (T265-G).
+    #[serde(default)]
+    pub hidden: Vec<String>,
+}
+
+/// Process-wide change signal: fires whenever the config mutates (favorites /
+/// hidden / folders), so the launcher view re-filters and re-renders sections.
+static CHANGED: OnceLock<Mutable<()>> = OnceLock::new();
+
+fn changed() -> &'static Mutable<()> {
+    CHANGED.get_or_init(|| Mutable::new(()))
+}
+
+/// Subscribe to config mutations (T265-D). The launcher view uses this to drop
+/// newly-hidden ids from the grid and to refresh Favorites/Folders immediately.
+pub fn subscribe() -> impl Signal<Item = ()> {
+    changed().signal()
+}
+
+fn bump_changed() {
+    *changed().lock_mut() = ();
 }
 
 struct Store {
@@ -118,7 +142,7 @@ pub fn write_config(path: &Path, config: &LauncherConfig) -> std::io::Result<()>
     };
     let ours = toml::Value::try_from(config).expect("LauncherConfig is always serializable");
     if let toml::Value::Table(table) = ours {
-        for key in ["favorites", "recents", "folders"] {
+        for key in ["favorites", "recents", "folders", "hidden"] {
             if let Some(value) = table.get(key) {
                 root.insert(key.to_string(), value.clone());
             }
@@ -145,6 +169,7 @@ pub fn get() -> LauncherConfig {
 pub fn update(f: impl FnOnce(&mut LauncherConfig)) {
     let mut s = store().lock().unwrap();
     f(&mut s.config);
+    bump_changed();
     s.dirty = true;
     if s.last_save.elapsed() >= SAVE_DEBOUNCE {
         save_locked(&s.config);
@@ -199,6 +224,7 @@ mod tests {
                 name: "Work".into(),
                 apps: vec!["code".into(), "slack".into()],
             }],
+            hidden: vec!["org.gnome.eog".into()],
         };
         write_config(&path, &cfg).unwrap();
         let back = read_config(&path);
@@ -238,6 +264,19 @@ mod tests {
         let path = dir.join("launcher.toml");
         std::fs::write(&path, "not [[ valid toml").unwrap();
         assert_eq!(read_config(&path), LauncherConfig::default());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn hidden_round_trips() {
+        let dir = temp_dir("hidden-roundtrip");
+        let path = dir.join("launcher.toml");
+        let cfg = LauncherConfig {
+            hidden: vec!["firefox".into(), "org.gnome.eog".into()],
+            ..LauncherConfig::default()
+        };
+        write_config(&path, &cfg).unwrap();
+        assert_eq!(read_config(&path).hidden, vec!["firefox", "org.gnome.eog"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -1,10 +1,10 @@
 //! Launcher module: fuzzy search, overlay view, launch.
 
+pub mod app_menu;
 pub mod favorites;
 pub mod grid;
 pub mod launch;
 pub mod launcher_config;
-pub mod pin_menu;
 pub mod search;
 pub mod view;
 
@@ -203,5 +203,5 @@ pub fn toggle(cx: &mut App) {
 pub fn init(cx: &mut App) {
     tracing::info!("launcher::init called");
     cx.set_global(LauncherState::default());
-    pin_menu::init(cx);
+    app_menu::init(cx);
 }

@@ -37,9 +37,9 @@ use crate::launcher::grid::{
     build_categories, filter_by_category, move_2d, CELL_HEIGHT, CELL_WIDTH, GRID_COLUMNS, GRID_GAP,
     PAGE_ROWS, Move2D,
 };
+use crate::launcher::app_menu;
 use crate::launcher::launch::launch;
 use crate::launcher::launcher_config::{self, Folder, LauncherConfig};
-use crate::launcher::pin_menu;
 use crate::launcher::search::FuzzySearch;
 use crate::state;
 
@@ -66,20 +66,14 @@ enum FocusSection {
     Grid,
 }
 
-/// Where a drag payload originated — decides reorder vs add vs create-folder.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum DragFrom {
-    Favorites,
-    Recents,
-    Grid,
-}
-
 /// Internal DnD payload (GPUI in-window drag, NOT a file drag — T270).
+///
+/// The drop target decides the action (reorder vs insert vs create-folder),
+/// so the payload carries only the dragged app's identity.
 #[derive(Clone, Debug)]
 struct LauncherDrag {
     app_id: String,
     app_name: String,
-    from: DragFrom,
 }
 
 impl Render for LauncherDrag {
@@ -122,7 +116,10 @@ pub struct LauncherView {
     categories: Vec<(String, usize)>,
     /// `results` filtered by the effective category — what the grid shows.
     visible: Vec<AppEntry>,
-    /// Every listed entry (full set, uncapped) — source for sections + id map.
+    /// Every listed entry as delivered by the service, BEFORE the user-hidden
+    /// filter (T265-D) — the re-filter source for `all`.
+    raw_entries: Vec<AppEntry>,
+    /// Listed entries minus user-hidden ids — what sections/search/grid see.
     all: Vec<AppEntry>,
     /// id → entry for resolving favorites/folders.
     by_id: HashMap<String, AppEntry>,
@@ -210,6 +207,7 @@ impl LauncherView {
             results: Vec::new(),
             categories: Vec::new(),
             visible: Vec::new(),
+            raw_entries: Vec::new(),
             all: Vec::new(),
             by_id: HashMap::new(),
             config: launcher_config::get(),
@@ -243,17 +241,40 @@ impl LauncherView {
             cx.notify();
         });
 
+        // T265-D: config mutations (favorite / hide / folder ops) re-filter the
+        // hidden set and refresh sections immediately, without a restart.
+        let config_signal = launcher_config::subscribe();
+        state::watch(cx, config_signal, |this, _, cx| {
+            this.apply_hidden_filter();
+            this.recompute_sections();
+            this.refresh_results();
+            cx.notify();
+        });
+
         view
     }
 
     /// Replace the full listed entry set (initial seed + inotify rescan).
     fn set_entries(&mut self, entries: Vec<AppEntry>) {
-        self.all = entries.clone();
-        self.by_id = index_by_id(&entries);
-        self.search.set_items(entries);
+        self.raw_entries = entries;
+        self.apply_hidden_filter();
         self.recompute_new_ids();
         self.recompute_sections();
         self.refresh_results();
+    }
+
+    /// Re-filter the listed set by user-hidden ids (T265-D) and rebuild the id
+    /// map + search index from the visible remainder.
+    fn apply_hidden_filter(&mut self) {
+        let hidden: HashSet<String> = launcher_config::get().hidden.iter().cloned().collect();
+        self.all = self
+            .raw_entries
+            .iter()
+            .filter(|e| !hidden.contains(&e.id))
+            .cloned()
+            .collect();
+        self.by_id = index_by_id(&self.all);
+        self.search.set_items(self.all.clone());
     }
 
     /// Which listed entries carry the "new" badge (`.desktop` mtime < NEW_DAYS).
@@ -995,15 +1016,7 @@ impl LauncherView {
                     row.iter()
                         .enumerate()
                         .map(|(ci, entry)| {
-                            self.render_section_cell(
-                                theme,
-                                entity.clone(),
-                                entry,
-                                DragFrom::Favorites,
-                                hide_labels,
-                                true,
-                                ci,
-                            )
+                            self.render_section_cell(theme, entity.clone(), entry, hide_labels, true, ci)
                         }),
                 )
             }));
@@ -1028,7 +1041,7 @@ impl LauncherView {
             .child(self.render_section_header(theme, "Recents", self.recents.len()))
             .children(self.recents.chunks(SECTION_COLUMNS).map(|row| {
                 div().flex().gap(px(GRID_GAP)).children(row.iter().map(|entry| {
-                    self.render_section_cell(theme, entity.clone(), entry, DragFrom::Recents, false, false, 0)
+                    self.render_section_cell(theme, entity.clone(), entry, false, false, 0)
                 }))
             }))
     }
@@ -1062,7 +1075,7 @@ impl LauncherView {
             }))
             .when(!expanded_apps.is_empty(), |el| {
                 el.child(div().flex().gap(px(GRID_GAP)).children(expanded_apps.iter().map(|entry| {
-                    self.render_section_cell(theme, entity.clone(), entry, DragFrom::Recents, false, false, 0)
+                    self.render_section_cell(theme, entity.clone(), entry, false, false, 0)
                 })))
             })
     }
@@ -1074,7 +1087,6 @@ impl LauncherView {
         theme: &Theme,
         entity: Entity<Self>,
         entry: &AppEntry,
-        from: DragFrom,
         hide_label: bool,
         is_favorite: bool,
         index: usize,
@@ -1086,7 +1098,6 @@ impl LauncherView {
         let drag_payload = LauncherDrag {
             app_id: entry.id.clone(),
             app_name: entry.name.clone(),
-            from,
         };
         let drop_target = entry.id.clone();
         let entity_for_drop = entity.clone();
@@ -1103,12 +1114,11 @@ impl LauncherView {
             .gap(px(4.))
             .rounded(px(8.))
             .cursor_pointer()
-            .hover(|s| s.bg(theme.interactive.hover))
-            .on_mouse_down(
+            .hover(|s| s.bg(theme.interactive.hover))                .on_mouse_down(
                 MouseButton::Right,
                 move |event, window, cx: &mut App| {
                     let anchor = Bounds::new(event.position, Size::new(px(1.), px(1.)));
-                    pin_menu::open(cx, anchor, event.position, window.window_handle(), pin_entry.id.clone());
+                    app_menu::open(cx, anchor, event.position, window.window_handle(), pin_entry.clone());
                 },
             )
             .child(
@@ -1316,7 +1326,6 @@ impl LauncherView {
         let drag_payload = LauncherDrag {
             app_id: entry.id.clone(),
             app_name: entry.name.clone(),
-            from: DragFrom::Grid,
         };
         let drop_target = entry.id.clone();
         let entity_for_drop = entity.clone();
@@ -1353,7 +1362,7 @@ impl LauncherView {
                 MouseButton::Right,
                 move |event, window, cx: &mut App| {
                     let anchor = Bounds::new(event.position, Size::new(px(1.), px(1.)));
-                    pin_menu::open(cx, anchor, event.position, window.window_handle(), entry_for_menu.id.clone());
+                    app_menu::open(cx, anchor, event.position, window.window_handle(), entry_for_menu.clone());
                 },
             )
             // App icon (SVG via system theme, or letter fallback).
