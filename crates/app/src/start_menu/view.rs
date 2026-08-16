@@ -40,7 +40,7 @@ const CRUMBS_H: f32 = 28.;
 /// 6px gaps, five 84px cells fit (mockup `minmax(84px, 1fr)`).
 const GRID_COLUMNS: usize = 5;
 const CELL_WIDTH: f32 = 84.;
-const CELL_HEIGHT: f32 = 88.;
+const CELL_HEIGHT: f32 = 102.;
 const GRID_GAP: f32 = 6.;
 const GRID_ICON: f32 = 34.;
 /// PageUp/PageDown stride (rows).
@@ -434,6 +434,14 @@ impl StartMenuView {
                     .overflow_y_scroll()
                     .py(px(6.))
                     .child(self.render_places(theme, entity.clone()))
+                    .child(
+                        div()
+                            .mx(px(16.))
+                            .mt(px(4.))
+                            .mb(px(6.))
+                            .h(px(1.))
+                            .bg(theme.border.subtle.opacity(0.45)),
+                    )
                     .child(self.render_categories(theme, entity.clone())),
             )
             .child(self.render_rail_footer(theme, entity))
@@ -467,7 +475,7 @@ impl StartMenuView {
                 entity.clone(),
                 Nav::Recent,
                 "Recent",
-                None,
+                Some(self.recents.len()),
                 self.nav == Nav::Recent,
             ))
             .child(nav_item(
@@ -674,6 +682,14 @@ impl StartMenuView {
     fn render_grid(&self, theme: &Theme, entity: Entity<Self>) -> impl IntoElement {
         let selected = self.selected;
         let is_files = self.nav == Nav::Files;
+        let is_recent = self.nav == Nav::Recent;
+        let favorite_ids: HashSet<&str> = self.favorites.iter().map(|e| e.id.as_str()).collect();
+        let frecency = if is_recent {
+            Some(frecency::cached())
+        } else {
+            None
+        };
+        let now = if is_recent { Some(frecency::now()) } else { None };
         let rows: Vec<&[AppEntry]> = self.visible.chunks(self.columns).collect();
         let label = self.nav.breadcrumb();
 
@@ -727,10 +743,17 @@ impl StartMenuView {
                             .pb(px(GRID_GAP))
                             .children(row.iter().enumerate().map(|(ci, entry)| {
                                 let flat = ri * self.columns + ci;
+                                let recent_time = frecency.as_ref().and_then(|data| {
+                                    data.entries.get(&entry.id).map(|rec| {
+                                        relative_launch_time(rec.last_launched_at, now.unwrap_or(0))
+                                    })
+                                });
                                 self.render_cell(
                                     theme,
                                     entry,
                                     flat == selected,
+                                    favorite_ids.contains(entry.id.as_str()),
+                                    recent_time,
                                     entity.clone(),
                                 )
                             }))
@@ -743,11 +766,18 @@ impl StartMenuView {
         theme: &Theme,
         entry: &AppEntry,
         is_selected: bool,
+        is_favorite: bool,
+        recent_time: Option<String>,
         entity: Entity<Self>,
     ) -> impl IntoElement {
         let entry_for_click = entry.clone();
         let icon_el = resolve_app_icon(entry, theme, GRID_ICON);
         let name = SharedString::from(entry.name.clone());
+        let icon_color = if is_selected {
+            theme.accent.primary
+        } else {
+            theme.text.primary
+        };
 
         div()
             .id(format!("start-menu-cell-{}", entry.id))
@@ -764,12 +794,33 @@ impl StartMenuView {
             .when(!is_selected, |el| el.hover(|s| s.bg(theme.interactive.hover)))
             .child(
                 div()
+                    .relative()
                     .size(px(GRID_ICON))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_color(if is_selected { theme.accent.primary } else { theme.text.muted })
-                    .child(icon_el),
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(if is_selected {
+                        theme.accent.primary
+                    } else {
+                        theme.border.default
+                    })
+                    .text_color(icon_color)
+                    .child(icon_el)
+                    .when(is_favorite, |el| {
+                        el.child(
+                            div()
+                                .absolute()
+                                .top(px(-3.))
+                                .right(px(-3.))
+                                .size(px(8.))
+                                .rounded_full()
+                                .bg(theme.bg.elevated)
+                                .border_2()
+                                .border_color(theme.bg.primary),
+                        )
+                    }),
             )
             .child(
                 div()
@@ -782,6 +833,14 @@ impl StartMenuView {
                     .when(is_selected, |el| el.text_color(theme.accent.primary))
                     .child(name),
             )
+            .when_some(recent_time, |el, time| {
+                el.child(
+                    div()
+                        .text_size(px(9.5))
+                        .text_color(theme.text.faint)
+                        .child(time),
+                )
+            })
             .on_click(move |_event, window, cx: &mut App| {
                 let entry = entry_for_click.clone();
                 entity.update(cx, |this, cx| {
@@ -815,6 +874,7 @@ fn nav_item(
     active: bool,
 ) -> impl IntoElement {
     div()
+        .relative()
         .flex()
         .items_center()
         .gap(px(10.))
@@ -826,6 +886,19 @@ fn nav_item(
         .font_weight(gpui::FontWeight::MEDIUM)
         .when(active, |el| el.bg(theme.bg.selection).text_color(theme.accent.primary))
         .when(!active, |el| el.text_color(theme.text.primary).hover(|s| s.bg(theme.bg.elevated)))
+        .when(active, |el| {
+            el.child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .top(px(6.))
+                    .bottom(px(6.))
+                    .w(px(3.))
+                    .rounded_tr(px(2.))
+                    .rounded_br(px(2.))
+                    .bg(theme.accent.primary),
+            )
+        })
         .child(
             div()
                 .whitespace_nowrap()
@@ -839,7 +912,7 @@ fn nav_item(
                 div()
                     .font_family(theme.font_mono)
                     .text_size(px(10.))
-                    .text_color(if active { theme.accent.primary } else { theme.text.faint })
+                    .text_color(if active { theme.accent.primary } else { theme.text.muted })
                     .child(badge.unwrap_or(0).to_string()),
             )
         })
@@ -872,6 +945,21 @@ fn card_shadow(theme: &Theme) -> Vec<gpui::BoxShadow> {
         gpui::BoxShadow::new(px(0.), px(10.), theme.bg.primary.opacity(0.45)).blur_radius(px(40.)),
         gpui::BoxShadow::new(px(0.), px(1.), theme.bg.primary.opacity(0.3)).blur_radius(px(2.)),
     ]
+}
+
+/// Resolve an application icon (system theme) or fall back to a letter glyph.
+/// Compact relative age for the Recent grid (mockup `2m ago` / `1h ago`).
+fn relative_launch_time(last_launched_at: i64, now: i64) -> String {
+    let secs = (now - last_launched_at).max(0);
+    if secs < 60 {
+        "just now".to_string()
+    } else if secs < 3600 {
+        format!("{}m ago", secs / 60)
+    } else if secs < 86_400 {
+        format!("{}h ago", secs / 3600)
+    } else {
+        format!("{}d ago", secs / 86_400)
+    }
 }
 
 /// Resolve an application icon (system theme) or fall back to a letter glyph.
@@ -974,6 +1062,14 @@ mod tests {
         assert_eq!(Nav::Recent.breadcrumb(), "Recent");
         assert_eq!(Nav::Files.breadcrumb(), "Files");
         assert_eq!(Nav::Category("Dev".into()).breadcrumb(), "All Apps › Dev");
+    }
+
+    #[test]
+    fn relative_launch_time_buckets() {
+        assert_eq!(relative_launch_time(100, 130), "just now");
+        assert_eq!(relative_launch_time(0, 120), "2m ago");
+        assert_eq!(relative_launch_time(0, 3 * 3600), "3h ago");
+        assert_eq!(relative_launch_time(0, 2 * 86_400), "2d ago");
     }
 
     #[test]
