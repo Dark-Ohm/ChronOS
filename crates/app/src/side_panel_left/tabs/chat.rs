@@ -14,6 +14,7 @@
 
 use chronos_services::hermes_acp::{AgentDescriptor, HermesClient, StreamingEvent, known_agents};
 use chronos_services::threads::{ThreadRecord, ThreadStore};
+use crate::side_panel_left::composer::{ModeSelectDelegate, ModelSelectDelegate};
 use gpui::{
     Context, Focusable, Window,
     prelude::*, px,
@@ -98,9 +99,14 @@ pub struct ChatTab {
     pub(crate) composer_previous_mode: String,
     /// Cached ID of the bypass/YOLO mode found in available_modes, if any.
     pub(crate) composer_yolo_bypass_id: Option<String>,
-    pub(crate) composer_model_dropdown_open: bool,
-    pub(crate) composer_mode_dropdown_open: bool,
-    pub(crate) composer_model_search: String,
+    /// T287-A: model picker is a kit `Select` (its own keyboard nav + search).
+    pub(crate) composer_model_select:
+        gpui::Entity<gpui_component::select::SelectState<ModelSelectDelegate>>,
+    /// T287-A: mode picker — same kit Select, non-searchable.
+    pub(crate) composer_mode_select:
+        gpui::Entity<gpui_component::select::SelectState<ModeSelectDelegate>>,
+    _composer_model_select_events: gpui::Subscription,
+    _composer_mode_select_events: gpui::Subscription,
     /// File-drag hover highlight on the composer (T286, was on TextInputState).
     pub(crate) composer_drop_hover: bool,
     pub(crate) streaming: state::StreamingState,
@@ -178,6 +184,45 @@ impl ChatTab {
                 _ => {}
             }
         });
+
+        // T287-A: model/mode pickers are kit `Select` — state lives here
+        // (created with a window available, like the composer Input), and
+        // `Confirm` commits the same path the old `on_click` did.
+        let composer_model_select = cx.new(|cx| {
+            gpui_component::select::SelectState::new(
+                crate::side_panel_left::composer::model_delegate_empty(),
+                None,
+                window,
+                cx,
+            )
+            .searchable(true)
+        });
+        let composer_mode_select = cx.new(|cx| {
+            gpui_component::select::SelectState::new(
+                crate::side_panel_left::composer::mode_delegate_empty(),
+                None,
+                window,
+                cx,
+            )
+        });
+        let _composer_model_select_events = cx.subscribe_in(
+            &composer_model_select,
+            window,
+            |this, _, event, window, cx| {
+                if let gpui_component::select::SelectEvent::Confirm(Some(value)) = event {
+                    this.apply_model_select(value.as_str(), window, cx);
+                }
+            },
+        );
+        let _composer_mode_select_events = cx.subscribe_in(
+            &composer_mode_select,
+            window,
+            |this, _, event, window, cx| {
+                if let gpui_component::select::SelectEvent::Confirm(Some(value)) = event {
+                    this.apply_mode_select(value.as_str(), window, cx);
+                }
+            },
+        );
 
         // Open the thread store (T150). Falls back to None if the DB can't
         // be opened — the panel still works with in-memory sessions.
@@ -372,9 +417,10 @@ impl ChatTab {
             composer_selected_mode: String::new(),
             composer_previous_mode: String::new(),
             composer_yolo_bypass_id: None,
-            composer_model_dropdown_open: false,
-            composer_mode_dropdown_open: false,
-            composer_model_search: String::new(),
+            composer_model_select,
+            composer_mode_select,
+            _composer_model_select_events,
+            _composer_mode_select_events,
             composer_drop_hover: false,
             streaming: state::StreamingState::new(),
             pending_send: None,

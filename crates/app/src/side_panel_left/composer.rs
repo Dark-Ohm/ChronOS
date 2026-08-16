@@ -3,11 +3,141 @@ use chronos_ui::{Theme, on_fill};
 use gpui::{
     Context, ExternalPaths, IntoElement, SharedString, Window, div, img, prelude::*, px,
 };
-use gpui_component::input::{Escape as InputEscape, Input};
+use gpui_component::input::Input;
+use gpui_component::searchable_list::{SearchableListItem, SearchableListDelegate, SearchableVec};
+use gpui_component::select::{Select, SelectState};
+use gpui_component::{Sizable, Size as KitSize};
 
 use crate::side_panel_left::ChatTab;
 use super::chat_view::{ChatMessage, MessageRole, Segment};
 use super::state::AgentStatus;
+
+// ── Select item types (T287-A) ──────────────────────────────────────────
+// The kit `Select` delegates over these. Value is the model/mode id
+// (Clone + PartialEq); `title()` mirrors the old manual row: name, falling
+// back to id when the ACP agent omits a display name.
+#[derive(Clone)]
+pub(crate) struct ModelSelectItem {
+    id: SharedString,
+    name: SharedString,
+}
+
+impl SearchableListItem for ModelSelectItem {
+    type Value = SharedString;
+
+    fn title(&self) -> SharedString {
+        if self.name.is_empty() {
+            self.id.clone()
+        } else {
+            self.name.clone()
+        }
+    }
+
+    fn value(&self) -> &Self::Value {
+        &self.id
+    }
+}
+
+/// Delegate for the model picker. `SearchableVec` handles the kit search
+/// (case-insensitive substring on `title()`) and the single-select strategy.
+pub(crate) type ModelSelectDelegate = SearchableVec<ModelSelectItem>;
+
+/// Build the model delegate from the ACP session's advertised models.
+pub(crate) fn model_delegate_from(models: &[chronos_services::ModelInfo]) -> ModelSelectDelegate {
+    SearchableVec::from(
+        models
+            .iter()
+            .map(|m| ModelSelectItem {
+                id: m.id.clone().into(),
+                name: m.name.clone().into(),
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
+pub(crate) fn model_delegate_empty() -> ModelSelectDelegate {
+    SearchableVec::from(Vec::new())
+}
+
+#[derive(Clone)]
+pub(crate) struct ModeSelectItem {
+    id: SharedString,
+    name: SharedString,
+}
+
+impl SearchableListItem for ModeSelectItem {
+    type Value = SharedString;
+
+    fn title(&self) -> SharedString {
+        if self.name.is_empty() {
+            self.id.clone()
+        } else {
+            self.name.clone()
+        }
+    }
+
+    fn value(&self) -> &Self::Value {
+        &self.id
+    }
+}
+
+pub(crate) type ModeSelectDelegate = SearchableVec<ModeSelectItem>;
+
+pub(crate) fn mode_delegate_from(modes: &[chronos_services::SessionMode]) -> ModeSelectDelegate {
+    SearchableVec::from(
+        modes
+            .iter()
+            .map(|m| ModeSelectItem {
+                id: m.id.clone().into(),
+                name: m.name.clone().into(),
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
+pub(crate) fn mode_delegate_empty() -> ModeSelectDelegate {
+    SearchableVec::from(Vec::new())
+}
+
+// ── Select delegate sync ─────────────────────────────────────────────────
+// The kit `Select` state is owned by `ChatTab`; these helpers keep its
+// delegate and selection in sync with `available_models`/`composer_selected_model`
+// on every render. `set_items` runs every render — it is cheap, and no
+// `ChatTab` notify path fires while a dropdown is open (typing/search is
+// local to the kit's own list entity; hover only touches a global timer),
+// so the kit's filtered view is never reset mid-open.
+fn sync_model_items(panel: &ChatTab, window: &mut Window, cx: &mut Context<ChatTab>) {
+    panel.composer_model_select.update(cx, |s, cx| {
+        s.set_items(model_delegate_from(&panel.available_models), window, cx);
+        let selected = panel.composer_selected_model.clone().into();
+        sync_selection(s, &selected, window, cx);
+    });
+}
+
+fn sync_mode_items(panel: &ChatTab, window: &mut Window, cx: &mut Context<ChatTab>) {
+    panel.composer_mode_select.update(cx, |s, cx| {
+        s.set_items(mode_delegate_from(&panel.available_modes), window, cx);
+        let selected = panel.composer_selected_mode.clone().into();
+        sync_selection(s, &selected, window, cx);
+    });
+}
+
+/// Keep the kit trigger's title in sync with `composer_selected_*` without
+/// disturbing the user's dropdown cursor (only re-points selection when the
+/// committed value actually changed).
+fn sync_selection<D>(
+    s: &mut SelectState<D>,
+    selected: &<D::Item as SearchableListItem>::Value,
+    window: &mut Window,
+    cx: &mut Context<SelectState<D>>,
+) where
+    D: SearchableListDelegate,
+    <D::Item as SearchableListItem>::Value: PartialEq + Clone,
+{
+    if s.selected_value().map(|v| v != selected).unwrap_or(true) {
+        s.set_selected_value(selected, window, cx);
+    }
+}
 
 impl ChatTab {
     /// Scan available_modes for a mode whose `id` contains "bypass", "dont",
@@ -41,11 +171,51 @@ impl ChatTab {
         }
         cx.notify();
     }
+
+    /// T287-A: model `Confirm` handler. Side effect is 1:1 with the old
+    /// `model_picker` `on_click` — only the event source changed (kit
+    /// `SelectEvent::Confirm` instead of a hand-rolled click).
+    pub(crate) fn apply_model_select(
+        &mut self,
+        model_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.composer_selected_model = model_id.to_string();
+        self.composer_input.update(cx, |s, cx| s.focus(window, cx));
+        if let Some(client) = self.clients.get(&self.active_agent_id).cloned() {
+            let model_id = model_id.to_string();
+            cx.spawn(async move |this, cx| {
+                if let Err(e) = client.set_model(&model_id).await {
+                    tracing::warn!("set_model failed: {e}");
+                }
+                let _ = this.update(cx, |_this, cx| {
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
+        cx.notify();
+    }
+
+    /// T287-A: mode `Confirm` — same 1:1 as the old `mode_picker` `on_click`
+    /// (set selected mode, refocus composer, repaint). No ACP call — the old
+    /// mode click never made one either.
+    pub(crate) fn apply_mode_select(
+        &mut self,
+        mode_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.composer_selected_mode = mode_id.to_string();
+        self.composer_input.update(cx, |s, cx| s.focus(window, cx));
+        cx.notify();
+    }
 }
 
 pub fn render_composer(
     panel: &ChatTab,
-    _window: &mut Window,
+    window: &mut Window,
     cx: &mut Context<ChatTab>,
 ) -> impl IntoElement {
     let theme = *Theme::global(cx);
@@ -67,8 +237,8 @@ pub fn render_composer(
         .flex()
         .items_center()
         .gap(px(6.))
-        .children(model_picker(panel, cx))
-        .children(mode_picker(panel, cx))
+        .child(model_picker(panel, window, cx))
+        .child(mode_picker(panel, window, cx))
         .children(yolo_button(panel, is_yolo_active, has_modes, cx))
         .child(follow_button(panel, cx));
 
@@ -93,16 +263,6 @@ pub fn render_composer(
         .track_focus(&focus)
         .on_key_down(cx.listener(|this, event, window, cx| {
             this.handle_composer_key(event, window, cx);
-        }))
-        .on_action(cx.listener(|this, _: &InputEscape, _window, cx| {
-            // Escape propagated out of the kit Input (its own handler had
-            // nothing to clean): close pickers if open.
-            if this.composer_model_dropdown_open || this.composer_mode_dropdown_open {
-                this.composer_model_dropdown_open = false;
-                this.composer_mode_dropdown_open = false;
-                this.composer_model_search.clear();
-                cx.notify();
-            }
         }))
         .on_drop(cx.listener(|this, paths: &ExternalPaths, window, cx| {
             let text = paths.paths().iter()
@@ -265,349 +425,53 @@ fn follow_button(
 }
 
 // ── Model picker ───────────────────────────────────────────────────────
+// ── Model picker ───────────────────────────────────────────────────────
+// T287-A: kit `Select`. The trigger is a 150 px pill; the dropdown is the
+// kit's anchored search list (searchable). When `available_models` is empty
+// the trigger is disabled and shows the "Model" placeholder — the ACP
+// agent doesn't advertise models until a session response, so this is an
+// intentional "loading" affordance, not a missing feature.
 fn model_picker(
     panel: &ChatTab,
+    window: &mut Window,
     cx: &mut Context<ChatTab>,
-) -> Option<impl IntoElement> {
-    let theme = *Theme::global(cx);
-    // Show a muted, inert "Model" placeholder pill instead of hiding when
-    // there's no data yet — our Hermes ACP agent only advertises available
-    // models on a session response, and (live smoke, 2026-07-23) that can
-    // still be empty right after connect. Hiding the indicator entirely
-    // reads as "no such feature", not "loading" — keep the affordance
-    // visible, just disabled.
+) -> impl IntoElement {
+    sync_model_items(panel, window, cx);
     let has_data = !panel.available_models.is_empty();
-    let selected_model = panel.composer_selected_model.clone();
-    let selected_model_display = if selected_model.is_empty() {
-        "Model".to_string()
-    } else {
-        selected_model.clone()
-    };
-    let model_open = has_data && panel.composer_model_dropdown_open;
-
-    let search_q = panel.composer_model_search.to_lowercase();
-
-    let filtered: Vec<_> = if search_q.is_empty() {
-        panel.available_models.iter().collect()
-    } else {
-        panel
-            .available_models
-            .iter()
-            .filter(|m| {
-                m.id.to_lowercase().contains(&search_q)
-                    || m.name.to_lowercase().contains(&search_q)
-            })
-            .collect()
-    };
-
-    let search_active = !panel.composer_model_search.is_empty();
-    let search_display: gpui::SharedString = if panel.composer_model_search.is_empty() {
-        "Search models…".into()
-    } else {
-        panel.composer_model_search.clone().into()
-    };
-    let total = panel.available_models.len();
-    let counter_text = if search_active {
-        format!("{} of {}", filtered.len(), total)
-    } else {
-        format!("{}", total)
-    };
-
-    let model_items: Vec<_> = filtered
-        .iter()
-        .enumerate()
-        .map(|(i, m)| {
-            let m_id = m.id.clone();
-            let m_name = if m.name.is_empty() {
-                m.id.clone()
-            } else {
-                m.name.clone()
-            };
-            let is_active = m.id == selected_model;
-            div()
-                .id(format!("model-item-{i}"))
-                .w_full()
-                .px(px(10.))
-                .py(px(5.))
-                .rounded(px(4.))
-                .text_size(px(11.))
-                .text_color(if is_active {
-                    theme.text.primary
-                } else {
-                    theme.text.secondary
-                })
-                .when(is_active, |el| el.bg(theme.border.default))
-                .when(!is_active, |el| el.hover(|s| s.bg(theme.border.subtle)))
-                .cursor_pointer()
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.composer_selected_model = m_id.clone();
-                    this.composer_model_dropdown_open = false;
-                    this.composer_model_search.clear();
-                    this.composer_input.update(cx, |s, cx| s.focus(window, cx));
-                    if let Some(client) = this.clients.get(&this.active_agent_id).cloned() {
-                        let model = m_id.clone();
-                        cx.spawn(async move |this, cx| {
-                            if let Err(e) = client.set_model(&model).await {
-                                tracing::warn!("set_model failed: {e}");
-                            }
-                            let _ = this.update(cx, |_this, cx| {
-                                cx.notify();
-                            });
-                        })
-                        .detach();
-                    }
-                    cx.notify();
-                }))
-                .child(m_name)
-        })
-        .collect();
-
-    let list_content: Option<gpui::AnyElement> = if model_items.is_empty() {
-        Some(
-            div()
-                .text_size(px(10.))
-                .text_color(theme.text.disabled)
-                .px(px(8.))
-                .py(px(6.))
-                .child("Nothing found")
-                .into_any(),
+    div()
+        .id("composer-model-picker-wrap")
+        .flex_none()
+        .w(px(150.))
+        .child(
+            Select::new(&panel.composer_model_select)
+                .placeholder("Model")
+                .disabled(!has_data)
+                .search_placeholder("Search models…")
+                .with_size(KitSize::XSmall),
         )
-    } else {
-        Some(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(2.))
-                .children(model_items)
-                .into_any(),
-        )
-    };
-
-    let dropdown = if model_open {
-        Some(
-            div()
-                .id("composer-model-dropdown")
-                .absolute()
-                .bottom(px(26.))
-                .right(px(0.))
-                .min_w(px(200.))
-                .bg(theme.bg.primary)
-                .border_1()
-                .border_color(theme.border.default)
-                .rounded(px(6.))
-                .p(px(4.))
-                .flex()
-                .flex_col()
-                .gap(px(2.))
-                .child(
-                    div()
-                        .flex_none()
-                        .px(px(6.))
-                        .py(px(4.))
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(6.))
-                                .w_full()
-                                .child(
-                                    div()
-                                        .flex_none()
-                                        .text_size(px(10.))
-                                        .text_color(theme.text.disabled)
-                                        .child("🔍"),
-                                )
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .text_size(px(10.5))
-                                        .text_color(theme.text.primary)
-                                        .child(search_display),
-                                )
-                                .child(
-                                    div()
-                                        .flex_none()
-                                        .text_size(px(9.))
-                                        .text_color(theme.text.muted)
-                                        .child(counter_text),
-                                ),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex_none()
-                        .w_full()
-                        .h(px(1.))
-                        .bg(theme.border.subtle),
-                )
-                .child(
-                    div()
-                        .id("composer-model-dropdown-list")
-                        .flex_1()
-                        .max_h(px(250.))
-                        .overflow_y_scroll()
-                        .children(list_content),
-                ),
-        )
-    } else {
-        None
-    };
-
-    Some(
-        div()
-            .id("composer-model-picker-wrap")
-            .relative()
-            .child(
-                div()
-                    .id("composer-model-picker")
-                    .h(px(22.))
-                    .px(px(8.))
-                    .rounded(px(6.))
-                    .border_1()
-                    .border_color(theme.border.subtle)
-                    .flex()
-                    .items_center()
-                    .text_size(px(10.5))
-                    .text_color(if has_data {
-                        theme.text.secondary
-                    } else {
-                        theme.text.disabled
-                    })
-                    .when(has_data, |el| {
-                        el.cursor_pointer()
-                            .hover(|s| s.bg(theme.border.subtle))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.composer_model_dropdown_open =
-                                    !this.composer_model_dropdown_open;
-                                if !this.composer_model_dropdown_open {
-                                    this.composer_model_search.clear();
-                                    // Reopen path (toggle off): back to typing.
-                                    this.composer_input.update(cx, |s, cx| s.focus(window, cx));
-                                } else {
-                                    // T286: the search inside the dropdown is
-                                    // driven by the panel hub, not the kit Input.
-                                    window.focus(&this.composer_focus, cx);
-                                }
-                                this.composer_mode_dropdown_open = false;
-                                cx.notify();
-                            }))
-                    })
-                    .child(format!("{} ⌄", selected_model_display)),
-            )
-            .children(dropdown),
-    )
 }
 
 // ── Mode picker ────────────────────────────────────────────────────────
-fn mode_picker(panel: &ChatTab, cx: &mut Context<ChatTab>) -> Option<impl IntoElement> {
-    let theme = *Theme::global(cx);
-    // Same "muted placeholder, not hidden" reasoning as model_picker above.
+// Same kit Select, non-searchable (the kit's `searchable(false)` is the
+// cheap path — no need to hand-roll a second picker). Same "Model"
+// placeholder-when-empty rule.
+fn mode_picker(
+    panel: &ChatTab,
+    window: &mut Window,
+    cx: &mut Context<ChatTab>,
+) -> impl IntoElement {
+    sync_mode_items(panel, window, cx);
     let has_data = !panel.available_modes.is_empty();
-    let selected_mode = panel.composer_selected_mode.clone();
-    let selected_mode_display = if selected_mode.is_empty() {
-        "Mode".to_string()
-    } else {
-        selected_mode.clone()
-    };
-    let mode_open = has_data && panel.composer_mode_dropdown_open;
-
-    let mode_items: Vec<_> = panel
-        .available_modes
-        .iter()
-        .enumerate()
-        .map(|(i, m)| {
-            let m_id = m.id.clone();
-            let m_name = if m.name.is_empty() {
-                m.id.clone()
-            } else {
-                m.name.clone()
-            };
-            let is_active = m.id == selected_mode;
-            div()
-                .id(format!("mode-item-{i}"))
-                .w_full()
-                .px(px(10.))
-                .py(px(5.))
-                .rounded(px(4.))
-                .text_size(px(11.))
-                .text_color(if is_active {
-                    theme.text.primary
-                } else {
-                    theme.text.secondary
-                })
-                .when(is_active, |el| el.bg(theme.border.default))
-                .when(!is_active, |el| el.hover(|s| s.bg(theme.border.subtle)))
-                .cursor_pointer()
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.composer_selected_mode = m_id.clone();
-                    this.composer_mode_dropdown_open = false;
-                    this.composer_input.update(cx, |s, cx| s.focus(window, cx));
-                    cx.notify();
-                }))
-                .child(m_name)
-        })
-        .collect();
-
-    Some(
-        div()
-            .id("composer-mode-picker-wrap")
-            .relative()
-            .child(
-                div()
-                    .id("composer-mode-picker")
-                    .h(px(22.))
-                    .px(px(8.))
-                    .rounded(px(6.))
-                    .border_1()
-                    .border_color(theme.border.subtle)
-                    .flex()
-                    .items_center()
-                    .text_size(px(10.5))
-                    .text_color(if has_data {
-                        theme.text.secondary
-                    } else {
-                        theme.text.disabled
-                    })
-                    .when(has_data, |el| {
-                        el.cursor_pointer()
-                            .hover(|s| s.bg(theme.border.subtle))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.composer_mode_dropdown_open =
-                                    !this.composer_mode_dropdown_open;
-                                if !this.composer_mode_dropdown_open {
-                                    this.composer_input.update(cx, |s, cx| s.focus(window, cx));
-                                } else {
-                                    window.focus(&this.composer_focus, cx);
-                                }
-                                this.composer_model_dropdown_open = false;
-                                this.composer_model_search.clear();
-                                cx.notify();
-                            }))
-                    })
-                    .child(format!("{} ⌄", selected_mode_display)),
-            )
-            .when(mode_open, |el| {
-                el.child(
-                    div()
-                        .id("composer-mode-dropdown")
-                        .absolute()
-                        .bottom(px(26.))
-                        .right(px(0.))
-                        .min_w(px(80.))
-                        .max_h(px(300.))
-                        .overflow_y_scroll()
-                        .bg(theme.bg.primary)
-                        .border_1()
-                        .border_color(theme.border.default)
-                        .rounded(px(6.))
-                        .p(px(4.))
-                        .flex()
-                        .flex_col()
-                        .gap(px(2.))
-                        .children(mode_items),
-                )
-            }),
-    )
+    div()
+        .id("composer-mode-picker-wrap")
+        .flex_none()
+        .w(px(90.))
+        .child(
+            Select::new(&panel.composer_mode_select)
+                .placeholder("Mode")
+                .disabled(!has_data)
+                .with_size(KitSize::XSmall),
+        )
 }
 
 // ── Send / Stop button (dark style) ────────────────────────────────────
@@ -680,8 +544,11 @@ impl ChatTab {
         // T286: the composer text editing itself is owned by the kit `Input`
         // (its own focus handle). This handler is the PANEL keyboard hub
         // (`composer_focus`): it only routes keys for the sidebar search /
-        // rename field and the model-picker search, which borrow the hub
-        // while active. Closing any of those returns focus to the Input.
+        // rename field, which borrow the hub while active. Closing any of
+        // those returns focus to the Input.
+        // T287-A: the model/mode picker keyboard nav and search moved into
+        // the kit `Select` (its own key_context + list focus handle) — this
+        // hub no longer has a branch for them.
         // ── Sidebar search / rename input ────────────────────────────────
         if self.search_focused {
             let key = event.keystroke.key.as_str();
@@ -736,76 +603,6 @@ impl ChatTab {
                     return;
                 }
             }
-        }
-
-        if event.keystroke.key == "escape" {
-            if self.composer_model_dropdown_open || self.composer_mode_dropdown_open {
-                self.composer_model_dropdown_open = false;
-                self.composer_mode_dropdown_open = false;
-                self.composer_model_search.clear();
-                self.composer_input.update(cx, |s, cx| s.focus(window, cx));
-                cx.notify();
-                return;
-            }
-            return;
-        }
-
-        // ── Model picker search input ──────────────────────────────────
-        if self.composer_model_dropdown_open {
-            let key = event.keystroke.key.as_str();
-            let modifiers = &event.keystroke.modifiers;
-            match key {
-                "escape" => {
-                    self.composer_model_dropdown_open = false;
-                    self.composer_model_search.clear();
-                    self.composer_input.update(cx, |s, cx| s.focus(window, cx));
-                }
-                "return" | "enter" => {
-                    let q = self.composer_model_search.to_lowercase();
-                    if let Some(first) = self.available_models.iter().find(|m| {
-                        let id = m.id.to_lowercase();
-                        let name = m.name.to_lowercase();
-                        q.is_empty() || id.contains(&q) || name.contains(&q)
-                    }) {
-                        let m_id = first.id.clone();
-                        self.composer_selected_model = m_id.clone();
-                        self.composer_model_dropdown_open = false;
-                        self.composer_model_search.clear();
-                        self.composer_input.update(cx, |s, cx| s.focus(window, cx));
-                        if let Some(client) = self.clients.get(&self.active_agent_id).cloned() {
-                            cx.spawn(async move |this, cx| {
-                                if let Err(e) = client.set_model(&m_id).await {
-                                    tracing::warn!("set_model failed: {e}");
-                                }
-                                let _ = this.update(cx, |_this, cx| {
-                                    cx.notify();
-                                });
-                            })
-                            .detach();
-                        }
-                    }
-                }
-                "backspace" => {
-                    self.composer_model_search.pop();
-                }
-                _ => {
-                    if let Some(ch) = event.keystroke.key_char.as_ref() {
-                        if !modifiers.alt && !modifiers.platform && !modifiers.control {
-                            self.composer_model_search.push_str(ch);
-                        }
-                    }
-                }
-            }
-            cx.notify();
-            return;
-        }
-
-        if self.composer_mode_dropdown_open {
-            self.composer_model_dropdown_open = false;
-            self.composer_mode_dropdown_open = false;
-            self.composer_input.update(cx, |s, cx| s.focus(window, cx));
-            cx.notify();
-            return;
         }
     }
 
