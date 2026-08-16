@@ -9,7 +9,7 @@
 //! Layer: the menu is a **Layer::Overlay** surface, not an `AnchoredPopup`.
 //! A popup parented to the Top bar renders in the Top layer and gets covered
 //! by the Overlay side panels; Overlay is the only layer above them. On open
-//! we close the left panel (which lives in the same screen column) and the
+//! we leave the left panel open (menu must paint over it) and close the
 //! right panel only when its geometry would intersect the menu — no two
 //! Overlay surfaces may fight over one rectangle. `grab` does not exist for a
 //! layer surface; dismissal is ours: click-away (shared click-catcher), Esc,
@@ -34,8 +34,9 @@ use crate::start_menu::view::StartMenuView;
 pub(crate) const START_MENU_WIDTH: f32 = 720.;
 /// Menu height — fixed; the app grid scrolls inside.
 pub(crate) const START_MENU_HEIGHT: f32 = 520.;
-/// Left margin from the output edge (mockup 16px).
-pub(crate) const START_MENU_MARGIN_LEFT: f32 = 16.;
+/// Flush to the output's left edge. The HTML mockup's 16px is stage padding
+/// (Windows-bottom scene), not Hyprland geometry.
+pub(crate) const START_MENU_MARGIN_LEFT: f32 = 0.;
 
 /// Tracks the open start-menu window + its transparent click-catcher.
 #[derive(Default)]
@@ -139,9 +140,10 @@ pub fn open(cx: &mut App) {
         return;
     }
 
-    // Close the left panel — it shares the menu's screen column (Overlay on
-    // Overlay z-fight). The right panel closes only when it would overlap.
-    crate::side_panel_left::close(cx);
+    // Do not close the left panel: the menu is Overlay and must sit *on top*
+    // of it (owner errata). The right panel still closes when geometries
+    // would intersect — two Overlay surfaces in one rectangle is the
+    // remaining z-fight we refuse to guess.
     if right_panel_intersects_menu(cx) {
         crate::side_panel_right::close(cx);
     }
@@ -257,7 +259,7 @@ mod tests {
 
     #[test]
     fn right_panel_overlaps_only_when_it_reaches_menu() {
-        let menu_right = START_MENU_MARGIN_LEFT + START_MENU_WIDTH; // 736
+        let menu_right = START_MENU_MARGIN_LEFT + START_MENU_WIDTH; // 720
         // 2560-wide output: a 960px right panel starts at x=1600 — no overlap.
         assert!(!right_panel_overlaps(2560.0, 960.0, menu_right));
         assert!(!right_panel_overlaps(2560.0, 40.0, menu_right));
