@@ -154,7 +154,7 @@ frecency**; различается только раскладка и разме
 | T265-E | `done/T265-E-launcher-prefix-modes.md` | DONE 2026-08-16 (`52866c6`) — live grim ещё открыт |
 | T265-F | `done/T265-F-launcher-system-actions.md` | DONE 2026-08-16 (`ba810d8` + errata) — live grim ещё открыт |
 | T265-G | `done/T265-G-launcher-settings-right-panel.md` | DONE 2026-08-16 (`35fbb035`) — live grim ещё открыт |
-| T265-H | `active/T265-H-launcher-start-menu-surface.md` | BLOCKED на мокап владельца |
+| T265-H | `active/T265-H-launcher-start-menu-surface.md` | ГОТОВА К ВЫДАЧЕ — мокап `docs/design/chronos-start-menu.html` |
 
 Порядок = зависимость. Параллелить волны нельзя: все пишут
 `launcher/view.rs` / одну модель.

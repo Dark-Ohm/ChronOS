@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head><script type="application/json" data-od-external-dependencies>["https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"]</script>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>ChronOS · Start Menu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* ChronOS registered palette — verbatim */
+    --bg:#181825;
+    --surface:#1e1e2e;
+    --surface1:#1e1e2e;
+    --surface2:#45475a;
+    --fg:#cdd6f4;
+    --muted:rgba(205,214,244,0.58);
+    --faint:rgba(205,214,244,0.34);
+    --border:#45475a;
+    --border-soft:rgba(205,214,244,0.09);
+    --hairline:rgba(205,214,244,0.07);
+    --accent:#007acc;
+    --accent-2:#cba6f7;
+    --accent-press:#007acc;
+    --sel:rgba(0,122,204,0.14);
+    --shadow:0 1px 2px rgba(0,0,0,0.30), 0 10px 40px rgba(0,0,0,0.45);
+    --r:8px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--fg);
+    font-family:'Inter',system-ui,-apple-system,'Segoe UI','Helvetica Neue',Arial,sans-serif;
+    font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  .mono{font-family:'JetBrains Mono',Consolas,'Liberation Mono',Menlo,Courier,monospace}
+  svg{width:16px;height:16px;flex:none;display:block}
+  button{font:inherit;color:inherit;background:none;border:none;padding:0;margin:0;text-align:left;cursor:pointer}
+  :focus{outline:none}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:7px}
+
+  /* ---- compositor backdrop ---- */
+  .stage{
+    position:fixed;inset:0;display:flex;align-items:flex-end;justify-content:flex-start;
+    padding:0 0 56px 16px;
+    background:
+      radial-gradient(60% 50% at 0% 100%, rgba(0,122,204,0.05), transparent 60%),
+      var(--bg);
+  }
+
+  /* ---- start menu shell ---- */
+  .start{
+    width:min(720px,94vw);
+    max-height:calc(100vh - 80px);
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:12px;
+    box-shadow:var(--shadow);
+    overflow:hidden;
+    display:flex;
+    animation:start-in .14s cubic-bezier(.2,.8,.2,1) both;
+  }
+  @keyframes start-in{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+
+  /* ===========================================================
+     LEFT RAIL — pinned nav, recent, user/power
+     =========================================================== */
+  .rail{
+    flex:none;width:210px;
+    background:var(--bg);
+    border-right:1px solid var(--hairline);
+    display:flex;flex-direction:column;
+    overflow:hidden;
+  }
+
+  /* rail sections */
+  .rail-nav{flex:1;overflow-y:auto;padding:6px 0}
+  .rail-nav::-webkit-scrollbar{width:5px}
+  .rail-nav::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:3px}
+
+  .rail-section{
+    padding:6px 8px;
+  }
+  .rail-label{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:4px 8px 6px;
+    font-size:10px;font-weight:600;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--faint);
+  }
+
+  .nav-item{
+    display:flex;align-items:center;gap:10px;
+    height:34px;padding:0 10px;border-radius:7px;
+    color:var(--fg);font-size:12.5px;font-weight:500;
+  }
+  .nav-item:hover{background:var(--surface1)}
+  .nav-item.active{background:var(--sel);color:var(--accent)}
+  .nav-item .ni-ic{
+    width:20px;height:20px;color:var(--muted);
+    display:flex;align-items:center;justify-content:center;flex:none;
+  }
+  .nav-item .ni-ic svg{width:16px;height:16px}
+  .nav-item.active .ni-ic{color:var(--accent)}
+  .nav-item .ni-badge{
+    margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--faint);
+  }
+  .nav-item.active .ni-badge{color:var(--accent)}
+
+  /* user + power at rail bottom */
+  .rail-foot{
+    flex:none;border-top:1px solid var(--hairline);
+    padding:10px;
+  }
+  .user-card{
+    display:flex;align-items:center;gap:10px;
+    padding:8px;border-radius:8px;cursor:pointer;
+  }
+  .user-card:hover{background:var(--surface1)}
+  .avatar{
+    width:32px;height:32px;border-radius:50%;
+    background:var(--accent);
+    display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:700;color:var(--bg);flex:none;
+  }
+  .user-meta{min-width:0;flex:1}
+  .user-name{font-size:12.5px;font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .user-host{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--faint);letter-spacing:.02em}
+  .user-host .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:4px;vertical-align:middle}
+
+  .power-mini{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-top:8px;gap:4px;
+  }
+  .pw-mini-btn{
+    width:30px;height:30px;border-radius:7px;
+    display:flex;align-items:center;justify-content:center;
+    color:var(--muted);
+  }
+  .pw-mini-btn:hover{background:var(--surface1);color:var(--fg)}
+  .pw-mini-btn.danger:hover{color:var(--accent-2);background:rgba(203,166,247,0.10)}
+  .pw-mini-btn svg{width:15px;height:15px}
+
+  /* ===========================================================
+     RIGHT MAIN — search, breadcrumb, app grid
+     =========================================================== */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+
+  /* search */
+  .search{
+    flex:none;display:flex;align-items:center;gap:10px;
+    padding:12px 16px;border-bottom:1px solid var(--hairline);
+  }
+  .search .lpic{width:18px;height:18px;color:var(--muted);flex:none}
+  .search input{
+    flex:1;background:transparent;border:none;outline:none;color:var(--fg);
+    font-family:'Inter',sans-serif;font-size:14.5px;font-weight:500;
+  }
+  .search input::placeholder{color:var(--faint)}
+  .search:focus-within{box-shadow:inset 0 -2px 0 var(--accent)}
+  .search .clear{
+    width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+    color:var(--faint);visibility:hidden;
+  }
+  .search .clear.show{visibility:visible}
+  .search .clear:hover{background:var(--surface1);color:var(--fg)}
+  .search .clear svg{width:14px;height:14px}
+
+  /* category crumbs — small text path */
+  .crumbs{
+    flex:none;display:flex;align-items:center;gap:4px;
+    padding:6px 16px 4px;font-size:11px;color:var(--muted);
+  }
+  .crumbs .crumb{color:var(--muted)}
+  .crumbs .crumb.on{color:var(--accent);font-weight:600}
+  .crumbs .sep{color:var(--faint)}
+
+  /* app grid */
+  .grid-scroll{flex:1;min-height:0;overflow-y:auto;padding:0 12px 12px}
+  .grid-scroll::-webkit-scrollbar{width:6px}
+  .grid-scroll::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:3px}
+
+  .section-label{
+    display:flex;align-items:center;gap:8px;
+    padding:12px 4px 6px;font-size:10.5px;font-weight:600;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--faint);
+  }
+  .section-label::after{content:'';flex:1;height:1px;background:var(--hairline)}
+
+  .app-grid{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));
+    gap:3px;padding-bottom:4px;
+  }
+  .app-cell{
+    display:flex;flex-direction:column;align-items:center;gap:5px;
+    padding:10px 4px;border-radius:8px;cursor:pointer;
+  }
+  .app-cell:hover{background:var(--surface1)}
+  .app-cell.sel{background:var(--sel)}
+  .app-cell .ac-ic{
+    width:34px;height:34px;border-radius:8px;
+    background:var(--bg);border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;color:var(--accent);
+  }
+  .app-cell.sel .ac-ic{border-color:var(--accent)}
+  .app-cell .ac-ic svg{width:17px;height:17px}
+  .app-cell .ac-name{font-size:10.5px;font-weight:500;color:var(--fg);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .app-cell.sel .ac-name{color:var(--accent)}
+
+  /* empty */
+  .empty{padding:24px 12px;text-align:center;color:var(--faint);font-size:12px}
+
+  /* ---- launch toast ---- */
+  .toast{
+    position:absolute;left:50%;bottom:14px;transform:translateX(-50%) translateY(8px);
+    display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:8px;
+    background:var(--bg);border:1px solid var(--accent);color:var(--fg);
+    font-family:'JetBrains Mono',monospace;font-size:11.5px;
+    opacity:0;pointer-events:none;transition:opacity .16s,transform .16s;z-index:5;
+    box-shadow:var(--shadow);
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast svg{width:14px;height:14px;color:var(--accent)}
+  .start{position:relative}
+</style>
+</head>
+<body>
+<div class="stage">
+<div class="start" data-od-id="start-menu" role="dialog" aria-label="ChronOS Start Menu">
+
+  <!-- ============================ LEFT RAIL ============================ -->
+  <div class="rail" data-od-id="left-rail">
+
+    <!-- nav -->
+    <div class="rail-nav">
+      <div class="rail-section">
+        <div class="rail-label">Places</div>
+        <button class="nav-item active" data-nav="all">
+          <span class="ni-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18"/></svg></span>
+          All Apps
+          <span class="ni-badge" id="badge-all">18</span>
+        </button>
+        <button class="nav-item" data-nav="pinned">
+          <span class="ni-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M6 8h12M10 14v8M14 14v8"/></svg></span>
+          Pinned
+          <span class="ni-badge" id="badge-pinned">5</span>
+        </button>
+        <button class="nav-item" data-nav="recent">
+          <span class="ni-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+          Recent
+        </button>
+        <button class="nav-item" data-nav="files">
+          <span class="ni-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></span>
+          Files
+        </button>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-label">Categories</div>
+        <button class="nav-item" data-nav="cat" data-cat="Dev">
+          <span class="ni-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 8l-4 4 4 4M15 8l4 4-4 4"/></svg></span>
+          Dev
+          <span class="ni-badge" id="badge-dev">4</span>
+        </button>
+        <button class="nav-item" data-nav="cat" data-cat="System">
+          <span class="ni-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></span>
+          System
+          <span class="ni-badge" id="badge-system">3</span>
+        </button>
+        <button class="nav-item" data-nav="cat" data-cat="Web">
+          <span class="ni-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M3 12h18M12 4a13 13 0 0 1 0 16M12 4a13 13 0 0 0 0 16"/></svg></span>
+          Web
+          <span class="ni-badge" id="badge-web">2</span>
+        </button>
+        <button class="nav-item" data-nav="cat" data-cat="Productivity">
+          <span class="ni-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg></span>
+          Productivity
+          <span class="ni-badge" id="badge-prod">1</span>
+        </button>
+        <button class="nav-item" data-nav="cat" data-cat="Media">
+          <span class="ni-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l10-2v12"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="16" r="2"/></svg></span>
+          Media
+          <span class="ni-badge" id="badge-media">2</span>
+        </button>
+        <button class="nav-item" data-nav="cat" data-cat="Utility">
+          <span class="ni-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg></span>
+          Utility
+          <span class="ni-badge" id="badge-util">4</span>
+        </button>
+        <button class="nav-item" data-nav="cat" data-cat="Game">
+          <span class="ni-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="8" rx="4"/><path d="M7 13h2M8 12v2M15 12h.01M18 14h.01"/></svg></span>
+          Game
+          <span class="ni-badge" id="badge-game">1</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- user + power -->
+    <div class="rail-foot" data-od-id="user-power">
+      <button class="user-card" data-act="profile" aria-label="User profile: neo@chronos-shell">
+        <div class="avatar" aria-hidden="true">N</div>
+        <div class="user-meta">
+          <div class="user-name">neo</div>
+          <div class="user-host"><span class="dot" aria-hidden="true"></span>chronos-shell</div>
+        </div>
+      </button>
+      <div class="power-mini">
+        <button class="pw-mini-btn" title="Lock" data-act="lock">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </button>
+        <button class="pw-mini-btn" title="Suspend" data-act="suspend">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18"/></svg>
+        </button>
+        <button class="pw-mini-btn" title="Log Out" data-act="logout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+        </button>
+        <button class="pw-mini-btn" title="Restart" data-act="restart">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
+        </button>
+        <button class="pw-mini-btn danger" title="Shut Down" data-act="shutdown">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9M5.6 5.6a9 9 0 1 0 12.8 0"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ RIGHT MAIN ============================ -->
+  <div class="main" data-od-id="main-area">
+
+    <!-- search -->
+    <div class="search" data-od-id="search-input">
+      <svg class="lpic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>
+      </svg>
+      <input id="q" type="text" autocomplete="off" spellcheck="false" placeholder="Search applications…" aria-label="Search"/>
+      <button class="clear" id="clearBtn" title="Clear" aria-label="Clear">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <!-- breadcrumb -->
+    <div class="crumbs" id="crumbs">
+      <span class="crumb on" id="crumb-main">All Apps</span>
+    </div>
+
+    <!-- grid -->
+    <div class="grid-scroll" id="grid-scroll" data-od-id="app-grid-area" role="region" aria-label="Application grid">
+      <div id="grid-content"></div>
+    </div>
+
+  </div>
+
+  <!-- launch feedback -->
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>
+    <span id="toastText">launching…</span>
+  </div>
+
+</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---- icon set (monoline, currentColor) ---- */
+  function svg(p){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>';}
+  var ICONS = {
+    terminal:'<path d="M5 8l4 4-4 4M11 16h7"/>',
+    code:'<path d="M9 8l-4 4 4 4M15 8l4 4-4 4"/>',
+    files:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+    browser:'<circle cx="12" cy="12" r="8"/><path d="M3 12h18M12 4a13 13 0 0 1 0 16M12 4a13 13 0 0 0 0 16"/>',
+    music:'<path d="M9 18V6l10-2v12"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="16" r="2"/>',
+    video:'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M10 9l5 3-5 3Z" fill="currentColor" stroke="none"/>',
+    settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+    calc:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01"/>',
+    notes:'<path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+    monitor:'<path d="M4 19V5h16v14M4 19h16M8 9v6M12 7v8M16 10v4"/>',
+    shot:'<rect x="3" y="7" width="18" height="13" rx="2"/><circle cx="12" cy="13" r="3.2"/><path d="M9 7l1.2-2h3.6L15 7"/>',
+    game:'<rect x="3" y="9" width="18" height="8" rx="4"/><path d="M7 13h2M8 12v2M15 12h.01M18 14h.01"/>',
+    luau:'<path d="M5 8 L9 16 M9 8 L5 16 M13 8h4M15 8v8"/>',
+    color:'<path d="M12 3a9 9 0 0 0 0 18c1 0 1.5-1 1.5-2 0-1.2-1-1.5-1-3 0-1 .8-1.6 2-1.6A9 9 0 0 0 12 3Z"/>',
+    mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/>',
+    camera:'<rect x="3" y="7" width="18" height="13" rx="2"/><circle cx="12" cy="13" r="3.2"/><path d="M9 7l1.2-2h3.6L15 7"/>',
+    git:'<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="9" r="2.4"/><path d="M6 8.4V15.6M8.1 6.9C12 7.4 15 8 17.6 8.9"/>',
+    box:'<path d="M216 72H128l-16-16H40a16 16 0 00-16 16v128a16 16 0 0016 16h176a16 16 0 0016-16V88a16 16 0 00-16-16z"/>',
+    cloud:'<path d="M224 160a32 32 0 00-32-32 40 40 0 00-76-14 32 32 0 00-12 61.7V192a16 16 0 0016 16h88a32 32 0 0032-32 0 000-16zM88 192v-14.3a32 32 0 0056 0V192zm96-16a16 16 0 110-32 16 16 0 010 32z"/>',
+    bolt:'<path d="M152 32L56 144h56l-16 80 96-112H136z"/>',
+    search:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+    plug:'<path d="M112 24a8 8 0 018 8v40a8 8 0 01-16 0V32a8 8 0 018-8zm64 0a8 8 0 018 8v40a8 8 0 01-16 0V32a8 8 0 018-8zM160 120v40a80 80 0 01-160 0v-40a8 8 0 0116 0v40a64 64 0 00128 0v-40a8 8 0 0116 0zm-48 72a8 8 0 018 8v40a8 8 0 01-16 0v-40a8 8 0 018-8z"/>',
+    key:'<path d="M208 80a48 48 0 10-37.3 46.2L32 185v39h39l2-2 82.8-82.8A48 48 0 10208 80zm-72 32a16 16 0 1116-16 16 16 0 01-16 16z"/>',
+    info:'<path d="M128 24a104 104 0 100 208 104 104 0 000-208zm0 40a16 16 0 110 32 16 16 0 010-32zm16 128h-32a8 8 0 010-16h8v-40h-8a8 8 0 010-16h24a8 8 0 018 8v48h8a8 8 0 010 16z"/>',
+    close:'<path d="M205.7 194.3a8 8 0 010 11.3 8 8 0 01-11.3 0L128 139.3l-66.3 66.3a8 8 0 01-11.3-11.3L116.7 128 50.4 61.7a8 8 0 0111.3-11.3L128 116.7l66.3-66.3a8 8 0 0111.3 11.3L139.3 128z"/>',
+    shield:'<path d="M12 2 L20 6 V12 C20 17 16 21 12 22 C8 21 4 17 4 12 V6 Z"/><path d="M9 12 l2 2 l4 -4"/>',
+    star:'<path d="M12 3 l2.6 5.6 6 .7 -4.4 4.1 1.2 6 -5.4-3 -5.4 3 1.2-6 -4.4-4.1 6-.7 Z"/>',
+    download:'<path d="M224 152v56a16 16 0 01-16 16H48a16 16 0 01-16-16v-56a8 8 0 0116 0v48h160v-48a8 8 0 0116 0zM120 40v104a8 8 0 0016 0V40a8 8 0 00-16 0zM80 112l40 40 40-40a8 8 0 0111 11l-48 48a8 8 0 01-11 0l-48-48a8 8 0 0111-11z"/>',
+    eye:'<path d="M128 56c-48 0-88 32-104 72 16 40 56 72 104 72s88-32 104-72c-16-40-56-72-104-72zm0 112a40 40 0 110-80 40 40 0 010 80z"/>',
+    term:'<path d="M104 148l-32 32 32 32 16-16-16-16 16-16zm40-40h48v16h-48zm56-56H32a16 16 0 00-16 16v144a16 16 0 0016 16h192a16 16 0 0016-16V68a16 16 0 00-16-16zM216 200H40V72h176z"/>',
+    folder:'<path d="M216 72H128l-16-16H40a16 16 0 00-16 16v128a16 16 0 0016 16h176a16 16 0 0016-16V88a16 16 0 00-16-16z"/>',
+    file:'<path d="M213.7 82.3a8 8 0 010 11.4l-80 80a8 8 0 01-11.4 0l-80-80a8 8 0 0111.4-11.4L128 148.7l74.3-74.4a8 8 0 0111.4 0z"/>',
+    more:'<circle cx="64" cy="128" r="16"/><circle cx="128" cy="128" r="16"/><circle cx="192" cy="128" r="16"/>',
+    lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    suspend:'<path d="M12 3v18M3 12h18"/>',
+    logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+    restart:'<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>',
+    shutdown:'<path d="M12 3v9M5.6 5.6a9 9 0 1 0 12.8 0"/>',
+    pin:'<path d="M12 2v6M6 8h12M10 14v8M14 14v8"/>',
+    user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/>',
+    gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  };
+
+  /* ---- data ---- */
+  var APPS = [
+    {name:'Terminal',        cat:'Dev',     icon:'terminal', key:'F1',  pinned:true,  recent:true},
+    {name:'Code Editor',     cat:'Dev',     icon:'code',     key:'F2',  pinned:true,  recent:true},
+    {name:'Luau Console',    cat:'Dev',     icon:'luau',     key:'F3'},
+    {name:'Git Panel',       cat:'Dev',     icon:'git',      key:'F4',  recent:true},
+    {name:'File Manager',    cat:'System',  icon:'files',    key:'F5',  pinned:true},
+    {name:'Settings',        cat:'System',  icon:'settings', key:'F6',  pinned:true},
+    {name:'System Monitor',  cat:'System',  icon:'monitor',  key:'F7'},
+    {name:'Browser',         cat:'Web',     icon:'browser',  key:'F8',  pinned:true,  recent:true},
+    {name:'Mail',            cat:'Web',     icon:'mail',     key:'F9'},
+    {name:'Calendar',        cat:'Productivity', icon:'calendar', key:'F10'},
+    {name:'Music Player',    cat:'Media',   icon:'music',    key:'F11'},
+    {name:'Video Player',    cat:'Media',   icon:'video',    key:'F12'},
+    {name:'Screenshot',      cat:'Utility', icon:'shot',     key:'⌃S'},
+    {name:'Calculator',      cat:'Utility', icon:'calc',     key:'⌃C'},
+    {name:'Notes',           cat:'Utility', icon:'notes',    key:'⌃N'},
+    {name:'Color Picker',    cat:'Utility', icon:'color',    key:'⌃P'},
+    {name:'Game Launcher',   cat:'Game',    icon:'game',     key:'⌃G'},
+  ];
+
+  var CAT_LABELS = {Dev:'Dev',System:'System',Web:'Web',Productivity:'Productivity',Media:'Media',Utility:'Utility',Game:'Game'};
+
+  /* ---- state ---- */
+  var state = {
+    q:'', nav:'all', cat:null, sel:0
+  };
+
+  var $ = function(s){return document.querySelector(s);};
+  var q=$('#q'), gridContent=$('#grid-scroll'), crumbs=$('#crumbs'),
+      clearBtn=$('#clearBtn'), toast=$('#toast'), toastText=$('#toastText');
+
+  /* ---- helpers ---- */
+  function esc(s){return String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+  function matches(a){
+    if(state.nav==='pinned' && !a.pinned) return false;
+    if(state.nav==='recent' && !a.recent) return false;
+    if(state.cat && a.cat!==state.cat) return false;
+    if(!state.q) return true;
+    var t=state.q.toLowerCase();
+    var hay=(a.name+' '+a.cat).toLowerCase();
+    return hay.indexOf(t)>=0;
+  }
+
+  function visibleList(){return APPS.filter(matches);}
+
+  /* ---- breadcrumb ---- */
+  function renderCrumbs(){
+    var parts=[];
+    if(state.nav==='all' && !state.cat){
+      parts=[{text:'All Apps',on:true}];
+    } else if(state.nav==='pinned'){
+      parts=[{text:'Pinned',on:true}];
+    } else if(state.nav==='recent'){
+      parts=[{text:'Recent',on:true}];
+    } else if(state.nav==='files'){
+      parts=[{text:'Files',on:true}];
+    } else if(state.cat){
+      parts=[{text:'All Apps',on:false,go:'all'},{text:CAT_LABELS[state.cat]||state.cat,on:true}];
+    } else {
+      parts=[{text:'All Apps',on:true}];
+    }
+    crumbs.innerHTML='';
+    parts.forEach(function(p,i){
+      if(i>0){
+        var s=document.createElement('span');
+        s.className='sep';s.textContent='›';
+        crumbs.appendChild(s);
+      }
+      var c=document.createElement('span');
+      c.className='crumb'+(p.on?' on':'');
+      c.textContent=p.text;
+      if(p.go){c.style.cursor='pointer';c.onclick=function(){state.nav=p.go;state.cat=null;state.sel=0;render();};}
+      crumbs.appendChild(c);
+    });
+  }
+
+  /* ---- grid render ---- */
+  function renderGrid(){
+    var list=visibleList();
+    gridContent.innerHTML='';
+    if(state.nav==='files'){
+      gridContent.innerHTML='<div class="empty" style="padding:48px 12px"><div style="width:36px;height:36px;margin:0 auto 10px;color:var(--surface2);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="width:32px;height:32px"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></div>Open the File Manager to browse folders and files.</div>';
+      return;
+    }
+    if(!list.length){
+      gridContent.innerHTML='<div class="empty">No matches for “'+esc(state.q)+'”</div>';
+      return;
+    }
+    // section label
+    var label='All Applications';
+    if(state.nav==='pinned') label='Pinned';
+    else if(state.nav==='recent') label='Recent';
+    else if(state.nav==='files') label='Files';
+    else if(state.cat) label=CAT_LABELS[state.cat]||state.cat;
+
+    var sl=document.createElement('div');
+    sl.className='section-label';sl.textContent=label;
+    gridContent.appendChild(sl);
+
+    var grid=document.createElement('div');
+    grid.className='app-grid';
+    list.forEach(function(a,idx){
+      var d=document.createElement('button');
+      d.className='app-cell';
+      d.innerHTML='<span class="ac-ic">'+svg(ICONS[a.icon]||ICONS.code)+'</span>'+
+                  '<span class="ac-name">'+esc(a.name)+'</span>';
+      d.onmouseenter=function(){state.sel=idx;paintSel();};
+      d.onclick=function(){launch(a);};
+      grid.appendChild(d);
+    });
+    gridContent.appendChild(grid);
+  }
+
+  /* ---- paint selection ---- */
+  function paintSel(){
+    var cells=gridContent.querySelectorAll('.app-cell');
+    cells.forEach(function(c,i){c.classList.toggle('sel',i===state.sel);});
+  }
+
+  /* ---- render all ---- */
+  function render(){
+    // nav active state
+    document.querySelectorAll('.nav-item').forEach(function(n){
+      var nv=n.getAttribute('data-nav');
+      var nc=n.getAttribute('data-cat');
+      var on=false;
+      if(state.cat && nv==='cat' && nc===state.cat) on=true;
+      else if(!state.cat && nv===state.nav) on=true;
+      n.classList.toggle('active',on);
+    });
+    renderCrumbs();
+    renderGrid();
+    paintSel();
+  }
+
+  /* ---- launch ---- */
+  var toastTimer=null;
+  function launch(a){
+    toastText.textContent='launching '+a.name+' …';
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer=setTimeout(function(){toast.classList.remove('show');},1100);
+  }
+
+  /* ---- power actions ---- */
+  function powerAction(act){
+    var labels={
+      lock:'locking screen', suspend:'suspending', logout:'logging out',
+      restart:'restarting', shutdown:'shutting down', profile:'opening profile'
+    };
+    toastText.textContent=(labels[act]||act)+' …';
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer=setTimeout(function(){toast.classList.remove('show');},1100);
+  }
+
+  /* ---- nav clicks ---- */
+  document.querySelectorAll('.nav-item').forEach(function(n){
+    n.addEventListener('click',function(){
+      var nv=n.getAttribute('data-nav');
+      var nc=n.getAttribute('data-cat');
+      if(nv==='cat'){state.cat=nc;state.nav='cat';}
+      else{state.nav=nv;state.cat=null;}
+      state.sel=0;
+      state.q='';q.value='';clearBtn.classList.remove('show');
+      render();
+    });
+  });
+
+  /* ---- power mini ---- */
+  document.querySelectorAll('.pw-mini-btn,.user-card').forEach(function(b){
+    b.addEventListener('click',function(){
+      var act=b.getAttribute('data-act');
+      if(act) powerAction(act);
+    });
+  });
+
+  /* ---- search ---- */
+  q.addEventListener('input',function(){
+    state.q=q.value;
+    clearBtn.classList.toggle('show',!!q.value);
+    state.sel=0;
+    renderGrid();paintSel();
+  });
+  clearBtn.onclick=function(){state.q='';q.value='';clearBtn.classList.remove('show');state.sel=0;q.focus();renderGrid();paintSel();};
+
+  /* ---- keyboard nav ---- */
+  q.addEventListener('keydown',function(e){
+    var list=visibleList();
+    if(e.key==='ArrowDown'){e.preventDefault();state.sel=Math.min(list.length-1,state.sel+1);paintSel();scrollSel();}
+    else if(e.key==='ArrowUp'){e.preventDefault();state.sel=Math.max(0,state.sel-1);paintSel();scrollSel();}
+    else if(e.key==='Enter'){e.preventDefault();var l=list[state.sel];if(l)launch(l);}
+    else if(e.key==='Escape'){state.q='';q.value='';clearBtn.classList.remove('show');state.sel=0;renderGrid();paintSel();}
+  });
+
+  function scrollSel(){
+    var c=gridContent.querySelector('.app-cell.sel');
+    if(!c) return;
+    var cTop=c.offsetTop;
+    var cBottom=cTop+c.offsetHeight;
+    var sTop=gridContent.scrollTop;
+    var sBottom=sTop+gridContent.clientHeight;
+    if(cTop<sTop) gridContent.scrollTop=cTop;
+    else if(cBottom>sBottom) gridContent.scrollTop=cBottom-gridContent.clientHeight;
+  }
+
+  /* ---- init ---- */
+  render();
+  q.focus();
+})();
+</script>
+</body>
+</html>

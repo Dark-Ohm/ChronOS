@@ -1,9 +1,7 @@
 # T265-H — лаунчер: классическое меню «Пуск» (вторая поверхность)
 
-**Статус:** BLOCKED на мокап владельца. Код A–G + T280 в git, слой
-записан. Раскладку не выдумывать: OSD-мокап (`Chronos-OSD-Launcher.dc.html`)
-— другая поверхность. Канон H ляжет в `docs/design/` (имя файла скажет
-владелец). Пока файла нет — тикет не выдавать.
+**Статус:** ГОТОВА К ВЫДАЧЕ — мокап `docs/design/chronos-start-menu.html`.
+A–G, T280, T297 в git. Не параллелить с T287-A (`composer.rs`).
 **Приоритет:** P2.
 **Родитель:** `T265-launcher-full-functionality.md`.
 **Роль:** FRONTEND (`crates/app/src/bar/widgets/dock.rs`,
@@ -32,20 +30,38 @@ SUPER+R. Эпик требует вторую поверхность: компа
 3. **T265-B — закоммичен.** Grid-примитивы и навигация по списку/сетке.
 4. **T265-C — опционально.** Верхняя секция recents/favorites, если включаем
    её в компактное меню сразу; иначе — позже, не блокер.
-5. **Мокап владельца — жёстко.** Пока нет файла в `docs/design/` — не
-   стартовать. Не клонировать OSD-карточку и не импровизировать Kickoff.
+5. **Мокап — есть.** `docs/design/chronos-start-menu.html`. Не клонировать
+   OSD-карточку и не импровизировать Kickoff.
 
-## Объём
+## Канон (мокап, пиксель в пиксель по раскладке)
 
-- Переключить `on_click` Start-кнопки (`dock.rs:86`, `id="dock-start"`) с
-  `launcher::toggle` на открытие меню «Пуск». Образец якоря — `volume_popup/`
-  / `calendar_popup/` (`history_popup` снесён в T293).
-- Компактная вьюха: поле поиска (компонентный `Input` из T275) + скроллируемый
-  список/сетка приложений, футер с подсказками. Раскладка и размер свои, но
-  модель/индекс/конфиг/frecency общие с OSD-лаунчером.
-- Клавиатура: Esc — закрыть, Enter — запустить выбранное, стрелки — навигация.
-- Одна модель, две вьюхи — НЕ создавать второй параллельный лаунчер со своим
-  состоянием (архитектурное требование эпика).
+`docs/design/chronos-start-menu.html` — две колонки, не OSD-карточка.
+
+- Ширина `min(720px, 94vw)`, рейл **210px**, сетка `auto-fill` min **84px**.
+- Рейл: Places (All Apps / Pinned / Recent / Files) + Categories (только
+  Main из T297, короткие лейблы: Dev←Development, Web←Network,
+  Productivity←Office, Media←AudioVideo, плюс System / Utility / Game;
+  пустые не показывать) + футер: аватар/имя/хост (T265-F) и 5 кнопок
+  power — Lock, Suspend, Log Out, Restart, Shut Down. Hibernate в мокапе
+  нет — не рисовать. Logout/Restart/Shutdown — arm/confirm как F.
+- Main: kit `Input` «Search applications…», крошки, скролл-сетка
+  (иконка 34 + имя). Pinned = `favorites.order`. Recent = frecency recents.
+- Files в рейле: empty-state «Open the File Manager…» + Enter/клик →
+  `select_tab(Files)` (или дефолтный FM). Не файловый браузер внутри меню.
+- User card — display-only (профиля в ките нет). Toast «launching…» из
+  мокапа **не** делать: launch + close, как OSD.
+- **Якорь:** бар ChronOS сверху, кнопка слева (`dock-start`). Меню
+  открывается **вниз** от кнопки. Мокап стоит снизу экрана как у Windows
+  — это сцена, не геометрия Hyprland. Не сажать меню в низ монитора.
+- Палитра мокапа (`--bg #181825`, `--accent #007acc`) — токены темы,
+  не хардкод.
+
+Модель/индекс/конфиг/frecency общие с OSD. Клавиатура: Esc **закрывает
+меню** (в HTML-мокапе Esc только чистит поиск — в продукте иначе),
+Enter запускает, стрелки по сетке.
+
+`on_click` `dock.rs:86` — открыть это меню, не `launcher::toggle`.
+SUPER+R по-прежнему OSD.
 
 ## Слой — ничего не перекрывает «Пуск»
 
