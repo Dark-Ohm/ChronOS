@@ -387,25 +387,20 @@ impl LauncherView {
                         {
                             let menu_id = entry_for_menu.id.clone();
                             move |event, window, cx| {
-                                // Two coordinate spaces, one surface (T275):
-                                // the AnchoredPopup anchors in window-local
-                                // coords (`event.position`), but the Overlay
-                                // click-catcher's pass-through hole is
-                                // output-local. The launcher is a centered
-                                // Normal window, so the two differ by
-                                // `window.bounds().origin`.
+                                // anchor_rect (AnchoredPopup) is window-local;
+                                // pin_menu::open() derives the click-catcher's
+                                // output-local hole itself — see
+                                // `catcher_anchor_for` in pin_menu.rs for why
+                                // it can't be `window.bounds().origin +
+                                // event.position` for this window (T275).
                                 let anchor = Bounds::new(
                                     event.position,
-                                    Size::new(px(1.), px(1.)),
-                                );
-                                let catcher_anchor = Bounds::new(
-                                    window.bounds().origin + event.position,
                                     Size::new(px(1.), px(1.)),
                                 );
                                 pin_menu::open(
                                     cx,
                                     anchor,
-                                    catcher_anchor,
+                                    event.position,
                                     window.window_handle(),
                                     menu_id.clone(),
                                 );

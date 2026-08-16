@@ -13,8 +13,8 @@ use std::{rc::Rc, time::Duration};
 
 use gpui::{
     AnyWindowHandle, App, Bounds, Context, DisplayId, DismissEvent, Entity, Focusable, Global,
-    Pixels, Size, Subscription, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle,
-    WindowId, WindowKind, WindowOptions, div, layer_shell::*, point,
+    Pixels, Point, Size, Subscription, Window, WindowBackgroundAppearance, WindowBounds,
+    WindowHandle, WindowId, WindowKind, WindowOptions, div, layer_shell::*, point,
     popup::{
         PopupAnchor, PopupConstraintAdjustment, PopupGravity, PopupNotSupportedError, PopupOptions,
     },
@@ -159,6 +159,43 @@ fn pick_display(cx: &App) -> Option<DisplayId> {
     crate::monitor::pult_display_id_or_primary(cx)
 }
 
+/// Convert `event_position` (window-local point of the right-click) into an
+/// output-local 1×1 `Bounds` for the click-catcher's pass-through hole.
+///
+/// Wayland's `xdg_shell` never reports where the compositor placed a
+/// toplevel (no protocol event for it) — the launcher opens `center = true`
+/// via a Hyprland windowrule (`docs/hyprland/chronos-launcher.lua`), so its
+/// client-side `window.bounds().origin` is frozen at the geometry we
+/// *requested* (`(0, 0)`, see `launcher/mod.rs::window_options`), not where
+/// it actually ended up. Adding that frozen origin to `event_position` (the
+/// T275-01 attempt) was a no-op in practice — the click-catcher's hole
+/// landed at the request-time position (screen top-left) regardless of
+/// where the launcher actually rendered (screen center), so hover over the
+/// visible menu never got a pointer cursor and clicks never reached it.
+///
+/// The only source of truth is a live compositor query: ask Hyprland where
+/// `chronos-launcher` actually is (`Clients::get`, global layout space),
+/// then subtract the pult display's own origin to land in that display's
+/// local space — the same frame `popup_click_catcher::open_for_popup` uses
+/// for its input regions. Falls back to `event_position` alone (pre-fix
+/// behavior — wrong for a centered window, but no worse) if Hyprland is
+/// unreachable, e.g. under Niri; this menu is Hyprland-primary like the
+/// rest of the shell.
+fn catcher_anchor_for(cx: &App, event_position: Point<Pixels>) -> Bounds<Pixels> {
+    let origin = launcher_output_local_origin(cx).unwrap_or_default();
+    Bounds::new(origin + event_position, Size::new(px(1.), px(1.)))
+}
+
+fn launcher_output_local_origin(cx: &App) -> Option<Point<Pixels>> {
+    let display = crate::monitor::pult_display_info(cx)?;
+    let (wx, wy) = chronos_services::compositor::hyprland::window_position("chronos-launcher")?;
+    let display_origin = display.bounds().origin;
+    Some(point(
+        px(wx as f32) - display_origin.x,
+        px(wy as f32) - display_origin.y,
+    ))
+}
+
 fn open_click_catcher(
     cx: &mut App,
     anchor_rect: Bounds<Pixels>,
@@ -239,19 +276,21 @@ fn window_closed_is_tracked(tracked: Option<WindowId>, closed: WindowId) -> bool
 
 /// Open the pin/unpin menu for `entry_id`, anchored at the right-clicked row.
 ///
-/// `anchor_rect` is surface-local — it positions the `AnchoredPopup` (the
-/// Wayland positioner expects window coords). `catcher_anchor` is the same
-/// point in output-local coords — it positions the pass-through hole of the
-/// transparent click-catcher. For the launcher (a centered Normal window)
-/// the two differ by `window.bounds().origin`; reusing one anchor for both
-/// put the menu at one place and the click hole at another (T275).
+/// `anchor_rect` is surface-local (window-local) — it positions the
+/// `AnchoredPopup` (the Wayland positioner expects parent-surface coords).
+/// `event_position` is the same click, also window-local; `open()` converts
+/// it to output-local itself (via [`catcher_anchor_for`]) for the click-
+/// catcher's pass-through hole. These are NOT the same conversion `window.
+/// bounds().origin + event_position` used to attempt — see
+/// [`catcher_anchor_for`] for why that never worked for this window.
 pub fn open(
     cx: &mut App,
     anchor_rect: Bounds<Pixels>,
-    catcher_anchor: Bounds<Pixels>,
+    event_position: Point<Pixels>,
     parent: AnyWindowHandle,
     entry_id: String,
 ) {
+    let catcher_anchor = catcher_anchor_for(cx, event_position);
     let open_entry = cx.global::<LauncherPinMenuState>().entry_id.clone();
     match open_action(open_entry.as_deref(), &entry_id) {
         OpenAction::Close => {

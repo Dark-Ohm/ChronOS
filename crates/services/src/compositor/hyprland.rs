@@ -9,7 +9,7 @@ use std::thread;
 use anyhow::Result;
 use futures_signals::signal::Mutable;
 use hyprland::{
-    data::{Client, Devices, Monitors, Workspace as HWorkspace, Workspaces},
+    data::{Client, Clients, Devices, Monitors, Workspace as HWorkspace, Workspaces},
     event_listener::EventListener,
     prelude::*,
 };
@@ -149,6 +149,31 @@ fn refresh_workspaces(data: &Mutable<CompositorState>, hint_active: Option<i32>)
             warn!("workspace refresh failed, keeping previous list: {e}");
         }
     }
+}
+
+/// Live on-screen position + size of a mapped window by its `xdg_toplevel`
+/// class (Hyprland's `initialClass`/`class`), in Hyprland's global compositor
+/// layout coordinates (same frame as `Monitors::get()`'s `x`/`y`) — the
+/// caller subtracts its target output's own origin to get output-local.
+///
+/// Wayland's `xdg_shell` never tells a client where the compositor placed
+/// it (no such event exists in the protocol) — a window opened `center =
+/// true` via windowrule (e.g. the launcher) has a client-side `bounds()`
+/// frozen at its *requested* geometry forever, not its real screen position.
+/// This is the only source of truth for that position. Synchronous
+/// (Unix-socket round trip, single-digit ms) — call from a one-off user
+/// action (e.g. a right-click handler), not a render/animation path.
+///
+/// Returns `None` if Hyprland is unreachable or no mapped client matches
+/// `class` (ambiguous with multiple matches: first one wins, same as
+/// `Client::get_active` semantics elsewhere in this module — launcher-style
+/// popups are single-instance by construction).
+pub fn window_position(class: &str) -> Option<(i16, i16)> {
+    Clients::get()
+        .ok()?
+        .into_iter()
+        .find(|c| c.mapped && c.class == class)
+        .map(|c| c.at)
 }
 
 /// Fetch the full current compositor state from Hyprland (sync).
