@@ -1,5 +1,24 @@
 # HANDOFF — контекст для новой сессии Архитектора
 
+**Обновлено: 2026-08-16 (чекпоинт #27 — T265-G принята, live открыт).**
+HEAD `35fbb035` (+ docs после неё).
+
+**T265-G ПРИНЯТА** `feat(launcher): settings page in right panel`.
+`PanelTab::LauncherSettings` (ALL 21, не в `for_mode`), страница 7 групп,
+`launcher_config` watcher 300ms, `apply_config_derived`, Tune в футере →
+`select_tab`. Слайдеры — `bar_settings::slider_control`, toggle — `Switch`.
+Cargo.lock / Source / left-panel не тронуты. Сверил сам.
+
+Мой прогон: launcher **83/83**, side_panel_right **198/198**, `--lib` **563/563**.
+
+Не блокер: у Hidden apps нет поиска (спека просила); категории только
+Show, скрыть новую из UI нельзя. Live grim: колонки сразу на OSD, Unhide,
+Tune → вкладка.
+
+T265-H остаётся PAUSE. Не выдана.
+
+---
+
 **Обновлено: 2026-08-16 (чекпоинт #26 — параллельная сессия, docs-правки).**
 HEAD `c5151fb9` на момент записи — **не мой коммит**, другая
 Architect-сессия параллельно приняла T265-F и T293 (см. #24/#25 ниже,

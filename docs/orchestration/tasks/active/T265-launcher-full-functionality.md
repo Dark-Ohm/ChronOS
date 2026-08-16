@@ -153,8 +153,8 @@ frecency**; различается только раскладка и разме
 | T265-D | `done/T265-D-launcher-context-menu-and-actions.md` | DONE 2026-08-16 (`0405711`) — live PASS (чекпоинт #22) |
 | T265-E | `done/T265-E-launcher-prefix-modes.md` | DONE 2026-08-16 (`52866c6`) — live grim ещё открыт |
 | T265-F | `done/T265-F-launcher-system-actions.md` | DONE 2026-08-16 (`ba810d8` + errata) — live grim ещё открыт |
-| T265-G | `active/T265-G-launcher-settings-right-panel.md` | ГОТОВА К ВЫДАЧЕ (F закрыта) |
-| T265-H | `active/pause/T265-H-launcher-start-menu-surface.md` | PAUSE, после A+B (лучше после G) |
+| T265-G | `done/T265-G-launcher-settings-right-panel.md` | DONE 2026-08-16 (`35fbb035`) — live grim ещё открыт |
+| T265-H | `active/pause/T265-H-launcher-start-menu-surface.md` | PAUSE, после G (ещё не выдана) |
 
 Порядок = зависимость. Параллелить волны нельзя: все пишут
 `launcher/view.rs` / одну модель.
