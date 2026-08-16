@@ -1,0 +1,4 @@
+# ChronOS kitchen — rejected options
+
+Канон: `docs/DECISIONS.log`. Сюда — только то, что отклонили уже
+после cutover очереди. До него не дублировать.
