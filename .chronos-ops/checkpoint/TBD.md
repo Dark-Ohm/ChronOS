@@ -1,7 +1,7 @@
 # TBD — хвосты и хотелки
 
 > Живой список **некритичного**: polish, wishlist, отложенные идеи.
-> Не замена `docs/HANDOFF.md` (оперативка) и не `docs/orchestration/tasks/` (T-ID).
+> Не замена `.chronos-ops/checkpoint/HANDOFF.md` (оперативка) и не `docs/orchestration/tasks/` (T-ID).
 > Когда пункт созрел → бриф T-ID или вычёркивание с датой/коммитом.
 >
 > **Обновлено:** 2026-08-03 — dogfood Editor D1–D4; + T181 residual.
