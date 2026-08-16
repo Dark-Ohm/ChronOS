@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# toggle-dark-mode — Toggle system light/dark preference.
+#
+# One script, three surfaces kept in lockstep:
+#   1. GTK color-scheme + gtk-3/4 settings.ini  (system apps)
+#   2. ChronOS shell theme via IPC              (bar, panels, dock, OSD)
+#   3. Hyprland border + shadow colors           (window chrome)
+#
+# Bound to Super+Shift+T (chronos bind module) AND Super+F12 (kitchen).
+# Either bind hits the same script; state is derived from gsettings.
+
+set -euo pipefail
+
+# --- detect current state from the canonical GTK source of truth -----------
+current=$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null || echo "'default'")
+
+if [[ "$current" == *"prefer-dark"* ]]; then
+    mode=light   # currently dark → switching TO light
+    gtk_prefer=0
+    # Hyprland colors: Light C palette (matches ChronOS light_scheme)
+    hypr_active="rgb(c4c8e6)"       # cardBorder
+    hypr_inactive="rgb(d4d7ee)"     # subtle border
+    hypr_shadow="rgba(d4d7eeaa)"
+else
+    mode=dark    # currently light (or default) → switching TO dark
+    gtk_prefer=1
+    # Hyprland colors: dark Mocha palette (matches ChronOS default_scheme)
+    hypr_active="rgb(313244)"       # bg.elevated
+    hypr_inactive="rgb(45475a)"     # text.disabled / subtle dark
+    hypr_shadow="rgba(1a1a2eee)"
+fi
+
+# --- 1. GTK / GNOME --------------------------------------------------------
+gsettings set org.gnome.desktop.interface color-scheme "prefer-${mode}" 2>/dev/null || true
+gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita' 2>/dev/null || true
+
+for ini in "$HOME/.config/gtk-3.0/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"; do
+    mkdir -p "$(dirname "$ini")"
+    if [[ -f "$ini" ]] && grep -q 'gtk-application-prefer-dark-theme' "$ini"; then
+        sed -i "s/^gtk-application-prefer-dark-theme=.*/gtk-application-prefer-dark-theme=${gtk_prefer}/" "$ini"
+    else
+        printf '[Settings]\ngtk-application-prefer-dark-theme=%s\ngtk-theme-name=Adwaita\ngtk-icon-theme-name=Adwaita\n' \
+            "$gtk_prefer" > "$ini"
+    fi
+done
+
+# --- 2. ChronOS shell ------------------------------------------------------
+chronos-ipc toggle-theme 2>/dev/null || true
+
+# --- 3. Hyprland window chrome (Lua eval — keyword broken on 0.55+ Lua parser)
+hyprctl eval "hl.config({ general = { col = { active_border = \"$hypr_active\", inactive_border = \"$hypr_inactive\" } }, decoration = { shadow = { color = \"$hypr_shadow\" } } })" 2>/dev/null || true
+
+# --- 4. Kitty terminal (set-colors —all = every open kitty window) --------
+# Socket discovery: KITTY_LISTEN_ON is only set inside kitty windows.
+# From Hyprland binds we must discover the socket via glob.  Works with
+# kitty 0.48+ allow_remote_control socket (UNIX socket in XDG_RUNTIME_DIR).
+THEME_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/kitty/themes"
+SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kitty-*"
+kitty @ set-colors --all --to "unix:${SOCK}" \
+    -c "${THEME_DIR}/${mode}.conf" 2>/dev/null || true
+
+# --- notification (best-effort) --------------------------------------------
+notify-send -a "theme" "${mode^} mode" 2>/dev/null || true
