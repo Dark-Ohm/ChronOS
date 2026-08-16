@@ -11,9 +11,11 @@
 **Принято:** T194c · T199–T208 · T203 · T204 (+errata).
 T202 `82e100a` · T205–T208 done; live smoke residual on chrome/editor.
 
-**Активное:** T287 (`docs/orchestration/tasks/active/`). T287-C **принят**
-`220a05e2` (760 тестов зелёные, grep дерева чист, live smoke не гонялся —
-не блокер). T292 **принят**. T296 **принят** `a2c072f`.
+**Активное:** T287-A (`composer.rs` пикеры на кит `Select`, после T287-C
+`220a05e2`) → затем T287-B (`sessions.rs` на кит `List` + возврат
+pin/archive/rename, регресс от T287-C, найден архитектором при закладке).
+Порядок строгий: A перед B, оба в `docs/orchestration/tasks/active/`.
+T287-C **принят** `220a05e2`. T292 **принят**. T296 **принят** `a2c072f`.
 T285 slice A `f9cd9a2` в git; остаток — BACKEND (`hermes_acp/client.rs`), не брать.
 ~~T195~~ **done** `9268440`. Live smoke residual T206–T208 — не сейчас.
 
