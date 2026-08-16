@@ -1,5 +1,24 @@
 # HANDOFF — контекст для новой сессии Архитектора
 
+**Обновлено: 2026-08-16 (чекпоинт #24 — T265-F принята с эрратой, live открыт).**
+HEAD `ba810d8` + однострочная эррата теста.
+
+**T265-F ПРИНЯТА** `feat(launcher): system action header`. Зона: `power.rs` (вынос `PowerAction`+arm), `launcher/system_actions.rs`, шапка `view.rs`, `services/power` lock/suspend/hibernate, `power_row.rs` UI-only. Cargo.lock / Source не тронуты. Сверил сам:
+
+- 6 действий, `[system_actions] order`, мусор → дефолт+warn;
+- Lock/Sleep/Hibernate один клик; Logout/Restart/Shutdown arm 3s + `Confirm?`;
+- кнопки `gpui-component::Button` (Ghost/Danger/disabled+tooltip);
+- Lock = `loginctl lock-session`; sleep/hibernate = `systemctl`; `/sys/power/state`;
+- аватар `~/.face` / AccountsService, иначе инициал.
+
+Эррата: `folder_serializes_and_reloads` не заполнил новый `system_actions` — `cargo check` зелёный, `cargo test --lib` красный. Минион честно не гонял `--lib` из-за чужого T293; я прогнал в worktree. На этой машине `disk` есть в `/sys/power/state` — disabled Hibernate живьём не увидим.
+
+Мой прогон (worktree `ChronOS-wt-t265f`, чистое дерево `ba810d8`+эррата): `--lib` **557/557**; `chronos-services power` **10/10**. `--release` — см. ниже / в коммите.
+
+**Live grim F не закрыт:** шапка, Lock, Confirm? (reboot не жать). T265-G разблокирована, не выдана. T293 WIP на master не трогал.
+
+---
+
 **Обновлено: 2026-08-16 (чекпоинт #23 — T265-E принята, live открыт).**
 HEAD `52866c6`.
 
