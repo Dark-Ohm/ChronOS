@@ -113,3 +113,28 @@ print("".join(re.escape(a)+r"([0-9]+[A-Za-z0-9]*)"*(i<len(parts)-1) for i,a in e
   fi
   printf '\n'
 }
+
+wt_task_state() {
+  local repo="$1" ticket="$2"
+  local root glob tasks
+  root="$(wt_repo_get "$repo" root)"
+  glob="$(wt_repo_get "$repo" task_glob)"
+  [[ -n "$glob" ]] || { echo none; return 0; }
+  tasks="$root/docs/orchestration/tasks"
+  local f
+  for f in \
+    "$tasks/active/T${ticket}-"*.md \
+    "$tasks/active/pause/T${ticket}-"*.md \
+    "$tasks/active/check/T${ticket}-"*.md \
+    "$tasks/done/T${ticket}-"*.md
+  do
+    [[ -e "$f" ]] || continue
+    case "$f" in
+      */active/pause/*) echo pause; return 0 ;;
+      */active/check/*) echo check; return 0 ;;
+      */done/*) echo done; return 0 ;;
+      */active/*) echo active; return 0 ;;
+    esac
+  done
+  echo none
+}
