@@ -1,8 +1,57 @@
 # HANDOFF — контекст для новой сессии Архитектора
 
-**Обновлено: 2026-08-17 (конец дня) — T298 принят частично, T301/T302
-заведены, live smoke архитектора.** HEAD — см. `git log -1`, запушен
-`origin/master`.
+**Обновлено: 2026-08-18 — T266 принят, HEAD починен, T303 переписан,
+T304/T305 заведены.** HEAD — см. `git log -1`.
+
+**T266 (прозрачность поверхностей + блюр) ПРИНЯТ.** Своя приёмка:
+`chronos-ui` 22/22, `chronos --lib` 597/597, `chronos-services
+compositor` 4/4, `cargo check --bins` чисто — все три числа отчёта
+сошлись с прогоном. Дефолт непрозрачный (`alpha = 1.0`, blur off,
+`surface.rs:37-39`) — критерий «свежая установка пиксельно не
+меняется» держится структурно. Тумблер блюра гейтится честно
+(`probed && capability == Available`, `bar_settings.rs:359`) — планка
+T246 соблюдена.
+
+**Мой промах, найден приёмкой:** коммит `d01820e` был
+несамодостаточным — `HEAD:crates/ui/src/theme/mod.rs:14` делал
+`pub mod surface;`, а сам `surface.rs` в коммит не попал. Чистый
+checkout HEAD не собирался ~сутки. Починено `d0c565d6` (три файла
+хвоста: `surface.rs`, калиброванные флоры `DEFAULT_MIN_ALPHA` /
+`LIGHT_MIN_ALPHA` = 0.70, `packaging/hyprland/45-surface-effects-chronos.lua`).
+Эррата `e8b1b273`: в `surface_effects.rs` блок `if/else` возвращал
+`Result`, но стоял statement'ом — ошибка применения persisted blur
+терялась молча (класс T271, компилятор ловил warning'ом).
+
+**Долг T266 на владельце:** попапы (volume / OSD / notifications /
+tray / dock) живьём НЕ сняты — покрытие аналитическое через
+связывающую плату `bg.elevated`. Приёмочный смок: `surface_alpha`
+0.7, попапы на светлых и на тёмных обоях.
+
+**Живые находки Lua-Hyprland 0.56.2 (T266, Task 6):** глобальный
+`decoration.blur.enabled` обязателен — без него корректное layer-rule
+не рендерит ничего; `ignore_alpha` в layer rule МОЛЧА убивает блюр;
+`hl.layer_rule` идемпотентен по имени (обновление файла требует
+рестарта Hyprland, `hyprctl reload` сбрасывает eval-глобалы →
+probe вернёт `ModuleMissing`).
+
+**T303 переписан** под фактическое состояние дерева: геометрия рамки
+уже уехала в `d01820e` (единое кольцо `border` + `rounded`, не 5 div
+с corner-патчами), тикет протух до раздачи. Остаток — P2: развести
+`wrap.thickness` и `bottom_strip.height`, убрать `T303DEBUG`-лог,
+живой grim.
+
+**T304/T305 заведены** (`c8728c8`): settings-табы правого рейла
+(System[0], Updates[1], Notifications[2], AcpSettings[13],
+EditorSettings[17] = `BarSettingsTab`, HyprlandBinds[18], Display[19],
+LauncherSettings[20]) уезжают в один anchored slide-popup
+(control-center, видео-референс владельца). Тяжёлые work-tools и
+пустышки Mcp/Lsp/ApiProviders остаются на докнутом рейле. T304 —
+предварительный (`TabContent::create` → `&mut App`), T305 не
+стартует до его приёмки: общий `tab/mod.rs`. `power_row.rs` — на
+удаление (power покрыт `start_menu::rail_power_actions`, network/battery
+— виджетами бара).
+
+**Очередь FRONTEND:** T302 → T304 → T305 → T303 → T301.
 
 **T298 (composer Select popup) ПРИНЯТ частично.** Вертикальный
 клиппинг исправлен по корню — `content_size()` в
