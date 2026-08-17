@@ -91,11 +91,13 @@ UI-label **«System settings»** — НЕ редактор; на этой пут
    или что реально осмысленно замапить, Workspaces-эквивалент если
    есть) переключает, какой `TabContent` вариант рендерится в теле
    popup — через `TabContent::create(tab, cx)` (T304).
-5. **Un-map рейла закрывает popup.** Хук вешается на call site в
-   `side_panel_right/mod.rs:464` — там уже вызывается
-   `frame::set_rail_mapped(FrameSide::Right, false, cx)` на un-map;
-   добавить туда же закрытие popup, если открыт. **`frame.rs` не
-   трогать** (T303-зона, живёт отдельно) — вся правка живёт в
+5. **Un-map рейла закрывает popup.** `frame::set_rail_mapped(FrameSide::Right,
+   ...)` зовётся в трёх местах `side_panel_right/mod.rs` — `true` на
+   464 (`open_window`, не наша забота), **`false` на 558 (`close`) и
+   639 (`close_this`) — два разных пути закрытия, хук на закрытие
+   popup вешается в ОБОИХ**, не в одном. Пропустить второй — popup
+   переживёт закрытие рейла тем путём, который не проверили. **`frame.rs`
+   не трогать** (T303-зона, живёт отдельно) — вся правка живёт в
    `side_panel_right/mod.rs`. Не закрыть popup при un-map — призрак-
    окно, тот же класс бага что в ghost-window саге launcher/tray_menu
    2026-07-18. Открытие popup — rollback-паттерн как у
@@ -105,7 +107,9 @@ UI-label **«System settings»** — НЕ редактор; на этой пут
    на `MprisState` как в существующих потребителях (`bar/widgets/mpris.rs`,
    старый `mpris_card.rs` usage) — паттерн копировать, не изобретать.
 7. Живой прогон: `hyprctl layers` координаты popup, `grim` до/после
-   open/close, unmapped-rail сценарий, resize.
+   open/close, unmapped-rail сценарий проверить **через оба пути**
+   (`close` и `close_this` — mod.rs:558/639, не только один из двух),
+   resize.
 8. `cargo check`/`cargo test --lib` — переписанный `tabs.rs` тест
    зелёный, остальной lib не регрессирует.
 
