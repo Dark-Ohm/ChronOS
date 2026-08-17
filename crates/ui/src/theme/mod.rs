@@ -246,16 +246,21 @@ impl Default for Theme {
 }
 
 /// T266 floor for the `Default` (dark) scheme: the lowest `surface_alpha`
-/// at which `text.primary` still reads (WCAG AA) on the scheme's worst-case
-/// backdrop — a LIGHT wallpaper behind the dark plate (Task 5 live
-/// measurement, 2026-08-17). Above it, dark plates over light wallpapers
-/// wash out white text.
-pub const DEFAULT_MIN_ALPHA: f32 = 0.85;
+/// at which `text.primary` still reads (WCAG AA 4.5) on the scheme's
+/// worst-case backdrop — a WHITE wallpaper behind the dark plate. The
+/// binding surface is the popup plate `bg.elevated` (#313244, the lightest
+/// dark plate): live sweep 2026-08-17 over a pure-white wallpaper gave
+/// 3.73:1 at 0.60 and 4.93:1 at 0.70 (bar/rail pass far earlier at 0.60 →
+/// 4.63).
+pub const DEFAULT_MIN_ALPHA: f32 = 0.70;
 
 /// T266 floor for the `Light` scheme: worst-case backdrop is a DARK
 /// wallpaper behind the light plate (dark text loses contrast as the plate
-/// fades to black). Measured live on the shell's dark wallpaper (Task 5).
-pub const LIGHT_MIN_ALPHA: f32 = 0.40;
+/// fades toward black). Binding surface = the darkest light plate
+/// `bg.primary` (#dde0f2) over pure black: live sweep 2026-08-17 on the
+/// shell's near-black wallpaper measured the rail at 4.88:1 for 0.65 and
+/// 5.62:1 for 0.70; analytic over pure black: 4.87:1 at 0.70.
+pub const LIGHT_MIN_ALPHA: f32 = 0.70;
 
 impl Global for Theme {}
 
