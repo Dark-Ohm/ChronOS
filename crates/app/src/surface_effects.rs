@@ -61,7 +61,7 @@ pub fn init(cx: &mut App) {
             let mut state = current(cx);
             state.capability = capability;
             state.probed = true;
-            if capability == BlurCapability::Available {
+            let applied = if capability == BlurCapability::Available {
                 let wanted = state.persisted_blur;
                 chronos_services::compositor::set_shell_blur_enabled(wanted)
                     .map_err(|e| e.to_string())
@@ -81,7 +81,7 @@ pub fn init(cx: &mut App) {
             };
             cx.set_global(state);
             cx.refresh_windows();
-            Ok(())
+            applied
         });
         if let Err(e) = apply_result {
             tracing::warn!("surface_effects: probe/apply failed: {e}");
