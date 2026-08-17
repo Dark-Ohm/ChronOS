@@ -27,29 +27,6 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all --check
 
-  skill-proofs:
-    # Every `file:line` proof reference in the skill vault (SKILL.md,
-    # references/, *.eval.md) must resolve to a real file:line — stale proof
-    # links are treated as defects. Run early: cheap and independent of the
-    # Rust toolchain. The gpui fork (ChronOS-GPUI) is cloned as the sibling
-    # `../Source` the checker expects, so fork-only references are validated
-    # strictly too. Roots that cannot exist on a fresh runner degrade to
-    # informational EXT: the fork if the clone fails, `reference/` (gitignored
-    # donor snapshots, never committed) and `Source-wt-component/` (gpui-
-    # component worktree). Committed repo roots (crates/, docs/, skills/) are
-    # strict always.
-    name: skill proof links
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Clone gpui fork (best-effort, for fork-proof strictness)
-        run: |
-          git clone --depth 1 https://github.com/Dark-Ohm/Chronos-GPUI \
-            "${GITHUB_WORKSPACE}/../Source" \
-            || echo "fork clone failed — fork references degrade to informational EXT"
-      - name: Validate skill proof references
-        run: bash skills/check-proofs.sh
-
   build-test:
     name: clippy + test
     runs-on: ubuntu-latest

@@ -11,8 +11,8 @@
 //! instead of re-deriving the merge rules.
 //!
 //! **Primary agent surface (documented choice, see T201 report §"How agent
-//! invokes"): pure functions + a Hermes skill** (`skills/chronos-bar-config/
-//! SKILL.md`) that tells the agent to read/write `bar.toml` directly via its
+//! invokes"): pure functions + a Hermes skill** (`chronos-bar-config`, in the
+//! shared vault at `../skills/`, outside this repo) that tells the agent to read/write `bar.toml` directly via its
 //! normal file tools, following this schema. No CLI subcommand — `main.rs`
 //! has no argument-parsing scaffold to hang one off, and inventing one for a
 //! single call site would be scope creep. No IPC mirror either — the

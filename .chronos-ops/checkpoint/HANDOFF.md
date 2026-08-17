@@ -4,6 +4,27 @@
 переписан, T304/T305 заведены, `docs/orchestration/` ЗАКРЫТ.** HEAD —
 см. `git log -1`.
 
+**`skills/` вынесен из репо (2026-08-18).** Единый вольт —
+`/home/neo/projects/chronos-ecosystem/skills/` (98+ скиллов, вне git,
+общий на все проекты экосистемы). В ChronOS каталога `skills/` больше
+нет. Перед удалением сверил: 65 позиций были симлинками на вольт, а
+**восемь существовали только здесь** и в вольт не переехали —
+`engram/` (21 файл), `eval/` (114, харнесс fable-method), `_notes/`,
+`.obsidian/`, `software-development/chronos-shell-ipc`, `assets/cover.png`,
+`check-proofs.sh`. Все скопированы в вольт до удаления. `fable-discipline/`
+НЕ копировал: сверил построчно в обе стороны — вольтовые `fable-*` новее
+и являются надмножеством (уникальных строк в репозиторной копии нет,
+кроме двух устаревших редакций тех же абзацев).
+
+**Следствия удаления, уже сделаны:** из `.github/workflows/ci.yml` убран
+job `skill-proofs` (он звал `skills/check-proofs.sh`, которого больше
+нет — CI падал бы на каждом пуше); удалён мёртвый
+`scripts/git-hooks/pre-commit` (тот же чекер; `core.hooksPath =
+scripts/git-hooks` остался выставленным локально — каталог пуст, git
+просто не найдёт хук, вреда нет); поправлен doc-комментарий
+`crates/app/src/bar/agent_api.rs` на путь вольта. Ссылки в
+`docs/product/roadmap.md` и в архивных отчётах не правились — история.
+
 **`docs/orchestration/` закрыт и физически удалён.** Кухня целиком в
 `.chronos-ops/`: тикеты `active/<role>/` (+ `hold/`), инбокс отчётов
 `reports-fresh/`, принятое `reports-log/<role>/` + `done/<role>/`,
