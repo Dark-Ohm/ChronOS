@@ -9,6 +9,22 @@ pub enum CompositorBackend {
     Niri,
 }
 
+/// T266: whether the shell's compositor blur toggle can actually reach a
+/// blur bridge. `Available` means the shipped Hyprland module is loaded and
+/// its `chronos_set_blur_enabled` global is callable.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlurCapability {
+    /// Running under Hyprland AND the module global is present.
+    #[default]
+    Available,
+    /// Running under Hyprland, but `45-surface-effects-chronos.lua` is not
+    /// imported — the toggle must be disabled with the import hint.
+    ModuleMissing,
+    /// Not a Hyprland session (Niri scaffold or no compositor) — the toggle
+    /// is disabled; nothing to import.
+    Unsupported,
+}
+
 impl CompositorBackend {
     /// Human-readable name for logging.
     pub fn name(&self) -> &'static str {

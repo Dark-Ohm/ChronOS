@@ -1,24 +1,40 @@
-//! Bottom desktop frame strip (T268) — a thin layer-shell strip that closes
-//! the frame around the shell at the bottom bezel.
+//! Desktop frame theme (T268 + T284) — a thin layer-shell strip that closes
+//! the frame around the shell at the bottom bezel, plus the optional `wrap`
+//! theme that turns the frame into a full perimeter card.
 //!
-//! Rules (from the task):
-//! 1. **No exclusive zone** — the strip lives over the `gaps_out` gap, it
-//!    never pushes windows.
+//! ## Hide (default, T268)
+//! The bottom strip over the `gaps_out` gap. Rules (from the task):
+//! 1. **No exclusive zone** — the strip lives over the gap, it never pushes
+//!    windows.
 //! 2. **Half the gap** — default height 4px (= `gaps_out 8` / 2, same value
 //!    as the side hover strips' `STRIP_WIDTH`). Configurable in
 //!    `~/.config/chronos/frame.toml` with a sane floor, not hardcoded.
-//! 3. **Corners are the deliverable** — three junction variants, shot with
-//!    `grim -g` on the corners, one picked with justification:
-//!    - `flush`  — strip spans the full display width, square outer ends;
-//!    - `break`  — strip stops at the inner edges of the side rails;
-//!    - `rounded`— same as `break` but the strip's end caps are rounded.
+//! 3. **Corners are the deliverable** — three junction variants (`flush` /
+//!    `break` / `rounded`), `break` picked by live corners.
 //! 4. **Chrome from T267 tokens** — `bg.tertiary` surface + `border.subtle`
-//!    top border (the strip sits at the bottom → top border, mirroring the
-//!    bar's edge-relative chrome). No fourth custom shade.
+//!    top border. No fourth custom shade.
 //!
-//! Multi-monitor: bound to the pult display only (same rule as bar/panels).
+//! The strip's span follows which side rails are mapped (T284 §4): with both
+//! rails gone the strip is closed entirely — a floating bottom bar over the
+//! wallpaper is exactly what the strip is not.
+//!
+//! ## Wrap (T284)
+//! `style = "wrap"` in `frame.toml`: one fullscreen **matte** (Layer::Top,
+//! paints only the chrome ring, hole = wallpaper) plus three invisible
+//! exclusive strips L/R/B (thickness = `bottom_strip.height`) that push
+//! clients off the frame. The bar stays top-exclusive and reads as the top
+//! edge of the frame; side rails/content inset by `wrap_inset()` on the
+//! panel side.
+//!
+//! `frame::apply` never imports the panels — panel geometry is re-applied
+//! through the `set_after_apply` hook registered in `main.rs` (one-way
+//! dependency; otherwise `frame ↔ side_panel` cycle).
+//!
+//! Multi-monitor: everything is bound to the pult display only (same rule
+//! as bar/panels).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
@@ -43,6 +59,11 @@ const MAX_HEIGHT: f32 = 16.0;
 /// `rounded` junctions inset by this so the strip butts the rails' inner
 /// edges exactly.
 const RAIL_INSET: f32 = 40.0;
+/// Default `wrap.inner_radius` — the inner corners of the card, not half
+/// the strip height (T284 spec §3).
+const DEFAULT_INNER_RADIUS: f32 = 16.0;
+const MIN_RADIUS: f32 = 0.0;
+const MAX_RADIUS: f32 = 64.0;
 
 /// Strip/rail junction at the bottom corners.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,6 +82,83 @@ pub enum FrameJunction {
 impl Default for FrameJunction {
     fn default() -> Self {
         Self::Break
+    }
+}
+
+/// Desktop frame style (T284). Deserialized from a **string** via
+/// `deserialize_style` — never `#[derive(Deserialize)]` directly, otherwise
+/// an unknown value fails the whole parse and `load()` silently replaces
+/// the config with defaults (the T268 junction trap).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FrameStyle {
+    /// T268 path: bottom strip between the rails, closed when no rail is
+    /// mapped.
+    #[default]
+    Hide,
+    /// Perimeter card: matte + three exclusive edge strips, rails inside.
+    Wrap,
+}
+
+impl FrameStyle {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FrameStyle::Hide => "hide",
+            FrameStyle::Wrap => "wrap",
+        }
+    }
+
+    /// Unknown values → `Hide` + warn (never panic, never silently enable
+    /// Wrap — spec §3).
+    pub fn from_str_sanitized(s: &str) -> Self {
+        match s {
+            "wrap" => FrameStyle::Wrap,
+            "hide" => FrameStyle::Hide,
+            other => {
+                tracing::warn!("frame: unknown style {other:?}, falling back to hide");
+                FrameStyle::Hide
+            }
+        }
+    }
+}
+
+fn deserialize_style<'de, D>(deserializer: D) -> Result<FrameStyle, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(FrameStyle::from_str_sanitized(&s))
+}
+
+/// `[wrap]` section — only the inner corner radius for now (T284 spec §3).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct WrapConfig {
+    pub inner_radius: f32,
+}
+
+impl Default for WrapConfig {
+    fn default() -> Self {
+        Self {
+            inner_radius: DEFAULT_INNER_RADIUS,
+        }
+    }
+}
+
+impl WrapConfig {
+    /// Clamp `inner_radius` into `MIN_RADIUS..=MAX_RADIUS` (0 disables the
+    /// corner rounding entirely).
+    pub fn sanitized(&self) -> Self {
+        let mut out = self.clone();
+        if out.inner_radius < MIN_RADIUS || out.inner_radius > MAX_RADIUS {
+            tracing::warn!(
+                "frame: wrap.inner_radius {} out of range [{MIN_RADIUS}, {MAX_RADIUS}], clamping to {}",
+                out.inner_radius,
+                out.inner_radius.clamp(MIN_RADIUS, MAX_RADIUS)
+            );
+            out.inner_radius = out.inner_radius.clamp(MIN_RADIUS, MAX_RADIUS);
+        }
+        out
     }
 }
 
@@ -103,13 +201,19 @@ impl BottomStripConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct FrameConfig {
+    /// hide | wrap — missing key / unknown value → Hide (spec §3).
+    #[serde(default, deserialize_with = "deserialize_style")]
+    pub style: FrameStyle,
     pub bottom_strip: BottomStripConfig,
+    pub wrap: WrapConfig,
 }
 
 impl Default for FrameConfig {
     fn default() -> Self {
         Self {
+            style: FrameStyle::default(),
             bottom_strip: BottomStripConfig::default(),
+            wrap: WrapConfig::default(),
         }
     }
 }
@@ -139,6 +243,7 @@ pub fn cached_config() -> FrameConfig {
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     cfg.bottom_strip = cfg.bottom_strip.sanitized();
+    cfg.wrap = cfg.wrap.sanitized();
     cfg
 }
 
@@ -178,6 +283,87 @@ impl FrameConfig {
     }
 }
 
+// ── Rail presence (T284 §4) ─────────────────────────────────────────────────
+//
+// The panels report whether their rail surface is mapped; the hide strip's
+// existence and span, and the wrap inset, derive from this. Stored in an
+// atomic so pure predicates (`hide_strip_wanted`, `hide_strip_insets`) can
+// read it without an `App`.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameSide {
+    Left,
+    Right,
+}
+
+const RAIL_LEFT_BIT: u8 = 0b01;
+const RAIL_RIGHT_BIT: u8 = 0b10;
+static RAIL_MAPPED: AtomicU8 = AtomicU8::new(0);
+
+fn rail_bit(side: FrameSide) -> u8 {
+    match side {
+        FrameSide::Left => RAIL_LEFT_BIT,
+        FrameSide::Right => RAIL_RIGHT_BIT,
+    }
+}
+
+pub fn rail_mapped(side: FrameSide) -> bool {
+    RAIL_MAPPED.load(Ordering::Relaxed) & rail_bit(side) != 0
+}
+
+/// Panels call this on rail open/close (never from `init_hover_strip` — a
+/// 4px hover strip is not a rail). Re-derives the hide strip and re-applies.
+pub fn set_rail_mapped(side: FrameSide, mapped: bool, cx: &mut App) {
+    let bit = rail_bit(side);
+    if mapped {
+        RAIL_MAPPED.fetch_or(bit, Ordering::Relaxed);
+    } else {
+        RAIL_MAPPED.fetch_and(!bit, Ordering::Relaxed);
+    }
+    apply(cx);
+}
+
+/// Hide-strip span insets per side (CSS order left, right): a mapped rail
+/// pushes the strip inward by `RAIL_INSET`; a missing rail means the strip
+/// reaches the screen edge.
+pub fn hide_strip_insets(left_mapped: bool, right_mapped: bool) -> (f32, f32) {
+    (
+        if left_mapped { RAIL_INSET } else { 0.0 },
+        if right_mapped { RAIL_INSET } else { 0.0 },
+    )
+}
+
+/// The Hide strip exists only while at least one rail is mapped — with both
+/// rails gone the bottom chrome would float over the wallpaper (T284 §4).
+pub fn hide_strip_wanted(enabled: bool, left_mapped: bool, right_mapped: bool) -> bool {
+    enabled && (left_mapped || right_mapped)
+}
+
+/// 0 in Hide; `bottom_strip.height` in Wrap — the frame thickness rails and
+/// content inset by, and the exclusive strips reserve (T284 §5).
+pub fn wrap_inset_for(cfg: &FrameConfig) -> f32 {
+    match cfg.style {
+        FrameStyle::Hide => 0.0,
+        FrameStyle::Wrap => cfg.bottom_strip.sanitized().height,
+    }
+}
+
+pub fn wrap_inset() -> f32 {
+    wrap_inset_for(&cached_config())
+}
+
+/// The matte's transparent hole (T284 spec §5.1): inset `h` on L/R/B, top at
+/// the live bar height. `inner_radius` only rounds the hole's corners, it
+/// does not change the rectangle bounds.
+pub fn wrap_inner_rect(display_w: f32, display_h: f32, bar_h: f32, inset: f32) -> Bounds<f32> {
+    Bounds::from_corners(
+        point(inset, bar_h),
+        point((display_w - inset).max(0.0), (display_h - inset).max(bar_h)),
+    )
+}
+
+// ── Hide strip surface (T268) ───────────────────────────────────────────────
+
 struct BottomStripView;
 
 impl Render for BottomStripView {
@@ -189,7 +375,8 @@ impl Render for BottomStripView {
         let strip = cached_config().bottom_strip;
 
         // Span/chrome per junction (rule 3): full width for `Flush`; inset to
-        // the rails' inner boundary for `Break`/`Rounded`.
+        // the rails' inner boundary for `Break`/`Rounded`. The inset follows
+        // which rails are actually mapped (T284 §4).
         let mut chrome = div()
             .id("bottom-frame-strip")
             .h_full()
@@ -208,13 +395,17 @@ impl Render for BottomStripView {
             // Spacers on each side inset the chrome to the rails' inner
             // boundary. Flexible root means margins can't overflow the
             // window like `.mx()` did (the chrome stretched full width).
+            let (left, right) = hide_strip_insets(
+                rail_mapped(FrameSide::Left),
+                rail_mapped(FrameSide::Right),
+            );
             div()
                 .id("bottom-frame-strip-shell")
                 .size_full()
                 .flex()
-                .child(div().h_full().w(px(RAIL_INSET)))
+                .child(div().h_full().w(px(left)))
                 .child(chrome)
-                .child(div().h_full().w(px(RAIL_INSET)))
+                .child(div().h_full().w(px(right)))
         }
     }
 }
@@ -256,7 +447,7 @@ fn frame_window() -> &'static Mutex<Option<WindowHandle<BottomStripView>>> {
 }
 
 /// Open the strip on the pult display. Idempotent — no-op if already open.
-pub fn open(cx: &mut App) -> bool {
+fn open(cx: &mut App) -> bool {
     if frame_window().lock().unwrap_or_else(|e| e.into_inner()).is_some() {
         return true;
     }
@@ -287,20 +478,274 @@ fn close(cx: &mut App) {
     }
 }
 
-/// Live-apply the cached config: enabled toggle → open/close, height change →
-/// resize (junction is render-only). Idempotent. Called on every
-/// `frame.toml` change (300 ms debounce) and once after open.
-pub fn apply(cx: &mut App) {
-    let cfg = cached_config();
+// ── Wrap surfaces (T284 §5) ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WrapRole {
+    /// Fullscreen chrome ring on Layer::Top (below the Overlay bar/panels).
+    Matte,
+    /// Invisible exclusive strip reserving the left edge (thickness = inset).
+    ExclLeft,
+    ExclRight,
+    ExclBottom,
+}
+
+struct WrapSurfaceView {
+    role: WrapRole,
+}
+
+impl Render for WrapSurfaceView {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Click-through everywhere — the matte is pure chrome, the dummies
+        // are invisible; input is taken by clients and exclusive zones, not
+        // by the frame (spec §5.1/5.2).
+        window.set_input_region(Some(&[]));
+        if self.role != WrapRole::Matte {
+            // The exclusive strips paint nothing — empty surface.
+            return div().size_full().into_any_element();
+        }
+
+        let theme = Theme::global(cx);
+        let cfg = cached_config();
+        let inset = cfg.bottom_strip.height;
+        let radius = cfg.wrap.inner_radius;
+        tracing::error!(
+            "T303DEBUG matte bounds={:?} scale={}",
+            window.bounds(),
+            window.scale_factor()
+        );
+
+        // One uniform ring instead of strips + hand-drawn corner patches
+        // (T303): the border shader offsets the inner edge by the border
+        // width, so a full-size div with border `inset` and rounding
+        // `radius + inset` paints a frame of constant thickness `inset`
+        // whose inner contour is exactly the spec's rounded rect (inner
+        // radius = `inner_radius`, outer = inner + thickness). The top
+        // border sits under the opaque top-exclusive bar, so the visible
+        // frame is L/R/B with rounded bottom corners and a square junction
+        // with the bar. No background — the hole stays the wallpaper
+        // (spec §5.1; a transparent child would not punch a fill).
+        div()
+            .id("frame-wrap-matte")
+            .size_full()
+            .border(px(inset))
+            .border_color(theme.bg.tertiary)
+            .rounded(px(radius + inset))
+            .into_any_element()
+    }
+}
+
+#[derive(Default)]
+struct WrapWindows {
+    matte: Option<WindowHandle<WrapSurfaceView>>,
+    left: Option<WindowHandle<WrapSurfaceView>>,
+    right: Option<WindowHandle<WrapSurfaceView>>,
+    bottom: Option<WindowHandle<WrapSurfaceView>>,
+}
+
+impl WrapWindows {
+    fn slot(&mut self, role: WrapRole) -> &mut Option<WindowHandle<WrapSurfaceView>> {
+        match role {
+            WrapRole::Matte => &mut self.matte,
+            WrapRole::ExclLeft => &mut self.left,
+            WrapRole::ExclRight => &mut self.right,
+            WrapRole::ExclBottom => &mut self.bottom,
+        }
+    }
+}
+
+static WRAP_WINDOWS: OnceLock<Mutex<WrapWindows>> = OnceLock::new();
+
+fn wrap_windows() -> &'static Mutex<WrapWindows> {
+    WRAP_WINDOWS.get_or_init(|| Mutex::new(WrapWindows::default()))
+}
+
+/// Per-surface options for the wrap matte and the three exclusive strips.
+/// The matte is fullscreen on Layer::Top with NO exclusive zone (a fullscreen
+/// surface with `exclusive != 0` reserves the whole screen — spec §5); the
+/// dummies are Overlay strips whose exclusive zone pushes clients off the
+/// frame.
+fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
+    let (w, h) = display_id
+        .and_then(|id| cx.find_display(id))
+        .map(|d| {
+            (
+                f32::from(d.bounds().size.width),
+                f32::from(d.bounds().size.height),
+            )
+        })
+        .unwrap_or((1920., 1080.));
+    let inset = wrap_inset();
+    let (size, anchor, namespace, layer, exclusive_zone, exclusive_edge) = match role {
+        // No vertical anchor (only LEFT|RIGHT): Hyprland CENTERS a
+        // TOP|BOTTOM-anchored surface in the reserved area (bar top 30 +
+        // excl bottom 4) and flush-lands BOTTOM-anchored ones above the
+        // reserved bottom — either way the matte's bottom border misses the
+        // screen edge and the frame reads as cut (T303). A surface with no
+        // vertical anchor is placed at its top margin (0), covering the
+        // screen exactly; the T268 hide strip proves explicit-size layer
+        // placement is honored.
+        WrapRole::Matte => (
+            Size::new(px(w), px(h)),
+            Anchor::LEFT | Anchor::RIGHT,
+            "frame_wrap_matte",
+            Layer::Top,
+            None,
+            None,
+        ),
+        WrapRole::ExclLeft => (
+            Size::new(px(inset), px(h)),
+            Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT,
+            "frame_wrap_excl_left",
+            Layer::Overlay,
+            Some(px(inset)),
+            Some(Anchor::LEFT),
+        ),
+        WrapRole::ExclRight => (
+            Size::new(px(inset), px(h)),
+            Anchor::TOP | Anchor::BOTTOM | Anchor::RIGHT,
+            "frame_wrap_excl_right",
+            Layer::Overlay,
+            Some(px(inset)),
+            Some(Anchor::RIGHT),
+        ),
+        WrapRole::ExclBottom => (
+            Size::new(px(w), px(inset)),
+            Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
+            "frame_wrap_excl_bottom",
+            Layer::Overlay,
+            Some(px(inset)),
+            Some(Anchor::BOTTOM),
+        ),
+    };
+    WindowOptions {
+        display_id,
+        titlebar: None,
+        window_bounds: Some(WindowBounds::Windowed(Bounds {
+            origin: point(px(0.), px(0.)),
+            size,
+        })),
+        app_id: Some("chronos-frame-wrap".to_string()),
+        window_background: WindowBackgroundAppearance::Transparent,
+        kind: WindowKind::LayerShell(LayerShellOptions {
+            namespace: namespace.to_string(),
+            layer,
+            anchor,
+            exclusive_zone,
+            exclusive_edge,
+            margin: None,
+            keyboard_interactivity: KeyboardInteractivity::None,
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+/// Open matte + three dummies as one set. Partial open is refused — if any
+/// surface fails, everything already opened is rolled back.
+fn open_wrap_windows(cx: &mut App) {
+    {
+        let slots = wrap_windows().lock().unwrap_or_else(|e| e.into_inner());
+        if slots.matte.is_some() {
+            return;
+        }
+    }
+    let display_id = crate::monitor::pult_display_id_or_primary(cx);
+    let mut opened: Vec<(WrapRole, WindowHandle<WrapSurfaceView>)> = Vec::new();
+    for role in [
+        WrapRole::Matte,
+        WrapRole::ExclLeft,
+        WrapRole::ExclRight,
+        WrapRole::ExclBottom,
+    ] {
+        match cx.open_window(wrap_window_options(role, display_id, cx), |_, view_cx| {
+            view_cx.new(|_| WrapSurfaceView { role })
+        }) {
+            Ok(handle) => opened.push((role, handle)),
+            Err(err) => {
+                tracing::warn!("frame: wrap surface {role:?} failed to open: {err}");
+                for (failed_role, handle) in opened.drain(..) {
+                    match handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
+                        Ok(()) => tracing::info!("frame: rolled back wrap surface {failed_role:?}"),
+                        Err(e) => tracing::warn!(
+                            "frame: rollback could not close wrap surface {failed_role:?} ({e})"
+                        ),
+                    }
+                }
+                return;
+            }
+        }
+    }
+    let mut slots = wrap_windows().lock().unwrap_or_else(|e| e.into_inner());
+    for (role, handle) in opened {
+        *slots.slot(role) = Some(handle);
+    }
+}
+
+/// Close all four wrap surfaces (idempotent).
+fn close_wrap_windows(cx: &mut App) {
+    let mut slots = wrap_windows().lock().unwrap_or_else(|e| e.into_inner());
+    for role in [
+        WrapRole::Matte,
+        WrapRole::ExclLeft,
+        WrapRole::ExclRight,
+        WrapRole::ExclBottom,
+    ] {
+        if let Some(handle) = slots.slot(role).take() {
+            match handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
+                Ok(()) => tracing::info!("frame: closed wrap surface {role:?}"),
+                Err(e) => tracing::warn!("frame: could not close wrap surface {role:?} ({e})"),
+            }
+        }
+    }
+}
+
+// ── Apply / orchestration ───────────────────────────────────────────────────
+
+const STYLE_ID_HIDE: u8 = 0;
+const STYLE_ID_WRAP: u8 = 1;
+/// Last applied style — a Hide↔Wrap transition is the only event that
+/// re-triggers panel geometry via `after_apply`.
+static LAST_STYLE: AtomicU8 = AtomicU8::new(STYLE_ID_HIDE);
+
+type AfterApplyHook = Box<dyn Fn(&mut App) + Send + Sync>;
+
+static AFTER_APPLY: OnceLock<Mutex<Option<AfterApplyHook>>> = OnceLock::new();
+
+fn after_apply_slot() -> &'static Mutex<Option<AfterApplyHook>> {
+    AFTER_APPLY.get_or_init(|| Mutex::new(None))
+}
+
+/// Register the panel geometry hook (called from `main.rs` after the side
+/// panel modules are in scope). The frame never imports the panels — the
+/// hook keeps the module dependency one-way (no `frame ↔ side_panel` cycle).
+pub fn set_after_apply(hook: impl Fn(&mut App) + Send + Sync + 'static) {
+    *after_apply_slot().lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(hook));
+}
+
+fn run_after_apply(cx: &mut App) {
+    let slot = after_apply_slot().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(hook) = slot.as_ref() {
+        hook(cx);
+    }
+}
+
+fn apply_hide(cx: &mut App, cfg: &FrameConfig) {
+    // Wrap surfaces never coexist with the hide strip.
+    close_wrap_windows(cx);
+
+    let wanted = hide_strip_wanted(
+        cfg.bottom_strip.enabled,
+        rail_mapped(FrameSide::Left),
+        rail_mapped(FrameSide::Right),
+    );
     let Some(handle) = *frame_window().lock().unwrap_or_else(|e| e.into_inner()) else {
-        if cfg.bottom_strip.enabled {
+        if wanted {
             open(cx);
         }
         return;
     };
-
-    let enabled = cfg.bottom_strip.enabled;
-    if !enabled {
+    if !wanted {
         close(cx);
         return;
     }
@@ -314,6 +759,61 @@ pub fn apply(cx: &mut App) {
         Ok(()) => tracing::debug!("frame: bottom strip config applied"),
         Err(e) => tracing::warn!("frame: apply could not reach window ({e})"),
     }
+}
+
+fn apply_wrap(cx: &mut App) {
+    // Hide strip never coexists with the matte.
+    if frame_window().lock().unwrap_or_else(|e| e.into_inner()).is_some() {
+        close(cx);
+    }
+    open_wrap_windows(cx);
+}
+
+/// Live-apply the cached config (style, strip, wrap geometry). Idempotent.
+/// Called on every `frame.toml` change (300 ms debounce), on rail
+/// open/close, and once at startup.
+pub fn apply(cx: &mut App) {
+    let cfg = cached_config();
+    let style_id = match cfg.style {
+        FrameStyle::Hide => STYLE_ID_HIDE,
+        FrameStyle::Wrap => STYLE_ID_WRAP,
+    };
+    let changed = LAST_STYLE.swap(style_id, Ordering::Relaxed) != style_id;
+
+    match cfg.style {
+        FrameStyle::Hide => apply_hide(cx, &cfg),
+        FrameStyle::Wrap => apply_wrap(cx),
+    }
+
+    // A style transition changes the panel geometry (margin/height), which
+    // is only writable at surface open time — panels recreate themselves
+    // through the hook.
+    if changed {
+        run_after_apply(cx);
+    }
+}
+
+/// Appearance control target: RMW-write only the `style` key so unknown
+/// keys/sections in `frame.toml` survive (never dump `FrameConfig` — that
+/// would wipe height/radius/foreign keys, T284 spec §3).
+pub fn write_style(style: FrameStyle) -> Result<(), String> {
+    write_style_at(&config_path(), style)
+}
+
+fn write_style_at(path: &Path, style: FrameStyle) -> Result<(), String> {
+    let content = std::fs::read_to_string(path).unwrap_or_default();
+    let mut doc: toml::Value = content
+        .parse()
+        .map_err(|e: toml::de::Error| format!("frame: failed to parse {}: {e}", path.display()))?;
+    let table = doc
+        .as_table_mut()
+        .ok_or_else(|| format!("frame: {} is not a TOML table", path.display()))?;
+    // Insert, not `doc["style"] = ..` — toml 0.8's IndexMut panics on a
+    // missing key instead of inserting.
+    table.insert("style".to_string(), toml::Value::String(style.as_str().to_string()));
+    let body = toml::to_string_pretty(&doc)
+        .map_err(|e| format!("frame: failed to serialize style: {e}"))?;
+    std::fs::write(path, body).map_err(|e| format!("frame: failed to write {}: {e}", path.display()))
 }
 
 /// inotify hot-reload for `frame.toml` (bar/layout_config pattern).
@@ -407,10 +907,10 @@ fn spawn_watcher(cx: &mut App) {
     .detach();
 }
 
-/// Opens the bottom strip once at startup. Called from `main.rs`.
-/// Deferred ~40 ms so Wayland has enumerated displays (strip must land on the
-/// pult, like bar/panels) and so it opens before the panel surfaces (~50 ms)
-/// — the strip reads as the bottom frame the rails sit on.
+/// Opens the frame once at startup. Called from `main.rs`. Deferred ~40 ms
+/// so Wayland has enumerated displays (frame must land on the pult, like
+/// bar/panels). `apply` decides the surface set from the loaded style — no
+/// strip is opened until a rail maps, and no matte is opened in Hide.
 pub fn init(cx: &mut App) {
     FrameConfig::apply();
     spawn_watcher(cx);
@@ -419,9 +919,7 @@ pub fn init(cx: &mut App) {
             .timer(Duration::from_millis(40))
             .await;
         let _ = cx.update(|cx| {
-            if cached_config().bottom_strip.enabled {
-                open(cx);
-            }
+            apply(cx);
         });
     })
     .detach();
@@ -437,6 +935,8 @@ mod tests {
         assert!(cfg.bottom_strip.enabled);
         assert_eq!(cfg.bottom_strip.height, 4.0);
         assert_eq!(cfg.bottom_strip.junction, FrameJunction::Break);
+        assert_eq!(cfg.style, FrameStyle::Hide);
+        assert_eq!(cfg.wrap.inner_radius, DEFAULT_INNER_RADIUS);
     }
 
     #[test]
@@ -482,5 +982,111 @@ mod tests {
         let doc = "[unrelated]\nfoo=1\n";
         let cfg = toml::from_str::<FrameConfig>(doc).unwrap();
         assert_eq!(cfg, FrameConfig::default());
+    }
+
+    // ── T284: style / wrap config ──────────────────────────────────────
+
+    #[test]
+    fn missing_style_is_hide() {
+        let cfg: FrameConfig = toml::from_str("[bottom_strip]\nenabled=true\n").unwrap();
+        assert_eq!(cfg.style, FrameStyle::Hide);
+    }
+
+    #[test]
+    fn unknown_style_falls_back_to_hide() {
+        let cfg: FrameConfig = toml::from_str("style = \"diagonal\"\n").unwrap();
+        assert_eq!(cfg.style, FrameStyle::Hide);
+    }
+
+    #[test]
+    fn wrap_style_parses() {
+        let cfg: FrameConfig = toml::from_str("style = \"wrap\"\n").unwrap();
+        assert_eq!(cfg.style, FrameStyle::Wrap);
+    }
+
+    #[test]
+    fn wrap_inset_zero_in_hide_height_in_wrap() {
+        let hide = FrameConfig {
+            style: FrameStyle::Hide,
+            ..FrameConfig::default()
+        };
+        let wrap = FrameConfig {
+            style: FrameStyle::Wrap,
+            bottom_strip: BottomStripConfig {
+                height: 4.0,
+                ..Default::default()
+            },
+            ..FrameConfig::default()
+        };
+        assert_eq!(wrap_inset_for(&hide), 0.0);
+        assert_eq!(wrap_inset_for(&wrap), 4.0);
+    }
+
+    #[test]
+    fn hide_strip_wanted_false_when_no_rails() {
+        assert!(!hide_strip_wanted(true, false, false));
+        assert!(hide_strip_wanted(true, true, false));
+        assert!(!hide_strip_wanted(false, true, true));
+    }
+
+    #[test]
+    fn hide_strip_insets_one_rail() {
+        assert_eq!(hide_strip_insets(true, false), (RAIL_INSET, 0.0));
+        assert_eq!(hide_strip_insets(false, true), (0.0, RAIL_INSET));
+        assert_eq!(hide_strip_insets(true, true), (RAIL_INSET, RAIL_INSET));
+    }
+
+    #[test]
+    fn wrap_radius_clamped() {
+        let mut cfg = WrapConfig::default();
+        cfg.inner_radius = 99.0;
+        assert_eq!(cfg.sanitized().inner_radius, MAX_RADIUS);
+        cfg.inner_radius = -1.0;
+        assert_eq!(cfg.sanitized().inner_radius, MIN_RADIUS);
+        cfg.inner_radius = 16.0;
+        assert_eq!(cfg.sanitized().inner_radius, 16.0);
+    }
+
+    #[test]
+    fn wrap_inner_rect_matches_spec() {
+        let inner = wrap_inner_rect(2560.0, 1440.0, 32.0, 4.0);
+        assert_eq!(inner.origin.x, 4.0);
+        assert_eq!(inner.origin.y, 32.0);
+        assert_eq!(inner.size.width, 2552.0);
+        assert_eq!(inner.size.height, 1404.0);
+    }
+
+    #[test]
+    fn write_style_preserves_unknown_keys() {
+        let dir = std::env::temp_dir().join(format!("chronos-frame-write-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("frame.toml");
+        std::fs::write(
+            &path,
+            "[wrap]\ninner_radius = 24.0\n\n[bottom_strip]\nenabled = false\nheight = 8.0\njunction = \"flush\"\n",
+        )
+        .unwrap();
+        write_style_at(&path, FrameStyle::Wrap).unwrap();
+        let doc: toml::Value = std::fs::read_to_string(&path).unwrap().parse().unwrap();
+        assert_eq!(doc["style"], toml::Value::String("wrap".into()));
+        assert_eq!(doc["wrap"]["inner_radius"], toml::Value::Float(24.0));
+        assert_eq!(doc["bottom_strip"]["enabled"], toml::Value::Boolean(false));
+        assert_eq!(doc["bottom_strip"]["height"], toml::Value::Float(8.0));
+        assert_eq!(doc["bottom_strip"]["junction"], toml::Value::String("flush".into()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_style_overwrites_existing_style_key() {
+        let dir = std::env::temp_dir().join(format!("chronos-frame-write-test2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("frame.toml");
+        std::fs::write(&path, "style = \"wrap\"\n").unwrap();
+        write_style_at(&path, FrameStyle::Hide).unwrap();
+        let doc: toml::Value = std::fs::read_to_string(&path).unwrap().parse().unwrap();
+        assert_eq!(doc["style"], toml::Value::String("hide".into()));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

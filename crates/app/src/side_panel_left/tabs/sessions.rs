@@ -639,7 +639,8 @@ impl Render for SessionsTab {
             .relative()
             .flex()
             .flex_col()
-            .bg(theme.bg.primary)
+            // T266: the sessions tab's plate follows surface alpha.
+            .bg(theme.surface_color(theme.bg.primary))
             // Header: title + new-thread button.
             .child(
                 div()

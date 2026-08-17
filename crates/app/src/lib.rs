@@ -10,6 +10,13 @@ pub(crate) mod calendar_popup;
 // own `mod desktop_terminal;` copy; this is the lib-side twin.
 pub(crate) mod desktop_terminal;
 pub mod edit_mode;
+// Lib-side twin of bin `mod frame` (main.rs): the side panels and the bar
+// settings tab (lib) read `frame::wrap_inset` / `FrameStyle` and write the
+// style key; this mirror lets `cargo test --lib` compile the same path
+// `crate::frame` that main.rs resolves. In the release binary only the
+// bin's copy is linked (the bin does not link `chronos_app`), so the
+// frame's static state lives once. Same twin pattern as `dock` / `start_menu`.
+pub(crate) mod frame;
 pub mod games_config;
 pub mod icon_resolution;
 pub mod launcher;
@@ -31,6 +38,7 @@ pub mod notifications;
 // pattern as `desktop_terminal` (see comment above).
 pub(crate) mod project_switcher;
 pub mod scene;
+mod surface_effects;
 pub mod side_panel_left;
 pub mod side_panel_right;
 // Lib-side twin of bin `mod start_menu` (main.rs): the bar's dock widget

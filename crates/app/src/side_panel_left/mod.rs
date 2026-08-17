@@ -22,6 +22,7 @@ pub fn is_rtl_text(text: &str) -> bool {
 pub use state::{PanelState, SidePanelLeftState};
 pub(crate) use tabs::chat::ChatTab;
 
+use crate::frame::{self, FrameSide};
 use chronos_services::hermes_acp::{
     AgentDescriptor, HermesClient, StreamingEvent, known_agents, load_shared_env,
 };
@@ -207,7 +208,9 @@ fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
 }
 
 fn panel_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
-    (display_height(display_id, cx) - panel_edge_gap()).max(100.)
+    // Wrap (T284): the panel clears the bottom chrome too — height is
+    // trimmed by the wrap inset on top of the bar gap.
+    (display_height(display_id, cx) - panel_edge_gap() - frame::wrap_inset()).max(100.)
 }
 
 /// T278: the `rail` surface — fixed `RAIL_WIDTH` px, owns the exclusive
@@ -237,7 +240,18 @@ pub(crate) fn rail_window_options(display_id: Option<DisplayId>, cx: &App) -> Wi
             anchor: Anchor::TOP | Anchor::LEFT,
             exclusive_zone: Some(px(zone)),
             exclusive_edge: Some(Anchor::LEFT),
-            margin: None,
+            // Wrap (T284): the rail sits inside the card — margin.left = the
+            // frame thickness. No top margin: the bar's exclusive zone
+            // already drops top-anchored Overlay surfaces below it (a
+            // second top offset would double the gap, gpui-layer-shell Part A).
+            margin: {
+                let inset = frame::wrap_inset();
+                if inset > 0. {
+                    Some((px(0.), px(0.), px(0.), px(inset)))
+                } else {
+                    None
+                }
+            },
             keyboard_interactivity: KeyboardInteractivity::None,
             ..Default::default()
         }),
@@ -248,7 +262,9 @@ pub(crate) fn rail_window_options(display_id: Option<DisplayId>, cx: &App) -> Wi
 /// CSS-order: (top, right, bottom, left). `-1` (below) also disables the
 /// bar's automatic top offset, so both offsets must be explicit.
 fn content_window_margin(top_gap: f32) -> (gpui::Pixels, gpui::Pixels, gpui::Pixels, gpui::Pixels) {
-    (px(top_gap), px(0.), px(0.), px(tabs::RAIL_WIDTH))
+    // Wrap (T284): content rides with the rail — its left margin gains the
+    // frame thickness on top of the rail width.
+    (px(top_gap), px(0.), px(0.), px(tabs::RAIL_WIDTH + frame::wrap_inset()))
 }
 
 /// T278: the `content` surface — fixed `CONTENT_CANVAS_WIDTH` px canvas,
@@ -371,6 +387,8 @@ fn open_window(cx: &mut App, pinned: bool) {
                 "side_panel_left: opened both surfaces ({})",
                 if pinned { "pinned" } else { "peek" }
             );
+            // T284: report rail presence so the frame can gate its chrome.
+            frame::set_rail_mapped(FrameSide::Left, true, cx);
         }
     }
 }
@@ -427,6 +445,30 @@ pub fn close(cx: &mut App) {
                 "side_panel_left: content close() could not reach the window ({e}) — possible ghost"
             ),
         }
+    }
+    // T284: rail no longer mapped — the frame re-derives its chrome.
+    frame::set_rail_mapped(FrameSide::Left, false, cx);
+}
+
+/// T284: the frame style changed and the wrap inset (margin/height) can
+/// only change at surface open time — recreate the open surfaces so the
+/// geometry follows. Preserves the dock width; a closed panel just picks
+/// up the new geometry on its next open. A chat that was open reconnects
+/// exactly like a manual close/reopen (T285 cold-start gap).
+pub fn apply_frame_inset(cx: &mut App) {
+    let state = cx.global::<SidePanelLeftState_>();
+    if state.rail_handle.is_none() {
+        return;
+    }
+    let was_pinned = state.pinned;
+    let width = state.panel_width;
+    let docked = state.dock_content;
+    close(cx);
+    let s = cx.global_mut::<SidePanelLeftState_>();
+    s.panel_width = width;
+    s.dock_content = docked;
+    if was_pinned {
+        open_pinned(cx);
     }
 }
 
@@ -493,6 +535,8 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
         "side_panel_left: close_this ({})",
         if is_rail { "rail" } else { "content" }
     );
+    // T284: rail no longer mapped — the frame re-derives its chrome.
+    frame::set_rail_mapped(FrameSide::Left, false, cx);
 }
 
 /// Pure decision: should a peek-leave request close the panel?

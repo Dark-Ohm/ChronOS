@@ -196,7 +196,8 @@ pub fn render_rail(
         .py(px(8.))
         .w(px(RAIL_WIDTH))
         .h_full()
-        .bg(surfaces::chrome(theme))
+        // T266: the rail's own plate follows surface alpha.
+        .bg(theme.surface_color(surfaces::chrome(theme)))
         // T267 errata (2026-08-13): the border is UNCONDITIONAL. Open, it is
         // the divider between content and rail; collapsed, it is the panel's
         // only outer edge — the body div drops its own border together with

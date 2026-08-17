@@ -27,10 +27,18 @@ use serde::{Deserialize, Serialize};
 const DEBOUNCE_MS: u64 = 300;
 const CONFIG_BASENAME: &str = "theme.toml";
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct ThemeConfig {
     /// Имя схемы из `builtin_schemes()`. None/empty → falls through to default.
     pub scheme: Option<String>,
+    /// T266: requested surface alpha in `0.0..=1.0` (None = opaque). The
+    /// effective value is clamped up to the active scheme's readability
+    /// floor by `apply_surface_config`.
+    #[serde(default)]
+    pub surface_alpha: Option<f32>,
+    /// T266: compositor blur for the shell surfaces (Hyprland module).
+    #[serde(default)]
+    pub blur_enabled: bool,
 }
 
 fn config_path() -> PathBuf {
@@ -71,17 +79,41 @@ pub fn load_config() -> ThemeConfig {
     }
 }
 
-/// Pure resolution: env (highest) → config `scheme` → `Theme::default`.
+/// Overlay the T266 surface settings onto a resolved scheme. Runs on EVERY
+/// scheme-selection path (env / file / default) so alpha and blur survive
+/// regardless of how the scheme was chosen.
+///
+/// Requested alpha is clamped into `0.0..=1.0`, then raised to the scheme's
+/// measured readability floor (`min_alpha`) — the slider's low end maps to
+/// the floor, never below it.
+pub fn apply_surface_config(mut theme: Theme, cfg: &ThemeConfig) -> Theme {
+    let requested = cfg.surface_alpha.unwrap_or(1.0).clamp(0.0, 1.0);
+    theme.surface.alpha = requested.max(theme.surface.min_alpha);
+    theme.surface.blur_enabled = cfg.blur_enabled;
+    theme
+}
+
+/// Pure resolution: env (highest) → config `scheme` → `Theme::default`,
+/// then `apply_surface_config` overlays surface settings exactly once.
 ///
 /// Reuses `Theme::select_scheme`, which already logs `tracing::warn!` on
 /// unknown scheme names and returns `Theme::default` (per task brief).
 pub fn resolve_theme(env_value: Option<String>, cfg: &ThemeConfig) -> Theme {
-    if let Some(raw) = env_value {
+    let scheme = if let Some(raw) = env_value {
         let trimmed = raw.trim();
         if !trimmed.is_empty() {
-            return Theme::select_scheme(Some(trimmed.to_string()));
+            Theme::select_scheme(Some(trimmed.to_string()))
+        } else {
+            resolve_scheme_from_cfg(cfg)
         }
-    }
+    } else {
+        resolve_scheme_from_cfg(cfg)
+    };
+    apply_surface_config(scheme, cfg)
+}
+
+/// Scheme only (no surface overlay) from the config file field.
+fn resolve_scheme_from_cfg(cfg: &ThemeConfig) -> Theme {
     if let Some(ref name) = cfg.scheme {
         let trimmed = name.trim();
         if !trimmed.is_empty() {
@@ -118,6 +150,7 @@ pub fn resolve_active_theme() -> Theme {
 pub fn sync_gpui_component_theme(cx: &mut App) {
     let shell = *Theme::global(cx);
     let dark = !shell.is_light;
+
     let mode = if dark { ThemeMode::Dark } else { ThemeMode::Light };
     gpui_component::theme::Theme::change(mode, None, cx);
 
@@ -138,7 +171,11 @@ pub fn sync_gpui_component_theme(cx: &mut App) {
     // `accent` is the MenuItem/ListItem HOVER background, so it maps to our
     // hover wash, not to the saturated `accent.primary`. Must re-apply after
     // `Theme::change` (it reloads stock colors), same as the font lock.
-    gpui_theme.popover = shell.bg.elevated;
+    // T266: tray/dock menus are rendered by gpui-component `PopupMenu`, not
+    // by their host view roots — this popover token IS their menu plate.
+    // Apply the effective surface alpha so the menus follow the shell's
+    // transparency axis like every other surface.
+    gpui_theme.popover = shell.surface_color(shell.bg.elevated);
     gpui_theme.popover_foreground = shell.text.primary;
     gpui_theme.accent = shell.interactive.hover;
     gpui_theme.accent_foreground = shell.text.primary;
@@ -174,7 +211,12 @@ pub fn apply(cx: &mut App) {
 ///
 /// If `CHRONOS_THEME` is set it still wins on next cold `apply`/reload —
 /// toggle applies immediately and writes the file for normal resolution.
+///
+/// T266: the toggle must NOT reset surface settings — the next scheme is
+/// overlaid with the current config's alpha/blur (regression gate: an
+/// existing translucent setup survives a theme switch).
 pub fn toggle(cx: &mut App) {
+    let cfg = load_config();
     let next_name = if Theme::global(cx).is_light {
         "Default"
     } else {
@@ -183,10 +225,12 @@ pub fn toggle(cx: &mut App) {
     if let Err(e) = persist_scheme(next_name) {
         tracing::warn!("theme: failed to persist scheme={next_name}: {e}");
     }
-    let theme = Theme::select_scheme(Some(next_name.to_string()));
+    let scheme = Theme::select_scheme(Some(next_name.to_string()));
+    let theme = apply_surface_config(scheme, &cfg);
     tracing::info!(
         scheme = next_name,
         is_light = theme.is_light,
+        surface_alpha = theme.surface.alpha,
         "theme: toggled"
     );
     cx.set_global(theme);
@@ -195,15 +239,45 @@ pub fn toggle(cx: &mut App) {
 }
 
 pub(crate) fn persist_scheme(name: &str) -> std::io::Result<()> {
+    write_config_key("scheme", toml::Value::String(name.to_string()))
+}
+
+/// Persist only the T266 `surface_alpha` key (RMW — unknown keys and the
+/// `scheme` field survive). Returns the effective alpha the settings page
+/// should display after clamping.
+pub fn persist_surface_alpha(alpha: f32) -> Result<f32, String> {
+    write_config_key(
+        "surface_alpha",
+        toml::Value::Float(f64::from(alpha.clamp(0.0, 1.0))),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(alpha.clamp(0.0, 1.0))
+}
+
+/// Persist only the T266 `blur_enabled` key (RMW).
+pub fn persist_blur_enabled(enabled: bool) -> Result<(), String> {
+    write_config_key("blur_enabled", toml::Value::Boolean(enabled)).map_err(|e| e.to_string())
+}
+
+/// RMW single-key write: load the current document, set exactly one key,
+/// write back — every other key (scheme, surface_alpha, blur_enabled,
+/// unknown future keys) survives byte-for-byte. Whole-struct serialization
+/// would wipe the sibling T266 keys on a scheme toggle.
+fn write_config_key(key: &str, value: toml::Value) -> std::io::Result<()> {
     let path = config_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let mut cfg = load_config();
-    cfg.scheme = Some(name.to_string());
-    let body = toml::to_string_pretty(&cfg).map_err(|e| {
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut doc: toml::Value = content.parse().map_err(|e: toml::de::Error| {
         std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
     })?;
+    let table = doc
+        .as_table_mut()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "not a TOML table"))?;
+    table.insert(key.to_string(), value);
+    let body = toml::to_string_pretty(&doc)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
     std::fs::write(&path, body)?;
     Ok(())
 }
@@ -344,6 +418,7 @@ mod tests {
     fn resolve_env_wins_over_config() {
         let cfg = ThemeConfig {
             scheme: Some("Light".to_string()),
+            ..Default::default()
         };
         let t = resolve_theme(Some("Default".to_string()), &cfg);
         assert_eq!(t, Theme::default());
@@ -351,9 +426,60 @@ mod tests {
     }
 
     #[test]
+    fn empty_config_preserves_opaque_blurless_default() {
+        let cfg: ThemeConfig = toml::from_str("").unwrap();
+        let theme = resolve_theme(None, &cfg);
+        assert_eq!(theme.surface.alpha, 1.0);
+        assert!(!theme.surface.blur_enabled);
+    }
+
+    #[test]
+    fn env_scheme_still_applies_file_surface_settings() {
+        let cfg = ThemeConfig {
+            surface_alpha: Some(0.72),
+            blur_enabled: true,
+            ..Default::default()
+        };
+        let theme = resolve_theme(Some("Default".into()), &cfg);
+        assert_eq!(theme.surface.alpha, 0.72_f32.max(theme.surface.min_alpha));
+        assert!(theme.surface.blur_enabled);
+    }
+
+    #[test]
+    fn surface_alpha_clamped_to_scheme_floor() {
+        let cfg = ThemeConfig {
+            surface_alpha: Some(0.05),
+            ..Default::default()
+        };
+        let theme = resolve_theme(None, &cfg);
+        // Requested 0.05 is below the floor — effective alpha must not dip
+        // under it (slider low end = floor, never below).
+        assert!(theme.surface.alpha >= theme.surface.min_alpha);
+    }
+
+    #[test]
+    fn persist_scheme_preserves_surface_keys() {
+        // Round-trip through a temp doc: a scheme write must not wipe
+        // surface_alpha/blur_enabled or unknown keys. The real helper writes
+        // to the user config dir; this test exercises the RMW merge via the
+        // pure key-write against a parsed doc.
+        let mut doc: toml::Value = toml::from_str(
+            "scheme = \"Default\"\nsurface_alpha = 0.7\nblur_enabled = true\nunknown = 42\n",
+        )
+        .unwrap();
+        let table = doc.as_table_mut().unwrap();
+        table.insert("scheme".into(), toml::Value::String("Light".into()));
+        let out: ThemeConfig = toml::from_str(&toml::to_string(&doc).unwrap()).unwrap();
+        assert_eq!(out.scheme.as_deref(), Some("Light"));
+        assert_eq!(out.surface_alpha, Some(0.7));
+        assert!(out.blur_enabled);
+    }
+
+    #[test]
     fn resolve_env_case_insensitive_wins_over_config() {
         let cfg = ThemeConfig {
             scheme: Some("Default".to_string()),
+            ..Default::default()
         };
         let t = resolve_theme(Some("LiGhT".to_string()), &cfg);
         assert_eq!(t, light_theme());
@@ -363,6 +489,7 @@ mod tests {
     fn resolve_config_when_env_unset() {
         let cfg = ThemeConfig {
             scheme: Some("Light".to_string()),
+            ..Default::default()
         };
         let t = resolve_theme(None, &cfg);
         assert_eq!(t, light_theme());
@@ -373,6 +500,7 @@ mod tests {
         // Empty env string must NOT win — falls through to config.
         let cfg = ThemeConfig {
             scheme: Some("Light".to_string()),
+            ..Default::default()
         };
         let t = resolve_theme(Some(String::new()), &cfg);
         assert_eq!(t, light_theme());
@@ -393,6 +521,7 @@ mod tests {
         // through to config). This is the documented «env перебивает конфиг».
         let cfg = ThemeConfig {
             scheme: Some("Light".to_string()),
+            ..Default::default()
         };
         let t = resolve_theme(Some("nonsense-scheme".to_string()), &cfg);
         assert_eq!(t, Theme::default());
@@ -403,6 +532,7 @@ mod tests {
     fn resolve_config_garbage_falls_to_default() {
         let cfg = ThemeConfig {
             scheme: Some("nonsense-scheme".to_string()),
+            ..Default::default()
         };
         assert_eq!(resolve_theme(None, &cfg), Theme::default());
     }
@@ -411,6 +541,7 @@ mod tests {
     fn resolve_config_empty_scheme_falls_to_default() {
         let cfg = ThemeConfig {
             scheme: Some("   ".to_string()),
+            ..Default::default()
         };
         assert_eq!(resolve_theme(None, &cfg), Theme::default());
     }

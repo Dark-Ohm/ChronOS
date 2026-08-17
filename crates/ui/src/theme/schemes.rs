@@ -64,6 +64,7 @@ fn light_scheme() -> ThemeScheme {
     // Поверхности — холодная сине-лавандовая база Light C.
     theme.bg.primary = hex("dde0f2"); // pageBg — базовый фон страницы/окна
     theme.is_light = true;
+    theme.surface.min_alpha = super::LIGHT_MIN_ALPHA;
     theme.bg.secondary = hex("e6e9fa"); // cardBg (accepted) — поверхность карточки/попапа
     theme.bg.tertiary = hex("eceefa"); // cardBase (lightBase) — фон пилюли/свёрнутого
     theme.bg.elevated = hex("e0e3f4"); // hoverBg — приподнятый слой/hover-фон

@@ -131,7 +131,8 @@ impl Render for OsdView {
             .px(px(CARD_PAD))
             .py(px(12.))
             .rounded(radius)
-            .bg(bg)
+            // T266: the OSD card plate follows surface alpha.
+            .bg(theme.surface_color(bg))
             .child(
                 div()
                     .flex_none()

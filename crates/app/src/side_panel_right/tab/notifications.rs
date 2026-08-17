@@ -41,7 +41,8 @@ impl Render for NotificationsTab {
             .h_full()
             .flex()
             .flex_col()
-            .bg(bg)
+            // T266: full-size tab plate — follows surface alpha.
+            .bg(theme.surface_color(bg))
             .child(
                 div()
                     .id("notifications-tab-scroll")

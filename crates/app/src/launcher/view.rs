@@ -872,7 +872,9 @@ impl LauncherView {
             // Without it the card grows with the grid and its header slides off
             // the top of the window (T265-0 raised the row cap to 200).
             .h_full()
-            .bg(theme.bg.primary)
+            // T266: fade the card plate once — the outer window fill stays
+            // opaque so alpha does not compound (the card covers it anyway).
+            .bg(theme.surface_color(theme.bg.primary))
             .border_1()
             .border_color(theme.border.subtle)
             .rounded_lg()

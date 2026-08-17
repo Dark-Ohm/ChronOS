@@ -132,7 +132,8 @@ pub fn render_rail(
         .py(px(8.))
         .w(px(RAIL_WIDTH))
         .h_full()
-        .bg(theme.bg.primary)
+        // T266: the rail's own plate follows surface alpha.
+        .bg(theme.surface_color(theme.bg.primary))
         .border_r_1()
         .border_color(theme.border.subtle)
         .on_hover(|hovered, _window, cx| {

@@ -416,7 +416,9 @@ pub(crate) fn render_notification_card(
         .gap(px(4.))
         .p(px(12.))
         .rounded(radius_lg)
-        .bg(bg_primary)
+        // T266: the toast card plate follows surface alpha (icon/progress/
+        // action fills stay opaque).
+        .bg(theme.surface_color(bg_primary))
         .border_l_3()
         .border_color(accent)
         .child(header)

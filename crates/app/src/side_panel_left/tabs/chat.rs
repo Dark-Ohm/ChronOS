@@ -1433,7 +1433,8 @@ pub fn render_panel(
                         .h_full()
                         .flex()
                         .flex_col()
-                        .bg(theme.bg.primary)
+                        // T266: the chat tab's plate follows surface alpha.
+                        .bg(theme.surface_color(theme.bg.primary))
                         .shadow(elev.shadows.to_vec())
                         .child(clipped_content),
                 )

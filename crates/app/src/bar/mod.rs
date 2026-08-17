@@ -119,7 +119,9 @@ impl Render for Bar {
         let mut root = div()
             .window_font(theme)
             .size_full()
-            .bg(theme.bg.tertiary)
+            // T266: the bar's own plate follows the surface alpha; nested
+            // widgets (icon wells, hover fills) stay opaque.
+            .bg(theme.surface_color(theme.bg.tertiary))
             .px(px(10.))
             .flex()
             .items_center()
@@ -133,11 +135,16 @@ impl Render for Bar {
                 crate::dock::context_menu::close(cx);
             });
         // Border side follows the edge (top bar → bottom border, bottom bar →
-        // top border). Vertical edges are not applied yet (T200 v1).
-        if appearance.edge == BarEdge::Bottom {
-            root = root.border_t_1();
-        } else {
-            root = root.border_b_1();
+        // top border). Vertical edges are not applied yet (T200 v1). In the
+        // wrap frame the bar is the top edge of the card — its card-facing
+        // border would cut the closed loop, so it is dropped (T284 §5.3).
+        let wrap_frame = crate::frame::cached_config().style == crate::frame::FrameStyle::Wrap;
+        if !wrap_frame {
+            if appearance.edge == BarEdge::Bottom {
+                root = root.border_t_1();
+            } else {
+                root = root.border_b_1();
+            }
         }
         root = root.border_color(if editing {
             theme.accent.primary

@@ -381,7 +381,9 @@ impl Render for UpdatesTab {
             .id("updates-tab")
             .window_font(&theme)
             .size_full()
-            .bg(bg)
+            // T266: this tab paints its own full-size plate over the panel
+            // column, so it follows surface alpha like the column it covers.
+            .bg(theme.surface_color(bg))
             .flex_col()
             .child(header)
             .child(

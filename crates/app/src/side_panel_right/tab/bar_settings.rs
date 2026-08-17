@@ -47,11 +47,14 @@ const SLIDER_THUMB: f32 = 16.0;
 const HEIGHT_MIN: f32 = 20.0;
 const HEIGHT_MAX: f32 = 48.0;
 const RADIUS_MAX: f32 = 16.0;
+/// T266 alpha step for the −/+ buttons (the slider itself is continuous).
+const ALPHA_STEP: f32 = 0.05;
 
 // ── Drag markers ────────────────────────────────────────────────────────────
-/// Own marker types so Height and Radius drags never cross-fire.
+/// Own marker types so Height/Radius/Alpha drags never cross-fire.
 pub struct HeightSliderDrag;
 pub struct RadiusSliderDrag;
+pub struct SurfaceAlphaSliderDrag;
 
 // ── State ───────────────────────────────────────────────────────────────────
 
@@ -63,10 +66,20 @@ pub struct BarSettingsTab {
     /// T196: cached Hypr module listing (name, path). Lazily loaded on first render.
     hypr_modules: Vec<(String, PathBuf)>,
     hypr_modules_loaded: bool,
+    /// T266: keeps this page repainting when the background blur probe lands
+    /// (the toggle flips from disabled to enabled/reason). Dropping it would
+    /// silently freeze the toggle at the pre-probe state.
+    _surface_effects_sub: gpui::Subscription,
 }
 
 impl BarSettingsTab {
-    pub fn new(_cx: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        // T266: the blur global is installed by `surface_effects::init` in
+        // main.rs before any panel can open — observe it to repaint on the
+        // background probe result.
+        let sub = cx.observe_global::<crate::surface_effects::SurfaceEffectsState>(|_, cx| {
+            cx.notify();
+        });
         Self {
             current: read_current(),
             error: None,
@@ -74,6 +87,7 @@ impl BarSettingsTab {
             scroll: ScrollHandle::new(),
             hypr_modules: Vec::new(),
             hypr_modules_loaded: false,
+            _surface_effects_sub: sub,
         }
     }
 
@@ -162,6 +176,24 @@ impl Render for BarSettingsTab {
                 this.persist(cx);
             },
         );
+        // T266: alpha slider — live-applies on every drag sample (no
+        // «apply» step). The theme watcher may reapply after its debounce;
+        // both paths are idempotent because the same value is persisted.
+        let alpha_drag = cx.listener(
+            move |this, ev: &DragMoveEvent<SurfaceAlphaSliderDrag>, _w, cx: &mut Context<BarSettingsTab>| {
+                let frac = slider_frac(
+                    f32::from(ev.event.position.x - ev.bounds.origin.x),
+                    f32::from(ev.bounds.size.width),
+                );
+                let floor = Theme::global(cx).surface.min_alpha;
+                let alpha = alpha_from_frac(frac, floor);
+                if let Err(e) = crate::theme_config::persist_surface_alpha(alpha) {
+                    this.error = Some(e);
+                }
+                crate::theme_config::apply(cx);
+                cx.notify();
+            },
+        );
 
         // ── Click handlers (logic unchanged) ──────────────────────────
         let hs = ((HEIGHT_MAX - HEIGHT_MIN) / 10.0).max(1.0);
@@ -182,6 +214,26 @@ impl Render for BarSettingsTab {
         let r_plus = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
             this.current.radius = (this.current.radius + rs).clamp(0.0, RADIUS_MAX);
             this.persist(cx);
+        });
+        // T266 alpha −/+ step buttons — same live-apply path as the drag.
+        let a_minus = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
+            let floor = Theme::global(cx).surface.min_alpha;
+            let cur = Theme::global(cx).surface.alpha;
+            let alpha = (cur - ALPHA_STEP).max(floor);
+            if let Err(e) = crate::theme_config::persist_surface_alpha(alpha) {
+                this.error = Some(e);
+            }
+            crate::theme_config::apply(cx);
+            cx.notify();
+        });
+        let a_plus = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
+            let cur = Theme::global(cx).surface.alpha;
+            let alpha = (cur + ALPHA_STEP).min(1.0);
+            if let Err(e) = crate::theme_config::persist_surface_alpha(alpha) {
+                this.error = Some(e);
+            }
+            crate::theme_config::apply(cx);
+            cx.notify();
         });
 
         let edge_top = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
@@ -235,6 +287,34 @@ impl Render for BarSettingsTab {
             }
         });
 
+        // T284: Frame theme — writes `frame.toml [style]` through the
+        // frame's own RMW helper (never `bar.toml`); the 300 ms frame
+        // watcher applies it live.
+        let frame_hide = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
+            if let Err(e) = crate::frame::write_style(crate::frame::FrameStyle::Hide) {
+                this.error = Some(e);
+            }
+            cx.notify();
+        });
+        let frame_wrap = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
+            if let Err(e) = crate::frame::write_style(crate::frame::FrameStyle::Wrap) {
+                this.error = Some(e);
+            }
+            cx.notify();
+        });
+
+        // T266: blur toggle — goes through `surface_effects::set_blur_enabled`
+        // (bridge first, persist only on success). The toggle renders disabled
+        // until the background probe lands and while the module is missing.
+        let on_blur_toggle = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
+            let next = !crate::surface_effects::current(cx).persisted_blur;
+            match crate::surface_effects::set_blur_enabled(next, cx) {
+                Ok(()) => this.error = None,
+                Err(e) => this.error = Some(e),
+            }
+            cx.notify();
+        });
+
         let on_open = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
             let p = config_path();
             cx.set_global(PreviewTarget {
@@ -265,8 +345,19 @@ impl Render for BarSettingsTab {
         let width = cur.width;
         let elevation = cur.elevation;
         let floating = cur.floating;
+        let cur_style = crate::frame::cached_config().style;
         let h_frac = ((cur.height - HEIGHT_MIN) / (HEIGHT_MAX - HEIGHT_MIN)).clamp(0.0, 1.0);
         let r_frac = (cur.radius / RADIUS_MAX).clamp(0.0, 1.0);
+        // T266: slider position from the effective alpha, inverted to the
+        // floor..=1.0 range (frac 0 = floor, frac 1 = opaque).
+        let a_frac = ((theme.surface.alpha - theme.surface.min_alpha)
+            / (1.0 - theme.surface.min_alpha))
+        .clamp(0.0, 1.0);
+        // T266: blur toggle state from the bridge global.
+        let blur_state = crate::surface_effects::current(cx);
+        let blur_on = blur_state.persisted_blur;
+        let blur_enabled_ctrl = blur_state.probed && blur_state.capability
+            == chronos_services::compositor::BlurCapability::Available;
 
         self.load_hypr_modules();
 
@@ -446,6 +537,66 @@ impl Render for BarSettingsTab {
                             "bar-r-plus",
                         ),
                     ))
+                    // T266: surface transparency — third slider in the same
+                    // row family (same `slider_control`, same geometry). The
+                    // low end maps to the scheme's measured readability floor
+                    // (`min_alpha`), not 0.0; default sits at the opaque end.
+                    .child(setting_row(
+                        setting_label(
+                            theme,
+                            "Surface opacity",
+                            "theme.toml surface_alpha",
+                        ),
+                        slider_control(
+                            theme,
+                            a_frac,
+                            a_minus,
+                            a_plus,
+                            SurfaceAlphaSliderDrag,
+                            alpha_drag,
+                            "bar-a-minus",
+                            "bar-a-track",
+                            "bar-a-plus",
+                        ),
+                    ))
+                    // T266: compositor blur — separate toggle next to the
+                    // alpha slider (blur is GPU-costly; users want it
+                    // independent of alpha). Disabled with a reason while the
+                    // probe is in flight or the module is missing.
+                    .child(setting_row(
+                        setting_label(
+                            theme,
+                            "Blur",
+                            "theme.toml blur_enabled · hyprctl eval",
+                        ),
+                        if blur_enabled_ctrl {
+                            onoff_chip(theme, "bar-blur-toggle", blur_on, on_blur_toggle)
+                        } else {
+                            div()
+                                .id("bar-blur-toggle-disabled")
+                                .px(px(10.))
+                                .py(px(5.))
+                                .rounded_md()
+                                .text_size(px(11.5))
+                                .font_family(theme.font_mono)
+                                .text_color(theme.text.disabled)
+                                .border_1()
+                                .border_color(theme.border.subtle)
+                                .opacity(0.6)
+                                .child(match blur_state.capability {
+                                    chronos_services::compositor::BlurCapability::ModuleMissing => {
+                                        "import 45-surface-effects-chronos.lua"
+                                    }
+                                    chronos_services::compositor::BlurCapability::Unsupported => {
+                                        "compositor: no blur"
+                                    }
+                                    chronos_services::compositor::BlurCapability::Available => {
+                                        "checking…"
+                                    }
+                                })
+                                .into_any_element()
+                        },
+                    ))
                     .child(setting_row(
                         setting_label(theme, "Elevation", "appearance.elevation"),
                         segmented(
@@ -485,6 +636,28 @@ impl Render for BarSettingsTab {
                                 chip
                             }
                         },
+                    ))
+                    .child(setting_row(
+                        setting_label(theme, "Frame", "frame.toml style"),
+                        segmented(
+                            theme,
+                            vec![
+                                seg_chip(
+                                    theme,
+                                    "frame-seg-hide",
+                                    "Hide",
+                                    cur_style == crate::frame::FrameStyle::Hide,
+                                    frame_hide,
+                                ),
+                                seg_chip(
+                                    theme,
+                                    "frame-seg-wrap",
+                                    "Wrap",
+                                    cur_style == crate::frame::FrameStyle::Wrap,
+                                    frame_wrap,
+                                ),
+                            ],
+                        ),
                     )),
             );
 
@@ -1071,6 +1244,12 @@ fn slider_frac(rel_x: f32, w: f32) -> f32 {
     (rel_x / w.max(1.0)).clamp(0.0, 1.0)
 }
 
+/// Slider fraction → surface alpha in `floor..=1.0`. frac 0 maps to the
+/// scheme floor (not 0.0 — readability), frac 1 to opaque.
+fn alpha_from_frac(frac: f32, floor: f32) -> f32 {
+    floor + frac.clamp(0.0, 1.0) * (1.0 - floor)
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1085,6 +1264,16 @@ mod tests {
         assert_eq!(slider_frac(200.0, 100.0), 1.0);
         assert_eq!(slider_frac(-10.0, 100.0), 0.0);
         assert_eq!(slider_frac(5.0, 0.0), 1.0, "zero width must not divide by zero");
+    }
+
+    #[test]
+    fn slider_fraction_maps_to_theme_floor_and_one() {
+        assert_eq!(alpha_from_frac(0.0, 0.62), 0.62);
+        assert_eq!(alpha_from_frac(1.0, 0.62), 1.0);
+        assert_eq!(alpha_from_frac(0.5, 0.62), 0.81);
+        // Floor 1.0 (Task 1 conservative) pins the whole slider to opaque.
+        assert_eq!(alpha_from_frac(0.0, 1.0), 1.0);
+        assert_eq!(alpha_from_frac(1.0, 1.0), 1.0);
     }
 
 }

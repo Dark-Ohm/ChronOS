@@ -141,7 +141,10 @@ impl Render for VolumePopupView {
             .flex_col()
             .w(px(POPUP_WIDTH))
             .rounded(radius_lg)
-            .bg(bg.alpha(0.82))
+            // T266: surface alpha MULTIPLIES the card's existing 0.82 frosted
+            // alpha — `surface_color` calls `opacity`, so the premium glass
+            // look survives at any user-selected level.
+            .bg(theme.surface_color(bg.alpha(0.82)))
             .border_1()
             .border_color(border_subtle)
             .shadow(elev.shadows.to_vec())

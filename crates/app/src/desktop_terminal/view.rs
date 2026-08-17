@@ -465,7 +465,9 @@ impl Render for DesktopTerminalView {
             .relative()
             .flex()
             .flex_col()
-            .bg(bg)
+            // T266: the terminal widget plate follows surface alpha; the
+            // title strip stays opaque (its own fill, unchanged).
+            .bg(theme.surface_color(bg))
             .border_1()
             .border_color(frame_border)
             .rounded(theme.radius)

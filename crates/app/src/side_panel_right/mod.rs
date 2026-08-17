@@ -49,6 +49,7 @@ use gpui::{
 };
 use gpui_component::Root;
 
+use crate::frame::{self, FrameSide};
 use crate::side_panel_right::rail_view::RailView;
 use crate::side_panel_right::tabs::PanelTab;
 use crate::side_panel_right::view::SidePanelRightView;
@@ -258,7 +259,9 @@ fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
 
 fn panel_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
     let display_h = display_height(display_id, cx);
-    (display_h - panel_edge_gap()).max(100.)
+    // Wrap (T284): the panel clears the bottom chrome too — height is
+    // trimmed by the wrap inset on top of the bar gap.
+    (display_h - panel_edge_gap() - frame::wrap_inset()).max(100.)
 }
 
 /// T276: the `rail` surface — fixed `RAIL_ONLY_WIDTH` px, owns the
@@ -284,7 +287,17 @@ fn rail_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions
             anchor: Anchor::TOP | Anchor::RIGHT,
             exclusive_zone: Some(px(zone)),
             exclusive_edge: Some(Anchor::RIGHT),
-            margin: None,
+            // Wrap (T284): the rail sits inside the card — margin.right = the
+            // frame thickness. No top margin: the bar's exclusive zone
+            // already drops top-anchored Overlay surfaces below it.
+            margin: {
+                let inset = frame::wrap_inset();
+                if inset > 0. {
+                    Some((px(0.), px(inset), px(0.), px(0.)))
+                } else {
+                    None
+                }
+            },
             // Rail has no focusable input (buttons/svg only) — None matches
             // the OSD/tray_menu convention for surfaces that never take text.
             keyboard_interactivity: KeyboardInteractivity::None,
@@ -303,7 +316,9 @@ fn rail_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions
 /// including the top bar. The margin therefore restores both placements
 /// explicitly: top gap below the bar and the fixed rail width on the right.
 fn content_window_margin(top_gap: f32) -> (gpui::Pixels, gpui::Pixels, gpui::Pixels, gpui::Pixels) {
-    (px(top_gap), px(RAIL_ONLY_WIDTH), px(0.), px(0.))
+    // Wrap (T284): content rides with the rail — its right margin gains the
+    // frame thickness on top of the rail width.
+    (px(top_gap), px(RAIL_ONLY_WIDTH + frame::wrap_inset()), px(0.), px(0.))
 }
 
 fn content_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
@@ -445,6 +460,8 @@ fn open_window(cx: &mut App, pinned: bool) {
                 "side_panel_right: opened both surfaces ({})",
                 if pinned { "pinned" } else { "peek" }
             );
+            // T284: report rail presence so the frame can gate its chrome.
+            frame::set_rail_mapped(FrameSide::Right, true, cx);
         }
     }
 }
@@ -537,6 +554,29 @@ pub fn close(cx: &mut App) {
             ),
         }
     }
+    // T284: rail no longer mapped — the frame re-derives its chrome.
+    frame::set_rail_mapped(FrameSide::Right, false, cx);
+}
+
+/// T284: the frame style changed and the wrap inset (margin/height) can
+/// only change at surface open time — recreate the open surfaces so the
+/// geometry follows. The right panel reopens rail-only (its standard open
+/// behavior); a closed panel just picks up the new geometry on its next
+/// open.
+pub fn apply_frame_inset(cx: &mut App) {
+    let state = cx.global::<SidePanelRightState>();
+    if state.rail_handle.is_none() {
+        return;
+    }
+    let was_pinned = state.pinned;
+    let width = state.width;
+    close(cx);
+    if was_pinned {
+        open_pinned(cx);
+        // open_window starts rail-only by design; restore the user's width
+        // so a theme toggle does not silently collapse an expanded panel.
+        cx.global_mut::<SidePanelRightState>().width = width;
+    }
 }
 
 /// Close from inside a callback that already holds `&mut Window` for one of
@@ -595,6 +635,8 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
         "side_panel_right: close_this ({})",
         if is_rail { "rail" } else { "content" }
     );
+    // T284: rail no longer mapped — the frame re-derives its chrome.
+    frame::set_rail_mapped(FrameSide::Right, false, cx);
 }
 
 /// Bar-widget click / hotkey target.

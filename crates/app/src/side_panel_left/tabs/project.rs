@@ -74,7 +74,8 @@ impl Render for ProjectTab {
             .size_full()
             .flex()
             .flex_col()
-            .bg(theme.bg.primary)
+            // T266: the project tab's plate follows surface alpha.
+            .bg(theme.surface_color(theme.bg.primary))
             // Header.
             .child(
                 div()

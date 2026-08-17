@@ -16,8 +16,22 @@ use tracing::{info, warn};
 use crate::Service;
 use crate::ServiceStatus;
 pub use types::{
-    ActiveWindow, CompositorBackend, CompositorCommand, CompositorState, Monitor, Workspace,
+    ActiveWindow, BlurCapability, CompositorBackend, CompositorCommand, CompositorState, Monitor,
+    Workspace,
 };
+
+/// T266: probe whether the compositor blur bridge is available (Hyprland +
+/// module imported). Cheap sync `hyprctl eval` — safe from a background task.
+pub fn probe_shell_blur() -> BlurCapability {
+    hyprland::probe_shell_blur()
+}
+
+/// T266: toggle the compositor blur bridge. Returns Err if the module is
+/// absent or the compositor is unreachable — the caller keeps the previous
+/// persisted state on error.
+pub fn set_shell_blur_enabled(enabled: bool) -> anyhow::Result<()> {
+    hyprland::set_shell_blur_enabled(enabled)
+}
 
 /// Test-only flag controlling the injected listener panic (read by
 /// `hyprland::run_listener` under `#[cfg(test)]`).

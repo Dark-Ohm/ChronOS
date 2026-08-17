@@ -16,7 +16,8 @@ use hyprland::{
 use tracing::{debug, error, warn};
 
 use super::types::{
-    ActiveWindow, CompositorBackend, CompositorCommand, CompositorState, Monitor, Workspace,
+    ActiveWindow, BlurCapability, CompositorBackend, CompositorCommand, CompositorState, Monitor,
+    Workspace,
 };
 use crate::ServiceStatus;
 
@@ -71,6 +72,80 @@ fn command_to_socket_line(cmd: &CompositorCommand) -> String {
         CompositorCommand::CycleKeyboardLayout => {
             "switchxkblayout all next".to_string()
         }
+    }
+}
+
+// ── T266: compositor blur bridge ────────────────────────────────────────────
+//
+// The shell controls blur through the OPT-IN Lua module
+// (`packaging/hyprland/45-surface-effects-chronos.lua`), which holds the
+// named layer/window rule handles and exports `_G.chronos_set_blur_enabled`.
+// We only ever call that global through `hyprctl eval` — we never write the
+// user's Hyprland config. Verified live on Hyprland 0.56.2 (T266 condition A):
+// `hl.layer_rule` returns a handle, `handle:set_enabled(bool)` works, globals
+// persist across separate eval calls, and eval errors are surfaced (exit
+// code + `error:` line).
+
+/// Lua for probing the module global (pure — unit-testable).
+pub fn blur_probe_code() -> &'static str {
+    "assert(type(_G.chronos_set_blur_enabled) == 'function', 'chronos blur module missing')"
+}
+
+/// Lua for toggling the module global (pure).
+pub fn blur_set_code(enabled: bool) -> String {
+    format!("_G.chronos_set_blur_enabled({})", if enabled { "true" } else { "false" })
+}
+
+/// Probe whether the blur module is importable in THIS session.
+///
+/// Runs `hyprctl eval` synchronously (single-digit ms round trip, proven in
+/// Task 0). Call from a background task, never from a render/animation path.
+/// Exit success + `ok` stdout ⇒ `Available`; a missing-global eval error ⇒
+/// `ModuleMissing`; not running under Hyprland ⇒ `Unsupported`.
+pub fn probe_shell_blur() -> BlurCapability {
+    if !is_available() {
+        return BlurCapability::Unsupported;
+    }
+    match run_eval(blur_probe_code()) {
+        EvalOutcome::Ok => BlurCapability::Available,
+        EvalOutcome::Error(msg) if msg.contains("chronos blur module missing") => {
+            BlurCapability::ModuleMissing
+        }
+        EvalOutcome::Error(_) | EvalOutcome::SpawnFailed(_) => BlurCapability::ModuleMissing,
+    }
+}
+
+/// Toggle the module's blur state. The caller persists only after this
+/// succeeds — on error the previous state stays active.
+pub fn set_shell_blur_enabled(enabled: bool) -> anyhow::Result<()> {
+    match run_eval(&blur_set_code(enabled)) {
+        EvalOutcome::Ok => Ok(()),
+        EvalOutcome::Error(msg) => {
+            anyhow::bail!("hyprctl eval failed: {msg}")
+        }
+        EvalOutcome::SpawnFailed(e) => anyhow::bail!("hyprctl eval spawn failed: {e}"),
+    }
+}
+
+enum EvalOutcome {
+    Ok,
+    Error(String),
+    SpawnFailed(String),
+}
+
+fn run_eval(code: &str) -> EvalOutcome {
+    let output = match std::process::Command::new("hyprctl").args(["eval", code]).output() {
+        Ok(o) => o,
+        Err(e) => return EvalOutcome::SpawnFailed(e.to_string()),
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if output.status.success() && stdout == "ok" {
+        EvalOutcome::Ok
+    } else {
+        // Errors come back as `error: <lua message>` on stderr; exit code 7.
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let msg = if stderr.is_empty() { stdout } else { stderr };
+        EvalOutcome::Error(msg)
     }
 }
 
@@ -324,6 +399,22 @@ mod tests {
             "switchxkblayout all next"
         );
     }
+
+    // ── T266 blur bridge (pure command rendering — no live compositor) ──
+
+    #[test]
+    fn blur_eval_lines_are_lua_not_legacy_dispatch() {
+        assert_eq!(
+            blur_probe_code(),
+            "assert(type(_G.chronos_set_blur_enabled) == 'function', 'chronos blur module missing')"
+        );
+        assert_eq!(blur_set_code(true), "_G.chronos_set_blur_enabled(true)");
+        assert_eq!(blur_set_code(false), "_G.chronos_set_blur_enabled(false)");
+    }
+
+    // NOTE: `probe_shell_blur()`/`set_shell_blur_enabled()` are I/O against a
+    // live compositor — covered by the manual Task 0/6 live runs, not by
+    // unit tests (the test binary must not reach the real session).
 
     #[test]
     fn negative_workspace_id_renders_as_number() {

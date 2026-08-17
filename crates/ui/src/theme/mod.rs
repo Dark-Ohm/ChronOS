@@ -11,9 +11,11 @@ use gpui::{App, Global, Hsla, Pixels, px, rgba};
 
 pub mod base16;
 pub mod schemes;
+pub mod surface;
 
 pub use base16::Base16Colors;
 pub use schemes::{ThemeScheme, builtin_schemes};
+pub use surface::SurfaceTokens;
 
 /// Чернила и бумага бренда — фиксированные полюса палитры для контента
 /// ПОВЕРХ насыщенной заливки. Не чистые `#000`/`#fff` (STYLE.md это
@@ -176,6 +178,9 @@ pub struct Theme {
     /// Whether this theme is a light variant (true = light C palette).
     /// Set to `true` in `light_scheme()`, `false` elsewhere.
     pub is_light: bool,
+    /// T266: effective surface transparency + blur + scheme readability floor.
+    /// Opaque by default — transparency is an explicit user choice.
+    pub surface: SurfaceTokens,
 }
 
 impl Default for Theme {
@@ -232,9 +237,25 @@ impl Default for Theme {
             font_mono: "JetBrains Mono",
             font_ui: "JetBrains Mono",
             is_light: false,
+    // T266: effective floor for this scheme. `Light` overrides it in
+    // `light_scheme()` — dark and light plates face opposite worst-case
+    // wallpapers, so their floors differ (Task 5).
+    surface: SurfaceTokens::opaque(DEFAULT_MIN_ALPHA),
         }
     }
 }
+
+/// T266 floor for the `Default` (dark) scheme: the lowest `surface_alpha`
+/// at which `text.primary` still reads (WCAG AA) on the scheme's worst-case
+/// backdrop — a LIGHT wallpaper behind the dark plate (Task 5 live
+/// measurement, 2026-08-17). Above it, dark plates over light wallpapers
+/// wash out white text.
+pub const DEFAULT_MIN_ALPHA: f32 = 0.85;
+
+/// T266 floor for the `Light` scheme: worst-case backdrop is a DARK
+/// wallpaper behind the light plate (dark text loses contrast as the plate
+/// fades to black). Measured live on the shell's dark wallpaper (Task 5).
+pub const LIGHT_MIN_ALPHA: f32 = 0.40;
 
 impl Global for Theme {}
 

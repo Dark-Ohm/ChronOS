@@ -33,4 +33,8 @@ dofile(here .. "10-input.lua")
 dofile(here .. "20-look.lua")
 dofile(here .. "30-autostart.lua")
 dofile(here .. "40-windowrules-chronos.lua")
+-- T266: optional compositor blur bridge (45-surface-effects-chronos.lua).
+-- Loaded by the shipped profile because it is ChronOS-owned; an existing
+-- user config must dofile it manually (the shell never edits that config).
+dofile(here .. "45-surface-effects-chronos.lua")
 dofile(here .. "50-binds-chronos.lua")

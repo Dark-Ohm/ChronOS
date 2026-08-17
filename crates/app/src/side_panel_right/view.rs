@@ -634,7 +634,10 @@ impl Render for SidePanelRightView {
                         .flex()
                         .flex_col()
                         .overflow_hidden()
-                        .bg(surfaces::content(&theme))
+                        // T266: the content column is the visible plate —
+                        // surface alpha applies here, not in `surfaces::`
+                        // helpers (nested cards stay opaque).
+                        .bg(theme.surface_color(surfaces::content(&theme)))
                         .border_l_1()
                         .border_color(theme.border.subtle)
                         .shadow(elev.shadows.to_vec())

@@ -11,6 +11,7 @@ mod games_config;
 mod icon_resolution;
 mod workspace_mode;
 mod scene;
+mod surface_effects;
 mod ipc;
 mod launcher;
 mod monitor;
@@ -85,6 +86,10 @@ fn main() {
 
         subscriber.start(cx);
         theme_config::init(cx);
+        // T266: probe the blur bridge in the background and apply the
+        // persisted blur once — must run after theme_config::init so the
+        // effective theme (incl. surface settings) is installed first.
+        surface_effects::init(cx);
         gpui_component::init(cx);
         // gpui_component::init overwrote the component Theme mode with Light
         // default — resync it to the active shell theme (T205 editor gutter).
@@ -104,6 +109,12 @@ fn main() {
         gaming_mode::init(cx);
         side_panel_right::init(cx);
         side_panel_left::init(cx);
+        // T284: the frame re-applies panel geometry on Hide↔Wrap transitions
+        // through this hook — frame.rs never imports the panels (cycle).
+        frame::set_after_apply(|cx| {
+            side_panel_left::apply_frame_inset(cx);
+            side_panel_right::apply_frame_inset(cx);
+        });
         // Register the PTY registry global *before* desktop_terminal::init so
         // the first widget can acquire its session (T257).
         cx.set_global(crate::desktop_terminal::TerminalRegistryGlobal {
