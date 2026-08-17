@@ -53,7 +53,7 @@ impl IpcSubscriber {
                 tokio::select! {
                     ping = ping_receiver.recv() => {
                         if ping.is_some() {
-                            let _ = cx.update(|_cx| {
+                            cx.update(|_cx| {
                                 tracing::info!("Received ping from a secondary instance");
                             });
                         } else {
@@ -68,7 +68,7 @@ impl IpcSubscriber {
                             {
                                 last_toggle_at = now;
                                 tracing::info!("IPC toggle received, calling launcher::toggle");
-                                let _ = cx.update(|_cx| {
+                                cx.update(|_cx| {
                                     crate::launcher::toggle(_cx);
                                 });
                             }
@@ -86,7 +86,7 @@ impl IpcSubscriber {
                                 tracing::info!(
                                     "IPC toggle received, calling side_panel_left::toggle"
                                 );
-                                let _ = cx.update(|cx| {
+                                cx.update(|cx| {
                                     crate::side_panel_left::toggle(cx);
                                 });
                             }
@@ -104,7 +104,7 @@ impl IpcSubscriber {
                                 tracing::info!(
                                     "IPC toggle received, calling side_panel_right::toggle"
                                 );
-                                let _ = cx.update(|cx| {
+                                cx.update(|cx| {
                                     crate::side_panel_right::toggle(cx);
                                 });
                             }
@@ -120,7 +120,7 @@ impl IpcSubscriber {
                             {
                                 last_theme_toggle_at = now;
                                 tracing::info!("IPC toggle-theme received");
-                                let _ = cx.update(|cx| {
+                                cx.update(|cx| {
                                     crate::theme_config::toggle(cx);
                                 });
                             }
@@ -136,7 +136,7 @@ impl IpcSubscriber {
                             {
                                 last_edit_mode_toggle_at = now;
                                 tracing::info!("IPC toggle-edit-mode received");
-                                let _ = cx.update(|cx| {
+                                cx.update(|cx| {
                                     crate::edit_mode::toggle(cx);
                                 });
                             }
@@ -151,7 +151,7 @@ impl IpcSubscriber {
                                 >= std::time::Duration::from_millis(200)
                             {
                                 last_workspace_mode_at = now;
-                                let _ = cx.update(|cx| match cmd {
+                                cx.update(|cx| match cmd {
                                     WorkspaceModeIpcCmd::Toggle => {
                                         crate::workspace_mode::toggle(cx)
                                     }
@@ -172,7 +172,7 @@ impl IpcSubscriber {
                             {
                                 last_select_tab_at = now;
                                 tracing::info!(tab = tab.id(), "IPC select-tab received");
-                                let _ = cx.update(|cx| {
+                                cx.update(|cx| {
                                     crate::side_panel_right::select_tab(tab, cx);
                                 });
                             }
@@ -183,7 +183,7 @@ impl IpcSubscriber {
                     preview_target = preview_target_receiver.recv() => {
                         if let Some(path) = preview_target {
                             tracing::info!(path = %path.display(), "IPC preview-target received");
-                            let _ = cx.update(|cx| {
+                            cx.update(|cx| {
                                 crate::side_panel_right::preview_target(path, cx);
                             });
                         } else {
@@ -198,7 +198,7 @@ impl IpcSubscriber {
                             {
                                 last_expand_left_at = now;
                                 tracing::info!("IPC expand-left received");
-                                let _ = cx.update(|cx| {
+                                cx.update(|cx| {
                                     crate::side_panel_left::expand_with_composer(cx);
                                 });
                             }
@@ -214,7 +214,7 @@ impl IpcSubscriber {
                             {
                                 last_start_menu_toggle_at = now;
                                 tracing::info!("IPC toggle received, calling start_menu::toggle");
-                                let _ = cx.update(|cx| {
+                                cx.update(|cx| {
                                     crate::start_menu::toggle(cx);
                                 });
                             }
@@ -226,7 +226,7 @@ impl IpcSubscriber {
                         if let Some(text) = compose_and_send {
                             // No debounce — explicit send command, not a toggle.
                             tracing::info!("IPC compose-and-send received");
-                            let _ = cx.update(|cx| {
+                            cx.update(|cx| {
                                 crate::side_panel_left::compose_and_send(text, cx);
                             });
                         } else {
@@ -237,20 +237,20 @@ impl IpcSubscriber {
                         if let Some(cmd) = wallpaper {
                             match cmd {
                                 crate::ipc::messages::WallpaperIpcCmd::Next => {
-                                    let _ = cx.update(|cx| {
+                                    cx.update(|cx| {
                                         tracing::info!("IPC wallpaper-next received");
                                         crate::wallpaper_ctl::next(cx);
                                     });
                                 }
                                 crate::ipc::messages::WallpaperIpcCmd::Set(path) => {
-                                    let _ = cx.update(|cx| {
+                                    cx.update(|cx| {
                                         tracing::info!("IPC wallpaper-set received: {}", path.display());
                                         crate::wallpaper_ctl::set(cx, &path);
                                     });
                                 }
                                 crate::ipc::messages::WallpaperIpcCmd::Gallery => {
                                     tracing::info!("IPC wallpaper-gallery received");
-                                    let _ = cx.update(|cx| {
+                                    cx.update(|cx| {
                                         match crate::wallpaper_ctl::open_waytrogen_gallery() {
                                             Ok(()) => {
                                                 // Delayed resync: waytrogen sets via awww outside
@@ -277,7 +277,7 @@ impl IpcSubscriber {
                                 }
                                 crate::ipc::messages::WallpaperIpcCmd::Refresh => {
                                     tracing::info!("IPC wallpaper-refresh received");
-                                    let _ = cx.update(|cx| {
+                                    cx.update(|cx| {
                                         crate::wallpaper_ctl::refresh_after_gallery(cx);
                                     });
                                 }

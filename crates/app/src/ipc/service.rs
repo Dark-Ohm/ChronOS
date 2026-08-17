@@ -143,7 +143,14 @@ impl IpcSubscriber {
 impl Drop for IpcSubscriber {
     fn drop(&mut self) {
         if self.socket_path.exists() {
-            let _ = std::fs::remove_file(&self.socket_path);
+            // Best-effort teardown: a stale socket is reclaimed by the next
+            // `acquire_at` (stale-socket branch), so failure here is benign.
+            if let Err(e) = std::fs::remove_file(&self.socket_path) {
+                tracing::debug!(
+                    "IPC teardown: failed to remove socket {}: {e}",
+                    self.socket_path.display()
+                );
+            }
         }
     }
 }
@@ -155,13 +162,21 @@ impl Drop for IpcSubscriber {
 /// runtime active before `start_listener` is called.
 pub fn acquire_at(path: &Path, payload: &str) -> AcquireResult {
     if let Ok(mut stream) = UnixStream::connect(path) {
-        let _ = stream.set_write_timeout(Some(std::time::Duration::from_millis(100)));
+        // Best-effort guard: if the stream is already broken, the write below
+        // fails and is reported as `AcquireResult::Error` anyway.
+        if let Err(e) = stream.set_write_timeout(Some(std::time::Duration::from_millis(100))) {
+            tracing::debug!("IPC signal: failed to set write timeout: {e}");
+        }
 
         if let Err(e) = stream.write_all(payload.as_bytes()) {
             return AcquireResult::Error(format!("Failed to signal existing instance: {}", e));
         }
-        let _ = stream.flush();
-        let _ = stream.shutdown(std::net::Shutdown::Write);
+        if let Err(e) = stream.flush() {
+            tracing::debug!("IPC signal: flush failed: {e}");
+        }
+        if let Err(e) = stream.shutdown(std::net::Shutdown::Write) {
+            tracing::debug!("IPC signal: shutdown write failed: {e}");
+        }
 
         return AcquireResult::Secondary;
     }
@@ -253,46 +268,77 @@ async fn accept_loop(
                         let payload = String::from_utf8_lossy(&buffer).to_string();
                         tracing::debug!(%payload, "accept_loop payload");
                         if is_ping(&payload) {
-                            let _ = ping_sender.send(());
+                            if let Err(e) = ping_sender.send(()) {
+                                tracing::warn!("IPC ping: send failed ({e})");
+                            }
                             tracing::info!("IPC ping received");
                         } else if is_toggle_launcher(&payload) {
-                            let _ = toggle_sender.send(());
+                            if let Err(e) = toggle_sender.send(()) {
+                                tracing::warn!("IPC toggle-launcher: send failed ({e})");
+                            }
                             tracing::info!("IPC toggle-launcher received");
                         } else if is_toggle_start_menu(&payload) {
-                            let _ = start_menu_toggle_sender.send(());
+                            if let Err(e) = start_menu_toggle_sender.send(()) {
+                                tracing::warn!("IPC toggle-start-menu: send failed ({e})");
+                            }
                             tracing::info!("IPC toggle-start-menu received");
                         } else if is_toggle_side_panel_left(&payload) {
-                            let _ = side_panel_toggle_sender.send(());
+                            if let Err(e) = side_panel_toggle_sender.send(()) {
+                                tracing::warn!("IPC toggle-side-panel-left: send failed ({e})");
+                            }
                             tracing::info!("IPC toggle-side-panel-left received");
                         } else if is_toggle_side_panel_right(&payload) {
-                            let _ = side_panel_right_toggle_sender.send(());
+                            if let Err(e) = side_panel_right_toggle_sender.send(()) {
+                                tracing::warn!("IPC toggle-side-panel-right: send failed ({e})");
+                            }
                             tracing::info!("IPC toggle-side-panel-right received");
                         } else if is_toggle_theme(&payload) {
-                            let _ = theme_toggle_sender.send(());
+                            if let Err(e) = theme_toggle_sender.send(()) {
+                                tracing::warn!("IPC toggle-theme: send failed ({e})");
+                            }
                             tracing::info!("IPC toggle-theme received");
                         } else if is_toggle_edit_mode(&payload) {
-                            let _ = edit_mode_toggle_sender.send(());
+                            if let Err(e) = edit_mode_toggle_sender.send(()) {
+                                tracing::warn!("IPC toggle-edit-mode: send failed ({e})");
+                            }
                             tracing::info!("IPC toggle-edit-mode received");
                         } else if is_toggle_workspace_mode(&payload) {
-                            let _ = workspace_mode_sender.send(WorkspaceModeIpcCmd::Toggle);
+                            if let Err(e) = workspace_mode_sender.send(WorkspaceModeIpcCmd::Toggle)
+                            {
+                                tracing::warn!("IPC toggle-workspace-mode: send failed ({e})");
+                            }
                             tracing::info!("IPC toggle-workspace-mode received");
                         } else if let Some(mode) = classify_set_workspace_mode(&payload) {
-                            let _ = workspace_mode_sender.send(WorkspaceModeIpcCmd::Set(mode));
+                            if let Err(e) =
+                                workspace_mode_sender.send(WorkspaceModeIpcCmd::Set(mode))
+                            {
+                                tracing::warn!("IPC set-workspace-mode: send failed ({e})");
+                            }
                             tracing::info!(mode = mode.label(), "IPC set-workspace-mode received");
                         } else if let Some(tab) = classify_select_tab(&payload) {
-                            let _ = select_tab_sender.send(tab);
+                            if let Err(e) = select_tab_sender.send(tab) {
+                                tracing::warn!("IPC select-tab: send failed ({e})");
+                            }
                             tracing::info!(tab = tab.id(), "IPC select-tab received");
                         } else if let Some(path) = parse_preview_target(&payload) {
-                            let _ = preview_target_sender.send(path);
+                            if let Err(e) = preview_target_sender.send(path) {
+                                tracing::warn!("IPC preview-target: send failed ({e})");
+                            }
                             tracing::info!("IPC preview-target received");
                         } else if is_expand_left(&payload) {
-                            let _ = expand_left_sender.send(());
+                            if let Err(e) = expand_left_sender.send(()) {
+                                tracing::warn!("IPC expand-left: send failed ({e})");
+                            }
                             tracing::info!("IPC expand-left received");
                         } else if let Some(text) = parse_compose_and_send(&payload) {
-                            let _ = compose_and_send_sender.send(text);
+                            if let Err(e) = compose_and_send_sender.send(text) {
+                                tracing::warn!("IPC compose-and-send: send failed ({e})");
+                            }
                             tracing::info!("IPC compose-and-send received");
                         } else if let Some(cmd) = classify_wallpaper(&payload) {
-                            let _ = wallpaper_sender.send(cmd);
+                            if let Err(e) = wallpaper_sender.send(cmd) {
+                                tracing::warn!("IPC wallpaper: send failed ({e})");
+                            }
                             tracing::info!("IPC wallpaper command received");
                         }
                     } else if let Ok(Ok(_)) = read {
