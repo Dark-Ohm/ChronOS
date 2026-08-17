@@ -15,7 +15,7 @@ zone discipline this project uses for agent-assisted development.
   things are built the way they are) → [`.chronos-ops/checkpoint/REJECTED.md`](.chronos-ops/checkpoint/REJECTED.md)
   (what was tried and rejected, and why). A design question you're about to
   raise may already have a documented answer there.
-- **Check [`docs/orchestration/tasks/`](docs/orchestration/tasks/)** for
+- **Check [`.chronos-ops/`](.chronos-ops/)** for
   open work before starting something from scratch — someone may already
   be on it, or it may be intentionally deferred.
 

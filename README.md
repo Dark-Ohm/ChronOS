@@ -132,7 +132,7 @@ Maintained by **[Dark-Ohm](https://github.com/Dark-Ohm)**. Contribution
 guidelines live in [`CONTRIBUTING.md`](CONTRIBUTING.md) — read that before
 opening a PR.
 
-Changes are developed against numbered task briefs under [`docs/orchestration/tasks/`](docs/orchestration/tasks/) —
+Changes are developed against numbered task briefs under [`.chronos-ops/`](.chronos-ops/) —
 every accepted change is reviewed against the running shell before it
 lands, not merged on green tests alone. If you're an agent working in this
 repo, [`AGENTS.md`](AGENTS.md) is the entry point.

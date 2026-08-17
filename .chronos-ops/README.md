@@ -42,24 +42,36 @@ bash .chronos-ops/bin/kitchen-status.sh
 Также не переезжает: `docs/hyprland/` (живой Hyprland-конфиг, не докс —
 см. T300 про расхождение с `packaging/hyprland/`).
 
-## Cutover из `docs/orchestration/tasks/` — частичный
+## Cutover из `docs/orchestration/` — ЗАВЕРШЁН 2026-08-18
 
-- **Новые тикеты** заводятся сразу в `active/<role>/`, точка входа роли —
-  `active/<role>/<ROLE>.md` (не старый `docs/orchestration/agents/<ROLE>.md`,
-  тот помечен как архив со ссылкой сюда).
-- **Живые тикеты**, заведённые до cutover (T266, T271, T284, T285, T287,
-  T298), остаются в `docs/orchestration/tasks/active/` до закрытия —
-  не переносить на живой очереди, это race condition, который уже ловили.
-- **Архив** (`done/`, `report-log/`, `rejected/`) переносится по мере
-  разбора: 334 тикета уже в `.chronos-ops/{done,reports-log,reject}/<role>/`,
-  167 непонятых эвристикой — на разборе в T299 (RECON), пока в
-  `docs/orchestration/tasks/{done,report-log,rejected}/`.
+`docs/orchestration/` **закрыт и пуст**. Всё, что там жило, переехало сюда:
+
+| Было | Стало |
+|---|---|
+| `tasks/active/TNNN.md` | `active/<role>/TNNN.md` |
+| `tasks/active/pause/` | `active/hold/` |
+| `tasks/report/` (инбокс) | `reports-fresh/` |
+| `tasks/report-log/` | `reports-log/<role>/` |
+| `tasks/done/` | `done/<role>/` |
+| `tasks/rejected/` | `reject/<role>/` |
+| `tasks/notes/` | `dump/notes/` (заметки, аудиты, кадры-улики) |
+| `tasks/MIGRATION.md` | `MIGRATION.md` (в корне кухни) |
+| `agents/<ROLE>.md` | `active/<role>/<ROLE>.md`, старые копии — `dump/legacy-agents/` |
+
+Последними уехали живые тикеты до-cutover эпохи: T266 и T271 — приняты и
+в `done/`, T285 — STOP (тупик публичного API ACP) в `reject/back/`,
+T284 — открыт, в `active/front/`, его отчёт ждёт приёмки в
+`reports-fresh/`. Там же в инбоксе — T281 (PARK, не архивировать до `+`
+владельца) и T299 (разметка ролей архива).
+
+167 архивных тикетов, которые эвристика не разложила по ролям, разбирает
+**T299** (RECON) — отчёт лежит в `reports-fresh/`, приёмки ещё не было.
 
 ## Известный долг
 
 Кросс-ссылки на старые пути поправлены в живых файлах (`CLAUDE.md`,
-`README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `docs/orchestration/agents/*.md`,
-`packaging/hyprland/README.md`). **Не** правились ссылки внутри архивных
-тикетов `docs/orchestration/tasks/{done,report-log,rejected}/` и `skills/`
+`README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `checkpoint/ARCHITECT.md`,
+`checkpoint/TBD.md`, `packaging/hyprland/README.md`). **Не** правились
+ссылки внутри архивных тикетов `done/`, `reports-log/`, `reject/` и `skills/`
 — исторический слепок, тот же принцип что с `checkpoint/SOUL.md` ("не
 регламент, не переписывается задним числом").

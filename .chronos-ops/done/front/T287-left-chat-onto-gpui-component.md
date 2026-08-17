@@ -1,5 +1,25 @@
 # T287 — левый Chat на gpui-component (эпик)
 
+**Статус: ЭПИК ЗАКРЫТ (2026-08-17).** Все волны приняты, коммиты на
+master (проверено `git merge-base --is-ancestor`):
+
+- **T286** — композер → kit `Input` multi-line — `c5151fb9`, принят live
+  смок Ctrl+Enter+wrap (`d5e93c0f`).
+- **T287-A** — model/mode пикеры → kit `Select` — `25ac46a8`;
+  попап-клиппинг вынесен в T298 (принят частично, остаток — T301/T302).
+- **T287-B** — вкладка Sessions → kit `List` — `8e84d3fb`, принят live
+  grim pin/archive/rename/delete.
+- **T287-C** — Zed-шапка + внутренний Sessions rail срезаны, Follow в
+  `composer-pickers-row` — `220a05e2`.
+
+Брифы волн: `.chronos-ops/done/front/T286-…`, `T287-A-…`, `T287-B-…`,
+`T287-C-…`. Открытые хвосты — отдельные тикеты в
+`.chronos-ops/active/front/`: **T302** (P1, контентная зона левой панели
+пустая) и **T301** (P3, эллипсис в Select-попапе). Очередь по
+FRONTEND.md — T302 → T301.
+
+---
+
 **Приоритет:** P1 — самописный композер/пикеры ломают ввод.
 **Роль:** FRONTEND. Волны — отдельные тикеты, не один заход.
 **Канон:** DECISIONS 2026-08-15; кит `../Source/gpui-component/crates/ui`.

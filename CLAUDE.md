@@ -14,17 +14,18 @@ GPUI «gpui-ce chronos edition», path-deps). **Первое чтение каж
   **`.chronos-ops/checkpoint/ARCHITECT.md`**, читать целиком — этот раздел его не дублирует.
 - НЕ спавнишь своих субагентов. Оркестрируешь локальных агентов Архитектора.
   **С 2026-07-22 задание — не в личном файле агента, а в
-  `docs/orchestration/tasks/active/TNNN-slug.md`** (сквозной T-ID, не per-agent
-  нумерация). Личные файлы (`docs/orchestration/agents/CLINE.md`, HERMES.md,
-  OMP.md, MIMO.md, AUTOHAND.md, OPENCODE.md, GROK.md, ZED.md — новые по
-  образцу) остались только как точка входа ИНСТРУМЕНТА (каждый минион
-  физически читает свой файл) — тонкий указатель на текущий активный
-  T-номер, не журнал. Отчёт → `docs/orchestration/tasks/report/TNNN-slug-report.md`
-  (inbox) → приёмку делаешь САМ: грепы, диффы, build/test, живые смоки.
+  `.chronos-ops/active/<role>/TNNN-slug.md`** (сквозной T-ID, не per-agent
+  нумерация; роли — `back`/`front`/`qa`/`recon`/`design`, замороженное —
+  `active/hold/`). Точка входа роли — `.chronos-ops/active/<role>/<ROLE>.md`,
+  тонкий указатель на текущий активный T-номер, не журнал. Отчёт →
+  `.chronos-ops/reports-fresh/TNNN-slug-report.md` (inbox, общий на все роли)
+  → приёмку делаешь САМ: грепы, диффы, build/test, живые смоки.
   КАЖДОЕ утверждение отчёта сверяй с деревом — миньоны врут регулярно.
-  Принятые отчёты → `docs/orchestration/tasks/report-log/`, отклонённые →
-  `docs/orchestration/tasks/rejected/`. Полная история — `docs/orchestration/tasks/
-  MIGRATION.md`.
+  Принятые отчёты → `.chronos-ops/reports-log/<role>/`, тикеты после приёмки →
+  `.chronos-ops/done/<role>/`, на доработку → `rework/<role>/`, отклонённые →
+  `reject/<role>/`. Полная история — `.chronos-ops/MIGRATION.md`.
+  **`docs/orchestration/` закрыт 2026-08-18** — пусто, всё переехало сюда;
+  per-agent файлы эпохи до 2026-07-22 — в `.chronos-ops/dump/legacy-agents/`.
 - Задания пиши самодостаточными: у миньона может быть холодная сессия.
   Полный контекст, точные пути, образцы в дереве, зоны файлов (непересекающиеся
   с параллельными), верификация, стиль коммита.
@@ -66,10 +67,11 @@ GPUI «gpui-ce chronos edition», path-deps). **Первое чтение каж
 - .chronos-ops/checkpoint/REJECTED.md — что рассматривали и отклонили, почему.
 - .chronos-ops/checkpoint/ARCHITECT.md — роль архитектора + живой список дисциплины (датированные
   уроки из реальных инцидентов).
-- docs/orchestration/tasks/MIGRATION.md — сквозная история всех задач (T-ID),
+- .chronos-ops/MIGRATION.md — сквозная история всех задач (T-ID),
   включая архив per-agent эпохи до 2026-07-22.
-- docs/orchestration/agents/<ИМЯ_МИНЬОНА>.md — точка входа инструмента, указывает
-  на текущий активный `docs/orchestration/tasks/active/TNNN-*.md`.
+- .chronos-ops/active/<role>/<ROLE>.md — точка входа роли, указывает
+  на текущий активный `.chronos-ops/active/<role>/TNNN-*.md`.
+- .chronos-ops/RULES.md — что в какой каталог кухни кладётся.
 - `git log --oneline` — краткая сводка.
 
 ## Как себя вести

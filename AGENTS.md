@@ -31,14 +31,19 @@ The canonical docs, in priority order when they disagree with anything else
 Work is tracked as numbered tickets (`TNNN`), not as ad-hoc chat requests:
 
 ```
-docs/orchestration/tasks/
-├── active/       open tickets, ready to pick up (self-contained briefs)
-│   └── pause/    blocked or intentionally deferred
-├── report/       your report goes here when a ticket is done
-├── report-log/   accepted reports (archive)
-├── done/         accepted tickets (archive)
-└── rejected/     rejected briefs/reports, with the reason stated inline
+.chronos-ops/
+├── active/<role>/   open tickets by role (back/front/qa/recon/design)
+│   ├── <ROLE>.md    role entry point — points at the current ticket
+│   └── ../hold/     blocked or intentionally deferred (any role)
+├── reports-fresh/   your report goes here when a ticket is done (shared inbox)
+├── reports-log/<role>/  accepted reports (archive)
+├── done/<role>/     accepted tickets (archive)
+├── rework/<role>/   sent back for fixes, reason stated inline
+└── reject/<role>/   not to be continued, reason stated inline
 ```
+
+Full rules: `.chronos-ops/RULES.md`. Ledger of every T-ID:
+`.chronos-ops/MIGRATION.md`.
 
 **Picking up a ticket:** read the brief in `active/TNNN-slug.md` in full —
 it's written to be self-sufficient (exact file paths, zone boundaries,
@@ -47,7 +52,7 @@ session may have no memory of how it was written. If a brief is ambiguous
 or contradicts `ARCHITECTURE.md`/`DECISIONS.log`, stop and ask — don't
 guess and don't silently expand scope.
 
-**Reporting:** write `docs/orchestration/tasks/report/TNNN-slug-report.md`
+**Reporting:** write `.chronos-ops/reports-fresh/TNNN-slug-report.md`
 before you're done. State what you actually did (not what the brief asked
 for), what you verified and how (command output, not "should work"), and
 what you did *not* do. An honest "not sure, didn't verify" is worth more

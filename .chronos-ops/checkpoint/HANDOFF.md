@@ -1,7 +1,46 @@
 # HANDOFF — контекст для новой сессии Архитектора
 
-**Обновлено: 2026-08-18 — T266 принят, HEAD починен, T303 переписан,
-T304/T305 заведены.** HEAD — см. `git log -1`.
+**Обновлено: 2026-08-18 — T266 и T271 приняты, HEAD починен, T303
+переписан, T304/T305 заведены, `docs/orchestration/` ЗАКРЫТ.** HEAD —
+см. `git log -1`.
+
+**`docs/orchestration/` закрыт и физически удалён.** Кухня целиком в
+`.chronos-ops/`: тикеты `active/<role>/` (+ `hold/`), инбокс отчётов
+`reports-fresh/`, принятое `reports-log/<role>/` + `done/<role>/`,
+`rework/<role>/`, `reject/<role>/`, заметки и кадры-улики `dump/notes/`,
+старые точки входа ролей `dump/legacy-agents/`, реестр T-ID —
+`.chronos-ops/MIGRATION.md`. Навигационные ссылки переписаны в
+`CLAUDE.md`, `AGENTS.md`, `README.md`, `CONTRIBUTING.md`,
+`checkpoint/ARCHITECT.md`, `checkpoint/TBD.md`, `.chronos-ops/README.md`.
+Таблица каталогов из `ARCHITECT.md` убрана — единый источник теперь
+`.chronos-ops/RULES.md`, дублировать её негде. Внутри архивных тикетов
+и отчётов старые пути НЕ правились — исторический слепок.
+
+**В инбоксе `reports-fresh/` лежат три отчёта, приёмки не было:**
+T284 (frame Hide/Wrap — код в `d01820e`, тикет открыт в `active/front/`),
+T281 (PARK — не архивировать до `+` владельца), T299 (разметка ролей для
+167 архивных тикетов, RECON).
+
+**T271 (проглоченные `Result` в IPC) ПРИНЯТ.** Код в `e172327b`. Своя
+приёмка: `rg let _ =` по `crates/app/src/ipc/` → три места, все внутри
+`#[cfg(test)]`; 14 `warn!` (мёртвый ресивер) + 4 `debug!` (teardown) —
+посчётно как в отчёте; `mod.rs` 16 снятых `let _ = cx.update` → 16
+голых; `unwrap`/`expect` не добавлены; lib 597/597, bins 789/789;
+`cargo check` без предупреждений по `ipc/`.
+
+**Главное из T271 — бриф был неправ, исполнитель это доказал.**
+`AsyncApp::update` в форке возвращает `R`, не `Result`:
+`../Source/gpui/src/app/async_context.rs:163`
+`pub fn update<R>(&self, f: impl FnOnce(&mut App) -> R) -> R`. Значит 16
+`let _ = cx.update(...)` в `ipc/mod.rs` **не глотали ошибку** — там её
+нет, это шум. Не переоткрывать этот вопрос в будущих тикетах про
+`let _ =`: для `cx.update` правильная правка — снять `let _ =`, а не
+заворачивать в `if let Err`.
+
+**Живой смок T271 прогнан мной** (оговорка отчёта про старый бинарь
+устарела — release пересобран 00:20, коммит 21:53): `chronos-ipc ping`
+exit 0, `toggle-side-panel-right` дважды — слои
+`side_panel_right_rail`/`_content` ушли и вернулись.
 
 **T266 (прозрачность поверхностей + блюр) ПРИНЯТ.** Своя приёмка:
 `chronos-ui` 22/22, `chronos --lib` 597/597, `chronos-services
