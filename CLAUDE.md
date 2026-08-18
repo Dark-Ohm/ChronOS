@@ -64,8 +64,8 @@ GPUI «gpui-ce chronos edition», path-deps). **Первое чтение каж
 ## Где искать историю решений
 - .chronos-ops/checkpoint/HANDOFF.md — актуальное состояние проекта и поля
   (первое чтение, держать в пределах ~200 строк).
-- .chronos-ops/checkpoint/HANDOFF-LOG.md — журнал сессий и разборов (архив,
-  ~4000 строк, грепать по T-ID/дате/симптому, не читать подряд).
+- .chronos-ops/checkpoint/log/ — журнал сессий и разборов (архив;
+  `handoff.log` ~4000 строк, грепать по T-ID/дате/симптому, не читать подряд).
 - .chronos-ops/checkpoint/ARCHITECTURE.md — принятые архитектурные решения.
 - .chronos-ops/checkpoint/REJECTED.md — что рассматривали и отклонили, почему.
 - .chronos-ops/checkpoint/ARCHITECT.md — роль архитектора + живой список дисциплины (датированные
@@ -113,7 +113,7 @@ GPUI «gpui-ce chronos edition», path-deps). **Первое чтение каж
   переписал их целиком — все три были вне git (`docs/orchestration/` в
   `.gitignore` с 2026-07-19), без `archive/`-копии. История потеряна
   безвозвратно, backup не нашёлся нигде (trash, git log, snapper — только
-  `root`-конфиг, не `/home`). Подробности — .chronos-ops/checkpoint/HANDOFF-LOG.md 2026-07-22.
+  `root`-конфиг, не `/home`). Подробности — .chronos-ops/checkpoint/log/handoff.log 2026-07-22.
 
 ## Код — правила (принесено из сравнения с Chronos-FM, 2026-07-18)
 - **Линты воркспейса включены** (`Cargo.toml`): `unsafe_code = deny`

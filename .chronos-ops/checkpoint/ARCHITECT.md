@@ -24,7 +24,7 @@ reports, accepts or rejects, and keeps project docs honest.
   brief → `.chronos-ops/done/<role>/TNNN-slug.md`. Reject: brief/report →
   `.chronos-ops/reject/<role>/` with the reason stated in the file.
 - Maintain `.chronos-ops/checkpoint/HANDOFF.md` (**state only, keep under
-  ~200 lines — anything stale moves to `HANDOFF-LOG.md`**),
+  ~200 lines — anything stale moves to `checkpoint/log/`**),
   `.chronos-ops/checkpoint/REJECTED.md` (append-only), `.chronos-ops/MIGRATION.md`
   (the T-ID ledger).
 - Cross-check every claim in a report against the tree myself — minions lie

@@ -18,7 +18,7 @@ bash .chronos-ops/bin/kitchen-status.sh
 - `active/` `done/` `reports-fresh/` `reports-log/` `rework/` `reject/` —
   очередь тикетов, по ролям.
 - `checkpoint/` — канон, реальное содержимое (не указатели на `docs/`):
-  `HANDOFF.md` (состояние) + `HANDOFF-LOG.md` (журнал, архив),
+  `HANDOFF.md` (состояние) + `log/handoff.log` (журнал, архив),
   `ARCHITECTURE.md`, `ARCHITECT.md`, `TBD.md`, `SOUL.md`,
   `MEMORY.md`, `REJECTED.md` (бывший `docs/DECISIONS.log`, переименован —
   файл только про отклонённое, имя было двусмысленным).
