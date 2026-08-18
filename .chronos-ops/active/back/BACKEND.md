@@ -5,8 +5,7 @@
 
 **Общие правила:** `.chronos-ops/RULES.md` — прочитать перед стартом.
 
-**Активное: T300** — `T300-hyprland-launcher-lua-drift.md` (рядом в этой
-же папке). `docs/hyprland/chronos-launcher.lua` и
-`packaging/hyprland/40-windowrules-chronos.lua` разошлись по содержимому,
-несмотря на комментарий "canonical copy". Собрать факты, вернуть
-рекомендацию — не мержить самому.
+**Активного задания нет** (T300 закрыт 2026-08-18: `docs/hyprland/` слит в
+`packaging/hyprland/40-windowrules-chronos.lua` и удалён, packaging —
+единственный источник истины). Следующее задание кладётся сюда файлом
+`TNNN-slug.md`, и эта строка меняется на указатель.

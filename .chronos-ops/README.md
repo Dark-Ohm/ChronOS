@@ -39,8 +39,9 @@ bash .chronos-ops/bin/kitchen-status.sh
 связано с сайтом, идёт туда; то, что в `docs/` за пределами сайта —
 редиректит на кухню/канон, не хранит рабочее состояние само.
 
-Также не переезжает: `docs/hyprland/` (живой Hyprland-конфиг, не докс —
-см. T300 про расхождение с `packaging/hyprland/`).
+`docs/hyprland/` больше нет: T300 (2026-08-18) слил его в
+`packaging/hyprland/40-windowrules-chronos.lua` — единственный источник
+истины по Hyprland-правилам ChronOS.
 
 ## Cutover из `docs/orchestration/` — ЗАВЕРШЁН 2026-08-18
 

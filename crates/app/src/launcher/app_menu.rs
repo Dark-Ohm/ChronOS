@@ -362,7 +362,7 @@ fn pick_display(cx: &App) -> Option<DisplayId> {
 ///
 /// Wayland's `xdg_shell` never reports where the compositor placed a
 /// toplevel (no protocol event for it) — the launcher opens `center = true`
-/// via a Hyprland windowrule (`docs/hyprland/chronos-launcher.lua`), so its
+/// via a Hyprland windowrule (`packaging/hyprland/40-windowrules-chronos.lua`), so its
 /// client-side `window.bounds().origin` is frozen at the geometry we
 /// *requested* (`(0, 0)`, see `launcher/mod.rs::window_options`), not where
 /// it actually ended up. Adding that frozen origin to `event_position` (the

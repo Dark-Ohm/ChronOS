@@ -143,12 +143,16 @@ panic/error). Оба в `.chronos-ops/active/front/`, `FRONTEND.md`
 `.chronos-ops/superpowers/` → `.chronos-ops/superpowers/`, обе as-is. `docs/`
 теперь только продукт+сайт: `product/`/`style/`/`guides/` подпапки,
 плюс `index.html`/`.nojekyll`/`landing/` (GitHub Pages, не переезжает
-никогда) и `hyprland/` (живой конфиг, не переезжает).
+никогда). `hyprland/` удалён 2026-08-18 (T300) — правила живут в
+`packaging/hyprland/`.
 
 Кухонный архив: 334 тикета расклассифицированы по ролям (`git mv`), 167
-непонятых — **T299** (RECON). **T300** (BACKEND) — `docs/hyprland/
-chronos-launcher.lua` vs `packaging/hyprland/40-windowrules-chronos.lua`
-разошлись, комментарий "canonical copy" врёт, не смержено намеренно.
+непонятых — **T299** (RECON). **T300** (BACKEND) — **ЗАКРЫТ 2026-08-18**:
+расхождение оказалось только в комментариях (исполняемая часть побайтово
+идентична), docs-копия слита в `packaging/hyprland/40-windowrules-chronos.lua`
+и удалена; `crates/app/src/launcher/{mod,app_menu}.rs` перевешены на новый
+путь. Источник истины — `packaging/`, путь файла менять нельзя (живой
+конфиг `~/.config/hypr/modules/40-windowrules.lua:4` жёстко его `dofile`'ит).
 
 Дерево воркетри полностью прибрано: 7 стухших/уже-смерженных воркетри
 снесены (сверено побайтовым diff, не только `git merge-base`), 8

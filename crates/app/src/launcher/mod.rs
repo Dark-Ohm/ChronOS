@@ -39,7 +39,7 @@ impl Global for LauncherState {}
 /// Hyprland it becomes the window's `initialClass`, which is what
 /// `hl.window_rule({ match = { class = "chronos-launcher" }, ... })` matches
 /// against. Centering, float and decorations are the compositor's responsibility
-/// via these windowrules (shipped in `docs/hyprland/chronos-launcher.lua`) —
+/// via these windowrules (shipped in `packaging/hyprland/40-windowrules-chronos.lua`) —
 /// we explicitly do NOT try to center via layer-shell margins anymore.
 ///
 /// Why not a layer shell anymore — blood-earned context:
