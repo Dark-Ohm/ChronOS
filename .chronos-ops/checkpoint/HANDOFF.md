@@ -23,18 +23,16 @@ FRONTEND.
 
 **Очередь FRONTEND (порядок жёсткий):**
 
-1. **T302** — P1, живая находка: контентная зона левой панели рендерится
-   пустой, сквозь неё видны обои. Логи чистые, без panic/error.
-2. **T304** — `TabContent::create` → `&mut App`. Предварительный для
+1. **T304** — `TabContent::create` → `&mut App`. Предварительный для
    T305, режется первым: общий `tab/mod.rs`, параллелить нельзя.
-3. **T305** — settings-табы правого рейла уезжают в единый anchored
+2. **T305** — settings-табы правого рейла уезжают в единый anchored
    slide-popup (control-center, видео-референс владельца). Стартует
    только после приёмки T304.
-4. **T303** — P2, хвост T284: развести `wrap.thickness` и
+3. **T303** — P2, хвост T284: развести `wrap.thickness` и
    `bottom_strip.height`, убрать `T303DEBUG`-лог, живой grim. Геометрия
    рамки уже переписана в `d01820e` (одно кольцо `border`+`rounded`) —
    T284 закрыт, переоткрывать его нельзя.
-5. **T301** — P3, хвост T298: текст в composer Select-попапе без
+4. **T301** — P3, хвост T298: текст в composer Select-попапе без
    эллипсиса.
 
 **Припарковано (`active/hold/`):** T281 (левая workspace Slice A — код
@@ -126,6 +124,17 @@ T191, T224, T277, T282.
   `hyprctl` — единственный источник истины.
 - **`KeyboardInteractivity::Exclusive` ЗАПРЕЩЁН** — вешает input-стек
   композитора.
+- **Призыв левой панели = rail-only, и это дизайн, а не баг** (T220,
+  подтверждено T302 2026-08-18). `toggle-side-panel-left` / `Super+A`
+  открывают ОБА окна (`rail` + `content`), но `panel_width = RAIL_WIDTH`
+  → `visible_content_width == 0`: видна только 40px полоса рейла, чат не
+  выезжает. Контентное окно при этом висит прозрачным 920px `Overlay` над
+  рабочим столом — клики сквозь него проходят, `content_input_region` при
+  нулевой ширине пуст (`side_panel_left/state.rs:73`). Чат раскрывает
+  клик по иконке таба на рейле или `chronos-ipc expand-left`. Так сделано
+  потому, что призыв «сразу с чатом» прятал композер (баг T137). Плюс
+  enter-анимация 260 мс стартует с `opacity 0` — `grim` в первые полсекунды
+  даёт ровно ту же картину «пустая зона, сквозь неё обои».
 - **`remove_window` на часто скрываемых layer-shell окнах шумит
   «window not found»** — soft-hide (display=None + пустой input region).
   Полный разбор двух причин — `checkpoint/log/handoff.log`, греп
@@ -162,6 +171,12 @@ T191, T224, T277, T282.
   `RUST_LOG=info ./target/release/chronos` → wpctl / notify-send /
   `chronos-ipc` → `grim`.
 - UX-смоки ТОЛЬКО release. Кропы: `magick -crop WxH+X+Y -resize N%`.
+- **Левая панель (T220):** призыв (`Super+A` / `chronos-ipc
+  toggle-side-panel-left`) → `hyprctl layers -j | grep side_panel_left`:
+  ждать `rail` 40px И `content` 920px, при этом видимая доля контента = 0.
+  Раскрыть чат — клик по иконке таба на рейле или `chronos-ipc expand-left`.
+  Снимать `grim` не раньше чем через ~0.5 с после раскрытия, иначе поймаешь
+  enter-фейд и решишь, что панель пустая.
 - `hyprctl clients -j` — обычные toplevel (лаунчер); `hyprctl layers -j`
   — layer-shell (bar/dock/osd/notifications/tray_menu). Проверять
   «открылось ли окно» надёжнее через `layers -j`, чем через grim-кроп.
