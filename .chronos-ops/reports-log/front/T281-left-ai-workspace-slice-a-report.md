@@ -78,3 +78,23 @@ self.request_focus_composer(cx);  // after select_session(id, cx)
 **T281 / Slice A — Gate 8 code complete.** The restart-session-restore code gap is fixed (startup reducer + `ChatTab::new` restore) and covered by unit/reducer tests. All automatic gates green: `cargo test -p chronos --lib --bins` (472 lib + 667 bin), `cargo test -p chronos-services --lib threads` (14), release build pending owner confirmation. Live Hyprland restoration (Gate 8 live, Gate 7 external-model fallback) still requires the owner's `+` after a real session restart.
 
 Owner verdict required (`+` to close) — executor does not move this to `report-log/`.
+---
+
+## Приёмка архитектора — 2026-08-18: ПРИНЯТ ЧАСТИЧНО (гейт 8 открыт)
+
+Отчёт вынут из inbox, чтобы не висел там третью неделю. Что сверено по дереву:
+- `75358a2c` («keep dock on tab switch and focus composer on session select») и
+  `23bf89f1` («restore last valid session on startup (T281 gate 8)») — **оба в
+  истории**, не обещания.
+- Код-путь гейта 8 на месте: `side_panel_left/mod.rs:819
+  restore_active_project_on_startup`, `tabs/chat.rs:659 restore_project_thread`
+  (зовётся из `mod.rs:774` и `chat.rs:439`).
+- T285 (`load_session`) с тех пор в дереве — `chat.rs:312 run_load_session`, то
+  есть блокер, из-за которого гейт 8 был отложен, снят.
+
+**Открыто:** гейт 8 живьём (рестарт шелла → лента *и* сессия агента
+восстановлены) — за владельцем, не за миньоном. Тикет
+`active/hold/T281-left-workspace-ipc-live-acceptance.md` остаётся припаркован
+именно под этот единственный прогон; повторная выдача миньону запрещена.
+Гейт 7 остаётся с оговоркой отчёта (внешняя модель `tencent/hy3:free` стала
+платной — не наш дефект).

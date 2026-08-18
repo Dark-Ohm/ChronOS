@@ -16,5 +16,7 @@ packaging (это BACKEND).
   (control-center, видео-референс владельца).
 - **T303** — `T303-frame-wrap-border-geometry-mismatch.md`. P2 (снижено —
   геометрия уже в `d01820e`), хвост: `wrap.thickness`, debug-лог, живой grim.
+  Родитель **T284 закрыт** 2026-08-18 (`done/front/`) — в T303 только хвост,
+  переоткрывать T284 нельзя.
 - **T301** — `T301-composer-select-text-ellipsis.md`. P3, хвост T298:
   текст в Select-попапе всё ещё режется без эллипсиса.
