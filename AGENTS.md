@@ -45,11 +45,12 @@ Work is tracked as numbered tickets (`TNNN`), not as ad-hoc chat requests:
 Full rules: `.chronos-ops/RULES.md`. Ledger of every T-ID:
 `.chronos-ops/MIGRATION.md`.
 
-**Picking up a ticket:** read the brief in `active/TNNN-slug.md` in full —
+**Picking up a ticket:** read the brief in `active/<role>/TNNN-slug.md` in full —
 it's written to be self-sufficient (exact file paths, zone boundaries,
 what's already in the tree, what "done" means, how to verify) because your
 session may have no memory of how it was written. If a brief is ambiguous
-or contradicts `ARCHITECTURE.md`/`DECISIONS.log`, stop and ask — don't
+or contradicts `.chronos-ops/checkpoint/ARCHITECTURE.md` /
+`.chronos-ops/checkpoint/REJECTED.md`, stop and ask — don't
 guess and don't silently expand scope.
 
 **Reporting:** write `.chronos-ops/reports-fresh/TNNN-slug-report.md`
@@ -62,8 +63,9 @@ than a confident claim that turns out wrong on review.
 against the tree — grep, diff, build, test, and for anything touching a
 window or user-visible behavior, a live release-binary smoke test. Claims
 in a report are treated as claims, not facts, until reproduced. Accepted
-work moves brief + report to `done/` / `report-log/`; rejected work moves
-to `rejected/` with the reason recorded, and stays open for another pass.
+work moves brief + report to `done/<role>/` / `reports-log/<role>/`;
+work sent back moves to `rework/<role>/` and rejected work to
+`reject/<role>/`, with the reason recorded inline.
 
 ## Working rules
 

@@ -73,18 +73,14 @@ See [`docs/guides/dev-cli.md`](docs/guides/dev-cli.md) for the full CLI referenc
 
 ## Skills / documentation proofs
 
-Skill and documentation files under `skills/` carry `file:line` references
-back to real code — a proof gate, not a suggestion. `./skills/check-proofs.sh`
-validates them; it runs in CI on every push/PR and, once you enable it
-locally, as a pre-commit hook:
+Skill files no longer live in this repository. As of 2026-08-18 they are in
+a single ecosystem-wide vault outside git
+(`/home/neo/projects/chronos-ecosystem/skills/`), shared by every project,
+and the `skill-proofs` CI job and its pre-commit hook were removed with
+them. Nothing to run here.
 
-```sh
-git config core.hooksPath scripts/git-hooks   # once per clone
-```
-
-Broken proof links fail the check. External references (upstream Zed,
-third-party checkouts, illustrative placeholders) are allow-listed and
-reported as informational, not hard failures.
+The rule the gate enforced still stands for docs in this repo: a claim
+about the code carries a `file:line` reference, or it is a guess.
 
 ## Plugins
 

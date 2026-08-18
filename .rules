@@ -2,15 +2,18 @@
 
 Читается каждой сессией агента (Zed и совместимые). Держать высокой
 плотности: **ловушки, а не карты**. Архитектуру агент прочтёт в коде и в
-`docs/ARCHITECTURE.md`; здесь только то, на чём он споткнётся.
+`.chronos-ops/checkpoint/ARCHITECTURE.md`; здесь только то, на чём он
+споткнётся.
 
 ## Что читать первым
 
 1. **`.chronos-ops/checkpoint/HANDOFF.md`** — где стоим сейчас, кто в поле,
    очередь, кровные факты. История сессий — `checkpoint/log/handoff.log` (архив).
 2. `CLAUDE.md` — кто ты и как говоришь (русский в чате, английский в коде).
-3. `docs/ARCHITECTURE.md` — что решено. `docs/DECISIONS.log` — что отвергнуто и почему.
-4. `docs/ARCHITECT.md` — канон роли архитектора + живой список дисциплины.
+3. `.chronos-ops/checkpoint/ARCHITECTURE.md` — что решено.
+   `.chronos-ops/checkpoint/REJECTED.md` — что отвергнуто и почему.
+4. `.chronos-ops/checkpoint/ARCHITECT.md` — канон роли архитектора + живой
+   список дисциплины.
 
 При расхождении этих файлов с чем угодно — побеждают они.
 
@@ -32,7 +35,7 @@ crates.io). `../Source-wt-component` — worktree с `gpui-component`.
 - **`git stash` в поле запрещён.** Изоляция — только через worktree, и
   только сиблингом репозитория (`../ChronOS-wt-*`), никогда в `/tmp`:
   сломаются `path = "../Source"`.
-- Повседневные команды — `docs/dev-cli.md`: `chronos-rebuild`,
+- Повседневные команды — `docs/guides/dev-cli.md`: `chronos-rebuild`,
   `chronos-start`, `chronos-stop`.
 - `reference/` **не коммитить** — нелицензированный код, юридический риск.
 
@@ -103,9 +106,15 @@ crates.io). `../Source-wt-component` — worktree с `gpui-component`.
 
 ## Оркестрация
 
-- Задания живут в `docs/orchestration/tasks/active/TNNN-*.md`, отчёты — в
-  `docs/orchestration/tasks/report/`, принятые уезжают в `report-log/`,
-  отклонённые — в `rejected/`. История — `MIGRATION.md`.
+- Кухня целиком в `.chronos-ops/` (`docs/orchestration/` закрыт и удалён
+  2026-08-18). Задания — `.chronos-ops/active/<role>/TNNN-*.md` (роли:
+  `back`/`front`/`qa`/`recon`/`design`, замороженное — `active/hold/`),
+  точка входа роли — `active/<role>/<ROLE>.md`. Отчёт кладётся в общий
+  инбокс `.chronos-ops/reports-fresh/TNNN-slug-report.md`. После приёмки
+  архитектором: тикет → `done/<role>/`, отчёт → `reports-log/<role>/`, на
+  доработку → `rework/<role>/`, отклонённое → `reject/<role>/`.
+  Полные правила — `.chronos-ops/RULES.md`, реестр T-ID —
+  `.chronos-ops/MIGRATION.md`.
 - Задание должно быть самодостаточным: у исполнителя холодная сессия.
   Точные пути, образцы в дереве, непересекающиеся зоны файлов, способ
   проверки.
