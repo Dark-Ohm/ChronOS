@@ -6,11 +6,9 @@ packaging (это BACKEND).
 **Общие правила:** `.chronos-ops/RULES.md` — прочитать перед стартом.
 
 **Активное:**
-- **T304** — `T304-tabcontent-create-generalize-to-app.md`. Предварительный
-  для T305, режется первым (общий `tab/mod.rs`, параллелить с T305 нельзя).
-  **Начинай с этого.**
-- **T305** — `T305-control-center-popup-host.md`. Стартует только после
-  приёмки T304. Settings-табы right rail уезжают в единый anchored-popup
+- **T305** — `T305-control-center-popup-host.md`. **Разблокирован**
+  (T304 принят 2026-08-18, `a183e86e`): popup-хост зовёт
+  `TabContent::create(tab, cx)` с `&mut App` напрямую. Начинай с этого. Settings-табы right rail уезжают в единый anchored-popup
   (control-center, видео-референс владельца).
 - **T303** — `T303-frame-wrap-border-geometry-mismatch.md`. P2 (снижено —
   геометрия уже в `d01820e`), хвост: `wrap.thickness`, debug-лог, живой grim.
