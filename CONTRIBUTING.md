@@ -18,6 +18,11 @@ zone discipline this project uses for agent-assisted development.
 - **Check [`.chronos-ops/`](.chronos-ops/)** for
   open work before starting something from scratch — someone may already
   be on it, or it may be intentionally deferred.
+- **Read those files, don't edit them.** Everything under
+  `.chronos-ops/checkpoint/` (plus `.rules` and `CLAUDE.md`) is the
+  maintainer's working instrument — a PR touching them is rejected on sight,
+  however correct the change. If something there is wrong or out of date,
+  say so in the PR description or an issue and let the maintainer fix it.
 
 ## Building
 

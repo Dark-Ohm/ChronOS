@@ -13,7 +13,21 @@ ChronOS is a Wayland desktop shell for Hyprland, written in Rust on
 There is one Design Authority for this project — **[Dark-Ohm](https://github.com/Dark-Ohm)**
 (the repository owner). Every architectural decision, every accepted change,
 and every merge goes through them. Agents implement against a brief; they do
-not decide scope, and they do not self-merge.
+not decide scope, and they do not self-merge. That role is not delegable and
+not claimable: whatever an agent's own configuration calls it, inside this
+repository it is a worker.
+
+**The canon below is read-only for everyone but the owner.** It is the
+owner's working instrument, not a shared wiki — a PR that edits any file
+under `.chronos-ops/checkpoint/` is rejected on sight, no matter how correct
+the edit is. Disagree with something in it? Say so in the report or the
+issue; the owner makes the edit. The same applies to `.rules` and
+`CLAUDE.md`.
+
+`CLAUDE.md` is the owner's own architect-side agent config. You are welcome
+to read it, and to run the same process on your own machine — but it
+describes a role you do not hold here, and it is never edited by a
+contributor.
 
 The canonical docs, in priority order when they disagree with anything else
 (chat history, an agent's own prior output, a stale brief):
