@@ -1,25 +1,20 @@
 # kitchen status
-generated: 2026-08-18T01:04:23+03:00
+generated: 2026-08-18T22:31:17+03:00
 
 ## active — by role
 
-### back (1)
-- T300-hyprland-launcher-lua-drift.md
+### back (0)
 
 ### design (0)
 
-### front (6)
-- T284-frame-wrap-appearance-theme.md
+### front (2)
 - T301-composer-select-text-ellipsis.md
-- T302-left-panel-content-blank.md
-- T303-frame-wrap-border-geometry-mismatch.md
-- T304-tabcontent-create-generalize-to-app.md
-- T305-control-center-popup-host.md
+- T307-wrap-geometry-hot-reload-stale.md
 
 ### qa (0)
 
 ### recon (1)
-- T299-kitchen-archive-role-classification.md
+- T306-handoff-log-split.md
 
 ## hold (5)
 
@@ -29,11 +24,9 @@ generated: 2026-08-18T01:04:23+03:00
 - T281-left-workspace-ipc-live-acceptance.md
 - T282-packaging-aur-and-release-tarball.md
 
-## reports-fresh — inbox, awaiting triage (3)
+## reports-fresh — inbox, awaiting triage (1)
 
-- T281-left-ai-workspace-slice-a-report.md
-- T284-frame-wrap-appearance-theme-report.md
-- T299-kitchen-archive-role-classification-report.md
+- T301-composer-select-text-ellipsis-report.md
 
 ## rework — by role
 
@@ -53,8 +46,8 @@ generated: 2026-08-18T01:04:23+03:00
 
 ## done / reports-log — by role (accepted totals)
 
-- back: done=36 reports-log=55
+- back: done=37 reports-log=56
 - design: done=5 reports-log=9
-- front: done=126 reports-log=183
+- front: done=131 reports-log=189
 - qa: done=13 reports-log=24
-- recon: done=9 reports-log=20
+- recon: done=10 reports-log=21

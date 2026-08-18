@@ -6,11 +6,24 @@ packaging (это BACKEND).
 **Общие правила:** `.chronos-ops/RULES.md` — прочитать перед стартом.
 
 **Активное:**
-- **T301** — `T301-composer-select-text-ellipsis.md`. Начинай с этого. P3,
-  хвост T298: текст в Select-попапе всё ещё режется без эллипсиса.
-- **T307** — `T307-wrap-geometry-hot-reload-stale.md`. P3, находка T303:
-  `apply_wrap` early-return при уже открытой матте — `wrap.thickness`/
-  `inner_radius` в `frame.toml` не подхватывается без рестарта шелла.
+- **T307** — `T307-wrap-geometry-hot-reload-stale.md`. Начинай с этого.
+  P3, находка T303: `apply_wrap` early-return при уже открытой матте —
+  `wrap.thickness`/`inner_radius` в `frame.toml` не подхватывается без
+  рестарта шелла.
+
+**Очередь FRONTEND пуста после T307** — сверяться с `checkpoint/HANDOFF.md`
+за новыми находками владельца.
+
+**Закрыто 2026-08-18:** T301 — `Select`-попап (composer): `max_w(px(N))`
+вместо `w_full().min_w(px(0.))` в `ModelSelectItem`/`ModeSelectItem::render`,
+`96f713a`. Корень (T298-хвост): `w_full()` = процент без definite-родителя
+в MinContent/MaxContent-проходе флекса → `truncate_width = None` → текст
+резался родительским `overflow_hidden` без `…`. Пиксельный `max_w` даёт
+Taffy definite `AvailableSpace` → эллипсис реально вычисляется
+(`Source/gpui/src/elements/text.rs:670-690`). **Живой грим снят архитектором**
+(исполнитель честно не смог — протухший fd `ydotoold`, задокументировано в
+отчёте): `Nous Portal · nvidia/nemotron-3…` и три другие длинные строки
+кончаются реальным `…`, короткие (`qwen/qwen3.8-max`) влезают целиком.
 
 **Закрыто 2026-08-18:** T302 — бага нет, rail-only при призыве = принятый
 дизайн T220 (см. `checkpoint/HANDOFF.md`, «Кровные факты»). Не заводить
