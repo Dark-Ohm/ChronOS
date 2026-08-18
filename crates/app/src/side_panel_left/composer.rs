@@ -16,6 +16,19 @@ use super::state::AgentStatus;
 // The kit `Select` delegates over these. Value is the model/mode id
 // (Clone + PartialEq); `title()` mirrors the old manual row: name, falling
 // back to id when the ACP agent omits a display name.
+//
+// T301: the dropdown row's text never saw `.truncate()` take effect because
+// the item render is wrapped in a plain `div()` (adapter.rs) whose width
+// resolves from the text's natural size, so a `w_full()` percentage has no
+// definite parent to resolve against during the flex measure pass — the text
+// element gets no definite truncate width and `.truncate()` only hard-clips
+// (its overflow_hidden) without the ellipsis. A pixel `max_w` is a definite
+// constraint that reaches the text regardless of that chain, so truncation
+// (ellipsis) actually computes. Budget: menu_width − list padding (2×4) −
+// row padding (2×12) − check-icon (12) − gap (4).
+const MODEL_SELECT_TEXT_MAX_W: f32 = 280. - 48.;
+const MODE_SELECT_TEXT_MAX_W: f32 = 200. - 48.;
+
 #[derive(Clone)]
 pub(crate) struct ModelSelectItem {
     id: SharedString,
@@ -34,13 +47,8 @@ impl SearchableListItem for ModelSelectItem {
     }
 
     fn render(&self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        // T298: truncate long model names with ellipsis instead of hard-clipping.
-        // w_full() makes the div take the row's available width so the text
-        // overflows and triggers text-overflow: ellipsis. min_w(px(0.))
-        // allows the flex item to shrink below its content size.
         div()
-            .w_full()
-            .min_w(px(0.))
+            .max_w(px(MODEL_SELECT_TEXT_MAX_W))
             .whitespace_nowrap()
             .truncate()
             .child(self.title())
@@ -90,10 +98,8 @@ impl SearchableListItem for ModeSelectItem {
     }
 
     fn render(&self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        // T298: truncate long mode names with ellipsis instead of hard-clipping.
         div()
-            .w_full()
-            .min_w(px(0.))
+            .max_w(px(MODE_SELECT_TEXT_MAX_W))
             .whitespace_nowrap()
             .truncate()
             .child(self.title())
