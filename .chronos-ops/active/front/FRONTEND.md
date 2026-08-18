@@ -6,13 +6,15 @@ packaging (это BACKEND).
 **Общие правила:** `.chronos-ops/RULES.md` — прочитать перед стартом.
 
 **Активное:**
-- **T307** — `T307-wrap-geometry-hot-reload-stale.md`. Начинай с этого.
-  P3, находка T303: `apply_wrap` early-return при уже открытой матте —
-  `wrap.thickness`/`inner_radius` в `frame.toml` не подхватывается без
-  рестарта шелла.
-
-**Очередь FRONTEND пуста после T307** — сверяться с `checkpoint/HANDOFF.md`
-за новыми находками владельца.
+- **T308** — `T308-wrap-matte-shifted-by-sibling-panel-reservation.md`.
+  Начинай с этого. **P0** — живая находка владельца прямо на T303-кровном
+  факте: с открытой боковой панелью матте съезжает на 56px
+  (40 rail + 16 wrap), правое кольцо улетает за экран. Подозреваемый
+  корень: матте `exclusive_zone: None` вместо T305-паттерна
+  `Some(px(-1.))`.
+- **T307** — `T307-wrap-geometry-hot-reload-stale.md`. P3, находка T303:
+  `apply_wrap` early-return при уже открытой матте — `wrap.thickness`/
+  `inner_radius` в `frame.toml` не подхватывается без рестарта шелла.
 
 **Закрыто 2026-08-18:** T301 — `Select`-попап (composer): `max_w(px(N))`
 вместо `w_full().min_w(px(0.))` в `ModelSelectItem`/`ModeSelectItem::render`,
