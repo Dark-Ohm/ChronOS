@@ -21,7 +21,7 @@
 //! ## Wrap (T284)
 //! `style = "wrap"` in `frame.toml`: one fullscreen **matte** (Layer::Top,
 //! paints only the chrome ring, hole = wallpaper) plus three invisible
-//! exclusive strips L/R/B (thickness = `bottom_strip.height`) that push
+//! exclusive strips L/R/B (thickness = `wrap.thickness`) that push
 //! clients off the frame. The bar stays top-exclusive and reads as the top
 //! edge of the frame; side rails/content inset by `wrap_inset()` on the
 //! panel side.
@@ -64,6 +64,13 @@ const RAIL_INSET: f32 = 40.0;
 const DEFAULT_INNER_RADIUS: f32 = 16.0;
 const MIN_RADIUS: f32 = 0.0;
 const MAX_RADIUS: f32 = 64.0;
+/// Default `wrap.thickness` — the chrome ring width. Equal to the default
+/// `inner_radius` so the corner rounding reads proportional to the frame;
+/// the old figure (`bottom_strip.height`) was tuned for the thin Hide
+/// strip and made the wrap frame read as a cheap 4px line (T303).
+const DEFAULT_THICKNESS: f32 = 16.0;
+const MIN_THICKNESS: f32 = 1.0;
+const MAX_THICKNESS: f32 = 64.0;
 
 /// Strip/rail junction at the bottom corners.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,26 +137,38 @@ where
     Ok(FrameStyle::from_str_sanitized(&s))
 }
 
-/// `[wrap]` section — only the inner corner radius for now (T284 spec §3).
+/// `[wrap]` section — frame thickness and inner corner radius (T284 spec
+/// §3; T303: thickness split off `bottom_strip.height`).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct WrapConfig {
+    pub thickness: f32,
     pub inner_radius: f32,
 }
 
 impl Default for WrapConfig {
     fn default() -> Self {
         Self {
+            thickness: DEFAULT_THICKNESS,
             inner_radius: DEFAULT_INNER_RADIUS,
         }
     }
 }
 
 impl WrapConfig {
-    /// Clamp `inner_radius` into `MIN_RADIUS..=MAX_RADIUS` (0 disables the
-    /// corner rounding entirely).
+    /// Clamp `thickness` into `MIN_THICKNESS..=MAX_THICKNESS` and
+    /// `inner_radius` into `MIN_RADIUS..=MAX_RADIUS` (0 disables the corner
+    /// rounding entirely).
     pub fn sanitized(&self) -> Self {
         let mut out = self.clone();
+        if out.thickness < MIN_THICKNESS || out.thickness > MAX_THICKNESS {
+            tracing::warn!(
+                "frame: wrap.thickness {} out of range [{MIN_THICKNESS}, {MAX_THICKNESS}], clamping to {}",
+                out.thickness,
+                out.thickness.clamp(MIN_THICKNESS, MAX_THICKNESS)
+            );
+            out.thickness = out.thickness.clamp(MIN_THICKNESS, MAX_THICKNESS);
+        }
         if out.inner_radius < MIN_RADIUS || out.inner_radius > MAX_RADIUS {
             tracing::warn!(
                 "frame: wrap.inner_radius {} out of range [{MIN_RADIUS}, {MAX_RADIUS}], clamping to {}",
@@ -339,12 +358,13 @@ pub fn hide_strip_wanted(enabled: bool, left_mapped: bool, right_mapped: bool) -
     enabled && (left_mapped || right_mapped)
 }
 
-/// 0 in Hide; `bottom_strip.height` in Wrap — the frame thickness rails and
-/// content inset by, and the exclusive strips reserve (T284 §5).
+/// 0 in Hide; `wrap.thickness` in Wrap — the frame thickness rails and
+/// content inset by, and the exclusive strips reserve (T284 §5, T303: no
+/// longer `bottom_strip.height`, which is tuned for the thin Hide strip).
 pub fn wrap_inset_for(cfg: &FrameConfig) -> f32 {
     match cfg.style {
         FrameStyle::Hide => 0.0,
-        FrameStyle::Wrap => cfg.bottom_strip.sanitized().height,
+        FrameStyle::Wrap => cfg.wrap.sanitized().thickness,
     }
 }
 
@@ -507,28 +527,28 @@ impl Render for WrapSurfaceView {
 
         let theme = Theme::global(cx);
         let cfg = cached_config();
-        let inset = cfg.bottom_strip.height;
+        // Same sanitized source as `wrap_inset_for` — the matte paints what
+        // the exclusive strips reserve, so the ring can never diverge from
+        // the geometry clients are pushed by (T303 second drift, fixed).
+        let inset = cfg.wrap.sanitized().thickness;
         let radius = cfg.wrap.inner_radius;
-        tracing::error!(
-            "T303DEBUG matte bounds={:?} scale={}",
-            window.bounds(),
-            window.scale_factor()
-        );
 
         // One uniform ring instead of strips + hand-drawn corner patches
         // (T303): the border shader offsets the inner edge by the border
         // width, so a full-size div with border `inset` and rounding
         // `radius + inset` paints a frame of constant thickness `inset`
         // whose inner contour is exactly the spec's rounded rect (inner
-        // radius = `inner_radius`, outer = inner + thickness). The top
-        // border sits under the opaque top-exclusive bar, so the visible
-        // frame is L/R/B with rounded bottom corners and a square junction
-        // with the bar. No background — the hole stays the wallpaper
-        // (spec §5.1; a transparent child would not punch a fill).
+        // radius = `inner_radius`, outer = inner + thickness). No top
+        // border: the matte sits below the bar on the same layer, but the
+        // bar only covers y0-30 and the border would read as a line below
+        // it — the bar itself is the top edge. No background — the hole
+        // stays the wallpaper (spec §5.1; a transparent child would not
+        // punch a fill).
         div()
             .id("frame-wrap-matte")
             .size_full()
             .border(px(inset))
+            .border_t_0()
             .border_color(theme.bg.tertiary)
             .rounded(px(radius + inset))
             .into_any_element()
@@ -576,22 +596,40 @@ fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) 
         })
         .unwrap_or((1920., 1080.));
     let inset = wrap_inset();
-    let (size, anchor, namespace, layer, exclusive_zone, exclusive_edge) = match role {
-        // No vertical anchor (only LEFT|RIGHT): Hyprland CENTERS a
-        // TOP|BOTTOM-anchored surface in the reserved area (bar top 30 +
-        // excl bottom 4) and flush-lands BOTTOM-anchored ones above the
-        // reserved bottom — either way the matte's bottom border misses the
-        // screen edge and the frame reads as cut (T303). A surface with no
-        // vertical anchor is placed at its top margin (0), covering the
-        // screen exactly; the T268 hide strip proves explicit-size layer
-        // placement is honored.
+    let (size, anchor, namespace, layer, exclusive_zone, exclusive_edge, margin) = match role {
+        // The matte must cover the full screen, ring flush with every edge.
+        // Hyprland places every layer surface inside the available area
+        // (monitor minus all reservations, regardless of layer) — the matte
+        // is always pushed up by the bar (30) and ExclBottom (inset), so a
+        // BOTTOM-anchored matte flush-lands at y=-inset..(h-inset) and its
+        // bottom border floats `inset` above the screen edge (measured
+        // live: y=-16..1424 with inset 16). A negative bottom margin
+        // counteracts the reservation exactly: bottom edge = available
+        // bottom - margin = (1440-inset) - (-inset) = 1440, covering
+        // y0-1440. The horizontal anchors are LEFT only: a LEFT|RIGHT
+        // anchored full-width surface gets CENTERED (not clipped) when the
+        // side panels' reservations shrink the available width — measured
+        // live at x=-28 with the right panel open, ring off-screen left and
+        // over the rail right. LEFT pins the left edge at 0 and the width
+        // still covers the monitor. Layer stays Top: an Overlay matte
+        // shares a layer with the rail/panels and its empty input region
+        // swallows their clicks (measured live), while on Top it sits below
+        // them. The bar covers the top border regardless (same layer,
+        // opaque), so `border_t_0` below is belt-and-suspenders.
         WrapRole::Matte => (
             Size::new(px(w), px(h)),
-            Anchor::LEFT | Anchor::RIGHT,
+            Anchor::LEFT | Anchor::BOTTOM,
             "frame_wrap_matte",
             Layer::Top,
             None,
             None,
+            // Negative bottom AND left margins: the bar/ExclBottom and
+            // ExclLeft reservations push a bottom/left-anchored matte to
+            // y=-inset..(h-inset) / x=inset.. respectively (measured live:
+            // y=-16..1424 and x=16.. with inset 16), so a negative margin
+            // of -inset counteracts each exactly and the matte covers
+            // x0-2560, y0-1440.
+            Some((px(0.), px(0.), px(-inset), px(-inset))),
         ),
         WrapRole::ExclLeft => (
             Size::new(px(inset), px(h)),
@@ -600,6 +638,7 @@ fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) 
             Layer::Overlay,
             Some(px(inset)),
             Some(Anchor::LEFT),
+            None,
         ),
         WrapRole::ExclRight => (
             Size::new(px(inset), px(h)),
@@ -608,6 +647,7 @@ fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) 
             Layer::Overlay,
             Some(px(inset)),
             Some(Anchor::RIGHT),
+            None,
         ),
         WrapRole::ExclBottom => (
             Size::new(px(w), px(inset)),
@@ -616,6 +656,7 @@ fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) 
             Layer::Overlay,
             Some(px(inset)),
             Some(Anchor::BOTTOM),
+            None,
         ),
     };
     WindowOptions {
@@ -633,7 +674,7 @@ fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) 
             anchor,
             exclusive_zone,
             exclusive_edge,
-            margin: None,
+            margin,
             keyboard_interactivity: KeyboardInteractivity::None,
             ..Default::default()
         }),
@@ -936,6 +977,7 @@ mod tests {
         assert_eq!(cfg.bottom_strip.height, 4.0);
         assert_eq!(cfg.bottom_strip.junction, FrameJunction::Break);
         assert_eq!(cfg.style, FrameStyle::Hide);
+        assert_eq!(cfg.wrap.thickness, DEFAULT_THICKNESS);
         assert_eq!(cfg.wrap.inner_radius, DEFAULT_INNER_RADIUS);
     }
 
@@ -1005,21 +1047,27 @@ mod tests {
     }
 
     #[test]
-    fn wrap_inset_zero_in_hide_height_in_wrap() {
+    fn wrap_inset_zero_in_hide_thickness_in_wrap() {
         let hide = FrameConfig {
             style: FrameStyle::Hide,
             ..FrameConfig::default()
         };
         let wrap = FrameConfig {
             style: FrameStyle::Wrap,
-            bottom_strip: BottomStripConfig {
-                height: 4.0,
+            wrap: WrapConfig {
+                thickness: 4.0,
                 ..Default::default()
             },
             ..FrameConfig::default()
         };
         assert_eq!(wrap_inset_for(&hide), 0.0);
         assert_eq!(wrap_inset_for(&wrap), 4.0);
+        // No [wrap] section → default thickness drives the inset.
+        let wrap_default = FrameConfig {
+            style: FrameStyle::Wrap,
+            ..FrameConfig::default()
+        };
+        assert_eq!(wrap_inset_for(&wrap_default), DEFAULT_THICKNESS);
     }
 
     #[test]
@@ -1045,6 +1093,18 @@ mod tests {
         assert_eq!(cfg.sanitized().inner_radius, MIN_RADIUS);
         cfg.inner_radius = 16.0;
         assert_eq!(cfg.sanitized().inner_radius, 16.0);
+    }
+
+    #[test]
+    fn wrap_thickness_clamped() {
+        let mut cfg = WrapConfig::default();
+        assert_eq!(cfg.thickness, DEFAULT_THICKNESS);
+        cfg.thickness = 99.0;
+        assert_eq!(cfg.sanitized().thickness, MAX_THICKNESS);
+        cfg.thickness = -2.0;
+        assert_eq!(cfg.sanitized().thickness, MIN_THICKNESS);
+        cfg.thickness = 16.0;
+        assert_eq!(cfg.sanitized().thickness, 16.0);
     }
 
     #[test]
