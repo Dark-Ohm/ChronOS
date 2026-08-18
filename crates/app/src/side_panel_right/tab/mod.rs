@@ -15,6 +15,7 @@ pub(crate) mod files;
 pub(crate) mod hypr_binds;
 pub(crate) mod launcher_settings;
 pub(crate) mod library;
+pub(crate) mod media_tab;
 pub(crate) mod notifications;
 pub(crate) mod preview;
 pub(crate) mod system;
@@ -35,6 +36,7 @@ use files::FilesTab;
 use hypr_binds::HyprBindsTab;
 use launcher_settings::LauncherSettingsTab;
 use library::LibraryTab;
+use media_tab::MediaTab;
 use notifications::NotificationsTab;
 use preview::PreviewTab;
 use system::SystemTab;
@@ -69,6 +71,9 @@ pub(crate) enum TabContent {
     Notifications(gpui::Entity<NotificationsTab>),
     // T265-G: Launcher settings — grid/search/favorites/hidden-apps page.
     LauncherSettings(gpui::Entity<LauncherSettingsTab>),
+    // T305: Media — thin wrapper over `render_mpris_card`, created only by
+    // the control-center popup.
+    Media(gpui::Entity<MediaTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
 
@@ -117,6 +122,8 @@ impl TabContent {
             PanelTab::LauncherSettings => {
                 TabContent::LauncherSettings(cx.new(|cx| LauncherSettingsTab::new(cx)))
             }
+            // T305: Media — thin mpris card wrapper, popup-only tab.
+            PanelTab::Media => TabContent::Media(cx.new(|cx| MediaTab::new(cx))),
             PanelTab::Scenes
             | PanelTab::Captures => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
             _ => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),
@@ -185,6 +192,8 @@ pub fn placeholder_description(tab: PanelTab) -> &'static str {
         PanelTab::Notifications => "Notification history",
         // T265-G: LauncherSettings is a real tab (not empty) — same note.
         PanelTab::LauncherSettings => "App grid, search, category and favorites settings",
+        // T305: Media is a real tab (not empty) — same note.
+        PanelTab::Media => "Now playing and media controls",
     }
 }
 

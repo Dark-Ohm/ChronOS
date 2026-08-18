@@ -1,9 +1,10 @@
 //! System tab — hardware monitor and system controls.
 //!
-//! Owns all service subscriptions and rendering for the System panel tab.
-//! The footer (power buttons + network summary) stays on `SidePanelRightView`
-//! because `power_row::render_footer` takes `Context<SidePanelRightView>` —
-//! that file is outside the task zone. The footer renders below this view.
+//! Owns all service subscriptions and rendering for the System tab. Since
+//! T305 the tab renders inside the control-center popup (the rail never
+//! creates it); the old power footer (`power_row.rs`) was deleted — power is
+//! covered by `start_menu::rail_power_actions`, network/battery by bar
+//! widgets.
 
 use std::time::Instant;
 

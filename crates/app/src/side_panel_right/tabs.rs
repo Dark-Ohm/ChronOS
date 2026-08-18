@@ -522,6 +522,10 @@ pub enum PanelTab {
     Notifications,
     // T265-G: launcher settings — grid/search/favorites/hidden apps page.
     LauncherSettings,
+    // T305: Media — thin tab wrapping `render_mpris_card`. Lives only in the
+    // control-center popup (never on the rail — deliberately absent from
+    // `ALL`), opened from the popup's own tab bar.
+    Media,
 }
 
 impl PanelTab {
@@ -574,6 +578,7 @@ impl PanelTab {
             PanelTab::HyprlandBinds => "hyprland_binds",
             PanelTab::Notifications => "notifications",
             PanelTab::LauncherSettings => "launcher_settings",
+            PanelTab::Media => "media",
         }
     }
 
@@ -602,6 +607,7 @@ impl PanelTab {
             "hyprland_binds" | "hyprlandbinds" => Some(PanelTab::HyprlandBinds),
             "notifications" => Some(PanelTab::Notifications),
             "launcher_settings" | "launchersettings" => Some(PanelTab::LauncherSettings),
+            "media" => Some(PanelTab::Media),
             _ => None,
         }
     }
@@ -722,6 +728,8 @@ impl PanelTab {
             PanelTab::Notifications => "Notifications",
             // T265-G: launcher settings page.
             PanelTab::LauncherSettings => "Launcher",
+            // T305: Media — popup-only tab.
+            PanelTab::Media => "Media",
         }
     }
 
@@ -753,6 +761,9 @@ impl PanelTab {
             PanelTab::Notifications => "icons/bell.svg",
             // T265-G: the launcher's sigil (already used in the OSD header).
             PanelTab::LauncherSettings => "icons/chronos-sigil.svg",
+            // T305: Media reuses the mpris card's play glyph — same visual
+            // identity for the same media surface.
+            PanelTab::Media => "icons/play.svg",
         }
     }
 
@@ -798,6 +809,9 @@ impl PanelTab {
             // T265-G: launcher settings — same comfortable column as the Bar
             // page it mirrors (sliders + switches + lists).
             PanelTab::LauncherSettings => 410.,
+            // T305: Media — the mpris card is a ~352px-wide art block; give
+            // it the same comfortable column as System/Updates.
+            PanelTab::Media => 400.,
             // 410 — the exact width the user asked for (2026-08-05 live
             // screenshot of the "Bar" appearance page this tab hosts as
             // `BarSettingsTab`, see `tab/mod.rs::create`). Not resizable

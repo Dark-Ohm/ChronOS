@@ -24,22 +24,18 @@
 
 use std::{
     collections::HashMap,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
-use chronos_services::net_stats::{self, NetState};
 use chronos_services::NotificationCommand;
 use gpui::{AnimationExt, AsyncApp, IntoElement, Render, Window, div, prelude::*, px};
 
 use crate::agent_follow::AgentFollowState;
 use crate::motion;
 use crate::side_panel_right::panels_config;
-use crate::power::{ARM_TIMEOUT, ArmState, PowerAction, is_confirming_click, on_click as arm_on_click, on_timeout};
-use crate::side_panel_right::power_row::render_footer;
 use crate::side_panel_right::preview_target::PreviewTarget;
 use crate::side_panel_right::surfaces;
 use crate::side_panel_right::tab::TabContent;
-use crate::side_panel_right::tab::system::format_net_pair;
 use crate::side_panel_right::tabs::PanelTab;
 use crate::side_panel_right::{
     CONTENT_CANVAS_WIDTH, HANDLE_WIDTH, MAX_WIDTH, RAIL_ONLY_WIDTH, RightPanelResize,
@@ -55,10 +51,6 @@ use chronos_ui::{Theme, WindowRootExt, elevation_glow_bar};
 const PEEK_LEAVE_DEBOUNCE: Duration = Duration::from_millis(280);
 
 pub struct SidePanelRightView {
-    power_arm: ArmState,
-    net_state: NetState,
-    net_dl_history: crate::side_panel_right::spectrum_row::SpectrumHistory,
-    net_ul_history: crate::side_panel_right::spectrum_row::SpectrumHistory,
     active_tab: PanelTab,
     /// T276: last visible-width value pushed to `Window::set_input_region`.
     /// Only re-issued when it changes, avoiding a Wayland round-trip on
@@ -111,10 +103,6 @@ impl SidePanelRightView {
             }
         });
         Self {
-            power_arm: ArmState::default(),
-            net_state: NetState::default(),
-            net_dl_history: Default::default(),
-            net_ul_history: Default::default(),
             active_tab: PanelTab::default(),
             last_visible_width: None,
             resize_start_x: None,
@@ -288,75 +276,6 @@ impl SidePanelRightView {
         cx.refresh_windows();
     }
 
-    /// Sample network speed on every render. Time-gated by
-    /// `update_speed`'s `SAMPLE_INTERVAL` — history only advances when a
-    /// real sample lands (not every paint with a cached value).
-    fn sample_network(&mut self) {
-        let Ok((rx, tx)) = net_stats::read_interface_bytes() else {
-            return;
-        };
-        let prev_t = self.net_state.sample.as_ref().map(|s| s.time);
-        let _speed = net_stats::update_speed(
-            &mut self.net_state,
-            rx,
-            tx,
-            Instant::now(),
-            net_stats::SAMPLE_INTERVAL,
-        );
-        let new_t = self.net_state.sample.as_ref().map(|s| s.time);
-        if prev_t != new_t {
-            crate::side_panel_right::spectrum_row::push_sample(
-                &mut self.net_dl_history,
-                self.net_state.cached_dl as f32,
-            );
-            crate::side_panel_right::spectrum_row::push_sample(
-                &mut self.net_ul_history,
-                self.net_state.cached_ul as f32,
-            );
-        }
-    }
-
-    pub(crate) fn on_power_click(&mut self, action: PowerAction, cx: &mut Context<Self>) {
-        if is_confirming_click(&self.power_arm, action) {
-            match action {
-                PowerAction::LogOut => AppState::power(cx).log_out(),
-                PowerAction::Restart => AppState::power(cx).restart(),
-                PowerAction::Shutdown => AppState::power(cx).shutdown(),
-                // Launcher-only one-click actions — never armed in this footer.
-                PowerAction::Lock | PowerAction::Sleep | PowerAction::Hibernate => {
-                    tracing::warn!("side_panel_right: unexpected confirm for {action:?}");
-                }
-            }
-            tracing::info!("side_panel_right: power confirmed {action:?}");
-            self.power_arm = ArmState::Idle;
-            cx.notify();
-            return;
-        }
-
-        let armed = arm_on_click(self.power_arm, action);
-        self.power_arm = armed;
-        tracing::info!("side_panel_right: power armed {action:?}");
-        cx.notify();
-
-        cx.spawn(async move |view, cx| {
-            cx.background_executor().timer(ARM_TIMEOUT).await;
-            match view.update(cx, |view, cx| {
-                if view.power_arm == armed {
-                    view.power_arm = on_timeout(armed);
-                    tracing::info!("side_panel_right: power arm timeout → Idle");
-                    cx.notify();
-                }
-            }) {
-                Ok(()) => {}
-                Err(e) => tracing::warn!(
-                    "side_panel_right: power arm timeout could not disarm ({e}) — \
-                     a power button may still read 'Confirm?'"
-                ),
-            }
-        })
-        .detach();
-    }
-
     pub(crate) fn on_tab_select(&mut self, tab: PanelTab, cx: &mut Context<Self>) {
         // T293: when the Notifications tab is selected, mark the history
         // read so the bell's unread dot clears the moment the inbox is
@@ -510,7 +429,6 @@ impl SidePanelRightView {
 
 impl Render for SidePanelRightView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.sample_network();
         // T219: resolve rail groups from panels.toml (two groups: top + bottom).
         // Falls back to panels_config defaults which mirror the old for_mode.
         let current_mode = workspace_mode::current(cx);
@@ -527,11 +445,6 @@ impl Render for SidePanelRightView {
             // before the render path reads it via get().
             self.ensure_tab_view(PanelTab::System, cx);
         }
-        let power_arm = self.power_arm;
-
-        let dl = format_net_pair(self.net_state.cached_dl, 0.0);
-        let ul = format_net_pair(0.0, self.net_state.cached_ul);
-        let net_summary = format!("↓ {dl}  ↑ {ul}");
 
         let panel_state = cx.global::<SidePanelRightState>();
         let panel_width = panel_state.width;
@@ -649,13 +562,10 @@ impl Render for SidePanelRightView {
                     };
                     // --- Tab content ---
                     let content_el = match tab_entry {
-                        TabContent::System(entity) => {
-                            col.child(entity.clone())
-                                // Footer: power + net summary (stays on
-                                // SidePanelRightView because render_footer
-                                // takes Context<SidePanelRightView>).
-                                .child(render_footer(&net_summary, power_arm, cx))
-                        }
+                        // T305: System's content lives in the control-center
+                        // popup now — the rail never creates it here, but the
+                        // arm stays for IPC/fallback paths that may.
+                        TabContent::System(entity) => col.child(entity.clone()),
                         TabContent::Files(entity) => col.child(entity.clone()),
                         TabContent::Terminal(entity) => col.child(entity.clone()),
                         TabContent::Build(entity) => col.child(entity.clone()),
@@ -678,6 +588,8 @@ impl Render for SidePanelRightView {
                         TabContent::Notifications(entity) => col.child(entity.clone()),
                         // T265-G: Launcher settings page.
                         TabContent::LauncherSettings(entity) => col.child(entity.clone()),
+                        // T305: Media — control-center popup tab.
+                        TabContent::Media(entity) => col.child(entity.clone()),
                         TabContent::Placeholder(entity) => col.child(entity.clone()),
                     };
                     // Enter animation belongs to the content column alone.
@@ -744,6 +656,8 @@ impl SidePanelRightView {
             TabContent::Notifications(e) => e.entity_id(),
             // T265-G: Launcher settings page.
             TabContent::LauncherSettings(e) => e.entity_id(),
+            // T305: Media — control-center popup tab.
+            TabContent::Media(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })
     }
