@@ -15,33 +15,14 @@ result*
 # Local reference checkouts (study material, not a dependency; gpui-shell is unlicensed — must not be committed)
 reference/
 
-# Claude Code project state (settings, worktrees)
-System prompts/
-.claude/
-
 # Git worktrees (isolated workspaces, not part of the repo)
 .worktrees/
 
 # Session logs
 log-dump/
 
-# Agent orchestration (briefs, reports, T-ID ledger, archive) — под git
-# с 2026-07-31. До этого была local-only, из-за чего 2026-07-22 безвозвратно
-# потерялась история трёх файлов агентов: git не подстраховал откат.
-# Per-agent кэши инструментов ниже остаются вне git — это состояние тулзов,
-# не проектные документы.
-.autohand/
-.cline/
-.clinerules/
-.mimocode/
-
 # lean-ctx / codebase-context cache
 contexts/
-
-# Local agent/tooling state — never committed
-.opencode/
-.superpowers/
-_ds/
 
 # Swap/backup файлы редакторов — не под git
 *.kate-swp

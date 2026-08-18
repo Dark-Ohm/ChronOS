@@ -17,7 +17,7 @@ env:
 jobs:
   fmt:
     name: rustfmt (advisory)
-    runs-on: ubuntu-latest
+    runs-on: CachyOS latest
     # Advisory until the tree is formatted in a dedicated pass — does not gate.
     continue-on-error: true
     steps:
@@ -39,8 +39,8 @@ jobs:
       # GPUI / Wayland build dependencies.
       - name: Install system dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo pacman -Syyu
+          sudo pacman -S --noconfirm --needed \
             libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev \
             libvulkan-dev vulkan-validationlayers \
             libfontconfig-1-dev libfreetype-dev \
