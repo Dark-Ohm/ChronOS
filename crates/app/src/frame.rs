@@ -749,6 +749,23 @@ const STYLE_ID_WRAP: u8 = 1;
 /// re-triggers panel geometry via `after_apply`.
 static LAST_STYLE: AtomicU8 = AtomicU8::new(STYLE_ID_HIDE);
 
+/// Last applied sanitized wrap geometry. The matte's negative margin and the
+/// exclusive strips' size/zone are baked in at surface-open time, so a
+/// thickness/radius edit on a live Wrap shell must recreate the set
+/// (T307) — the bar/Hide strip hot-reload live, the wrap surfaces did not.
+static LAST_WRAP_GEOMETRY: OnceLock<Mutex<Option<WrapConfig>>> = OnceLock::new();
+
+fn last_wrap_geometry() -> &'static Mutex<Option<WrapConfig>> {
+    LAST_WRAP_GEOMETRY.get_or_init(|| Mutex::new(None))
+}
+
+/// Pure decision: does `current` wrap geometry differ from the last applied
+/// one? `None` (first apply) counts as a change. Split out of `apply_wrap`
+/// so the recreate rule is unit-testable without an `App`.
+fn wrap_geometry_changed(last: Option<&WrapConfig>, current: &WrapConfig) -> bool {
+    last != Some(current)
+}
+
 type AfterApplyHook = Box<dyn Fn(&mut App) + Send + Sync>;
 
 static AFTER_APPLY: OnceLock<Mutex<Option<AfterApplyHook>>> = OnceLock::new();
@@ -802,10 +819,24 @@ fn apply_hide(cx: &mut App, cfg: &FrameConfig) {
     }
 }
 
-fn apply_wrap(cx: &mut App) {
+fn apply_wrap(cx: &mut App, cfg: &FrameConfig) {
     // Hide strip never coexists with the matte.
     if frame_window().lock().unwrap_or_else(|e| e.into_inner()).is_some() {
         close(cx);
+    }
+
+    // The wrap geometry (matte negative margin + strips' size/exclusive
+    // zone) is set at surface-open time. On a live thickness/radius edit the
+    // windows must be recreated; otherwise `open_wrap_windows` is idempotent
+    // and leaves the existing set alone.
+    let geometry_changed = {
+        let mut slot = last_wrap_geometry().lock().unwrap_or_else(|e| e.into_inner());
+        let changed = wrap_geometry_changed(slot.as_ref(), &cfg.wrap);
+        *slot = Some(cfg.wrap.clone());
+        changed
+    };
+    if geometry_changed {
+        close_wrap_windows(cx);
     }
     open_wrap_windows(cx);
 }
@@ -823,7 +854,7 @@ pub fn apply(cx: &mut App) {
 
     match cfg.style {
         FrameStyle::Hide => apply_hide(cx, &cfg),
-        FrameStyle::Wrap => apply_wrap(cx),
+        FrameStyle::Wrap => apply_wrap(cx, &cfg),
     }
 
     // A style transition changes the panel geometry (margin/height), which
@@ -1114,6 +1145,35 @@ mod tests {
         assert_eq!(inner.origin.y, 32.0);
         assert_eq!(inner.size.width, 2552.0);
         assert_eq!(inner.size.height, 1404.0);
+    }
+
+    #[test]
+    fn wrap_geometry_changed_only_on_actual_edit() {
+        let base = WrapConfig {
+            thickness: 16.0,
+            inner_radius: 16.0,
+        };
+        let same = WrapConfig {
+            thickness: 16.0,
+            inner_radius: 16.0,
+        };
+        let thicker = WrapConfig {
+            thickness: 24.0,
+            inner_radius: 16.0,
+        };
+        let rounder = WrapConfig {
+            thickness: 16.0,
+            inner_radius: 32.0,
+        };
+
+        // First apply (no recorded geometry yet) is a change.
+        assert!(wrap_geometry_changed(None, &base));
+        // Same geometry — no recreate.
+        assert!(!wrap_geometry_changed(Some(&base), &same));
+        // Thickness edit — recreate.
+        assert!(wrap_geometry_changed(Some(&base), &thicker));
+        // Radius edit — recreate (matte's ring radius repaints on recreate).
+        assert!(wrap_geometry_changed(Some(&base), &rounder));
     }
 
     #[test]
