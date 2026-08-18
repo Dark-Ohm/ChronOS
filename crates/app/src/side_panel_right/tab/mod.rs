@@ -22,7 +22,7 @@ pub(crate) mod terminal;
 pub(crate) mod ui;
 pub(crate) mod updates;
 
-use gpui::{Context, IntoElement, Render, Window, prelude::*};
+use gpui::{App, Context, IntoElement, Render, Window, prelude::*};
 
 use chronos_ui::Theme;
 use crate::side_panel_right::tabs::PanelTab;
@@ -75,14 +75,12 @@ pub(crate) enum TabContent {
 impl TabContent {
     /// Create the view for `tab` in the given context. `PanelTab::System` has
     /// its own entity; every other tab uses the common `EmptyTab`.
-    pub(crate) fn create(
-        tab: PanelTab,
-        cx: &mut Context<crate::side_panel_right::view::SidePanelRightView>,
-    ) -> Self {
-        tracing::info!(
-            tab = tab.label(),
-            "side_panel_right: lazy-create tab view"
-        );
+    ///
+    /// Takes `&mut App` (not `Context<SidePanelRightView>`) so any host can
+    /// create a tab view — the rail's `view.rs` and, from T305 on, the
+    /// control-center popup host.
+    pub(crate) fn create(tab: PanelTab, cx: &mut App) -> Self {
+        tracing::info!(tab = tab.label(), "tab: lazy-create tab view");
         match tab {
             PanelTab::System => TabContent::System(cx.new(|cx| SystemTab::new(cx))),
             PanelTab::Files => TabContent::Files(cx.new(|cx| FilesTab::new(cx))),
