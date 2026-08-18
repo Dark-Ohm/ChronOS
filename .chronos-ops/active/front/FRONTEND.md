@@ -6,11 +6,7 @@ packaging (это BACKEND).
 **Общие правила:** `.chronos-ops/RULES.md` — прочитать перед стартом.
 
 **Активное:**
-- **T305** — `T305-control-center-popup-host.md`. **Разблокирован**
-  (T304 принят 2026-08-18, `a183e86e`): popup-хост зовёт
-  `TabContent::create(tab, cx)` с `&mut App` напрямую. Начинай с этого. Settings-табы right rail уезжают в единый anchored-popup
-  (control-center, видео-референс владельца).
-- **T303** — `T303-frame-wrap-border-geometry-mismatch.md`. P2 (снижено —
+- **T303** — `T303-frame-wrap-border-geometry-mismatch.md`. Начинай с этого. P2 (снижено —
   геометрия уже в `d01820e`), хвост: `wrap.thickness`, debug-лог, живой grim.
   Родитель **T284 закрыт** 2026-08-18 (`done/front/`) — в T303 только хвост,
   переоткрывать T284 нельзя.
@@ -21,3 +17,10 @@ packaging (это BACKEND).
 дизайн T220 (см. `checkpoint/HANDOFF.md`, «Кровные факты»). Не заводить
 заново по тому же симптому: пустая контентная зона сразу после призыва —
 ожидаемая картина, чат раскрывает клик по иконке рейла или `expand-left`.
+
+**Закрыто 2026-08-18:** T305 — settings-табы правого рейла + Media в
+единый anchored control-center popup, `f326fc7`. Кровный факт:
+`exclusive_zone: Some(px(-1.))` — обязательный opt-out от резервации
+рейла, иначе композитор сдвигает popup на 40px+бар. Решение №1 брифа
+пересмотрено владельцем: иконки остаются на рейле, `ALL`/`for_mode` не
+меняются (21 таб, Media popup-only, не в `ALL`).
