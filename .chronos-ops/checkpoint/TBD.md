@@ -187,6 +187,34 @@ Hermes/OmniRoute, не ChronOS. → отдельной задачей или в 
 
 ---
 
+## T309 — живой UX-критик-аудит (2026-08-19, QA)
+
+Полный отчёт: `.chronos-ops/reports-log/qa/T309-live-ux-critique-audit-report.md`
+(122 кадра dark+light, `/tmp/t309/` на момент приёмки — не гарантирован
+на будущее, /tmp эфемерна). Executive verdict: «не дерьмо, но до
+показа как законченного продукта не дотягивает». Находки, не заведённые
+отдельными T-ID (вкусовщина/design-polish, не блокеры):
+
+- [ ] **Dock не показывает 3 pinned app** (firefox/code/vivaldi) — `no
+  AppEntry (no matching .desktop basename)` (`bar/widgets/dock.rs:232`).
+  Серьёзно для showcase/demo, не blocker самого шелла. Вероятно локальные
+  `.desktop` basename не совпадают с `pinned` в `dock.toml` — сверить
+  реальные имена `.desktop`-файлов на этой машине.
+- [ ] **Бар перегружен** мелкими статус-иконками в правой группе —
+  плотность, не иерархия. design-polish.
+- [ ] **Empty states не объясняют первый шаг** — work-tabs без project
+  data, пустой тред левой панели, control-center с одинаково яркими
+  строками без иерархии «что поменять первым». Вкусовщина сейчас,
+  серьёзно для публичного showcase без демо-контента.
+- [ ] **Light-тема визуально «тяжёлая»** на контрастном фоне — панели/
+  control-center/start-menu/notifications перетягивают внимание,
+  surface-levels и active-section нужно приглушить. Требует отдельного
+  дизайнерского прохода (продолжение T239-волны).
+- [ ] **Calendar и Updates popup** не подтверждены живым кликом в этом
+  прогоне — synthetic bar input был нестабилен для отдельных виджетов
+  (rail/IPC клики работали, часть bar-кликов нет). Не считать багом до
+  повтора с рабочим input.
+
 ## Theme / chrome polish
 
 - [ ] Right panel **art well** на Light: чистый чёрный дырой на pageBg; soft well или dark-only black.
