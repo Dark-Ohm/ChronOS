@@ -466,25 +466,34 @@ pub fn close(cx: &mut App) {
     frame::set_rail_mapped(FrameSide::Left, false, cx);
 }
 
-/// T284: the frame style changed and the wrap inset (margin/height) can
-/// only change at surface open time — recreate the open surfaces so the
-/// geometry follows. Preserves the dock width; a closed panel just picks
-/// up the new geometry on its next open. A chat that was open reconnects
-/// exactly like a manual close/reopen (T285 cold-start gap).
+/// T322: a Hide↔Wrap transition only changes the panel HEIGHT — the bottom
+/// clearance shrinks by `wrap_inset_bottom`. The side margin is constant
+/// across styles: `wrap_inset_left_cached(true)` collapses to 0 whenever the
+/// rail is mapped (T311 D3), and the rail itself carries no margin (T310 D1).
+/// So there is nothing to re-bake at open time: both surfaces resize their
+/// height live via `window.resize` — a one-shot height sync, NOT the T278
+/// drag path (which still must only mutate `panel_width` + re-issue
+/// `set_input_region`). No close+reopen, so the cascade that dropped the
+/// adapter (T321) is gone.
 pub fn apply_frame_inset(cx: &mut App) {
     let state = cx.global::<SidePanelLeftState_>();
-    if state.rail_handle.is_none() {
+    let (Some(rail), Some(content)) = (state.rail_handle.clone(), state.content_handle.clone())
+    else {
         return;
-    }
-    let was_pinned = state.pinned;
-    let width = state.panel_width;
-    let docked = state.dock_content;
-    close(cx);
-    let s = cx.global_mut::<SidePanelLeftState_>();
-    s.panel_width = width;
-    s.dock_content = docked;
-    if was_pinned {
-        open_pinned(cx);
+    };
+    let display_id = crate::monitor::pult_display_id_or_primary(cx);
+    let new_h = panel_height(display_id, cx);
+    let rail_res = rail.update(cx, |_, window: &mut Window, _| {
+        window.resize(Size::new(px(tabs::RAIL_WIDTH), px(new_h)));
+    });
+    let content_res = content.update(cx, |_, window: &mut Window, _| {
+        window.resize(Size::new(px(tabs::CONTENT_CANVAS_WIDTH), px(new_h)));
+    });
+    match (rail_res, content_res) {
+        (Ok(()), Ok(())) => tracing::info!(new_h, "side_panel_left: frame inset synced live"),
+        (Err(e), _) | (_, Err(e)) => {
+            tracing::warn!("side_panel_left: frame inset sync could not reach a surface ({e})");
+        }
     }
 }
 
@@ -1212,16 +1221,38 @@ mod tests {
 
     #[test]
     fn window_options_have_no_resize_calls() {
-        // T278 spec §"Запрещено": `window.resize()` is forbidden across
-        // `side_panel_left`. Skip comment lines (`//`/`*`) and string
-        // literals so the test does not match its own error message.
-        fn scan_for_resize(src: &str, file_label: &str) {
+        // T278 spec §"Запрещено": `window.resize()` is forbidden on the
+        // DRAG path — dragging must only mutate
+        // `SidePanelLeftState_.panel_width` and re-issue `set_input_region`
+        // on the next paint. T322 adds one deliberate exception:
+        // `apply_frame_inset` performs a one-shot HEIGHT sync on Hide↔Wrap
+        // (the only geometry that changes — the side margin is constant:
+        // `wrap_inset_left_cached(true) == 0` in both styles). That is a
+        // style transition, not a drag, so the resize is allowed there and
+        // only there. Skip comment lines (`//`/`*`) and string literals so
+        // the test does not match its own error message.
+        fn scan_for_resize(src: &str, file_label: &str, skip_fn: Option<&str>) {
+            let mut skipping = false;
+            let mut depth = 0usize;
             for (i, line) in src.lines().enumerate() {
                 let trimmed = line.trim_start();
                 if trimmed.starts_with("//") || trimmed.starts_with("/*")
                     || trimmed.starts_with('*') || trimmed.starts_with("//!")
                 {
                     continue;
+                }
+                if let Some(name) = skip_fn {
+                    if !skipping && trimmed.contains(&format!("fn {name}")) {
+                        skipping = true;
+                    }
+                    if skipping {
+                        depth += line.matches('{').count();
+                        depth = depth.saturating_sub(line.matches('}').count());
+                        if depth == 0 {
+                            skipping = false;
+                        }
+                        continue;
+                    }
                 }
                 // Strip inline string literals — ` "window.resize() ..." `
                 // would otherwise match. We only flag the bare call site.
@@ -1241,14 +1272,20 @@ mod tests {
                 );
             }
         }
-        scan_for_resize(include_str!("mod.rs"), "side_panel_left::mod.rs");
+        scan_for_resize(
+            include_str!("mod.rs"),
+            "side_panel_left::mod.rs",
+            Some("apply_frame_inset"),
+        );
         scan_for_resize(
             include_str!("workspace_view.rs"),
             "side_panel_left::workspace_view.rs",
+            None,
         );
         scan_for_resize(
             include_str!("rail_view.rs"),
             "side_panel_left::rail_view.rs",
+            None,
         );
     }
 

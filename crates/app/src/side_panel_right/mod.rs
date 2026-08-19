@@ -572,24 +572,33 @@ pub fn close(cx: &mut App) {
     frame::set_rail_mapped(FrameSide::Right, false, cx);
 }
 
-/// T284: the frame style changed and the wrap inset (margin/height) can
-/// only change at surface open time — recreate the open surfaces so the
-/// geometry follows. The right panel reopens rail-only (its standard open
-/// behavior); a closed panel just picks up the new geometry on its next
-/// open.
+/// T322: a Hide↔Wrap transition only changes the panel HEIGHT — the bottom
+/// clearance shrinks by `wrap_inset_bottom`. The side margin is constant
+/// across styles: `wrap_inset_right_cached(true)` collapses to 0 whenever
+/// the rail is mapped (T311 D3), and the rail itself carries no margin
+/// (T310 D1). So there is nothing to re-bake at open time: both surfaces
+/// resize their height live via `window.resize` — the same one-shot path
+/// the bar and frame strips already use. No close+reopen, so the cascade
+/// that dropped the adapter (T321) is gone.
 pub fn apply_frame_inset(cx: &mut App) {
     let state = cx.global::<SidePanelRightState>();
-    if state.rail_handle.is_none() {
+    let (Some(rail), Some(content)) = (state.rail_handle.clone(), state.content_handle.clone())
+    else {
         return;
-    }
-    let was_pinned = state.pinned;
-    let width = state.width;
-    close(cx);
-    if was_pinned {
-        open_pinned(cx);
-        // open_window starts rail-only by design; restore the user's width
-        // so a theme toggle does not silently collapse an expanded panel.
-        cx.global_mut::<SidePanelRightState>().width = width;
+    };
+    let display_id = crate::monitor::pult_display_id_or_primary(cx);
+    let new_h = panel_height(display_id, cx);
+    let rail_res = rail.update(cx, |_, window: &mut Window, _| {
+        window.resize(Size::new(px(RAIL_ONLY_WIDTH), px(new_h)));
+    });
+    let content_res = content.update(cx, |_, window: &mut Window, _| {
+        window.resize(Size::new(px(CONTENT_CANVAS_WIDTH), px(new_h)));
+    });
+    match (rail_res, content_res) {
+        (Ok(()), Ok(())) => tracing::info!(new_h, "side_panel_right: frame inset synced live"),
+        (Err(e), _) | (_, Err(e)) => {
+            tracing::warn!("side_panel_right: frame inset sync could not reach a surface ({e})");
+        }
     }
 }
 
