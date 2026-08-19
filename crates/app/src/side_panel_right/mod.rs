@@ -287,17 +287,15 @@ fn rail_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions
             anchor: Anchor::TOP | Anchor::RIGHT,
             exclusive_zone: Some(px(zone)),
             exclusive_edge: Some(Anchor::RIGHT),
-            // Wrap (T284): the rail sits inside the card — margin.right = the
-            // frame thickness. No top margin: the bar's exclusive zone
-            // already drops top-anchored Overlay surfaces below it.
-            margin: {
-                let inset = frame::wrap_inset();
-                if inset > 0. {
-                    Some((px(0.), px(inset), px(0.), px(0.)))
-                } else {
-                    None
-                }
-            },
+            // T310 D1: NO margin — mirror of the left rail. `frame_wrap_
+            // excl_right` already reserves `wrap_inset()` on this edge, so
+            // the compositor offsets the rail by the frame thickness itself;
+            // the T284 margin added it twice and left a thickness-wide strip
+            // of bare wallpaper between frame and rail (measured live
+            // 2026-08-19: rail 2489-2527, wallpaper 2528-2543, wrap
+            // 2544-2559). No top margin: the bar's exclusive zone already
+            // drops top-anchored Overlay surfaces below it.
+            margin: None,
             // Rail has no focusable input (buttons/svg only) — None matches
             // the OSD/tray_menu convention for surfaces that never take text.
             keyboard_interactivity: KeyboardInteractivity::None,

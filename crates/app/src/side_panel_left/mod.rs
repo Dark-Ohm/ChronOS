@@ -240,18 +240,18 @@ pub(crate) fn rail_window_options(display_id: Option<DisplayId>, cx: &App) -> Wi
             anchor: Anchor::TOP | Anchor::LEFT,
             exclusive_zone: Some(px(zone)),
             exclusive_edge: Some(Anchor::LEFT),
-            // Wrap (T284): the rail sits inside the card — margin.left = the
-            // frame thickness. No top margin: the bar's exclusive zone
+            // T310 D1: NO margin. `frame_wrap_excl_left` already holds an
+            // `exclusive_zone` of `wrap_inset()` on this same edge, so the
+            // compositor offsets the rail by the frame thickness on its own.
+            // The T284 `margin.left = wrap_inset()` added that offset a
+            // second time and parked the rail at 2 × thickness, leaving a
+            // thickness-wide strip of bare wallpaper between the frame and
+            // the rail (measured live 2026-08-19: wrap 0-15, wallpaper
+            // 16-31, rail 32-70). Same stacking-reservation class as
+            // T307/T308. No top margin either: the bar's exclusive zone
             // already drops top-anchored Overlay surfaces below it (a
             // second top offset would double the gap, gpui-layer-shell Part A).
-            margin: {
-                let inset = frame::wrap_inset();
-                if inset > 0. {
-                    Some((px(0.), px(0.), px(0.), px(inset)))
-                } else {
-                    None
-                }
-            },
+            margin: None,
             keyboard_interactivity: KeyboardInteractivity::None,
             ..Default::default()
         }),
