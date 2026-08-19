@@ -15,8 +15,16 @@ packaging (это BACKEND).
    **ЗАБЛОКИРОВАН T311**. Два режима оболочки `normal`/`wrapped`,
    алиасы старых имён в `deserialize_style`.
 
-Параллелить нельзя: оба тикета лезут в `crates/app/src/frame.rs`.
+3. **T313** — `T313-theme-picker-and-mocha-mousse-scheme.md`. P2,
+   СВОБОДЕН. Picker схем со свотчами в секции Theme + схема
+   Mocha Mousse четвёртой встроенной.
+
+T311 и T312 параллелить нельзя — оба лезут в `crates/app/src/frame.rs`.
 Строго T311 → приёмка → T312.
+
+T313 независим от обоих (зоны `crates/ui/src/theme/`,
+`side_panel_right/tab/bar_settings.rs`, `theme_config.rs`) — можно
+вести параллельно с T311.
 
 **Закрыто 2026-08-18/19 (детали — `MIGRATION.md`):** T301 (composer Select
 эллипсис, `96f713a`), T302 (rail-only by-design, бага нет), T303 (wrap
