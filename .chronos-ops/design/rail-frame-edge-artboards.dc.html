@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#11111b;font-family:'Inter',sans-serif}
+::selection{background:#cba6f7;color:#11111b}
+.label{font-size:10px;font-family:'JetBrains Mono',monospace;color:#6c7086;letter-spacing:0.5px;text-transform:uppercase}
+.value{font-size:11px;font-family:'JetBrains Mono',monospace;color:#a6adc8}
+</style>
+</helmet>
+
+<!-- ============================================================
+     T315 — Rail as Frame Edge: Artboards
+     Canvas: 2560×1440 at 1:1 (left-edge crops shown at 4× zoom)
+     ============================================================ -->
+
+<div style="width:2560px;height:1440px;background:#11111b;position:relative;overflow:hidden">
+
+  <!-- ============================================
+       VIEW 1: Left edge, rail SHOWN, dark theme
+       Full-height strip: bar (30px) + rail (full) + aperture edge
+       ============================================ -->
+  <div style="position:absolute;left:0;top:0;width:2560px;height:1440px">
+
+    <!-- Bar: full width, 30px, bg.tertiary -->
+    <div style="position:absolute;left:0;top:0;width:2560px;height:30px;background:#181825;border-bottom:1px solid #313244;display:flex;align-items:center;padding:0 10px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#cdd6f4">
+          <svg width="15" height="15" viewBox="0 0 32 32" fill="none">
+            <path d="M16 2L28 9V23L16 30L4 23V9L16 2Z" stroke="#007acc" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M16 2V16L28 9M16 16L4 9M16 16V30" stroke="#007acc" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chrome plate: bar ends, rail continues -->
+    <!-- Rail: 40px wide, x=0, full height below bar -->
+    <div style="position:absolute;left:0;top:30px;width:40px;height:1410px;background:#181825;display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:4px">
+
+      <!-- Active tab: Project (top) — BOLD: pill bg + accent strip -->
+      <div style="position:relative;width:28px;height:28px;border-radius:6px;background:rgba(0,122,204,0.15);display:flex;align-items:center;justify-content:center">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="#cdd6f4"><path d="M207.7 96A40 40 0 00168 56H144V48a24 24 0 00-24-24H48a24 24 0 00-24 24v144a40 40 0 0040 40h96a40 40 0 0040-40V128a40 40 0 00-22.3-36z"/></svg>
+        <!-- Accent strip: inner edge, full height of rail content area -->
+        <div style="position:absolute;right:-4px;top:-8px;width:2px;height:calc(100% + 16px);background:#007acc;border-radius:1px"></div>
+      </div>
+
+      <!-- Inactive tabs -->
+      <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="#6c7086"><path d="M216 72h-84.69l-27.31-27.31A16 16 0 0093 40H40a16 16 0 00-16 16v144.62A15.4 15.4 0 0039.38 216h177.75a15.4 15.4 0 0015.37-15.38V88a16 16 0 00-16-16zM40 56h53l16 16H40z"/></svg>
+      </div>
+
+      <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="#6c7086"><path d="M128 24a104 104 0 10104 104A104.11 104.11 0 00128 24zm87.5 80h-33.9a154 154 0 00-15.9-57.7A88.3 88.3 0 01215.5 104zM128 40.4c9.5 0 22.1 19.6 27.9 47.6H100.1c5.8-28 18.4-47.6 27.9-47.6zM40.5 152A87.8 87.8 0 0140.5 104h33.9A170.6 170.6 0 0072.5 128a170.6 170.6 0 001.9 24zM96.6 168h62.8c-6.9 30-19.7 47.6-31.4 47.6S103.5 198 96.6 168zm-2.5-16A153.9 153.9 0 0192.5 128a153.9 153.9 0 011.6-24h67.8a153.9 153.9 0 011.6 24 153.9 153.9 0 01-1.6 24z"/></svg>
+      </div>
+
+      <!-- Spacer -->
+      <div style="flex:1"></div>
+
+      <!-- Archive (bottom tab) -->
+      <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="#6c7086"><path d="M213.66 86.34l-56-56A8 8 0 00152 28H72A16 16 0 0056 44V212a16 16 0 0016 16h128a16 16 0 0016-16V96a8 8 0 00-2.34-5.66zM168 180H88v-16h80zm0-40H88v-16h80zm0-40H88V84h80z"/></svg>
+      </div>
+    </div>
+
+    <!-- Aperture edge: x=40, rounded corner at bar junction -->
+    <!-- Wallpaper visible from x=40 onward -->
+    <div style="position:absolute;left:40px;top:30px;width:2520px;height:1410px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)">
+      <!-- Content placeholder -->
+      <div style="padding:20px;color:#cdd6f4;font-size:13px;opacity:0.4">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6c7086;margin-bottom:8px">APERTURE — wallpaper + content windows</div>
+        <div style="width:200px;height:120px;border:1px solid rgba(205,214,244,0.1);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#6c7086">content area</div>
+      </div>
+    </div>
+
+    <!-- Label -->
+    <div style="position:absolute;left:50px;top:40px" class="label">VIEW 1 — RAIL SHOWN · DARK · 1:1</div>
+  </div>
+
+  <!-- ============================================
+       VIEW 2: Left edge, rail HIDDEN (ring 16px), dark theme
+       ============================================ -->
+  <div style="position:absolute;left:860px;top:0;width:840px;height:1440px;overflow:hidden">
+
+    <!-- Bar -->
+    <div style="position:absolute;left:0;top:0;width:840px;height:30px;background:#181825;border-bottom:1px solid #313244"></div>
+
+    <!-- Ring: 16px wide, same chrome as bar -->
+    <div style="position:absolute;left:0;top:30px;width:16px;height:1410px;background:#181825"></div>
+
+    <!-- Wallpaper from x=16 -->
+    <div style="position:absolute;left:16px;top:30px;width:824px;height:1410px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)">
+      <div style="padding:20px;color:#cdd6f4;font-size:13px;opacity:0.4">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6c7086;margin-bottom:8px">APERTURE — ring state (rail hidden)</div>
+      </div>
+    </div>
+
+    <!-- Label -->
+    <div style="position:absolute;left:20px;top:40px" class="label">VIEW 2 — RAIL HIDDEN · DARK · 1:1</div>
+  </div>
+
+  <!-- ============================================
+       VIEW 3: Left edge, rail SHOWN, light theme
+       ============================================ -->
+  <div style="position:absolute;left:1720px;top:0;width:840px;height:1440px;overflow:hidden">
+
+    <!-- Bar -->
+    <div style="position:absolute;left:0;top:0;width:840px;height:30px;background:#ECEEFA;border-bottom:1px solid #C8CAD4;display:flex;align-items:center;padding:0 10px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#2c2e4a">
+          <svg width="15" height="15" viewBox="0 0 32 32" fill="none">
+            <path d="M16 2L28 9V23L16 30L4 23V9L16 2Z" stroke="#007acc" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M16 2V16L28 9M16 16L4 9M16 16V30" stroke="#007acc" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rail: light theme -->
+    <div style="position:absolute;left:0;top:30px;width:40px;height:1410px;background:#ECEEFA;display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:4px">
+
+      <!-- Active tab: pill bg + accent strip -->
+      <div style="position:relative;width:28px;height:28px;border-radius:6px;background:rgba(0,122,204,0.12);display:flex;align-items:center;justify-content:center">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="#2c2e4a"><path d="M207.7 96A40 40 0 00168 56H144V48a24 24 0 00-24-24H48a24 24 0 00-24 24v144a40 40 0 0040 40h96a40 40 0 0040-40V128a40 40 0 00-22.3-36z"/></svg>
+        <div style="position:absolute;right:-4px;top:-8px;width:2px;height:calc(100% + 16px);background:#007acc;border-radius:1px"></div>
+      </div>
+
+      <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="#8e92a8"><path d="M216 72h-84.69l-27.31-27.31A16 16 0 0093 40H40a16 16 0 00-16 16v144.62A15.4 15.4 0 0039.38 216h177.75a15.4 15.4 0 0015.37-15.38V88a16 16 0 00-16-16zM40 56h53l16 16H40z"/></svg>
+      </div>
+
+      <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="#8e92a8"><path d="M128 24a104 104 0 10104 104A104.11 104.11 0 00128 24zm87.5 80h-33.9a154 154 0 00-15.9-57.7A88.3 88.3 0 01215.5 104zM128 40.4c9.5 0 22.1 19.6 27.9 47.6H100.1c5.8-28 18.4-47.6 27.9-47.6zM40.5 152A87.8 87.8 0 0140.5 104h33.9A170.6 170.6 0 0072.5 128a170.6 170.6 0 001.9 24zM96.6 168h62.8c-6.9 30-19.7 47.6-31.4 47.6S103.5 198 96.6 168zm-2.5-16A153.9 153.9 0 0192.5 128a153.9 153.9 0 011.6-24h67.8a153.9 153.9 0 011.6 24 153.9 153.9 0 01-1.6 24z"/></svg>
+      </div>
+
+      <div style="flex:1"></div>
+
+      <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="#8e92a8"><path d="M213.66 86.34l-56-56A8 8 0 00152 28H72A16 16 0 0056 44V212a16 16 0 0016 16h128a16 16 0 0016-16V96a8 8 0 00-2.34-5.66zM168 180H88v-16h80zm0-40H88v-16h80zm0-40H88V84h80z"/></svg>
+      </div>
+    </div>
+
+    <!-- Wallpaper -->
+    <div style="position:absolute;left:40px;top:30px;width:800px;height:1410px;background:linear-gradient(135deg,#e8e0f0 0%,#d4c8e8 50%,#c0b0e0 100%)">
+      <div style="padding:20px;color:#2c2e4a;font-size:13px;opacity:0.4">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8e92a8;margin-bottom:8px">APERTURE — light theme</div>
+      </div>
+    </div>
+
+    <!-- Label -->
+    <div style="position:absolute;left:50px;top:40px" class="label">VIEW 3 — RAIL SHOWN · LIGHT · 1:1</div>
+  </div>
+
+  <!-- ============================================
+       VIEW 4: 4× ZOOM — Aperture corners
+       Top-left: rail↔bar junction
+       Bottom-left: rail↔plate junction
+       ============================================ -->
+
+  <!-- 4× zoom: top-left corner (rail meets bar) -->
+  <div style="position:absolute;left:0;top:750px;width:320px;height:320px;overflow:hidden;border:1px solid #313244;border-radius:4px">
+    <div style="position:absolute;left:0;top:0;width:80px;height:80px;background:#181825;transform:scale(4);transform-origin:top left">
+      <!-- Bar bottom edge -->
+      <div style="position:absolute;left:0;top:28px;width:80px;height:2px;background:#313244"></div>
+      <!-- Rail starts at y=30 -->
+      <div style="position:absolute;left:0;top:30px;width:40px;height:50px;background:#181825"></div>
+      <!-- Active indicator strip -->
+      <div style="position:absolute;left:38px;top:22px;width:2px;height:20px;background:#007acc;border-radius:1px"></div>
+      <!-- Wallpaper from x=40 -->
+      <div style="position:absolute;left:40px;top:30px;width:40px;height:50px;background:#0f3460"></div>
+    </div>
+    <div style="position:absolute;bottom:4px;left:4px" class="label">4× TOP-LEFT · rail↔bar</div>
+  </div>
+
+  <!-- 4× zoom: bottom-left corner (rail meets plate) -->
+  <div style="position:absolute;left:340px;top:750px;width:320px;height:320px;overflow:hidden;border:1px solid #313244;border-radius:4px">
+    <div style="position:absolute;left:0;top:0;width:80px;height:80px;background:#181825;transform:scale(4);transform-origin:top left">
+      <!-- Rail ends -->
+      <div style="position:absolute;left:0;top:0;width:40px;height:50px;background:#181825"></div>
+      <!-- Active indicator strip continues to bottom -->
+      <div style="position:absolute;left:38px;top:10px;width:2px;height:30px;background:#007acc;border-radius:1px"></div>
+      <!-- Plate: bottom strip -->
+      <div style="position:absolute;left:0;top:50px;width:80px;height:30px;background:#181825"></div>
+      <!-- Wallpaper from x=40, above plate -->
+      <div style="position:absolute;left:40px;top:0;width:40px;height:50px;background:#0f3460"></div>
+    </div>
+    <div style="position:absolute;bottom:4px;left:4px" class="label">4× BOTTOM-LEFT · rail↔plate</div>
+  </div>
+
+  <!-- 4× zoom: top-right corner (ring meets bar, rail hidden) -->
+  <div style="position:absolute;left:680px;top:750px;width:320px;height:320px;overflow:hidden;border:1px solid #313244;border-radius:4px">
+    <div style="position:absolute;left:0;top:0;width:80px;height:80px;background:#181825;transform:scale(4);transform-origin:top left">
+      <div style="position:absolute;left:0;top:28px;width:80px;height:2px;background:#313244"></div>
+      <!-- Ring: 16px -->
+      <div style="position:absolute;left:0;top:30px;width:16px;height:50px;background:#181825"></div>
+      <!-- Wallpaper from x=16 -->
+      <div style="position:absolute;left:16px;top:30px;width:64px;height:50px;background:#0f3460"></div>
+    </div>
+    <div style="position:absolute;bottom:4px;left:4px" class="label">4× TOP-LEFT · ring↔bar</div>
+  </div>
+
+  <!-- ============================================
+       VIEW 5: Button states (dark theme)
+       ============================================ -->
+  <div style="position:absolute;left:1020px;top:750px;width:500px;height:120px">
+
+    <div class="label" style="margin-bottom:12px">VIEW 5 — BUTTON STATES · DARK</div>
+
+    <!-- Idle -->
+    <div style="display:flex;align-items:center;gap:20px">
+      <div>
+        <div class="label" style="margin-bottom:6px">IDLE</div>
+        <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:transparent">
+          <svg width="18" height="18" viewBox="0 0 256 256" fill="#6c7086"><path d="M216 72h-84.69l-27.31-27.31A16 16 0 0093 40H40a16 16 0 00-16 16v144.62A15.4 15.4 0 0039.38 216h177.75a15.4 15.4 0 0015.37-15.38V88a16 16 0 00-16-16zM40 56h53l16 16H40z"/></svg>
+        </div>
+      </div>
+
+      <!-- Hover -->
+      <div>
+        <div class="label" style="margin-bottom:6px">HOVER</div>
+        <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:rgba(205,214,244,0.06)">
+          <svg width="18" height="18" viewBox="0 0 256 256" fill="#a6adc8"><path d="M216 72h-84.69l-27.31-27.31A16 16 0 0093 40H40a16 16 0 00-16 16v144.62A15.4 15.4 0 0039.38 216h177.75a15.4 15.4 0 0015.37-15.38V88a16 16 0 00-16-16zM40 56h53l16 16H40z"/></svg>
+        </div>
+      </div>
+
+      <!-- Active — BOLD: pill + strip -->
+      <div>
+        <div class="label" style="margin-bottom:6px">ACTIVE <span style="color:#007acc">●</span></div>
+        <div style="position:relative;width:28px;height:28px;border-radius:6px;background:rgba(0,122,204,0.15);display:flex;align-items:center;justify-content:center">
+          <svg width="18" height="18" viewBox="0 0 256 256" fill="#cdd6f4"><path d="M216 72h-84.69l-27.31-27.31A16 16 0 0093 40H40a16 16 0 00-16 16v144.62A15.4 15.4 0 0039.38 216h177.75a15.4 15.4 0 0015.37-15.38V88a16 16 0 00-16-16zM40 56h53l16 16H40z"/></svg>
+          <div style="position:absolute;right:-4px;top:4px;width:2px;height:20px;background:#007acc;border-radius:1px"></div>
+        </div>
+      </div>
+
+      <!-- Active — light theme -->
+      <div style="margin-left:40px">
+        <div class="label" style="margin-bottom:6px">ACTIVE · LIGHT <span style="color:#007acc">●</span></div>
+        <div style="position:relative;width:28px;height:28px;border-radius:6px;background:rgba(0,122,204,0.12);display:flex;align-items:center;justify-content:center">
+          <svg width="18" height="18" viewBox="0 0 256 256" fill="#2c2e4a"><path d="M216 72h-84.69l-27.31-27.31A16 16 0 0093 40H40a16 16 0 00-16 16v144.62A15.4 15.4 0 0039.38 216h177.75a15.4 15.4 0 0015.37-15.38V88a16 16 0 00-16-16zM40 56h53l16 16H40z"/></svg>
+          <div style="position:absolute;right:-4px;top:4px;width:2px;height:20px;background:#007acc;border-radius:1px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================
+       VIEW 6: Transition moment — ring 16 → rail 40
+       Shows the aperture edge sliding right
+       ============================================ -->
+  <div style="position:absolute;left:1020px;top:900px;width:500px;height:200px">
+
+    <div class="label" style="margin-bottom:12px">VIEW 6 — TRANSITION: ring 16 → rail 40</div>
+
+    <div style="display:flex;gap:20px;align-items:flex-start">
+
+      <!-- State A: ring (x=0..15 chrome, x=16 wallpaper) -->
+      <div>
+        <div class="label" style="margin-bottom:4px">A: RING</div>
+        <div style="width:120px;height:160px;background:#181825;border-radius:4px;overflow:hidden;position:relative">
+          <div style="position:absolute;left:0;top:0;width:16px;height:100%;background:#181825"></div>
+          <div style="position:absolute;left:16px;top:0;width:104px;height:100%;background:#0f3460"></div>
+          <div style="position:absolute;left:15px;top:0;width:1px;height:100%;background:#313244"></div>
+        </div>
+        <div class="value" style="margin-top:4px">x=0..15 chrome</div>
+        <div class="value">x=16+ wallpaper</div>
+      </div>
+
+      <!-- Arrow -->
+      <div style="padding-top:60px;color:#6c7086;font-size:20px">→</div>
+
+      <!-- State B: rail (x=0..39 chrome, x=40 wallpaper) -->
+      <div>
+        <div class="label" style="margin-bottom:4px">B: RAIL</div>
+        <div style="width:120px;height:160px;background:#181825;border-radius:4px;overflow:hidden;position:relative">
+          <div style="position:absolute;left:0;top:0;width:40px;height:100%;background:#181825;display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:4px">
+            <div style="position:relative;width:28px;height:28px;border-radius:6px;background:rgba(0,122,204,0.15);display:flex;align-items:center;justify-content:center">
+              <svg width="18" height="18" viewBox="0 0 256 256" fill="#cdd6f4"><path d="M207.7 96A40 40 0 00168 56H144V48a24 24 0 00-24-24H48a24 24 0 00-24 24v144a40 40 0 0040 40h96a40 40 0 0040-40V128a40 40 0 00-22.3-36z"/></svg>
+              <div style="position:absolute;right:-4px;top:4px;width:2px;height:20px;background:#007acc;border-radius:1px"></div>
+            </div>
+          </div>
+          <div style="position:absolute;left:40px;top:0;width:80px;height:100%;background:#0f3460"></div>
+        </div>
+        <div class="value" style="margin-top:4px">x=0..39 chrome</div>
+        <div class="value">x=40+ wallpaper</div>
+      </div>
+
+      <!-- Note -->
+      <div style="padding-top:8px;max-width:200px">
+        <div class="label" style="margin-bottom:6px">ANIMATION NOTE</div>
+        <div class="value" style="line-height:1.5">
+          Aperture edge slides x: 16→40 (24px).
+          Chrome background stretches.
+          No content shift needed —
+          exclusive zone handles compositor layout.
+          Duration: 200ms ease-out recommended.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================
+       SPEK summary (bottom-right)
+       ============================================ -->
+  <div style="position:absolute;left:1560px;top:750px;width:980px;height:680px;padding:20px;border:1px solid #313244;border-radius:8px;background:rgba(17,17,27,0.9)">
+
+    <div class="label" style="margin-bottom:16px;font-size:12px">T315 SPEK — RAIL AS FRAME EDGE</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+      <!-- Geometry -->
+      <div>
+        <div class="label" style="margin-bottom:8px">GEOMETRY</div>
+        <div class="value" style="line-height:1.8">
+          rail width: 40px<br>
+          ring width: 16px (when hidden)<br>
+          aperture shift: 24px delta<br>
+          button: 28×28, radius 6px<br>
+          icon: 18×18<br>
+          gap: 4px vertical<br>
+          py: 8px top/bottom<br>
+          <span style="color:#007acc">border_r: REMOVED (no seam)</span>
+        </div>
+      </div>
+
+      <!-- Tokens -->
+      <div>
+        <div class="label" style="margin-bottom:8px">TOKENS → ELEMENTS</div>
+        <div class="value" style="line-height:1.8">
+          rail bg → <span style="color:#181825">bg.tertiary</span> (surfaces::chrome)<br>
+          bar bg → <span style="color:#181825">bg.tertiary</span> (same material)<br>
+          plate bg → <span style="color:#181825">bg.tertiary</span> (same material)<br>
+          icon idle → text.muted<br>
+          icon active → text.primary<br>
+          active pill bg → accent.primary @ 15%<br>
+          active strip → accent.primary<br>
+          <span style="color:#007acc">border: NONE (removed)</span>
+        </div>
+      </div>
+
+      <!-- Corners -->
+      <div>
+        <div class="label" style="margin-bottom:8px">APERTURE CORNERS</div>
+        <div class="value" style="line-height:1.8">
+          radius → bar.appearance.radius<br>
+          default: 0 (sharp — as shown)<br>
+          recommended: 8–12px for wrapped<br>
+          painted by: wrap bottom plate<br>
+          rail provides: straight edge only<br>
+          <span style="color:#007acc">corners are QUIET (not the bold thing)</span>
+        </div>
+      </div>
+
+      <!-- Bold thing -->
+      <div>
+        <div class="label" style="margin-bottom:8px">THE BOLD THING</div>
+        <div class="value" style="line-height:1.8">
+          <span style="color:#007acc;font-weight:600">Active indicator = accent pill + inner strip</span><br>
+          pill: 28×28, r=6, accent @ 15% bg<br>
+          strip: 2px wide, full rail height<br>
+          strip position: inner edge (right for L, left for R)<br>
+          replaces: 3px tab-strip bar<br>
+          why: marks active without adding a<br>
+          second vertical line at the edge
+        </div>
+      </div>
+
+      <!-- What's removed -->
+      <div>
+        <div class="label" style="margin-bottom:8px">WHAT'S REMOVED</div>
+        <div class="value" style="line-height:1.8">
+          ✗ border_r_1 (seam between rail & content)<br>
+          ✗ 3px accent bar (tab-strip idiom)<br>
+          ✗ separate bg token for left rail<br>
+          ✓ border.subtle may stay on inner edge<br>
+          &nbsp;&nbsp;as a 1px content separator (decide in code)
+        </div>
+      </div>
+
+      <!-- Scope -->
+      <div>
+        <div class="label" style="margin-bottom:8px">SCOPE (design only)</div>
+        <div class="value" style="line-height:1.8">
+          artboards ← this file<br>
+          code ticket ← after owner acceptance<br>
+          files to touch:<br>
+          &nbsp;&nbsp;rail_view.rs (left rail render)<br>
+          &nbsp;&nbsp;rail.rs (right rail render)<br>
+          &nbsp;&nbsp;bar/appearance.rs (corner radius)
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+</body>
+</html>
