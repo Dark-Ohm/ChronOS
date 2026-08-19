@@ -15,8 +15,8 @@
 //! and re-issues `set_input_region` on the next paint.
 
 use gpui::{
-    AnyElement, App, Bounds, Context, Entity, IntoElement, Render, Subscription, Window,
-    div, prelude::*, px,
+    AnyElement, App, AnimationExt, Bounds, Context, Entity, IntoElement, Render, Subscription,
+    Window, div, prelude::*, px,
 };
 
 use chronos_ui::{Theme, WindowRootExt};
@@ -367,37 +367,44 @@ impl Render for WorkspaceView {
         // is impossible — each arm builds the sized clip `div` with the
         // concrete entity clone and resolves to `AnyElement` before the
         // match ends. When the panel is closed (`visible_w == 0`) we
+        // T315: far-side corners (right side of left content) get r=8
+        // rounding. The near side (left, adjacent to rail) stays straight.
+        let far_radius = 8.0_f32;
+
         // produce `None` so no tab entity is created on an invisible
         // surface (lazy creation waits for the first *visible* render).
         // Chat is always alive (created in `new`); secondary tabs are
         // created here on first visible activation and retained in the
         // `Option`/`HashMap` slots for reuse.
         let clip: Option<AnyElement> = if visible_w > 0.0 {
-            Some(match active_tab {
+            let el = match active_tab {
                 tabs::LeftTab::Chat => div()
                     .id("side-panel-left-product-clip")
                     .w(px(visible_w))
                     .h_full()
                     .overflow_hidden()
                     .flex_none()
-                    .child(self.chat.clone())
-                    .into_any_element(),
+                    .rounded_tr(px(far_radius))
+                    .rounded_br(px(far_radius))
+                    .child(self.chat.clone()),
                 tabs::LeftTab::Sessions => div()
                     .id("side-panel-left-product-clip")
                     .w(px(visible_w))
                     .h_full()
                     .overflow_hidden()
                     .flex_none()
-                    .child(self.ensure_sessions(cx))
-                    .into_any_element(),
+                    .rounded_tr(px(far_radius))
+                    .rounded_br(px(far_radius))
+                    .child(self.ensure_sessions(cx)),
                 tabs::LeftTab::Project => div()
                     .id("side-panel-left-product-clip")
                     .w(px(visible_w))
                     .h_full()
                     .overflow_hidden()
                     .flex_none()
-                    .child(self.ensure_project(cx))
-                    .into_any_element(),
+                    .rounded_tr(px(far_radius))
+                    .rounded_br(px(far_radius))
+                    .child(self.ensure_project(cx)),
                 tabs::LeftTab::Plan
                 | tabs::LeftTab::Tools
                 | tabs::LeftTab::Skills
@@ -408,9 +415,19 @@ impl Render for WorkspaceView {
                     .h_full()
                     .overflow_hidden()
                     .flex_none()
-                    .child(self.ensure_shell(active_tab, cx))
-                    .into_any_element(),
-            })
+                    .rounded_tr(px(far_radius))
+                    .rounded_br(px(far_radius))
+                    .child(self.ensure_shell(active_tab, cx)),
+            };
+            // T315: enter animation — content slides in from the rail edge.
+            Some(
+                el.with_animation(
+                    "side-panel-left-content-enter",
+                    crate::motion::enter_animation(),
+                    crate::motion::apply_enter_from_left,
+                )
+                .into_any_element(),
+            )
         } else {
             None
         };

@@ -46,18 +46,22 @@ impl RailView {
     }
 }
 
+/// T315: active tab gets a pill background (`accent.primary` with
+/// theme-dependent alpha), not a 3px strip. The strip was a tab-strip
+/// idiom; with rounded aperture corners the inner edge is curved and a
+/// vertical line there contradicts the form.
 fn rail_button_bg(is_active: bool, theme: &Theme) -> gpui::Hsla {
     if is_active {
-        theme.interactive.hover
+        let alpha = if theme.is_light { 0.12 } else { 0.15 };
+        theme.accent.primary.alpha(alpha)
     } else {
         gpui::transparent_black()
     }
 }
 
 /// Single rail icon button. Returns the element tree; caller wraps it in
-/// the rail column. The active accent strip sits on the rail's right
-/// edge (the side that meets content), so the visual focus is on the
-/// panel's working surface, not the rail itself.
+/// the rail column. T315: active tab gets a pill background; the old 3px
+/// accent strip was removed (tab-strip idiom, contradicts rounded aperture).
 fn render_rail_button(
     tab: LeftTab,
     is_active: bool,
@@ -90,21 +94,7 @@ fn render_rail_button(
                 } else {
                     theme.text.muted
                 }),
-        )
-        .when(is_active, |el| {
-            // Active indicator bar — flush against the rail's right edge
-            // (the side facing content).
-            el.child(
-                div()
-                    .absolute()
-                    .right(px(-4.))
-                    .top(px(4.))
-                    .w(px(3.))
-                    .h(px(20.))
-                    .rounded(px(2.))
-                    .bg(theme.accent.primary),
-            )
-        });
+        );
     icon.into_any_element()
 }
 
@@ -140,8 +130,18 @@ pub fn render_rail(
         // enough in light theme (≈15 R units) to read as a separate
         // panel even though both rails are the same class.
         .bg(theme.surface_color(crate::side_panel_common::surfaces::chrome(&theme)))
-        .border_r_1()
-        .border_color(theme.border.subtle)
+        // T318 эррата: рельс НЕ скругляется. Скругляется дыра, а не кромка.
+        // Угол апертуры вогнут со стороны выреза — значит в углу хрома должно
+        // становиться БОЛЬШЕ, он заполняет угол. `rounded_tr/br` на самом
+        // рельсе срезали материал: получилась плашка со скруглёнными краями,
+        // висящая у экрана, и обои в вырезе. Кривизна была вывернута наизнанку.
+        // Внутренний контур апертуры рисует матте (`frame.rs`,
+        // `WrapSurfaceView::render`): у блока с бордером `rounded()` гнёт и
+        // внешний, и внутренний контур, и в углу бордер становится толще —
+        // это и есть заполнение. Верх апертуры — за баром (T316).
+        // T315: border removed — inside continuous chrome, the seam reads
+        // as "we are two objects." The rail IS the frame edge, not a panel
+        // stuck next to content.
         .on_hover(|hovered, _window, cx| {
             if *hovered {
                 crate::side_panel_left::hold_peek(cx);
@@ -230,6 +230,7 @@ impl Render for RailView {
             .when(corner_tl > 0.0, |d| {
                 d.rounded_tl(px(corner_tl)).overflow_hidden()
             })
+
             .child(render_rail(cx, self.content.clone()))
     }
 }

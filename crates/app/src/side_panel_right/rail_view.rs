@@ -125,6 +125,7 @@ impl Render for RailView {
             .when(corner_tr > 0.0, |d| {
                 d.rounded_tr(px(corner_tr)).overflow_hidden()
             })
+
             .on_hover(|hovered, _window, cx| {
                 if *hovered {
                     crate::side_panel_right::hold_peek(cx);

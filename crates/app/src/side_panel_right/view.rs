@@ -470,12 +470,6 @@ impl Render for SidePanelRightView {
         // T217 — top-left corner radius where the visible content column
         // meets the bar. The rail's own top-right (display) corner is
         // rounded independently in `rail_view::RailView::render`.
-        let display_w = crate::monitor::pult_display_info(cx)
-            .map(|d| f32::from(d.bounds().size.width))
-            .or_else(|| window.display(cx).map(|d| f32::from(d.bounds().size.width)))
-            .unwrap_or(1920.);
-        let corner_tl = crate::state::panel_corner_radius(display_w - panel_width);
-
         // Elevated chrome на content-колонке (не rail-only) — общий язык
         // глубины из `theme.elevation_popup()` (T128).
         let theme = *Theme::global(cx);
@@ -551,10 +545,14 @@ impl Render for SidePanelRightView {
                         // surface alpha applies here, not in `surfaces::`
                         // helpers (nested cards stay opaque).
                         .bg(theme.surface_color(surfaces::content(&theme)))
-                        .border_l_1()
-                        .border_color(theme.border.subtle)
+                        // T315: near-side border removed — inside continuous
+                        // chrome the seam reads as two objects.
                         .shadow(elev.shadows.to_vec())
-                        .when(corner_tl > 0.0, |d| d.rounded_tl(px(corner_tl)));
+                        // T315: far-side corners (left side of right content)
+                        // get r=8 rounding. The near side (right, adjacent to
+                        // rail) stays straight.
+                        .rounded_tl(px(8.))
+                        .rounded_bl(px(8.));
                     // Light-C glow-ребро на верхней кромке content-колонки.
                     let col = match elev.glow {
                         Some(glow) => col.child(elevation_glow_bar(glow)),

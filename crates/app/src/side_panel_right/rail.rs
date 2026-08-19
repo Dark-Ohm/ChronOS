@@ -1,9 +1,10 @@
 //! Vertical icon-rail — switches the active tab of the IDE panel.
 //!
 //! One `on_hover`-free button per tab in the **resolved mode set** (not the
-//! full catalog); active tab gets an `accent.primary` bar on its left edge +
-//! `interactive.hover` fill. Design brief: `design.md` §"Shell-IDE правая
-//! панель (таб-контейнер)".
+//! full catalog); active tab gets a pill background (`accent.primary` with
+//! theme-dependent alpha). Design brief: `design.md` §"Shell-IDE правая
+//! панель (таб-контейнер)". T315: 3px accent strip removed (tab-strip
+//! idiom, contradicts rounded aperture corners).
 //!
 //! T219: The rail is split into two groups — **top** (above the spacer) and
 //! **bottom** (between the spacer and the dock toggle). In edit mode, each
@@ -26,9 +27,12 @@ use std::rc::Rc;
 pub(crate) use super::RAIL_WIDTH;
 const BUTTON_SIZE: f32 = 28.;
 
+/// T315: active tab gets a pill background (`accent.primary` with
+/// theme-dependent alpha), mirrored from the left rail.
 pub fn rail_button_bg(is_active: bool, theme: &Theme) -> Hsla {
     if is_active {
-        theme.interactive.hover
+        let alpha = if theme.is_light { 0.12 } else { 0.15 };
+        theme.accent.primary.alpha(alpha)
     } else {
         gpui::transparent_black()
     }
@@ -80,20 +84,7 @@ fn render_rail_button(
                 } else {
                     theme.text.muted
                 }),
-        )
-        .when(is_active, |el| {
-            // Active indicator bar — flush against the rail's screen-ward edge.
-            el.child(
-                div()
-                    .absolute()
-                    .left(px(-4.))
-                    .top(px(BUTTON_SIZE / 2. - 10.))
-                    .w(px(3.))
-                    .h(px(20.))
-                    .rounded(px(2.))
-                    .bg(theme.accent.primary),
-            )
-        });
+        );
 
     if !editing {
         return icon.into_any_element();
@@ -213,14 +204,12 @@ pub fn render_rail(
         .h_full()
         // T266: the rail's own plate follows surface alpha.
         .bg(theme.surface_color(surfaces::chrome(theme)))
-        // T267 errata (2026-08-13): the border is UNCONDITIONAL. Open, it is
-        // the divider between content and rail; collapsed, it is the panel's
-        // only outer edge — the body div drops its own border together with
-        // its background when `content_open` is false, so gating this one on
-        // the same flag left rail-only mode with no separator at all.
-        // Token is `border.subtle`, same as bar and left panel (T267).
-        .border_l_1()
-        .border_color(theme.border.subtle)
+        // T318 эррата: рельс НЕ скругляется — зеркально левому. Скругляется
+        // дыра, а не кромка: в углу апертуры хрома должно становиться больше,
+        // а `rounded_tl/bl` на рельсе срезали материал и открывали обои.
+        // Внутренний контур рисует матте (`frame.rs`).
+        // T315: border removed — same reason as left rail. The rail is the
+        // frame edge, not a separate panel.
         // Top group
         .children(top_tabs.iter().map(move |&tab| {
             render_rail_button(
@@ -373,9 +362,12 @@ mod tests {
     use crate::workspace_mode::WorkspaceMode;
 
     #[test]
-    fn active_tab_uses_interactive_hover_fill_inactive_is_transparent() {
+    fn active_tab_uses_pill_fill_inactive_is_transparent() {
+        // T315: active tab gets accent.primary with theme-dependent alpha,
+        // not interactive.hover.
         let theme = Theme::default();
-        assert_eq!(rail_button_bg(true, &theme), theme.interactive.hover);
+        let alpha = if theme.is_light { 0.12 } else { 0.15 };
+        assert_eq!(rail_button_bg(true, &theme), theme.accent.primary.alpha(alpha));
         assert_eq!(rail_button_bg(false, &theme), gpui::transparent_black());
     }
 

@@ -60,8 +60,9 @@ const MAX_HEIGHT: f32 = 16.0;
 /// edges exactly.
 const RAIL_INSET: f32 = 40.0;
 /// Default `wrap.inner_radius` — the inner corners of the card, not half
-/// the strip height (T284 spec §3).
-const DEFAULT_INNER_RADIUS: f32 = 16.0;
+/// the strip height (T284 spec §3). T315 artboard: 10px = 25% of rail
+/// width, visible but not dominant.
+const DEFAULT_INNER_RADIUS: f32 = 10.0;
 const MIN_RADIUS: f32 = 0.0;
 const MAX_RADIUS: f32 = 64.0;
 /// Default `wrap.thickness` — the chrome ring width on edges WITHOUT a
@@ -75,8 +76,16 @@ const MAX_THICKNESS: f32 = 64.0;
 /// Default `wrap.bottom_thickness` — the bottom plate that survives on
 /// wrap shells regardless of rail mapping. T311 D3: lower than the
 /// lateral edges because the bottom edge never hosts a rail and a tall
-/// strip there is pure dead screen estate.
-const DEFAULT_BOTTOM_THICKNESS: f32 = 6.0;
+/// strip there is pure dead screen estate. T315 artboard: 12px =
+/// 40% of bar height (30), 30% of rail width (40) — subordinate
+/// but not a rendering artifact (was 6, inherited from Hide mode).
+///
+/// T318 эррата (владелец, 2026-08-19): 12 читалось всё ещё тонковато рядом
+/// с рельсом в 40 и баром в 30. Привязан к `DEFAULT_THICKNESS` — низ и
+/// боковое кольцо теперь одна величина, а не два независимых числа
+/// (старая претензия из диагноза T315, пункт 5). Крутится живьём:
+/// `wrap.bottom_thickness` в `~/.config/chronos/frame.toml`, hot-reload.
+const DEFAULT_BOTTOM_THICKNESS: f32 = DEFAULT_THICKNESS;
 
 /// Strip/rail junction at the bottom corners.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -622,6 +631,65 @@ struct WrapSurfaceView {
     role: WrapRole,
 }
 
+/// T318 эррата: кольцо апертуры — обёртка вокруг скруглённого окна.
+///
+/// Вырез образуют четыре независимые поверхности (бар, два рельса, планка),
+/// и «скруглить дыру» ни одна из них в одиночку не может. Две попытки до
+/// этого были неверными по форме:
+///
+/// 1. `rounded_tr/br` на самом рельсе — срезает материал у кромки: рельс
+///    превращается в плашку со скруглёнными краями, в углу видны обои.
+///    Кривизна вывернута наизнанку.
+/// 2. Четыре квадрата с одним скруглённым углом — даёт ВЫПУКЛУЮ четверть
+///    круга, торчащую в вырез. Владелец назвал это «квадратные прыщи», и
+///    это ровно то, что border-radius умеет: он режет углы наружу, вогнутую
+///    галтель им не построить.
+///
+/// Работает третий способ: блок с бордером. У него скругление гнёт и
+/// наружный, и ВНУТРЕННИЙ контур, причём внутренний радиус равен
+/// «наружный − толщина бордера». Кладём кольцо толщиной `radius` ровно по
+/// границе выреза, расширив его на ту же толщину наружу, и задаём наружный
+/// радиус `2 × radius`. Внутренний контур получается скруглённым на
+/// `radius` — это и есть окно с закруглёнными краями, — а наружный контур
+/// кольца лежит под баром и рельсами и не виден.
+///
+/// Угол дисплея при этом не трогается вовсе: кольцо живёт внутри экрана.
+fn aperture_ring(
+    chrome: gpui::Hsla,
+    inset_left: f32,
+    inset_right: f32,
+    inset_bottom: f32,
+    bar_h: f32,
+    radius: f32,
+) -> Vec<gpui::AnyElement> {
+    if radius <= 0.0 {
+        return Vec::new();
+    }
+    // Кольцо не может вылезти за пределы хрома: если край тоньше радиуса,
+    // наружная часть кольца легла бы на обои. Ужимаем до доступного.
+    let b = radius
+        .min(inset_left)
+        .min(inset_right)
+        .min(inset_bottom)
+        .min(bar_h)
+        .max(0.0);
+    if b <= 0.0 {
+        return Vec::new();
+    }
+    vec![
+        div()
+            .absolute()
+            .left(px(inset_left - b))
+            .right(px(inset_right - b))
+            .top(px(bar_h - b))
+            .bottom(px(inset_bottom - b))
+            .border(px(b))
+            .border_color(chrome)
+            .rounded(px(b + radius))
+            .into_any_element(),
+    ]
+}
+
 impl Render for WrapSurfaceView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Click-through everywhere — the matte is pure chrome, the dummies
@@ -639,10 +707,29 @@ impl Render for WrapSurfaceView {
         // insets read from the same sanitized source so the ring can
         // never diverge from the geometry clients are pushed by (T303
         // second drift, fixed; T311 D3 makes the values per-edge).
-        let inset_left =
-            wrap_inset_left(&cfg, rail_mapped(FrameSide::Left));
-        let inset_right =
-            wrap_inset_right(&cfg, rail_mapped(FrameSide::Right));
+        // T318 эррата: РИСУЕМ не то же, что РЕЗЕРВИРУЕМ. Резервация края с
+        // мапленным рельсом равна нулю (T314) — место держит сам рельс. Но
+        // краска там нужна: внутренний контур апертуры скруглён, а значит в
+        // углу хрома должно становиться БОЛЬШЕ, он заполняет угол. Если на
+        // этом крае не рисовать, гнуть нечего — и попытка скруглить сам
+        // рельс даёт вывернутую наизнанку кривизну (плашка со срезанными
+        // краями и обои в вырезе, живая находка владельца 2026-08-19).
+        // Поэтому под мапленным рельсом матте кладёт бордер шириной рельса:
+        // прямая часть скрыта самим рельсом (тот же токен), а скруглённый
+        // внутренний контур выступает в апертуру и заполняет угол.
+        // ВЕРХНИЕ углы этим не лечатся: `border_t` = 0, и угол внутреннего
+        // контура матте лежит на y=0 под баром. Верх апертуры рисует бар —
+        // это T316.
+        let inset_left = if rail_mapped(FrameSide::Left) {
+            RAIL_INSET
+        } else {
+            wrap_inset_left(&cfg, false)
+        };
+        let inset_right = if rail_mapped(FrameSide::Right) {
+            RAIL_INSET
+        } else {
+            wrap_inset_right(&cfg, false)
+        };
         let inset_bottom = wrap_inset_bottom(&cfg);
         let radius = cfg.wrap.inner_radius;
 
@@ -664,18 +751,28 @@ impl Render for WrapSurfaceView {
         div()
             .id("frame-wrap-matte")
             .size_full()
-            .when(inset_left > 0.0, |d| {
-                d.border_l(px(inset_left))
-            })
-            .when(inset_right > 0.0, |d| {
-                d.border_r(px(inset_right))
-            })
-            .when(inset_bottom > 0.0, |d| {
-                d.border_b(px(inset_bottom))
-            })
-            .border_t_0()
-            .border_color(theme.bg.tertiary)
-            .rounded(px(radius))
+            .relative()
+            // Плоские края — отдельным слоем, без скруглений. Позиционируется
+            // абсолютно от корня, поэтому кольцо ниже считает отступы от края
+            // экрана, а не от padding-box с бордерами.
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .when(inset_left > 0.0, |d| d.border_l(px(inset_left)))
+                    .when(inset_right > 0.0, |d| d.border_r(px(inset_right)))
+                    .when(inset_bottom > 0.0, |d| d.border_b(px(inset_bottom)))
+                    .border_t_0()
+                    .border_color(theme.bg.tertiary),
+            )
+            .children(aperture_ring(
+                theme.bg.tertiary,
+                inset_left,
+                inset_right,
+                inset_bottom,
+                crate::state::bar_height_px(),
+                radius,
+            ))
             .into_any_element()
     }
 }
