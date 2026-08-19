@@ -41,6 +41,7 @@ pub mod scene;
 mod surface_effects;
 pub mod side_panel_left;
 pub mod side_panel_right;
+pub mod side_panel_common;
 // Lib-side twin of bin `mod start_menu` (main.rs): the bar's dock widget
 // (lib) toggles it via `crate::start_menu`. Same twin pattern as
 // `dock` / `calendar_popup` so the path resolves in either crate.

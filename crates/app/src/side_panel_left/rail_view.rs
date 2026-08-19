@@ -133,7 +133,13 @@ pub fn render_rail(
         .w(px(RAIL_WIDTH))
         .h_full()
         // T266: the rail's own plate follows surface alpha.
-        .bg(theme.surface_color(theme.bg.primary))
+        // T311 D2b: the left rail now reads `surfaces::chrome` — same role
+        // the right rail and the wrap bottom plate paint with. Identical
+        // hex on every rail-mapped edge; the rail stops being the only
+        // chrome element painted with `bg.primary`, which was distinct
+        // enough in light theme (≈15 R units) to read as a separate
+        // panel even though both rails are the same class.
+        .bg(theme.surface_color(crate::side_panel_common::surfaces::chrome(&theme)))
         .border_r_1()
         .border_color(theme.border.subtle)
         .on_hover(|hovered, _window, cx| {

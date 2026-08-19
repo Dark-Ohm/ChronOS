@@ -23,6 +23,7 @@ mod project_switcher;
 mod popup_click_catcher;
 mod side_panel_left;
 mod side_panel_right;
+mod side_panel_common;
 mod start_menu;
 pub mod state;
 mod gaming_mode;
