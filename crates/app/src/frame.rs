@@ -581,8 +581,10 @@ fn wrap_windows() -> &'static Mutex<WrapWindows> {
 }
 
 /// Per-surface options for the wrap matte and the three exclusive strips.
-/// The matte is fullscreen on Layer::Top with NO exclusive zone (a fullscreen
-/// surface with `exclusive != 0` reserves the whole screen — spec §5); the
+/// The matte is fullscreen on Layer::Top with exclusive zone `-1` (the
+/// wlr-layer-shell opt-out: it must NOT reserve space — a fullscreen surface
+/// with `exclusive != 0` reserves the whole screen — and `-1` also stops the
+/// compositor from offsetting it by sibling panels' reservations, T308); the
 /// dummies are Overlay strips whose exclusive zone pushes clients off the
 /// frame.
 fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
@@ -616,20 +618,31 @@ fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) 
         // swallows their clicks (measured live), while on Top it sits below
         // them. The bar covers the top border regardless (same layer,
         // opaque), so `border_t_0` below is belt-and-suspenders.
+        //
+        // `exclusive_zone: Some(px(-1.))` is the wlr-layer-shell opt-out
+        // (T305 blood fact, control_center.rs): with `None` the compositor
+        // still offsets an anchor-only surface by EVERY sibling reservation
+        // — with the left rail mapped its 40px exclusive zone plus our own
+        // ExclLeft 16px sum into a 56px rightward shift of the matte
+        // (measured live, T308), pushing the right ring off-screen. `-1`
+        // opts the matte OUT of foreign reservations entirely, and then the
+        // negative bottom/left margins T303 used to counteract them are not
+        // just unnecessary but harmful: they push the matte to x=-16/y=16
+        // (measured live) and the ring drifts left/up by the inset. With
+        // `-1` the reservations are ignored, so a plain LEFT|BOTTOM matte
+        // with zero margin lands flush at x=0,y=0 (bottom edge on the
+        // screen bottom) and stays there with any panel combination.
         WrapRole::Matte => (
             Size::new(px(w), px(h)),
             Anchor::LEFT | Anchor::BOTTOM,
             "frame_wrap_matte",
             Layer::Top,
+            Some(px(-1.)),
             None,
+            // No margin: `-1` above already opts out of the bar/ExclBottom/
+            // ExclLeft and side-panel reservations, so the matte covers
+            // x0-2560, y0-1440 with zero compensation.
             None,
-            // Negative bottom AND left margins: the bar/ExclBottom and
-            // ExclLeft reservations push a bottom/left-anchored matte to
-            // y=-inset..(h-inset) / x=inset.. respectively (measured live:
-            // y=-16..1424 and x=16.. with inset 16), so a negative margin
-            // of -inset counteracts each exactly and the matte covers
-            // x0-2560, y0-1440.
-            Some((px(0.), px(0.), px(-inset), px(-inset))),
         ),
         WrapRole::ExclLeft => (
             Size::new(px(inset), px(h)),
