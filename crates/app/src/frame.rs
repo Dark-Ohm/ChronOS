@@ -64,13 +64,19 @@ const RAIL_INSET: f32 = 40.0;
 const DEFAULT_INNER_RADIUS: f32 = 16.0;
 const MIN_RADIUS: f32 = 0.0;
 const MAX_RADIUS: f32 = 64.0;
-/// Default `wrap.thickness` — the chrome ring width. Equal to the default
-/// `inner_radius` so the corner rounding reads proportional to the frame;
-/// the old figure (`bottom_strip.height`) was tuned for the thin Hide
-/// strip and made the wrap frame read as a cheap 4px line (T303).
+/// Default `wrap.thickness` — the chrome ring width on edges WITHOUT a
+/// rail. Equal to the default `inner_radius` so the corner rounding reads
+/// proportional to the frame; the old figure (`bottom_strip.height`) was
+/// tuned for the thin Hide strip and made the wrap frame read as a cheap
+/// 4px line (T303).
 const DEFAULT_THICKNESS: f32 = 16.0;
 const MIN_THICKNESS: f32 = 1.0;
 const MAX_THICKNESS: f32 = 64.0;
+/// Default `wrap.bottom_thickness` — the bottom plate that survives on
+/// wrap shells regardless of rail mapping. T311 D3: lower than the
+/// lateral edges because the bottom edge never hosts a rail and a tall
+/// strip there is pure dead screen estate.
+const DEFAULT_BOTTOM_THICKNESS: f32 = 6.0;
 
 /// Strip/rail junction at the bottom corners.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,13 +143,27 @@ where
     Ok(FrameStyle::from_str_sanitized(&s))
 }
 
-/// `[wrap]` section — frame thickness and inner corner radius (T284 spec
-/// §3; T303: thickness split off `bottom_strip.height`).
+/// `[wrap]` section — frame thickness, bottom-plate thickness and inner
+/// corner radius. T311 D3: thickness semantics is **per-edge** — the
+/// running frame has zero thickness on an edge covered by a rail, full
+/// `thickness` on an edge without a rail, `bottom_thickness` along the
+/// bottom (rail-free edges) and zero at the top (the bar is the top
+/// edge). All three fields exist for compatibility and to express the
+/// distinct roles; reading code uses the per-edge helpers
+/// (`wrap_inset_left/right/bottom()`), the raw fields stay as config
+/// inputs only.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct WrapConfig {
+    /// Chromium ring width on rail-free edges.
     pub thickness: f32,
+    /// Inner corner radius — painted by the matte (and by the bar at the
+    /// top). `inner_radius = 0` disables rounding entirely.
     pub inner_radius: f32,
+    /// Bottom-plate thickness — lower than `thickness` because the
+    /// bottom edge never carries a rail, and is the only remaining
+    /// lateral plate after rail sides collapse (T311 D3).
+    pub bottom_thickness: f32,
 }
 
 impl Default for WrapConfig {
@@ -151,24 +171,20 @@ impl Default for WrapConfig {
         Self {
             thickness: DEFAULT_THICKNESS,
             inner_radius: DEFAULT_INNER_RADIUS,
+            bottom_thickness: DEFAULT_BOTTOM_THICKNESS,
         }
     }
 }
 
 impl WrapConfig {
-    /// Clamp `thickness` into `MIN_THICKNESS..=MAX_THICKNESS` and
-    /// `inner_radius` into `MIN_RADIUS..=MAX_RADIUS` (0 disables the corner
-    /// rounding entirely).
+    /// Clamp `thickness` and `bottom_thickness` into
+    /// `MIN_THICKNESS..=MAX_THICKNESS` and `inner_radius` into
+    /// `MIN_RADIUS..=MAX_RADIUS` (0 disables the corner rounding entirely).
     pub fn sanitized(&self) -> Self {
         let mut out = self.clone();
-        if out.thickness < MIN_THICKNESS || out.thickness > MAX_THICKNESS {
-            tracing::warn!(
-                "frame: wrap.thickness {} out of range [{MIN_THICKNESS}, {MAX_THICKNESS}], clamping to {}",
-                out.thickness,
-                out.thickness.clamp(MIN_THICKNESS, MAX_THICKNESS)
-            );
-            out.thickness = out.thickness.clamp(MIN_THICKNESS, MAX_THICKNESS);
-        }
+        out.thickness = clamp_thickness(out.thickness, "wrap.thickness");
+        out.bottom_thickness =
+            clamp_thickness(out.bottom_thickness, "wrap.bottom_thickness");
         if out.inner_radius < MIN_RADIUS || out.inner_radius > MAX_RADIUS {
             tracing::warn!(
                 "frame: wrap.inner_radius {} out of range [{MIN_RADIUS}, {MAX_RADIUS}], clamping to {}",
@@ -178,6 +194,18 @@ impl WrapConfig {
             out.inner_radius = out.inner_radius.clamp(MIN_RADIUS, MAX_RADIUS);
         }
         out
+    }
+}
+
+fn clamp_thickness(v: f32, label: &'static str) -> f32 {
+    if v < MIN_THICKNESS || v > MAX_THICKNESS {
+        let clamped = v.clamp(MIN_THICKNESS, MAX_THICKNESS);
+        tracing::warn!(
+            "frame: {label} {v} out of range [{MIN_THICKNESS}, {MAX_THICKNESS}], clamping to {clamped}"
+        );
+        clamped
+    } else {
+        v
     }
 }
 
@@ -361,6 +389,11 @@ pub fn hide_strip_wanted(enabled: bool, left_mapped: bool, right_mapped: bool) -
 /// 0 in Hide; `wrap.thickness` in Wrap — the frame thickness rails and
 /// content inset by, and the exclusive strips reserve (T284 §5, T303: no
 /// longer `bottom_strip.height`, which is tuned for the thin Hide strip).
+///
+/// Kept as the "rail-free edge default" — `wrap_inset_left` /
+/// `wrap_inset_right` for side correctness, this for the legacy callers
+/// that only need a non-sided value (e.g. tests). Deprecated for new
+/// call sites — use a per-edge helper instead.
 pub fn wrap_inset_for(cfg: &FrameConfig) -> f32 {
     match cfg.style {
         FrameStyle::Hide => 0.0,
@@ -368,8 +401,68 @@ pub fn wrap_inset_for(cfg: &FrameConfig) -> f32 {
     }
 }
 
+/// `wrap_inset()` reads `wrap_inset_for(cached_config())` — the rail-free
+/// default. Use per-edge helpers when the side matters.
 pub fn wrap_inset() -> f32 {
     wrap_inset_for(&cached_config())
+}
+
+// ── Per-edge insets (T311 D3) ─────────────────────────────────────────────────
+//
+// The wrap frame is no longer a uniform ring. Top always collapses to 0
+// (the bar paints the top edge); bottom carries `bottom_thickness` (the
+// only edge with no rail counterpart); left/right collapse to 0 on the
+// side that hosts a rail and stay at `wrap.thickness` on the rail-free
+// side. The pure helpers take an explicit `*_rail_mapped` flag so unit
+// tests do not need to mutate the global `RAIL_MAPPED` atomic.
+
+/// Top edge — always 0; the bar is the top edge of the chrome, not the
+/// frame.
+pub fn wrap_inset_top() -> f32 {
+    0.0
+}
+
+/// Bottom edge — the rail-free edge that always carries the plate.
+pub fn wrap_inset_bottom(cfg: &FrameConfig) -> f32 {
+    match cfg.style {
+        FrameStyle::Hide => 0.0,
+        FrameStyle::Wrap => cfg.wrap.sanitized().bottom_thickness,
+    }
+}
+
+/// Bottom edge, reading from the cache (convenience for callers with an
+/// `&App` that already knows `bottom_thickness` is rail-independent).
+pub fn wrap_inset_bottom_cached() -> f32 {
+    wrap_inset_bottom(&cached_config())
+}
+
+/// Left edge — 0 when left rail is mapped (the rail paints that edge),
+/// otherwise `wrap.thickness`.
+pub fn wrap_inset_left(cfg: &FrameConfig, left_rail_mapped: bool) -> f32 {
+    match cfg.style {
+        FrameStyle::Hide => 0.0,
+        FrameStyle::Wrap if left_rail_mapped => 0.0,
+        FrameStyle::Wrap => cfg.wrap.sanitized().thickness,
+    }
+}
+
+/// Left edge, reading from the live cache.
+pub fn wrap_inset_left_cached(left_rail_mapped: bool) -> f32 {
+    wrap_inset_left(&cached_config(), left_rail_mapped)
+}
+
+/// Right edge — mirror of `wrap_inset_left`.
+pub fn wrap_inset_right(cfg: &FrameConfig, right_rail_mapped: bool) -> f32 {
+    match cfg.style {
+        FrameStyle::Hide => 0.0,
+        FrameStyle::Wrap if right_rail_mapped => 0.0,
+        FrameStyle::Wrap => cfg.wrap.sanitized().thickness,
+    }
+}
+
+/// Right edge, reading from the live cache.
+pub fn wrap_inset_right_cached(right_rail_mapped: bool) -> f32 {
+    wrap_inset_right(&cached_config(), right_rail_mapped)
 }
 
 /// The matte's transparent hole (T284 spec §5.1): inset `h` on L/R/B, top at
@@ -527,30 +620,47 @@ impl Render for WrapSurfaceView {
 
         let theme = Theme::global(cx);
         let cfg = cached_config();
-        // Same sanitized source as `wrap_inset_for` — the matte paints what
-        // the exclusive strips reserve, so the ring can never diverge from
-        // the geometry clients are pushed by (T303 second drift, fixed).
-        let inset = cfg.wrap.sanitized().thickness;
+        // The matte paints what the exclusive strips reserve — per-edge
+        // insets read from the same sanitized source so the ring can
+        // never diverge from the geometry clients are pushed by (T303
+        // second drift, fixed; T311 D3 makes the values per-edge).
+        let inset_left =
+            wrap_inset_left(&cfg, rail_mapped(FrameSide::Left));
+        let inset_right =
+            wrap_inset_right(&cfg, rail_mapped(FrameSide::Right));
+        let inset_bottom = wrap_inset_bottom(&cfg);
         let radius = cfg.wrap.inner_radius;
 
-        // One uniform ring instead of strips + hand-drawn corner patches
-        // (T303): the border shader offsets the inner edge by the border
-        // width, so a full-size div with border `inset` and rounding
-        // `radius + inset` paints a frame of constant thickness `inset`
-        // whose inner contour is exactly the spec's rounded rect (inner
-        // radius = `inner_radius`, outer = inner + thickness). No top
-        // border: the matte sits below the bar on the same layer, but the
-        // bar only covers y0-30 and the border would read as a line below
-        // it — the bar itself is the top edge. No background — the hole
-        // stays the wallpaper (spec §5.1; a transparent child would not
-        // punch a fill).
+        // Per-edge insets (T311 D3) — the matte's border mirrors exactly
+        // what `wrap_window_options` reserves on each side. T303's "single
+        // uniform ring" trick (one constant border offset with
+        // `rounded(radius + inset)` inner contour) is the right shape when
+        // the ring is uniform; T311 D3 changes each side independently, so
+        // we set each border individually. The previous
+        // `rounded(radius + inset)` formula no longer yields a clean inner
+        // contour — `.rounded(px(radius))` gives the outer corners a
+        // constant radius and the close corners are reworked on D4 (the
+        // bar hides the top; the bottom is recomputed; the sides collapse
+        // to a zero-thickness div border where a rail is mapped). Not
+        // returning to T303's "five divs with corner patches" — T303
+        // explicitly removed that pattern. No top border (bar is the top
+        // edge). No background — the hole stays the wallpaper (spec
+        // §5.1).
         div()
             .id("frame-wrap-matte")
             .size_full()
-            .border(px(inset))
+            .when(inset_left > 0.0, |d| {
+                d.border_l(px(inset_left))
+            })
+            .when(inset_right > 0.0, |d| {
+                d.border_r(px(inset_right))
+            })
+            .when(inset_bottom > 0.0, |d| {
+                d.border_b(px(inset_bottom))
+            })
             .border_t_0()
             .border_color(theme.bg.tertiary)
-            .rounded(px(radius + inset))
+            .rounded(px(radius))
             .into_any_element()
     }
 }
@@ -597,7 +707,10 @@ fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) 
             )
         })
         .unwrap_or((1920., 1080.));
-    let inset = wrap_inset();
+    let cfg = cached_config();
+    let inset_left = wrap_inset_left(&cfg, rail_mapped(FrameSide::Left));
+    let inset_right = wrap_inset_right(&cfg, rail_mapped(FrameSide::Right));
+    let inset_bottom = wrap_inset_bottom(&cfg);
     let (size, anchor, namespace, layer, exclusive_zone, exclusive_edge, margin) = match role {
         // The matte must cover the full screen, ring flush with every edge.
         // Hyprland places every layer surface inside the available area
@@ -645,29 +758,29 @@ fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) 
             None,
         ),
         WrapRole::ExclLeft => (
-            Size::new(px(inset), px(h)),
+            Size::new(px(inset_left), px(h)),
             Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT,
             "frame_wrap_excl_left",
             Layer::Overlay,
-            Some(px(inset)),
+            Some(px(inset_left)),
             Some(Anchor::LEFT),
             None,
         ),
         WrapRole::ExclRight => (
-            Size::new(px(inset), px(h)),
+            Size::new(px(inset_right), px(h)),
             Anchor::TOP | Anchor::BOTTOM | Anchor::RIGHT,
             "frame_wrap_excl_right",
             Layer::Overlay,
-            Some(px(inset)),
+            Some(px(inset_right)),
             Some(Anchor::RIGHT),
             None,
         ),
         WrapRole::ExclBottom => (
-            Size::new(px(w), px(inset)),
+            Size::new(px(w), px(inset_bottom)),
             Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
             "frame_wrap_excl_bottom",
             Layer::Overlay,
-            Some(px(inset)),
+            Some(px(inset_bottom)),
             Some(Anchor::BOTTOM),
             None,
         ),
@@ -1023,6 +1136,7 @@ mod tests {
         assert_eq!(cfg.style, FrameStyle::Hide);
         assert_eq!(cfg.wrap.thickness, DEFAULT_THICKNESS);
         assert_eq!(cfg.wrap.inner_radius, DEFAULT_INNER_RADIUS);
+        assert_eq!(cfg.wrap.bottom_thickness, DEFAULT_BOTTOM_THICKNESS);
     }
 
     #[test]
@@ -1115,6 +1229,69 @@ mod tests {
     }
 
     #[test]
+    fn wrap_per_edge_insets_follow_rail_mapping() {
+        // T311 D3: the only way a side reads `wrap.thickness` is when its
+        // rail is unmapped. When the rail is open the side collapses to 0
+        // — the rail already paints that edge, the wrap must not waste
+        // pixels on top.
+        let mut cfg = FrameConfig {
+            style: FrameStyle::Wrap,
+            ..FrameConfig::default()
+        };
+        cfg.wrap.thickness = 16.0;
+        cfg.wrap.bottom_thickness = 6.0;
+
+        // No rails mapped → both sides read thickness, bottom reads
+        // bottom_thickness, top reads 0 (bar covers it).
+        assert_eq!(wrap_inset_left(&cfg, false), 16.0);
+        assert_eq!(wrap_inset_right(&cfg, false), 16.0);
+        assert_eq!(wrap_inset_bottom(&cfg), 6.0);
+        assert_eq!(wrap_inset_top(), 0.0);
+
+        // Left rail mapped → left collapses to 0; right unchanged.
+        assert_eq!(wrap_inset_left(&cfg, true), 0.0);
+        assert_eq!(wrap_inset_right(&cfg, false), 16.0);
+        // Right rail mapped → right collapses to 0; left unchanged.
+        assert_eq!(wrap_inset_left(&cfg, false), 16.0);
+        assert_eq!(wrap_inset_right(&cfg, true), 0.0);
+        // Both rails mapped → both sides 0, bottom unaffected.
+        assert_eq!(wrap_inset_left(&cfg, true), 0.0);
+        assert_eq!(wrap_inset_right(&cfg, true), 0.0);
+        assert_eq!(wrap_inset_bottom(&cfg), 6.0);
+
+        // Hide style → everything collapses to 0 because no matte is
+        // drawn, even with both rails gone.
+        let hide = FrameConfig {
+            style: FrameStyle::Hide,
+            ..FrameConfig::default()
+        };
+        assert_eq!(wrap_inset_left(&hide, false), 0.0);
+        assert_eq!(wrap_inset_right(&hide, false), 0.0);
+        assert_eq!(wrap_inset_bottom(&hide), 0.0);
+    }
+
+    #[test]
+    fn wrap_inset_left_zero_in_hide_thickness_in_wrap() {
+        // T311 D3: legacy `wrap_inset_for` still returns the rail-free
+        // thickness value (same semantics it had pre-D3), so a config
+        // consumer that does not yet know about per-edge insets does not
+        // see surprise. The point of the per-edge helpers is to be the
+        // recommended path; this entry point is kept only for tests and
+        // any external reader (settings UI, IPC) that summarizes the
+        // shape.
+        let wrap = FrameConfig {
+            style: FrameStyle::Wrap,
+            ..FrameConfig::default()
+        };
+        assert_eq!(wrap_inset_for(&wrap), DEFAULT_THICKNESS);
+        let hide = FrameConfig {
+            style: FrameStyle::Hide,
+            ..FrameConfig::default()
+        };
+        assert_eq!(wrap_inset_for(&hide), 0.0);
+    }
+
+    #[test]
     fn hide_strip_wanted_false_when_no_rails() {
         assert!(!hide_strip_wanted(true, false, false));
         assert!(hide_strip_wanted(true, true, false));
@@ -1143,12 +1320,67 @@ mod tests {
     fn wrap_thickness_clamped() {
         let mut cfg = WrapConfig::default();
         assert_eq!(cfg.thickness, DEFAULT_THICKNESS);
+        assert_eq!(cfg.bottom_thickness, DEFAULT_BOTTOM_THICKNESS);
         cfg.thickness = 99.0;
         assert_eq!(cfg.sanitized().thickness, MAX_THICKNESS);
         cfg.thickness = -2.0;
         assert_eq!(cfg.sanitized().thickness, MIN_THICKNESS);
         cfg.thickness = 16.0;
         assert_eq!(cfg.sanitized().thickness, 16.0);
+    }
+
+    #[test]
+    fn wrap_bottom_thickness_clamped() {
+        // T311 D3: bottom_thickness shares the same `MIN_THICKNESS..=
+        // MAX_THICKNESS` clamp as `thickness` — same accept range, separate
+        // value.
+        let mut cfg = WrapConfig::default();
+        cfg.bottom_thickness = 99.0;
+        assert_eq!(cfg.sanitized().bottom_thickness, MAX_THICKNESS);
+        cfg.bottom_thickness = 0.0;
+        assert_eq!(cfg.sanitized().bottom_thickness, MIN_THICKNESS);
+        cfg.bottom_thickness = 6.0;
+        assert_eq!(cfg.sanitized().bottom_thickness, 6.0);
+    }
+
+    #[test]
+    fn missing_bottom_thickness_parses_to_default() {
+        // T311 D3: a `[wrap]` section without `bottom_thickness` must NOT
+        // fail parse — old `frame.toml` files keep loading, the new field
+        // silently gets the default. The T268 incident makes this a hard
+        // requirement (whole-file fallback to defaults on any parse miss).
+        let doc = "[wrap]\nthickness = 24.0\ninner_radius = 12.0\n";
+        let cfg: FrameConfig = toml::from_str(doc).unwrap();
+        assert_eq!(cfg.wrap.thickness, 24.0);
+        assert_eq!(cfg.wrap.inner_radius, 12.0);
+        assert_eq!(cfg.wrap.bottom_thickness, DEFAULT_BOTTOM_THICKNESS);
+    }
+
+    #[test]
+    fn bottom_thickness_round_trips_on_write() {
+        // T311 D3: writing the `style` key (the `write_style` codepath used
+        // by settings tab toggles) must NOT wipe a non-default
+        // `bottom_thickness` in the surrounding file — same hygiene rule as
+        // the existing `write_style_preserves_unknown_keys` test.
+        let dir = std::env::temp_dir()
+            .join(format!("chronos-frame-bt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("frame.toml");
+        std::fs::write(
+            &path,
+            "[wrap]\nthickness = 16.0\ninner_radius = 16.0\nbottom_thickness = 4.0\n",
+        )
+        .unwrap();
+        write_style_at(&path, FrameStyle::Wrap).unwrap();
+        let doc: toml::Value =
+            std::fs::read_to_string(&path).unwrap().parse().unwrap();
+        assert_eq!(doc["style"], toml::Value::String("wrap".into()));
+        assert_eq!(
+            doc["wrap"]["bottom_thickness"],
+            toml::Value::Float(4.0)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1165,18 +1397,27 @@ mod tests {
         let base = WrapConfig {
             thickness: 16.0,
             inner_radius: 16.0,
+            bottom_thickness: 6.0,
         };
         let same = WrapConfig {
             thickness: 16.0,
             inner_radius: 16.0,
+            bottom_thickness: 6.0,
         };
         let thicker = WrapConfig {
             thickness: 24.0,
             inner_radius: 16.0,
+            bottom_thickness: 6.0,
         };
         let rounder = WrapConfig {
             thickness: 16.0,
             inner_radius: 32.0,
+            bottom_thickness: 6.0,
+        };
+        let slimmer_bottom = WrapConfig {
+            thickness: 16.0,
+            inner_radius: 16.0,
+            bottom_thickness: 4.0,
         };
 
         // First apply (no recorded geometry yet) is a change.
@@ -1187,6 +1428,8 @@ mod tests {
         assert!(wrap_geometry_changed(Some(&base), &thicker));
         // Radius edit — recreate (matte's ring radius repaints on recreate).
         assert!(wrap_geometry_changed(Some(&base), &rounder));
+        // Bottom-thickness edit (T311 D3) — recreate.
+        assert!(wrap_geometry_changed(Some(&base), &slimmer_bottom));
     }
 
     #[test]

@@ -208,9 +208,12 @@ fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
 }
 
 fn panel_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
-    // Wrap (T284): the panel clears the bottom chrome too — height is
-    // trimmed by the wrap inset on top of the bar gap.
-    (display_height(display_id, cx) - panel_edge_gap() - frame::wrap_inset()).max(100.)
+    // Wrap (T284 + T311 D3): the panel clears the bottom chrome too —
+    // height is trimmed by the bottom-plate on top of the bar gap. Use
+    // `wrap_inset_bottom`, not `wrap_inset` — the bottom edge keeps its
+    // plate even when both rails are mapped, and is unaffected by rail
+    // mapping.
+    (display_height(display_id, cx) - panel_edge_gap() - frame::wrap_inset_bottom_cached()).max(100.)
 }
 
 /// T278: the `rail` surface — fixed `RAIL_WIDTH` px, owns the exclusive
@@ -262,9 +265,15 @@ pub(crate) fn rail_window_options(display_id: Option<DisplayId>, cx: &App) -> Wi
 /// CSS-order: (top, right, bottom, left). `-1` (below) also disables the
 /// bar's automatic top offset, so both offsets must be explicit.
 fn content_window_margin(top_gap: f32) -> (gpui::Pixels, gpui::Pixels, gpui::Pixels, gpui::Pixels) {
-    // Wrap (T284): content rides with the rail — its left margin gains the
-    // frame thickness on top of the rail width.
-    (px(top_gap), px(0.), px(0.), px(tabs::RAIL_WIDTH + frame::wrap_inset()))
+    // Wrap (T284 + T311 D3): content rides with the rail — its LEFT margin
+    // gains the wrap-reserved space on top of the rail width. After D3 the
+    // wrap inset on the left edge collapses to ZERO when the left rail is
+    // mapped (the rail already owns that edge), and stays at full
+    // `wrap.thickness` when the rail is gone. Use `wrap_inset_left`, not
+    // `wrap_inset` — the old constant reserved space twice when both the
+    // rail and its own ExclLeft strip were open.
+    let left_reserved = frame::wrap_inset_left_cached(frame::rail_mapped(FrameSide::Left));
+    (px(top_gap), px(0.), px(0.), px(tabs::RAIL_WIDTH + left_reserved))
 }
 
 /// T278: the `content` surface — fixed `CONTENT_CANVAS_WIDTH` px canvas,

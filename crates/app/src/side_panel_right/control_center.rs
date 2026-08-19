@@ -118,7 +118,12 @@ fn window_options(
     anchor: Bounds<Pixels>,
     width: f32,
 ) -> WindowOptions {
-    let inset = crate::frame::wrap_inset();
+    // T311 D3: the right margin is the per-side wrap inset, not the
+    // generic thickness — collapses to 0 when the right rail is mapped,
+    // stays at full `wrap.thickness` when the rail is gone.
+    let inset = crate::frame::wrap_inset_right_cached(crate::frame::rail_mapped(
+        crate::frame::FrameSide::Right,
+    ));
     WindowOptions {
         display_id,
         titlebar: None,

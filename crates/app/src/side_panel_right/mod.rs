@@ -259,9 +259,12 @@ fn display_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
 
 fn panel_height(display_id: Option<DisplayId>, cx: &App) -> f32 {
     let display_h = display_height(display_id, cx);
-    // Wrap (T284): the panel clears the bottom chrome too — height is
-    // trimmed by the wrap inset on top of the bar gap.
-    (display_h - panel_edge_gap() - frame::wrap_inset()).max(100.)
+    // Wrap (T284 + T311 D3): the panel clears the bottom chrome too —
+    // height is trimmed by the bottom-plate on top of the bar gap. Use
+    // `wrap_inset_bottom`, not `wrap_inset` — the bottom edge keeps its
+    // plate even when both rails are mapped, and is unaffected by rail
+    // mapping.
+    (display_h - panel_edge_gap() - frame::wrap_inset_bottom_cached()).max(100.)
 }
 
 /// T276: the `rail` surface — fixed `RAIL_ONLY_WIDTH` px, owns the
@@ -314,9 +317,15 @@ fn rail_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions
 /// including the top bar. The margin therefore restores both placements
 /// explicitly: top gap below the bar and the fixed rail width on the right.
 fn content_window_margin(top_gap: f32) -> (gpui::Pixels, gpui::Pixels, gpui::Pixels, gpui::Pixels) {
-    // Wrap (T284): content rides with the rail — its right margin gains the
-    // frame thickness on top of the rail width.
-    (px(top_gap), px(RAIL_ONLY_WIDTH + frame::wrap_inset()), px(0.), px(0.))
+    // Wrap (T284 + T311 D3): content rides with the rail — its RIGHT margin
+    // gains the wrap-reserved space on top of the rail width. After D3 the
+    // wrap inset on the right edge collapses to ZERO when the right rail is
+    // mapped (the rail already owns that edge), and stays at full
+    // `wrap.thickness` when the rail is gone. Use `wrap_inset_right`, not
+    // `wrap_inset`.
+    let right_reserved =
+        frame::wrap_inset_right_cached(frame::rail_mapped(FrameSide::Right));
+    (px(top_gap), px(RAIL_ONLY_WIDTH + right_reserved), px(0.), px(0.))
 }
 
 fn content_window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
