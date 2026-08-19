@@ -978,7 +978,11 @@ fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) 
             None,
         ),
         WrapRole::ExclLeft => (
-            Size::new(px(inset_left), px(h)),
+            // T321 эррата: размер клампится до 1px, зона остаётся сырой.
+            // При мапленном рельсе инсет = 0, и нулевой размер в
+            // `window.open` уходит в `viewport.set_destination(0, h)` —
+            // протокольное нарушение `wp_viewport`, соединение убито.
+            Size::new(px(inset_left.max(1.0)), px(h)),
             Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT,
             "frame_wrap_excl_left",
             Layer::Overlay,
@@ -987,7 +991,7 @@ fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) 
             None,
         ),
         WrapRole::ExclRight => (
-            Size::new(px(inset_right), px(h)),
+            Size::new(px(inset_right.max(1.0)), px(h)),
             Anchor::TOP | Anchor::BOTTOM | Anchor::RIGHT,
             "frame_wrap_excl_right",
             Layer::Overlay,
@@ -996,7 +1000,7 @@ fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) 
             None,
         ),
         WrapRole::ExclBottom => (
-            Size::new(px(w), px(inset_bottom)),
+            Size::new(px(w), px(inset_bottom.max(1.0))),
             Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM,
             "frame_wrap_excl_bottom",
             Layer::Overlay,
@@ -1181,8 +1185,29 @@ fn sync_wrap_surfaces(cx: &mut App, cfg: &FrameConfig) {
         let Some(handle) = slots.slot(role).as_ref() else {
             continue;
         };
+        // T321 эррата: НУЛЕВОЙ размер в `resize` убивает соединение.
+        // Форк клампит размер только на ветке `set_geometry`
+        // (`Source/gpui_linux/.../wayland/window.rs:1553`,
+        // `map_size(|v| if v <= 0 { 1 } else { v })`), а в
+        // `viewport.set_destination` (`:1335`) уходит СЫРОЕ значение.
+        // `set_destination(0, h)` — протокольное нарушение `wp_viewport`
+        // («Size was <= 0»), после которого соединение убито и шелл
+        // теряет все поверхности.
+        //
+        // Ноль здесь штатный: при мапленном рельсе `wrap_inset_left/right`
+        // равен 0 — край держит сам рельс. Значит полосе нечего
+        // резервировать, но и ресайзить её в ноль нельзя: оставляем
+        // футпринт как есть (она ничего не красит и не берёт ввод) и
+        // двигаем только эксклюзивную зону.
+        //
+        // Найдено исполнителем T322 с точной строкой форка; регресс мой —
+        // в приёмке T321 я проверил смену геометрии и ни разу не открыл
+        // после неё панель.
+        let zero = f32::from(size.width) <= 0.0 || f32::from(size.height) <= 0.0;
         match handle.update(cx, |_, window: &mut Window, _| {
-            window.resize(size);
+            if !zero {
+                window.resize(size);
+            }
             window.set_exclusive_zone(px(zone));
         }) {
             Ok(()) => tracing::info!("frame: {role:?} geometry synced zone={zone}"),
