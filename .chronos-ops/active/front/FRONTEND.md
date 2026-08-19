@@ -7,21 +7,26 @@ packaging (это BACKEND).
 
 ## Очередь
 
-1. **T313** — `T313-theme-picker-and-mocha-mousse-scheme.md`. P2,
+1. **T318** — `T318-rail-as-frame-edge-implementation.md`. P1, СВОБОДЕН.
+   Реализация принятой спеки T315: шов и полоса-индикатор убраны,
+   пилюля, радиус апертуры 10, нижняя кромка 12, панель выезжает из
+   кромки рельса. Эталон — артборд в `.chronos-ops/design/`.
+2. **T313** — `T313-theme-picker-and-mocha-mousse-scheme.md`. P2,
    СВОБОДЕН. Picker схем со свотчами + схема Mocha Mousse.
-2. **T312** — `T312-frame-modes-normal-wrapped.md`. P2,
+3. **T312** — `T312-frame-modes-normal-wrapped.md`. P2,
    **СВОБОДЕН** (T314 принят). Два режима `normal`/`wrapped`, алиасы старых
    имён в `deserialize_style`.
-3. **T316** — `T316-bar-radius-closes-aperture-top.md`. P2,
-   **ЗАБЛОКИРОВАН T315** (дизайн задаёт радиус). Нижние углы бара
+4. **T316** — `T316-bar-radius-closes-aperture-top.md`. P2,
+   **ЗАБЛОКИРОВАН T318** (T315 принят, радиус = 10). Нижние углы бара
    замыкают апертуру сверху. Остаток T311 D4.
 
-4. **T317** — `T317-text-muted-wcag-contrast.md`. P2, СВОБОДЕН.
+5. **T317** — `T317-text-muted-wcag-contrast.md`. P2, СВОБОДЕН.
    `text.muted` не проходит WCAG: 2.91:1 в светлой, 3.36:1 в тёмной.
    Пересечение с T313 по `schemes.rs` — если оба в поле, T317 первым.
 
-T312 и T316 параллелить нельзя между собой — оба трогают раму.
-T316 идёт после T315 (дизайн задаёт радиус).
+T318, T312 и T316 параллелить нельзя — все трогают раму. Порядок:
+T318 → приёмка → T316 (берёт из него живой радиус) → T312.
+
 
 T313 независим от всех (зоны `crates/ui/src/theme/`,
 `side_panel_right/tab/bar_settings.rs`, `theme_config.rs`) — можно
