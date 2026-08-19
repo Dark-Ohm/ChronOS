@@ -907,6 +907,72 @@ fn wrap_geometry_changed(last: Option<&WrapConfig>, current: &WrapConfig) -> boo
     last != Some(current)
 }
 
+/// Last rail mapping the live wrap set was synchronized with
+/// (`RAIL_LEFT_BIT` / `RAIL_RIGHT_BIT`). The exclusive strips' zone values
+/// follow rail mapping (T314): a mapped rail IS the frame edge, its strip
+/// zone collapses to 0; a hidden rail leaves the `wrap.thickness` ring.
+/// Change signal for the live `set_exclusive_zone` pass — the strips are
+/// never recreated on a mapping change (the T311 D3 close+open attempt
+/// drowned in Hyprland `Protocol error invalid_object`).
+static LAST_RAIL_MAPPING: AtomicU8 = AtomicU8::new(0);
+
+fn rail_mapping_bits() -> u8 {
+    let mut bits = 0;
+    if rail_mapped(FrameSide::Left) {
+        bits |= RAIL_LEFT_BIT;
+    }
+    if rail_mapped(FrameSide::Right) {
+        bits |= RAIL_RIGHT_BIT;
+    }
+    bits
+}
+
+/// Pure decision: does the rail mapping differ from the last synchronized
+/// one? Split out of `apply_wrap` so the live-zone rule is unit-testable
+/// without an `App`.
+fn wrap_rail_mapping_changed(last: u8, current: u8) -> bool {
+    last != current
+}
+
+/// T314: live exclusive-zone pass over the already-open strips — the only
+/// mutation a rail mapping change performs. Never close+open here. The
+/// strips paint nothing and take no input, so the zone number alone
+/// describes the reservation (wlr-layer-shell `set_exclusive_zone` is a
+/// value, independent from the surface's pixel footprint — same contract
+/// as `side_panel_right/mod.rs:272`).
+fn sync_wrap_excl_zones(cx: &mut App, cfg: &FrameConfig) {
+    let targets = [
+        (
+            WrapRole::ExclLeft,
+            wrap_inset_left(cfg, rail_mapped(FrameSide::Left)),
+        ),
+        (
+            WrapRole::ExclRight,
+            wrap_inset_right(cfg, rail_mapped(FrameSide::Right)),
+        ),
+    ];
+    let mut slots = wrap_windows().lock().unwrap_or_else(|e| e.into_inner());
+    for (role, zone) in targets {
+        let Some(handle) = slots.slot(role).as_ref() else {
+            continue;
+        };
+        match handle.update(cx, |_, window: &mut Window, _| {
+            window.set_exclusive_zone(px(zone));
+        }) {
+            Ok(()) => tracing::info!("frame: {role:?} exclusive zone set to {zone}"),
+            Err(e) => tracing::warn!("frame: {role:?} zone update could not reach window ({e})"),
+        }
+    }
+    // The matte's per-edge borders read the same rail mapping — repaint it
+    // in the same frame so paint and reservation never diverge again
+    // (the T314 defect: the matte caught up on the next unrelated redraw).
+    if let Some(matte) = slots.matte.as_ref() {
+        if let Err(e) = matte.update(cx, |_, _window: &mut Window, cx| cx.notify()) {
+            tracing::warn!("frame: wrap matte notify could not reach window ({e})");
+        }
+    }
+}
+
 type AfterApplyHook = Box<dyn Fn(&mut App) + Send + Sync>;
 
 static AFTER_APPLY: OnceLock<Mutex<Option<AfterApplyHook>>> = OnceLock::new();
@@ -976,8 +1042,18 @@ fn apply_wrap(cx: &mut App, cfg: &FrameConfig) {
         *slot = Some(cfg.wrap.clone());
         changed
     };
+    // T314: rail mapping is the second live signal. The recreate path bakes
+    // the current mapping into the new surfaces; a mapping-only change runs
+    // the live zone pass on the existing set instead (never close+open).
+    let mapping_changed = {
+        let current = rail_mapping_bits();
+        wrap_rail_mapping_changed(LAST_RAIL_MAPPING.swap(current, Ordering::Relaxed), current)
+    };
+
     if geometry_changed {
         close_wrap_windows(cx);
+    } else if mapping_changed {
+        sync_wrap_excl_zones(cx, cfg);
     }
     open_wrap_windows(cx);
 }
@@ -1445,6 +1521,43 @@ mod tests {
         assert!(wrap_geometry_changed(Some(&base), &rounder));
         // Bottom-thickness edit (T311 D3) — recreate.
         assert!(wrap_geometry_changed(Some(&base), &slimmer_bottom));
+    }
+
+    #[test]
+    fn wrap_rail_mapping_changed_tracks_real_transitions() {
+        // Steady state: the same mapping re-applied (hot-reload churn,
+        // style transitions, repeated `apply`) must NOT trigger the live
+        // zone pass.
+        assert!(!wrap_rail_mapping_changed(0, 0));
+        assert!(!wrap_rail_mapping_changed(
+            RAIL_LEFT_BIT | RAIL_RIGHT_BIT,
+            RAIL_LEFT_BIT | RAIL_RIGHT_BIT
+        ));
+
+        // A rail maps — its strip's zone collapses to 0 (the rail becomes
+        // the frame edge).
+        assert!(wrap_rail_mapping_changed(0, RAIL_LEFT_BIT));
+        assert!(wrap_rail_mapping_changed(0, RAIL_RIGHT_BIT));
+
+        // A rail hides — the ring returns to that edge.
+        assert!(wrap_rail_mapping_changed(RAIL_LEFT_BIT, 0));
+        assert!(wrap_rail_mapping_changed(RAIL_RIGHT_BIT, 0));
+
+        // The second rail maps while the first stays — only the new edge
+        // changes, but the pass is per-set, so it must run.
+        assert!(wrap_rail_mapping_changed(
+            RAIL_LEFT_BIT,
+            RAIL_LEFT_BIT | RAIL_RIGHT_BIT
+        ));
+        // Mirror: one of two mapped rails hides.
+        assert!(wrap_rail_mapping_changed(
+            RAIL_LEFT_BIT | RAIL_RIGHT_BIT,
+            RAIL_RIGHT_BIT
+        ));
+
+        // Both edges flip in one transition (left hides, right maps) —
+        // still a single pass over both strips.
+        assert!(wrap_rail_mapping_changed(RAIL_LEFT_BIT, RAIL_RIGHT_BIT));
     }
 
     #[test]

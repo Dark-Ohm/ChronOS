@@ -272,7 +272,14 @@ fn content_window_margin(top_gap: f32) -> (gpui::Pixels, gpui::Pixels, gpui::Pix
     // `wrap.thickness` when the rail is gone. Use `wrap_inset_left`, not
     // `wrap_inset` — the old constant reserved space twice when both the
     // rail and its own ExclLeft strip were open.
-    let left_reserved = frame::wrap_inset_left_cached(frame::rail_mapped(FrameSide::Left));
+    //
+    // T314: the flag passed below is the coexistence invariant, NOT the
+    // live `rail_mapped()` read — content only ever opens in the same
+    // two-surface commit as its rail, but `set_rail_mapped(true)` lands
+    // AFTER both windows are open, so a live read here sees the pre-commit
+    // `false` and bakes a stale `wrap.thickness` into the margin (content
+    // at x=56 instead of x=40, measured live).
+    let left_reserved = frame::wrap_inset_left_cached(true);
     (px(top_gap), px(0.), px(0.), px(tabs::RAIL_WIDTH + left_reserved))
 }
 
