@@ -113,7 +113,7 @@ GPUI «gpui-ce chronos edition», path-deps). **Первое чтение каж
   переписал их целиком — все три были вне git (`docs/orchestration/` в
   `.gitignore` с 2026-07-19), без `archive/`-копии. История потеряна
   безвозвратно, backup не нашёлся нигде (trash, git log, snapper — только
-  `root`-конфиг, не `/home`). Подробности — .chronos-ops/checkpoint/log/handoff.log 2026-07-22.
+  `root`-конфиг, не `/home`). Подробности — .chronos-ops/checkpoint/log/handoff-2026-07.log 2026-07-22.
 
 ## Код — правила (принесено из сравнения с Chronos-FM, 2026-07-18)
 - **Линты воркспейса включены** (`Cargo.toml`): `unsafe_code = deny`

@@ -8,7 +8,8 @@
 ## Что читать первым
 
 1. **`.chronos-ops/checkpoint/HANDOFF.md`** — где стоим сейчас, кто в поле,
-   очередь, кровные факты. История сессий — `checkpoint/log/handoff.log` (архив).
+   очередь, кровные факты. История сессий — `checkpoint/log/` (архив,
+   разложен по месяцам, точка входа `log/INDEX.md`).
 2. `AGENTS.md` — кто ты и где берешь работу.
 3. `.chronos-ops/checkpoint/ARCHITECTURE.md` — что решено.
    `.chronos-ops/checkpoint/REJECTED.md` — что отвергнуто и почему.
