@@ -309,3 +309,10 @@ Hermes/OmniRoute, не ChronOS. → отдельной задачей или в 
 - ~~Theme toggle Super+Shift+T + theme.toml~~ — `d52d06d` + config.
 - ~~Theme panels critical (user grim dark+light)~~ → 2026-07-26 accepted by user.
 - ~~T129 as active push~~ → PARKED 2026-07-26 (partial code remains).
+- `~/.config/chronos/bar.toml:37` — протухшая запись `workspace_mode`.
+  Виджет убран из `BUILTIN_NAMES` в T292 (пилюля переехала на правый
+  рельс, `layout_config.rs:618-621`), неизвестное имя молча
+  отбрасывается — это документированный инвариант, не баг. Почистить
+  конфиг владельца при случае. Найдено повторным прогоном T309
+  2026-08-19 (причина в отчёте описана наоборот — «виджета нет в
+  bar.toml»; он там есть, его нет среди builtin).
