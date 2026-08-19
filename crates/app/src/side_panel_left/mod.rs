@@ -269,7 +269,7 @@ fn content_window_margin(top_gap: f32) -> (gpui::Pixels, gpui::Pixels, gpui::Pix
     // gains the wrap-reserved space on top of the rail width. After D3 the
     // wrap inset on the left edge collapses to ZERO when the left rail is
     // mapped (the rail already owns that edge), and stays at full
-    // `wrap.thickness` when the rail is gone. Use `wrap_inset_left`, not
+    // `wrap.left` when the rail is gone. Use `wrap_inset_left`, not
     // `wrap_inset` — the old constant reserved space twice when both the
     // rail and its own ExclLeft strip were open.
     //
@@ -277,7 +277,7 @@ fn content_window_margin(top_gap: f32) -> (gpui::Pixels, gpui::Pixels, gpui::Pix
     // live `rail_mapped()` read — content only ever opens in the same
     // two-surface commit as its rail, but `set_rail_mapped(true)` lands
     // AFTER both windows are open, so a live read here sees the pre-commit
-    // `false` and bakes a stale `wrap.thickness` into the margin (content
+    // `false` and bakes a stale `wrap.left` into the margin (content
     // at x=56 instead of x=40, measured live).
     let left_reserved = frame::wrap_inset_left_cached(true);
     (px(top_gap), px(0.), px(0.), px(tabs::RAIL_WIDTH + left_reserved))

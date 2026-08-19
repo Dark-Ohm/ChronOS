@@ -27,8 +27,10 @@ pub(crate) use shell::ShellTab;
 use crate::side_panel_left::state::geometry;
 
 /// Standalone rail width — pixel footprint of the `rail` layer-shell surface.
-/// Identical to T276's `side_panel_right::RAIL_ONLY_WIDTH`.
-pub const RAIL_WIDTH: f32 = 40.0;
+/// Single source lives in `crate::frame::RAIL_WIDTH` (the frame needs it for
+/// the hide-strip insets and the aperture ring; panels re-export it so there
+/// is never a second copy to drift out of sync — T319).
+pub(crate) use crate::frame::RAIL_WIDTH;
 
 /// Width of the transparent resize handle overlay. Does not consume any of
 /// `RAIL_WIDTH`; the handle floats above the canvas's outer edge.

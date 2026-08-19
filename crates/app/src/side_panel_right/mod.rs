@@ -56,7 +56,9 @@ use crate::side_panel_right::view::SidePanelRightView;
 // T276: standalone rail is the full fixed 40px surface. The resize handle is
 // a 4px overlay on the moving LEFT edge of visible content; it is not part of
 // rail geometry and consumes no extra width.
-pub(crate) const RAIL_WIDTH: f32 = 40.;
+// T319: single source of truth lives in `frame::RAIL_WIDTH`; re-export so the
+// panel and the frame can never drift apart.
+pub(crate) use crate::frame::RAIL_WIDTH;
 pub(crate) const HANDLE_WIDTH: f32 = 4.;
 pub(crate) const RAIL_ONLY_WIDTH: f32 = RAIL_WIDTH;
 /// Default full-content width when docked or user-resized.
@@ -320,14 +322,14 @@ fn content_window_margin(top_gap: f32) -> (gpui::Pixels, gpui::Pixels, gpui::Pix
     // gains the wrap-reserved space on top of the rail width. After D3 the
     // wrap inset on the right edge collapses to ZERO when the right rail is
     // mapped (the rail already owns that edge), and stays at full
-    // `wrap.thickness` when the rail is gone. Use `wrap_inset_right`, not
+    // `wrap.right` when the rail is gone. Use `wrap_inset_right`, not
     // `wrap_inset`.
     //
     // T314: the flag passed below is the coexistence invariant, NOT the
     // live `rail_mapped()` read — content only ever opens in the same
     // two-surface commit as its rail, but `set_rail_mapped(true)` lands
     // AFTER both windows are open, so a live read here sees the pre-commit
-    // `false` and bakes a stale `wrap.thickness` into the margin (content
+    // `false` and bakes a stale `wrap.right` into the margin (content
     // 16px off the rail, measured live).
     let right_reserved = frame::wrap_inset_right_cached(true);
     (px(top_gap), px(RAIL_ONLY_WIDTH + right_reserved), px(0.), px(0.))
