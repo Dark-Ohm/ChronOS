@@ -7,18 +7,21 @@ packaging (это BACKEND).
 
 ## Очередь
 
-1. **T319** — `T319-per-edge-frame-geometry-config.md`. P2, СВОБОДЕН.
+1. **T320** — `T320-tabs-in-normal-popups-in-wrapped.md`. P1, СВОБОДЕН.
+   Вкладки в `normal`, попапы в `wrapped`. Маршрут зависит от режима,
+   сводится в одну точку (клик рельса, виджеты бара, IPC).
+2. **T319** — `T319-per-edge-frame-geometry-config.md`. P2, СВОБОДЕН.
    Геометрия оболочки по каждому краю в конфиге, а не только высота
    бара. Плюс свести `RAIL_WIDTH` и `RAIL_INSET` к одному источнику.
-2. **T316** — `T316-bar-radius-closes-aperture-top.md`. P2, СВОБОДЕН
+3. **T316** — `T316-bar-radius-closes-aperture-top.md`. P2, СВОБОДЕН
    (T318 принят, радиус = 10). Нижние углы бара замыкают апертуру
    сверху. Остаток T311 D4.
-3. **T312** — `T312-frame-modes-normal-wrapped.md`. P2, СВОБОДЕН.
+4. **T312** — `T312-frame-modes-normal-wrapped.md`. P2, СВОБОДЕН.
    Два режима `normal`/`wrapped`, алиасы старых имён в
    `deserialize_style`.
-4. **T313** — `T313-theme-picker-and-mocha-mousse-scheme.md`. P2,
+5. **T313** — `T313-theme-picker-and-mocha-mousse-scheme.md`. P2,
    СВОБОДЕН. Picker схем со свотчами + схема Mocha Mousse.
-5. **T317** — `T317-text-muted-wcag-contrast.md`. P2, СВОБОДЕН.
+6. **T317** — `T317-text-muted-wcag-contrast.md`. P2, СВОБОДЕН.
    `text.muted` не проходит WCAG: 2.91:1 в светлой, 3.36:1 в тёмной.
    Пересечение с T313 по `schemes.rs` — если оба в поле, T317 первым.
 
