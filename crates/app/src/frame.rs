@@ -415,6 +415,21 @@ pub fn wrap_inset() -> f32 {
 // side that hosts a rail and stay at `wrap.thickness` on the rail-free
 // side. The pure helpers take an explicit `*_rail_mapped` flag so unit
 // tests do not need to mutate the global `RAIL_MAPPED` atomic.
+//
+// The four corners of the aperture ("what windows + wallpaper see") each
+// land on a different surface (T311 D4):
+//
+// - upper-left, upper-right — painted by the side rails (`rounded_tl` /
+//   `rounded_tr` at the rail root, T217). Out of frame's scope per brief.
+// - lower-left, lower-right — painted by the matte itself via the single
+//   `.rounded(px(radius))` on the matte div, with `border_b(inset_bottom)`
+//   carrying the bottom plate. Same `wrap.inner_radius` constant drives
+//   both — there is no second magic number for the lower corners.
+//
+// The bar's lower edge is the canonical top edge of the aperture; if its
+// `appearance.radius` ever desynchronises from `wrap.inner_radius`, the
+// upper corners read as a flat seam (T311 D4 — see report for the open
+// follow-up: bar.rs is out of scope for this ticket).
 
 /// Top edge — always 0; the bar is the top edge of the chrome, not the
 /// frame.
