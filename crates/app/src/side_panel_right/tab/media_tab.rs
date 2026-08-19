@@ -2,9 +2,8 @@
 //!
 //! Owns exactly one service subscription (`MprisState`, same pattern as the
 //! System tab's mpris watch) and renders the shared card unchanged. No
-//! backend logic here — `services::mpris` is not touched; this tab only
-//! gives the control-center popup a Media surface (reference tab bar
-//! "Dashboard / Media / Performance / Workspaces").
+//! backend logic here — `services::mpris` is not touched; this tab is the
+//! panel's "now playing" surface (T320 moved it onto the rail).
 
 use chronos_services::{MprisState, Service};
 use gpui::{Context, IntoElement, Render, Window, div, prelude::*, px};

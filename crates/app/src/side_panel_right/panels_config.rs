@@ -62,6 +62,8 @@ fn default_dev_top() -> Vec<String> {
         "updates".into(),
         // T293: Notifications — same slot as for_mode (after Updates).
         "notifications".into(),
+        // T320: Media (now playing) — at-a-glance cluster.
+        "media".into(),
         "files".into(),
         "preview".into(),
         "hyprland_binds".into(),
@@ -71,8 +73,13 @@ fn default_dev_top() -> Vec<String> {
 
 fn default_dev_bottom() -> Vec<String> {
     // T296: Display (brightness + wallpaper) is the first button of the
-    // bottom group, immediately above shell settings.
-    vec!["display".into(), "editor_settings".into()]
+    // bottom group, immediately above shell settings. T320: Launcher
+    // settings slots between Display and System settings.
+    vec![
+        "display".into(),
+        "launcher_settings".into(),
+        "editor_settings".into(),
+    ]
 }
 
 fn default_gamer_top() -> Vec<String> {
@@ -82,6 +89,8 @@ fn default_gamer_top() -> Vec<String> {
         "updates".into(),
         // T293: Notifications — same slot as for_mode (after Updates).
         "notifications".into(),
+        // T320: Media (now playing) — at-a-glance cluster.
+        "media".into(),
         "library".into(),
         "captures".into(),
         "acp_settings".into(),
@@ -90,8 +99,13 @@ fn default_gamer_top() -> Vec<String> {
 }
 
 fn default_gamer_bottom() -> Vec<String> {
-    // T296: Display (brightness + wallpaper) leads the bottom group in Gamer too.
-    vec!["display".into(), "editor_settings".into()]
+    // T296: Display (brightness + wallpaper) leads the bottom group in Gamer
+    // too. T320: Launcher settings slots between Display and System settings.
+    vec![
+        "display".into(),
+        "launcher_settings".into(),
+        "editor_settings".into(),
+    ]
 }
 
 impl Default for RailGroups {
@@ -609,10 +623,12 @@ mod tests {
                 "files",
                 "updates",
                 "notifications",
+                "media",
                 "preview",
                 "hyprland_binds",
                 "acp_settings",
-                "display"
+                "display",
+                "launcher_settings"
             ]
         );
         assert_eq!(dev.bottom, vec!["editor_settings"]);
@@ -668,9 +684,10 @@ mod tests {
     #[test]
     fn move_within_top_group_swaps() {
         let mut cfg = PanelLayoutConfig::default();
-        // Developer top: [system, updates, notifications, files, preview,
-        // hyprland_binds, acp_settings]. Move files (index 3) up (delta -1)
-        // → swaps with notifications: [system, updates, files, ...].
+        // Developer top: [system, updates, notifications, media, files,
+        // preview, hyprland_binds, acp_settings]. Move files (index 4) up
+        // (delta -1) → swaps with media: [system, updates, notifications,
+        // files, media, ...].
         assert!(cfg.move_tab(WorkspaceMode::Developer, PanelTab::Files, -1));
         let top: Vec<&str> = cfg
             .right
@@ -682,8 +699,9 @@ mod tests {
             .collect();
         assert_eq!(top[0], "system");
         assert_eq!(top[1], "updates");
-        assert_eq!(top[2], "files");
-        assert_eq!(top[3], "notifications");
+        assert_eq!(top[2], "notifications");
+        assert_eq!(top[3], "files");
+        assert_eq!(top[4], "media");
     }
 
     #[test]
@@ -703,8 +721,8 @@ mod tests {
     #[test]
     fn move_last_in_bottom_crosses_to_top() {
         let mut cfg = PanelLayoutConfig::default();
-        // editor_settings is the only item in bottom (index 0, len 1).
-        // delta +1 → new_idx = 1 >= len → cross to start of top.
+        // editor_settings is the last item in bottom (index 2, len 3).
+        // delta +1 → new_idx = 3 >= len → cross to start of top.
         assert!(cfg.move_tab(
             WorkspaceMode::Developer,
             PanelTab::EditorSettings,
@@ -731,13 +749,15 @@ mod tests {
         let cfg = PanelLayoutConfig::default();
         let (top, bottom) = resolve_grouped(WorkspaceMode::Developer, &cfg);
         // system, updates, notifications, files, preview, hyprland_binds, acp_settings
-        assert_eq!(top.len(), 7);
+        assert_eq!(top.len(), 8);
         assert_eq!(top[0], PanelTab::System);
         assert_eq!(top[1], PanelTab::Updates); // T294
         assert_eq!(top[2], PanelTab::Notifications); // T293
-        assert_eq!(bottom.len(), 2); // display, editor_settings
+        assert_eq!(top[3], PanelTab::Media); // T320
+        assert_eq!(bottom.len(), 3); // display, launcher_settings, editor_settings
         assert_eq!(bottom[0], PanelTab::Display);
-        assert_eq!(bottom[1], PanelTab::EditorSettings);
+        assert_eq!(bottom[1], PanelTab::LauncherSettings);
+        assert_eq!(bottom[2], PanelTab::EditorSettings);
     }
 
     #[test]

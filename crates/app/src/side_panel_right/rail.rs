@@ -11,7 +11,7 @@
 //! icon gets ▲/▼ move arrows and an `accent.primary.opacity(0.45)` frame,
 //! mirroring the bar's edit chrome.
 
-use gpui::{App, Bounds, Hsla, IntoElement, SharedString, Window, canvas, div, prelude::*, px, svg};
+use gpui::{App, Hsla, IntoElement, SharedString, Window, div, prelude::*, px, svg};
 
 use chronos_ui::Theme;
 
@@ -19,7 +19,6 @@ use crate::side_panel_right::surfaces;
 use crate::side_panel_right::tabs::PanelTab;
 use crate::workspace_mode;
 
-use std::cell::Cell;
 use std::rc::Rc;
 
 // T204: single source of truth for rail width lives in `side_panel_right::mod`
@@ -44,36 +43,21 @@ fn render_rail_button(
     tab: PanelTab,
     is_active: bool,
     editing: bool,
-    on_select: Rc<dyn Fn(PanelTab, Bounds<gpui::Pixels>, &mut Window, &mut App) + 'static>,
+    on_select: Rc<dyn Fn(PanelTab, &mut Window, &mut App) + 'static>,
     on_move: Rc<dyn Fn(PanelTab, isize, &mut App) + 'static>,
     theme: &Theme,
 ) -> impl IntoElement {
-    // T305: the icon's LIVE laid-out bounds (window-local) are captured on
-    // paint and handed to the click handler — the control-center popup anchors
-    // to them (never a cached constant, never `window.bounds()`).
-    let bounds_cell: Rc<Cell<Bounds<gpui::Pixels>>> = Rc::new(Cell::new(Bounds::default()));
     let icon = div()
         .id(("rail-tab", tab as usize))
-        .relative()
         .flex()
         .items_center()
         .justify_center()
         .size(px(BUTTON_SIZE))
         .rounded(theme.radius)
         .bg(rail_button_bg(is_active, theme))
-        .child({
-            let cell_for_canvas = bounds_cell.clone();
-            canvas(
-                |bounds, _window, _cx| bounds,
-                move |_bounds, captured, _window, _cx| cell_for_canvas.set(captured),
-            )
-            .absolute()
-            .inset_0()
-        })
         .on_click({
             let on_select = on_select.clone();
-            let bounds_cell = bounds_cell.clone();
-            move |_, window, cx| on_select(tab, bounds_cell.get(), window, cx)
+            move |_, window, cx| on_select(tab, window, cx)
         })
         .child(
             svg()
@@ -153,7 +137,7 @@ fn render_group(
     tabs: &[PanelTab],
     active: PanelTab,
     editing: bool,
-    on_select: &Rc<dyn Fn(PanelTab, Bounds<gpui::Pixels>, &mut Window, &mut App) + 'static>,
+    on_select: &Rc<dyn Fn(PanelTab, &mut Window, &mut App) + 'static>,
     on_move: &Rc<dyn Fn(PanelTab, isize, &mut App) + 'static>,
     theme: &Theme,
 ) -> impl IntoElement {
@@ -179,7 +163,7 @@ pub fn render_rail(
     top_tabs: &[PanelTab],
     bottom_tabs: &[PanelTab],
     active: PanelTab,
-    on_select: Rc<dyn Fn(PanelTab, Bounds<gpui::Pixels>, &mut Window, &mut App) + 'static>,
+    on_select: Rc<dyn Fn(PanelTab, &mut Window, &mut App) + 'static>,
     dock_content: bool,
     on_dock_toggle: Rc<dyn Fn(&mut Window, &mut App) + 'static>,
     editing: bool,

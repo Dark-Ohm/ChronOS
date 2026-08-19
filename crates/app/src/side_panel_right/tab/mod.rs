@@ -71,8 +71,8 @@ pub(crate) enum TabContent {
     Notifications(gpui::Entity<NotificationsTab>),
     // T265-G: Launcher settings — grid/search/favorites/hidden-apps page.
     LauncherSettings(gpui::Entity<LauncherSettingsTab>),
-    // T305: Media — thin wrapper over `render_mpris_card`, created only by
-    // the control-center popup.
+    // T305/T320: Media — thin wrapper over `render_mpris_card`. A normal
+    // right-panel tab (T320 moved it out of the removed control-center popup).
     Media(gpui::Entity<MediaTab>),
     Placeholder(gpui::Entity<EmptyTab>),
 }
@@ -122,7 +122,7 @@ impl TabContent {
             PanelTab::LauncherSettings => {
                 TabContent::LauncherSettings(cx.new(|cx| LauncherSettingsTab::new(cx)))
             }
-            // T305: Media — thin mpris card wrapper, popup-only tab.
+            // T320: Media — thin mpris card wrapper, right-panel tab.
             PanelTab::Media => TabContent::Media(cx.new(|cx| MediaTab::new(cx))),
             PanelTab::Scenes
             | PanelTab::Captures => TabContent::Placeholder(cx.new(|cx| EmptyTab::new(tab, cx))),

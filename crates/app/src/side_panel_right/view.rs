@@ -586,7 +586,7 @@ impl Render for SidePanelRightView {
                         TabContent::Notifications(entity) => col.child(entity.clone()),
                         // T265-G: Launcher settings page.
                         TabContent::LauncherSettings(entity) => col.child(entity.clone()),
-                        // T305: Media — control-center popup tab.
+                        // T320: Media — right-panel tab.
                         TabContent::Media(entity) => col.child(entity.clone()),
                         TabContent::Placeholder(entity) => col.child(entity.clone()),
                     };
@@ -654,7 +654,7 @@ impl SidePanelRightView {
             TabContent::Notifications(e) => e.entity_id(),
             // T265-G: Launcher settings page.
             TabContent::LauncherSettings(e) => e.entity_id(),
-            // T305: Media — control-center popup tab.
+            // T320: Media — right-panel tab.
             TabContent::Media(e) => e.entity_id(),
             TabContent::Placeholder(e) => e.entity_id(),
         })

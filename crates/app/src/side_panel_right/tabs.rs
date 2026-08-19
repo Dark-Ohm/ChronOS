@@ -11,16 +11,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_has_twenty_tabs_in_fixed_order() {
+    fn all_has_twenty_two_tabs_in_fixed_order() {
         // §4.1 spec: Developer sees System + Updates (T294) + Notifications
         // (T293) + 7 work tools (Files/Editor/Terminal/Preview/Inspector/
         // Build/SourceControl) + 6 settings (AcpSettings/McpSettings/
         // LspSettings/ApiProviders/EditorSettings/HyprlandBinds). §4.2 adds
         // three Gamer at-rest hub tools (Library/Scenes/Captures) to the
         // full catalog, slotted between the work tools and the settings
-        // group. `for_mode(Developer)` excludes them — they live in `ALL` for
-        // icon/label/coverage, not the dev rail.
-        assert_eq!(PanelTab::ALL.len(), 21);
+        // group. T320 appends Media (was popup-only) as the final entry.
+        // `for_mode(Developer)` excludes the gamer hub — those live in `ALL`
+        // for icon/label/coverage, not the dev rail.
+        assert_eq!(PanelTab::ALL.len(), 22);
         assert_eq!(PanelTab::ALL[0], PanelTab::System);
         assert_eq!(PanelTab::ALL[1], PanelTab::Updates);
         assert_eq!(PanelTab::ALL[2], PanelTab::Notifications);
@@ -42,6 +43,7 @@ mod tests {
         assert_eq!(PanelTab::ALL[18], PanelTab::HyprlandBinds);
         assert_eq!(PanelTab::ALL[19], PanelTab::Display);
         assert_eq!(PanelTab::ALL[20], PanelTab::LauncherSettings);
+        assert_eq!(PanelTab::ALL[21], PanelTab::Media);
     }
 
     #[test]
@@ -270,11 +272,12 @@ mod tests {
     // --- T169: composition rules per §4.1 + §5 ---
 
     #[test]
-    fn developer_rail_is_nine_product_tabs() {
-        // T192 product cut + T294 Updates + T293 Notifications: Developer
-        // default rail ships System, Updates, Notifications, Files, Editor
-        // (Preview relabeled, real edit is T194), Hyprland binds, ACP agents,
-        // Display, System settings.
+    fn developer_rail_is_eleven_product_tabs() {
+        // T192 product cut + T294 Updates + T293 Notifications + T320 Media
+        // & Launcher settings: Developer default rail ships System, Updates,
+        // Notifications, Media, Files, Editor (Preview relabeled, real edit
+        // is T194), Hyprland binds, ACP agents, Display, Launcher settings,
+        // System settings.
         let dev = PanelTab::for_mode(WorkspaceMode::Developer);
         assert_eq!(
             dev,
@@ -282,11 +285,13 @@ mod tests {
                 PanelTab::System,
                 PanelTab::Updates,
                 PanelTab::Notifications,
+                PanelTab::Media,
                 PanelTab::Files,
                 PanelTab::Preview,
                 PanelTab::HyprlandBinds,
                 PanelTab::AcpSettings,
                 PanelTab::Display,
+                PanelTab::LauncherSettings,
                 PanelTab::EditorSettings,
             ]
         );
@@ -311,11 +316,11 @@ mod tests {
     }
 
     #[test]
-    fn gamer_rail_is_nine_product_tabs() {
-        // T192 product cut + T294 Updates + T293 Notifications: Gamer
-        // default rail ships System, Updates, Notifications, Library,
-        // Captures (honest empty — no capture backend), Display, then the
-        // same three settings tabs as Developer.
+    fn gamer_rail_is_eleven_product_tabs() {
+        // T192 product cut + T294 Updates + T293 Notifications + T320 Media
+        // & Launcher settings: Gamer default rail ships System, Updates,
+        // Notifications, Media, Library, Captures (honest empty — no capture
+        // backend), then the same settings tabs as Developer.
         let gamer = PanelTab::for_mode(WorkspaceMode::Gamer);
         assert_eq!(
             gamer,
@@ -323,10 +328,12 @@ mod tests {
                 PanelTab::System,
                 PanelTab::Updates,
                 PanelTab::Notifications,
+                PanelTab::Media,
                 PanelTab::Library,
                 PanelTab::Captures,
                 PanelTab::AcpSettings,
                 PanelTab::Display,
+                PanelTab::LauncherSettings,
                 PanelTab::EditorSettings,
                 PanelTab::HyprlandBinds,
             ]
@@ -522,15 +529,15 @@ pub enum PanelTab {
     Notifications,
     // T265-G: launcher settings — grid/search/favorites/hidden apps page.
     LauncherSettings,
-    // T305: Media — thin tab wrapping `render_mpris_card`. Lives only in the
-    // control-center popup (never on the rail — deliberately absent from
-    // `ALL`), opened from the popup's own tab bar.
+    // T305/T320: Media — thin tab wrapping `render_mpris_card`. A normal
+    // right-panel tab on the rail (T320 moved it out of the removed
+    // control-center popup).
     Media,
 }
 
 impl PanelTab {
     /// Full catalog — every tab that exists. Coverage tests iterate this.
-    pub const ALL: [PanelTab; 21] = [
+    pub const ALL: [PanelTab; 22] = [
         PanelTab::System,
         PanelTab::Updates,
         PanelTab::Notifications,
@@ -552,6 +559,9 @@ impl PanelTab {
         PanelTab::HyprlandBinds,
         PanelTab::Display,
         PanelTab::LauncherSettings,
+        // T320: Media joins the catalog now that it lives on the rail
+        // (was popup-only, deliberately absent before).
+        PanelTab::Media,
     ];
 
     /// Stable id for scene overrides (`scenes.toml` `rail_tabs`).
@@ -641,11 +651,17 @@ impl PanelTab {
                 PanelTab::Updates,
                 // T293: Notifications — history list, replaces the popup.
                 PanelTab::Notifications,
+                // T320: Media (now playing) — same at-a-glance cluster as
+                // System/Updates/Notifications.
+                PanelTab::Media,
                 PanelTab::Files,
                 PanelTab::Preview,
                 PanelTab::HyprlandBinds,
                 PanelTab::AcpSettings,
                 PanelTab::Display,
+                // T320: Launcher settings joins the settings cluster,
+                // before the System settings that sit above the dock.
+                PanelTab::LauncherSettings,
                 PanelTab::EditorSettings,
             ],
             WorkspaceMode::Gamer => vec![
@@ -654,10 +670,15 @@ impl PanelTab {
                 PanelTab::Updates,
                 // T293: Notifications — history list, replaces the popup.
                 PanelTab::Notifications,
+                // T320: Media (now playing) — same at-a-glance cluster as
+                // System/Updates/Notifications.
+                PanelTab::Media,
                 PanelTab::Library,
                 PanelTab::Captures,
                 PanelTab::AcpSettings,
                 PanelTab::Display,
+                // T320: Launcher settings joins the settings cluster.
+                PanelTab::LauncherSettings,
                 PanelTab::EditorSettings,
                 PanelTab::HyprlandBinds,
             ],
@@ -728,7 +749,7 @@ impl PanelTab {
             PanelTab::Notifications => "Notifications",
             // T265-G: launcher settings page.
             PanelTab::LauncherSettings => "Launcher",
-            // T305: Media — popup-only tab.
+            // T320: Media — right-panel tab (was popup-only until T320).
             PanelTab::Media => "Media",
         }
     }

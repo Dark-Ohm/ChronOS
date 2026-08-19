@@ -16,7 +16,7 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, Bounds, Context, Entity, IntoElement, Pixels, Render, Subscription, WeakEntity, Window,
+    App, Context, Entity, IntoElement, Render, Subscription, WeakEntity, Window,
     div, prelude::*, px,
 };
 
@@ -51,14 +51,10 @@ impl Render for RailView {
         let (top_tabs, bottom_tabs) = panels_config::resolve_grouped(current_mode, &panel_cfg);
         let editing = edit_mode::is_active(cx);
         let dock_content = cx.global::<SidePanelRightState>().dock_content;
-        // T305: while the control-center popup is open its tab owns the
-        // highlight; otherwise the panel's active tab does.
-        let active = crate::side_panel_right::control_center::active_tab(cx)
-            .or_else(|| {
-                self.content
-                    .upgrade()
-                    .map(|v| v.read(cx).active_tab())
-            })
+        let active = self
+            .content
+            .upgrade()
+            .map(|v| v.read(cx).active_tab())
             .unwrap_or_default();
 
         // T276: rail owns the exclusive zone — content's own is pinned at
@@ -85,23 +81,11 @@ impl Render for RailView {
         let corner_tr = crate::state::panel_corner_radius(display_w);
 
         let content_for_select = self.content.clone();
-        let on_select = Rc::new(
-            move |tab: PanelTab, bounds: Bounds<Pixels>, _window: &mut Window, cx: &mut App| {
-                // T305: settings tabs never touch the panel content — the
-                // click opens (or remaps/closes) the control-center popup
-                // anchored to this icon's live bounds.
-                if crate::side_panel_right::control_center::is_popup_tab(tab) {
-                    crate::side_panel_right::control_center::toggle(bounds, tab, cx);
-                    return;
-                }
-                // A work-tool click dismisses an open popup so it cannot
-                // linger over the newly opened panel content.
-                crate::side_panel_right::control_center::close(cx);
-                if let Some(view) = content_for_select.upgrade() {
-                    view.update(cx, |view, cx| view.on_tab_select(tab, cx));
-                }
-            },
-        );
+        let on_select = Rc::new(move |tab: PanelTab, _window: &mut Window, cx: &mut App| {
+            if let Some(view) = content_for_select.upgrade() {
+                view.update(cx, |view, cx| view.on_tab_select(tab, cx));
+            }
+        });
 
         let content_for_dock = self.content.clone();
         let on_dock_toggle = Rc::new(move |_window: &mut Window, cx: &mut App| {

@@ -26,7 +26,6 @@
 //! `KeyboardInteractivity::None` doesn't deliver key events). Dismiss is
 //! re-toggle / click-away (pinned) / mouse-leave debounce (peek).
 
-pub(crate) mod control_center;
 mod disks;
 mod header;
 mod hover_strip;
@@ -533,11 +532,6 @@ pub fn close_peek_if_not_pinned(cx: &mut App) {
 /// here means the handle was taken but the window never closed, i.e. a
 /// ghost.
 pub fn close(cx: &mut App) {
-    // T305: un-mapping the rail closes the control-center popup too — a
-    // popup must never outlive the rail it is anchored to (ghost-window
-    // class, launcher/tray_menu saga 2026-07-18). Hooked BEFORE the
-    // early-return so a stray popup with an already-closed panel still dies.
-    control_center::close(cx);
     let state = cx.global_mut::<SidePanelRightState>();
     let rail_handle = state.rail_handle.take();
     let content_handle = state.content_handle.take();
@@ -603,9 +597,6 @@ pub fn apply_frame_inset(cx: &mut App) {
 /// surface is closed via its own handle instead.
 #[allow(dead_code)] // reserved for a future click-away / dismiss control
 pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
-    // T305: same rule as `close` — this is the second (in-callback) un-map
-    // path; a popup must not survive it.
-    control_center::close(cx);
     let this = window.window_handle();
     let state = cx.global::<SidePanelRightState>();
     let is_rail = state
@@ -816,7 +807,6 @@ pub fn preview_target(path: std::path::PathBuf, cx: &mut App) {
 pub fn init(cx: &mut App) {
     cx.set_global(SidePanelRightState::default());
     cx.set_global(preview_target::PreviewTarget::default());
-    control_center::init(cx);
     // Load from disk once before any render runs. The watcher only fires on
     // file CHANGES, so without this call a user-saved panels.toml would be
     // silently ignored until the next save — first paint would always show
