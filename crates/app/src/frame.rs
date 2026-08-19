@@ -1029,12 +1029,14 @@ fn wrap_window_options(role: WrapRole, display_id: Option<DisplayId>, cx: &App) 
 }
 
 /// Open matte + three dummies as one set. Partial open is refused — if any
-/// surface fails, everything already opened is rolled back.
-fn open_wrap_windows(cx: &mut App) {
+/// surface fails, everything already opened is rolled back and `false` is
+/// returned so the caller can keep the previous style alive instead of
+/// landing in a frame-less half-state (T321).
+fn open_wrap_windows(cx: &mut App) -> bool {
     {
         let slots = wrap_windows().lock().unwrap_or_else(|e| e.into_inner());
         if slots.matte.is_some() {
-            return;
+            return true;
         }
     }
     let display_id = crate::monitor::pult_display_id_or_primary(cx);
@@ -1059,7 +1061,7 @@ fn open_wrap_windows(cx: &mut App) {
                         ),
                     }
                 }
-                return;
+                return false;
             }
         }
     }
@@ -1067,6 +1069,7 @@ fn open_wrap_windows(cx: &mut App) {
     for (role, handle) in opened {
         *slots.slot(role) = Some(handle);
     }
+    true
 }
 
 /// Close all four wrap surfaces (idempotent).
@@ -1095,10 +1098,10 @@ const STYLE_ID_WRAP: u8 = 1;
 /// re-triggers panel geometry via `after_apply`.
 static LAST_STYLE: AtomicU8 = AtomicU8::new(STYLE_ID_HIDE);
 
-/// Last applied sanitized wrap geometry. The matte's negative margin and the
-/// exclusive strips' size/zone are baked in at surface-open time, so a
-/// thickness/radius edit on a live Wrap shell must recreate the set
-/// (T307) — the bar/Hide strip hot-reload live, the wrap surfaces did not.
+/// Last applied sanitized wrap geometry. T321: geometry is mutated live
+/// (`window.resize` + `set_exclusive_zone` on the strips, repaint on the
+/// matte) — the old close+open recreate raced the compositor and dropped the
+/// adapter. The tracking only decides whether a live sync is needed.
 static LAST_WRAP_GEOMETRY: OnceLock<Mutex<Option<WrapConfig>>> = OnceLock::new();
 
 fn last_wrap_geometry() -> &'static Mutex<Option<WrapConfig>> {
@@ -1107,7 +1110,7 @@ fn last_wrap_geometry() -> &'static Mutex<Option<WrapConfig>> {
 
 /// Pure decision: does `current` wrap geometry differ from the last applied
 /// one? `None` (first apply) counts as a change. Split out of `apply_wrap`
-/// so the recreate rule is unit-testable without an `App`.
+/// so the live-sync rule is unit-testable without an `App`.
 fn wrap_geometry_changed(last: Option<&WrapConfig>, current: &WrapConfig) -> bool {
     last != Some(current)
 }
@@ -1139,37 +1142,55 @@ fn wrap_rail_mapping_changed(last: u8, current: u8) -> bool {
     last != current
 }
 
-/// T314: live exclusive-zone pass over the already-open strips — the only
-/// mutation a rail mapping change performs. Never close+open here. The
-/// strips paint nothing and take no input, so the zone number alone
-/// describes the reservation (wlr-layer-shell `set_exclusive_zone` is a
-/// value, independent from the surface's pixel footprint — same contract
-/// as `side_panel_right/mod.rs:272`).
-fn sync_wrap_excl_zones(cx: &mut App, cfg: &FrameConfig) {
+/// T314/T321: live geometry + rail-mapping sync over the already-open wrap
+/// set. The strips paint nothing and take no input — a thickness edit only
+/// changes their footprint and reservation, both live-mutable
+/// (`window.resize` + `set_exclusive_zone`), and the matte's ring repaints
+/// from `cached_config()`. Never close+open here: the recreate path raced
+/// the compositor and dropped the adapter (T321), the same class as the
+/// T311 D3 close+open attempt that drowned in `Protocol error invalid_object`.
+fn sync_wrap_surfaces(cx: &mut App, cfg: &FrameConfig) {
+    let (w, h) = crate::monitor::pult_display_id_or_primary(cx)
+        .and_then(|id| cx.find_display(id))
+        .map(|d| (f32::from(d.bounds().size.width), f32::from(d.bounds().size.height)))
+        .unwrap_or((1920., 1080.));
+
+    let inset_left = wrap_inset_left(cfg, rail_mapped(FrameSide::Left));
+    let inset_right = wrap_inset_right(cfg, rail_mapped(FrameSide::Right));
+    let inset_bottom = wrap_inset_bottom(cfg);
+
     let targets = [
         (
             WrapRole::ExclLeft,
-            wrap_inset_left(cfg, rail_mapped(FrameSide::Left)),
+            Size::new(px(inset_left), px(h)),
+            inset_left,
         ),
         (
             WrapRole::ExclRight,
-            wrap_inset_right(cfg, rail_mapped(FrameSide::Right)),
+            Size::new(px(inset_right), px(h)),
+            inset_right,
+        ),
+        (
+            WrapRole::ExclBottom,
+            Size::new(px(w), px(inset_bottom)),
+            inset_bottom,
         ),
     ];
     let mut slots = wrap_windows().lock().unwrap_or_else(|e| e.into_inner());
-    for (role, zone) in targets {
+    for (role, size, zone) in targets {
         let Some(handle) = slots.slot(role).as_ref() else {
             continue;
         };
         match handle.update(cx, |_, window: &mut Window, _| {
+            window.resize(size);
             window.set_exclusive_zone(px(zone));
         }) {
-            Ok(()) => tracing::info!("frame: {role:?} exclusive zone set to {zone}"),
-            Err(e) => tracing::warn!("frame: {role:?} zone update could not reach window ({e})"),
+            Ok(()) => tracing::info!("frame: {role:?} geometry synced zone={zone}"),
+            Err(e) => tracing::warn!("frame: {role:?} geometry update could not reach window ({e})"),
         }
     }
-    // The matte's per-edge borders read the same rail mapping — repaint it
-    // in the same frame so paint and reservation never diverge again
+    // The matte's per-edge borders read the same geometry/mapping — repaint
+    // it in the same frame so paint and reservation never diverge again
     // (the T314 defect: the matte caught up on the next unrelated redraw).
     if let Some(matte) = slots.matte.as_ref() {
         if let Err(e) = matte.update(cx, |_, _window: &mut Window, cx| cx.notify()) {
@@ -1232,11 +1253,6 @@ fn apply_hide(cx: &mut App, cfg: &FrameConfig) {
 }
 
 fn apply_wrap(cx: &mut App, cfg: &FrameConfig) {
-    // Hide strip never coexists with the matte.
-    if frame_window().lock().unwrap_or_else(|e| e.into_inner()).is_some() {
-        close(cx);
-    }
-
     // T319: a `wrap.top` override means the bar's own height is ignored for
     // the shell's top edge. Log once per apply (not per render) so a live
     // override is visible in the log but never spams.
@@ -1247,30 +1263,47 @@ fn apply_wrap(cx: &mut App, cfg: &FrameConfig) {
         );
     }
 
-    // The wrap geometry (matte negative margin + strips' size/exclusive
-    // zone) is set at surface-open time. On a live thickness/radius edit the
-    // windows must be recreated; otherwise `open_wrap_windows` is idempotent
-    // and leaves the existing set alone.
-    let geometry_changed = {
-        let mut slot = last_wrap_geometry().lock().unwrap_or_else(|e| e.into_inner());
-        let changed = wrap_geometry_changed(slot.as_ref(), &cfg.wrap);
-        *slot = Some(cfg.wrap.clone());
-        changed
-    };
-    // T314: rail mapping is the second live signal. The recreate path bakes
-    // the current mapping into the new surfaces; a mapping-only change runs
-    // the live zone pass on the existing set instead (never close+open).
-    let mapping_changed = {
-        let current = rail_mapping_bits();
-        wrap_rail_mapping_changed(LAST_RAIL_MAPPING.swap(current, Ordering::Relaxed), current)
-    };
-
-    if geometry_changed {
-        close_wrap_windows(cx);
-    } else if mapping_changed {
-        sync_wrap_excl_zones(cx, cfg);
+    // T321: open the wrap set first (idempotent). Only a hide→wrap transition
+    // or the first apply actually opens surfaces; a live thickness/radius
+    // edit mutates the already-open set in place (`sync_wrap_surfaces`).
+    // Opening BEFORE dropping the hide strip means a failed open leaves the
+    // previous Hide state intact instead of a frame-less half-state.
+    let was_open = wrap_windows()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .matte
+        .is_some();
+    if !open_wrap_windows(cx) {
+        tracing::warn!("frame: wrap open failed — previous frame style kept");
+        return;
     }
-    open_wrap_windows(cx);
+    // Hide strip never coexists with the matte — drop it only now that the
+    // wrap set is confirmed up.
+    if frame_window().lock().unwrap_or_else(|e| e.into_inner()).is_some() {
+        close(cx);
+    }
+
+    if was_open {
+        // Live geometry + rail-mapping sync — never close+open (T321).
+        let geometry_changed = {
+            let mut slot = last_wrap_geometry().lock().unwrap_or_else(|e| e.into_inner());
+            let changed = wrap_geometry_changed(slot.as_ref(), &cfg.wrap);
+            *slot = Some(cfg.wrap.clone());
+            changed
+        };
+        let mapping_changed = {
+            let current = rail_mapping_bits();
+            wrap_rail_mapping_changed(LAST_RAIL_MAPPING.swap(current, Ordering::Relaxed), current)
+        };
+        if geometry_changed || mapping_changed {
+            sync_wrap_surfaces(cx, cfg);
+        }
+    } else {
+        // Fresh open already baked the current geometry/mapping — record them
+        // so the next apply doesn't see a spurious change.
+        *last_wrap_geometry().lock().unwrap_or_else(|e| e.into_inner()) = Some(cfg.wrap.clone());
+        LAST_RAIL_MAPPING.store(rail_mapping_bits(), Ordering::Relaxed);
+    }
 }
 
 /// Live-apply the cached config (style, strip, wrap geometry). Idempotent.
