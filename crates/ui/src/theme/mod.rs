@@ -186,7 +186,12 @@ pub struct Theme {
 impl Default for Theme {
     fn default() -> Self {
         let text_secondary = parse_hex("a6adc8").unwrap();
-        let text_muted = parse_hex("6c7086").unwrap();
+        // T317: #6c7086 давал 3.36:1 на bg.primary (#1e1e2e) — ниже WCAG AA
+        // 4.5:1 для обычного текста. Поднят до #83879f (4.63:1), ступень до
+        // secondary (#a6adc8, 7.37:1) сохранена. placeholder намеренно не
+        // тянем — он остаётся приглушённым #6c7086 (4.5 не требуется).
+        let text_muted = parse_hex("83879f").unwrap();
+        let text_placeholder = parse_hex("6c7086").unwrap();
         let border_default = parse_hex("313244").unwrap();
         Self {
             bg: BgColors {
@@ -201,7 +206,7 @@ impl Default for Theme {
                 secondary: text_secondary,
                 muted: text_muted,
                 disabled: parse_hex("45475a").unwrap(),
-                placeholder: text_muted,
+                placeholder: text_placeholder,
                 faint: rgba(0xcdd6f457).into(), // rgba(205,214,244,0.34)
             },
             border: BorderColors {

@@ -72,7 +72,10 @@ fn light_scheme() -> ThemeScheme {
     // Текст — глубокий индиго, НЕ чёрный.
     theme.text.primary = hex("2c2e4a"); // textPrimary — основной индиго-текст
     theme.text.secondary = hex("5a5d80"); // textMuted — приглушённый (вторичный)
-    theme.text.muted = hex("7d80a6"); // chevron — ещё приглушённый (третичный)
+    // T317: #7d80a6 давал 2.91:1 на bg.primary (#dde0f2) — ниже даже порога
+    // для крупного текста. Затемнён до #5f6280 (4.52:1), остаётся светлее
+    // secondary (#5a5d80, 4.84:1), чтобы иерархия не перевернулась.
+    theme.text.muted = hex("5f6280"); // chevron — ещё приглушённый (третичный)
     // disabled/placeholder — мокап не диктует, выводим по духу палитры
     // (разбеливание muted к лавандовому). См. отчёт «додумано».
     theme.text.disabled = hex("9a9dc0"); // додумано — disabled индиго-лавандовый
@@ -173,7 +176,7 @@ mod tests {
         assert_eq!(s.theme.bg.elevated, hex("e0e3f4")); // hoverBg
         assert_eq!(s.theme.text.primary, hex("2c2e4a")); // textPrimary
         assert_eq!(s.theme.text.secondary, hex("5a5d80")); // textMuted
-        assert_eq!(s.theme.text.muted, hex("7d80a6")); // chevron
+        assert_eq!(s.theme.text.muted, hex("5f6280")); // chevron
         assert_eq!(s.theme.border.default, hex("c4c8e6")); // cardBorder
         // Акцент НЕ переопределяется — остаётся #007acc из дефолта.
         assert_eq!(s.theme.accent.primary, hex("007acc"));
@@ -239,5 +242,66 @@ mod tests {
         let names: Vec<&'static str> = builtin_schemes().iter().map(|s| s.name).collect();
         assert!(names.contains(&"Default"));
         assert!(names.contains(&"Light"));
+    }
+
+    /// WCAG 2.x относительная яркость: sRGB-каналы линеаризуются, затем
+    /// взвешиваются (0.2126 R + 0.7152 G + 0.0722 B). Не HSL lightness и не
+    /// среднее арифметическое каналов — и то, и другое врёт на пастельных /
+    /// насыщенных парах.
+    fn relative_luminance(c: gpui::Hsla) -> f64 {
+        let rgb = c.to_rgb();
+        let linear = |channel: f32| -> f64 {
+            let c = channel as f64;
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * linear(rgb.r) + 0.7152 * linear(rgb.g) + 0.0722 * linear(rgb.b)
+    }
+
+    /// Контраст по WCAG 2.x: (L_светлый + 0.05) / (L_тёмный + 0.05), 1..21.
+    fn contrast_ratio(a: gpui::Hsla, b: gpui::Hsla) -> f64 {
+        let (la, lb) = (relative_luminance(a), relative_luminance(b));
+        let (light, dark) = if la >= lb { (la, lb) } else { (lb, la) };
+        (light + 0.05) / (dark + 0.05)
+    }
+
+    /// T317: muted-текст обязан проходить WCAG AA (4.5:1) на базовом фоне в
+    /// КАЖДОЙ встроенной схеме. Итерирует `builtin_schemes()`, чтобы будущая
+    /// схема (напр. Mocha Mousse из T313) не проскочила мимо этих ворот.
+    #[test]
+    fn muted_passes_wcag_aa_on_primary_in_all_schemes() {
+        for scheme in builtin_schemes() {
+            let ratio = contrast_ratio(scheme.theme.text.muted, scheme.theme.bg.primary);
+            assert!(
+                ratio >= 4.5,
+                "{}: text.muted {} на bg.primary {} = {:.2}:1 (нужно ≥ 4.5)",
+                scheme.name,
+                scheme.theme.text.muted,
+                scheme.theme.bg.primary,
+                ratio
+            );
+        }
+    }
+
+    /// T317: иерархия primary > secondary > muted > disabled обязана остаться
+    /// монотонной по светлоте (убывание в тёмной, возрастание в светлой).
+    /// Подняв контраст muted легко перепрыгнуть secondary — тест это ловит.
+    #[test]
+    fn text_lightness_hierarchy_is_monotonic_in_all_schemes() {
+        for scheme in builtin_schemes() {
+            let t = &scheme.theme.text;
+            let l = [t.primary.l, t.secondary.l, t.muted.l, t.disabled.l];
+            let increasing = l.windows(2).all(|w| w[0] < w[1]);
+            let decreasing = l.windows(2).all(|w| w[0] > w[1]);
+            assert!(
+                increasing || decreasing,
+                "{}: порядок яркости primary→secondary→muted→disabled не монотонен: {:?}",
+                scheme.name,
+                l
+            );
+        }
     }
 }
