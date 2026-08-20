@@ -146,17 +146,85 @@ fn solarized_dark_scheme() -> Result<ThemeScheme> {
     ))
 }
 
+fn mocha_mousse_scheme() -> ThemeScheme {
+    // Pantone Color of the Year 2025, 17-1230 — тёплый коричневый ≈ #A47864.
+    // ОДНА схема, тёмная: сам цвет тёмный, а светлая «Mocha Mousse» с
+    // тёпло-белым фоном #FCF5F3 — это отменённая ошибка QA-миньона
+    // (T310 Эпик 2 принял этот фон за Mocha Mousse). Тёмная база из брифа
+    // проходит ворота T317 без правок (muted 5.43:1 на bg.primary),
+    // светлая не проходит (2.95:1) — см. отчёт T313, решение «одна схема».
+    let mut theme = Theme::default();
+
+    // Поверхности — тёплая тёмная база (мокап Mocha Mousse).
+    theme.bg.primary = hex("241f23"); // тёплый тёмно-коричневый фон
+    theme.bg.secondary = hex("2d2830"); // поверхность карточки/попапа
+    theme.bg.tertiary = hex("18141a"); // фон пилюли/свёрнутого
+    theme.bg.elevated = hex("2d2830"); // приподнятый слой/hover-фон
+
+    // Текст — тёплый светлый, НЕ холодный белый.
+    theme.text.primary = hex("f2ebe5"); // тёплый почти-белый
+    theme.text.secondary = hex("d8cac1"); // тёплый светло-бежевый
+    // muted из брифа #A0938A даёт 5.43:1 на bg.primary — проходит ворота
+    // T317 без правки, ступень до secondary (10.14:1) сохранена.
+    theme.text.muted = hex("a0938a"); // приглушённый тёплый
+    // disabled/placeholder — выводятся по духу палитры (затемнение muted):
+    // placeholder между muted и disabled (как в Default), disabled темнее.
+    theme.text.disabled = hex("6e645c"); // додумано — тёплый тёмный
+    theme.text.placeholder = hex("877b6f"); // додумано — между muted и disabled
+    theme.text.faint = parse_hex("f2ebe557").expect("faint hex valid"); // rgba(242,235,229,0.34)
+
+    // Бордеры — тёплые, из палитры (default как в Default — цвет elevated).
+    theme.border.default = hex("4a423b"); // тёплый средний тон
+    theme.border.subtle = hex("5a5248"); // додумано — светлее default
+    theme.border.focused = hex("a47864"); // акцент — glow-ребро/фокус-контур
+
+    // Акцент — сам Pantone Mocha Mousse + его тёмный hover.
+    theme.accent.primary = hex("a47864"); // 17-1230 Mocha Mousse
+    theme.accent.selection = hex("a47864");
+    theme.accent.hover = hex("7e6244"); // из брифа
+    // secondary — тёплый аналог mauve (luau badge, recent tag, toast).
+    theme.accent.secondary = hex("c9a79a"); // додумано — персиковый беж
+
+    // bg.selection — тёплый подклад выбранной строки (акцент с альфой,
+    // как Default: rgba(0,122,204,0.14)).
+    theme.bg.selection = gpui::rgba(0xa4786424).into(); // rgba(164,120,100,0.14)
+
+    // Interactive — тёплые аналоги ролей Default.
+    theme.interactive.default = hex("4a423b");
+    theme.interactive.hover = hex("5a5248");
+    theme.interactive.active = hex("6e645c"); // додумано — глубже hover
+    theme.interactive.toggle_on = hex("a47864"); // акцент — включённый тоггл
+    theme.interactive.toggle_on_hover = hex("7e6244");
+
+    // status.* — статусы из брифа (#B73E2A/#C46A2B/#6B7F3C/#718BA8)
+    // написаны под СВЕТЛЫЙ фон: на тёмной базе как ЦВЕТ ТЕКСТА error даёт
+    // 2.88:1, success 3.65:1 — нечитаемо (приёмка T313 п.5 «статусы видно»).
+    // Осветлены в тёплый тон, как Default держит пастельные статусы.
+    theme.status.error = hex("d4735f"); // тёплый красный, 4.95:1
+    theme.status.warning = hex("d9995c"); // персиковый, 6.69:1
+    theme.status.success = hex("9bae63"); // оливковый, 6.66:1
+    theme.status.info = hex("93adcb"); // тёплый голубой, 7.01:1
+
+    ThemeScheme::new(
+        "Mocha Mousse",
+        "Тёплая тёмная (Pantone 2025)",
+        theme,
+    )
+}
+
 #[inline]
 fn hex(s: &str) -> gpui::Hsla {
     super::parse_hex(s).expect("встроенный hex валиден")
 }
 
-/// Возвращает все встроенные схемы (дефолт, светлая, solarized dark).
+/// Возвращает все встроенные схемы (дефолт, светлая, solarized dark,
+/// mocha mousse).
 pub fn builtin_schemes() -> Vec<ThemeScheme> {
     let mut out = vec![default_scheme(), light_scheme()];
     if let Ok(solarized) = solarized_dark_scheme() {
         out.push(solarized);
     }
+    out.push(mocha_mousse_scheme());
     out
 }
 
@@ -242,6 +310,47 @@ mod tests {
         let names: Vec<&'static str> = builtin_schemes().iter().map(|s| s.name).collect();
         assert!(names.contains(&"Default"));
         assert!(names.contains(&"Light"));
+    }
+
+    #[test]
+    fn mocha_mousse_in_builtin_schemes() {
+        let names: Vec<&'static str> = builtin_schemes().iter().map(|s| s.name).collect();
+        assert!(names.contains(&"Mocha Mousse"));
+        assert_eq!(names.len(), 4);
+    }
+
+    #[test]
+    fn mocha_mousse_selectable_by_name_case_insensitive() {
+        // Имя с пробелом: select_scheme триммит и сравнивает в нижнем
+        // регистре — пробел не мешает (как у "Solarized Dark").
+        let expected = mocha_mousse_scheme().theme;
+        let lower = Theme::select_scheme(Some("mocha mousse".to_string()));
+        let upper = Theme::select_scheme(Some("MOCHA MOUSSE".to_string()));
+        let mixed = Theme::select_scheme(Some("MoChA MoUsSe".to_string()));
+        assert_eq!(lower, expected);
+        assert_eq!(upper, expected);
+        assert_eq!(mixed, expected);
+    }
+
+    #[test]
+    fn mocha_mousse_muted_passes_wcag_aa_on_primary() {
+        // Зеркало light_scheme_status_is_latte_not_mocha для Mocha Mousse:
+        // muted на bg.primary обязан давать ≥ 4.5:1. Пастельные цвета,
+        // рассчитанные на противоположный фон, — тот же грабель T239.
+        let s = mocha_mousse_scheme();
+        let ratio = contrast_ratio(s.theme.text.muted, s.theme.bg.primary);
+        assert!(
+            ratio >= 4.5,
+            "Mocha Mousse: text.muted {} на bg.primary {} = {:.2}:1 (нужно ≥ 4.5)",
+            s.theme.text.muted,
+            s.theme.bg.primary,
+            ratio
+        );
+        // Якоря тёплой тёмной палитры из брифа.
+        assert_eq!(s.name, "Mocha Mousse");
+        assert!(!s.theme.is_light, "Mocha Mousse — тёмная схема");
+        assert_eq!(s.theme.bg.primary, hex("241f23"));
+        assert_eq!(s.theme.accent.primary, hex("a47864"));
     }
 
     /// WCAG 2.x относительная яркость: sRGB-каналы линеаризуются, затем
