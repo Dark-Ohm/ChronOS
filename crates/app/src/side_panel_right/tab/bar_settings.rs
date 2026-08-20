@@ -387,9 +387,16 @@ impl Render for BarSettingsTab {
         // ── Elevated card wrapping all scrollable content (T231 §5) ──
         // `.id()` must come AFTER `elevation_apply_light_chrome` — that
         // helper takes a bare `Div`, and `.id()` upgrades to `Stateful<Div>`.
+        // `flex_grow_1` (grow only — basis stays `auto`): on a short page the
+        // card stretches to the bottom of the scroll viewport instead of
+        // leaving a dead strip of panel background under it (owner report
+        // 2026-08-20: ~85px of nothing below the card at the 800px width).
+        // A tall page still gets its natural height and scrolls — `flex_1`
+        // would zero the basis and break that.
         let mut card = div()
             .relative()
             .w_full()
+            .flex_grow_1()
             .flex()
             .flex_col()
             .gap(px(16.))
@@ -909,9 +916,14 @@ impl Render for BarSettingsTab {
         });
 
         // ── Root ──────────────────────────────────────────────────────
+        // `flex_1` on the tab root: the content column that hosts this tab is
+        // `h_full` + `flex_col`, so without it the page is content-height and
+        // whatever it does not fill shows as bare column background under the
+        // card (owner report 2026-08-20).
         div()
             .id("bar-settings-tab")
             .w_full()
+            .flex_1()
             .min_h(px(0.))
             .flex()
             .flex_col()
@@ -921,6 +933,11 @@ impl Render for BarSettingsTab {
                     .id("bar-settings-scroll")
                     .flex_1()
                     .min_h(px(0.))
+                    // Column flow so the card's `flex_grow_1` grows in the
+                    // vertical axis — a bare `div()` is a flex ROW here, and
+                    // growth would land on the width instead.
+                    .flex()
+                    .flex_col()
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll)
                     .p(px(14.))
