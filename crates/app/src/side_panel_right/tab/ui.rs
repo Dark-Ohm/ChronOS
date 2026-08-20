@@ -280,11 +280,21 @@ mod tests {
 
     #[test]
     fn breakpoint_uses_visible_slice_not_fixed_wayland_canvas() {
-        let appearance_visible = crate::side_panel_right::visible_content_width(
+        // A narrow tab is judged by its VISIBLE slice (width − rail), not by
+        // the fixed Wayland canvas every content window is allocated.
+        let launcher_visible = crate::side_panel_right::visible_content_width(
+            crate::side_panel_right::tabs::PanelTab::LauncherSettings.preferred_content_width(),
+        );
+        assert_eq!(launcher_visible, 370.0);
+        assert!(!is_wide_content_width(launcher_visible));
+        // System settings was widened to 800 on 2026-08-20 precisely so its
+        // visible slice clears the breakpoint and the two-column grids on
+        // that page (theme picker, Hypr modules) are reachable at all.
+        let settings_visible = crate::side_panel_right::visible_content_width(
             crate::side_panel_right::tabs::PanelTab::EditorSettings.preferred_content_width(),
         );
-        assert_eq!(appearance_visible, 370.0);
-        assert!(!is_wide_content_width(appearance_visible));
+        assert_eq!(settings_visible, 760.0);
+        assert!(is_wide_content_width(settings_visible));
         assert!(is_wide_content_width(crate::side_panel_right::CONTENT_CANVAS_WIDTH));
     }
 

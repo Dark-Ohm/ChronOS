@@ -424,16 +424,20 @@ mod tests {
     }
 
     #[test]
-    fn editor_settings_preferred_width_is_410_and_not_resizable() {
-        // User-confirmed width (2026-08-05, exact live screenshot of the
-        // "Bar" appearance page, which `PanelTab::EditorSettings` hosts as
-        // `BarSettingsTab` — see `tab/mod.rs::create`). Two earlier passes
+    fn editor_settings_preferred_width_is_800_and_not_resizable() {
+        // Owner-confirmed width: 800 since 2026-08-20 (was 410 from
+        // 2026-08-05). Must stay ≥ `GRID_BREAKPOINT` (720, `tab/ui.rs:25`),
+        // otherwise every two-column T231 grid on this page — including the
+        // T313 theme picker — silently collapses to one column and the
+        // responsive code becomes dead. The page is the "Bar" appearance
+        // page, which `PanelTab::EditorSettings` hosts as
+        // `BarSettingsTab` — see `tab/mod.rs::create`. Two earlier passes
         // on 2026-08-04/05 mistakenly edited `PanelTab::System` instead
         // (that variant renders the unrelated CPU/RAM/GPU `SystemTab`
         // dashboard) — this tab was never actually touched by either of
-        // those edits. Do not re-widen or re-enable drag without a fresh,
-        // explicit ask.
-        assert_eq!(PanelTab::EditorSettings.preferred_content_width(), 410.);
+        // those edits. Do not narrow below 720 or re-enable drag without a
+        // fresh, explicit ask.
+        assert_eq!(PanelTab::EditorSettings.preferred_content_width(), 800.);
         assert!(!PanelTab::EditorSettings.resizable());
     }
 
@@ -833,14 +837,17 @@ impl PanelTab {
             // T305: Media — the mpris card is a ~352px-wide art block; give
             // it the same comfortable column as System/Updates.
             PanelTab::Media => 400.,
-            // 410 — the exact width the user asked for (2026-08-05 live
-            // screenshot of the "Bar" appearance page this tab hosts as
-            // `BarSettingsTab`, see `tab/mod.rs::create`). Not resizable
-            // (see `resizable()` below). Two earlier passes on
+            // 800 — widened by the owner 2026-08-20 (was 410 since
+            // 2026-08-05). The page is a wall of T231 grids whose
+            // two-column layouts sit behind `GRID_BREAKPOINT = 720`
+            // (`tab/ui.rs:25`); at 410 that responsive code was structurally
+            // unreachable — found on the T313 theme-picker acceptance, where
+            // the swatch grid could only ever render one column. Not
+            // resizable (see `resizable()` below). Two earlier passes on
             // 2026-08-04/05 edited `PanelTab::System` instead by mistake —
             // that variant is the unrelated CPU/RAM/GPU dashboard tab, and
             // was never the tab shown in the screenshot.
-            PanelTab::EditorSettings => 410.,
+            PanelTab::EditorSettings => 800.,
         }
     }
 
