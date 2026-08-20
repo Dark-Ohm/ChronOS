@@ -109,8 +109,14 @@ pub(crate) fn section_header(theme: Theme, title: &str, subtitle: &str) -> AnyEl
 pub(crate) fn setting_label(theme: Theme, label: &str, path: &str) -> AnyElement {
     let label = SharedString::from(label);
     let path = SharedString::from(path);
+    // `min_w(0)` + ellipsis: the label must yield to its control instead of
+    // pushing it out of the row. A long mono path (e.g. the Blur "import
+    // 45-surface-effects-chronos.lua" hint) used to shove the control past
+    // the cell edge and into the neighbouring grid column (owner report
+    // 2026-08-20, System settings at 800px).
     div()
         .flex_col()
+        .min_w(px(0.))
         .gap(px(1.))
         .child(
             div()
@@ -124,6 +130,9 @@ pub(crate) fn setting_label(theme: Theme, label: &str, path: &str) -> AnyElement
                 .text_color(theme.text.muted)
                 .text_xs()
                 .font_family(theme.font_mono)
+                .whitespace_nowrap()
+                .overflow_hidden()
+                .text_ellipsis()
                 .child(path),
         )
         .into_any_element()

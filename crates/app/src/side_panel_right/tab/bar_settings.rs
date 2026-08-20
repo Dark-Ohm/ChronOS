@@ -39,7 +39,7 @@ use super::ui::{
 
 /// Slider geometry — thicker than the old 4px line (T231 verdict: "низкая
 /// affordance"). Track 6px, thumb 16px with border + drop shadow.
-const SLIDER_TW: f32 = 110.0;
+const SLIDER_TW: f32 = 96.0;
 const SLIDER_TRACK_H: f32 = 6.0;
 const SLIDER_THUMB: f32 = 16.0;
 
@@ -557,28 +557,56 @@ impl Render for BarSettingsTab {
                         setting_label(
                             theme,
                             "Blur",
-                            "theme.toml blur_enabled · hyprctl eval",
+                            // The long-form reason lives in the subtitle,
+                            // where there is room for it; the chip on the
+                            // right stays short so it can never spill into
+                            // the neighbouring column (owner report
+                            // 2026-08-20: Blur slid under Elevation).
+                            if blur_enabled_ctrl {
+                                "theme.toml blur_enabled · hyprctl eval"
+                            } else {
+                                match blur_state.capability {
+                                    chronos_services::compositor::BlurCapability::ModuleMissing => {
+                                        "import 45-surface-effects-chronos.lua"
+                                    }
+                                    chronos_services::compositor::BlurCapability::Unsupported => {
+                                        "compositor reports no blur support"
+                                    }
+                                    chronos_services::compositor::BlurCapability::Available => {
+                                        "theme.toml blur_enabled · probing…"
+                                    }
+                                }
+                            },
                         ),
                         if blur_enabled_ctrl {
                             onoff_chip(theme, "bar-blur-toggle", blur_on, on_blur_toggle)
                         } else {
+                            // Short state word only — the "why" is in the
+                            // label's subtitle above. Still flex-bounded and
+                            // ellipsised so no future string can spill.
                             div()
                                 .id("bar-blur-toggle-disabled")
+                                .flex_1()
+                                .min_w(px(92.))
+                                .text_center()
                                 .px(px(10.))
                                 .py(px(5.))
                                 .rounded_md()
                                 .text_size(px(11.5))
                                 .font_family(theme.font_mono)
                                 .text_color(theme.text.disabled)
+                                .whitespace_nowrap()
+                                .overflow_hidden()
+                                .text_ellipsis()
                                 .border_1()
                                 .border_color(theme.border.subtle)
                                 .opacity(0.6)
                                 .child(match blur_state.capability {
                                     chronos_services::compositor::BlurCapability::ModuleMissing => {
-                                        "import 45-surface-effects-chronos.lua"
+                                        "no module"
                                     }
                                     chronos_services::compositor::BlurCapability::Unsupported => {
-                                        "compositor: no blur"
+                                        "no blur"
                                     }
                                     chronos_services::compositor::BlurCapability::Available => {
                                         "checking…"
@@ -905,7 +933,14 @@ impl Render for BarSettingsTab {
 
 /// Group of segment chips in a bordered control capsule (Edge/Width/Elevation).
 fn segmented(theme: Theme, chips: Vec<AnyElement>) -> AnyElement {
+    // The group stretches into the row's free space (owner ask 2026-08-20:
+    // "pill длиннее, чтобы не было пустого места") — at the widened 800px
+    // tab a right-aligned intrinsic-width group left a dead gap between the
+    // label and the control. Chips inside share that width equally
+    // (`seg_chip` is `flex_1`).
     div()
+        .flex_1()
+        .min_w(px(0.))
         .flex()
         .items_center()
         .gap(px(2.))
@@ -926,10 +961,15 @@ where
     let label = SharedString::from(label);
     div()
         .id(id)
+        .flex_1()
+        .min_w(px(0.))
         .px(px(9.))
         .py(px(5.))
         .rounded_md()
         .cursor_pointer()
+        .text_center()
+        .whitespace_nowrap()
+        .overflow_hidden()
         .text_size(px(11.5))
         .font_family(theme.font_mono)
         .bg(if active {
