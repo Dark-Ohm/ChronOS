@@ -138,7 +138,7 @@ impl Render for Bar {
         // top border). Vertical edges are not applied yet (T200 v1). In the
         // wrap frame the bar is the top edge of the card — its card-facing
         // border would cut the closed loop, so it is dropped (T284 §5.3).
-        let wrap_frame = crate::frame::cached_config().style == crate::frame::FrameStyle::Wrap;
+        let wrap_frame = crate::frame::cached_config().style == crate::frame::FrameStyle::Wrapped;
         if !wrap_frame {
             if appearance.edge == BarEdge::Bottom {
                 root = root.border_t_1();

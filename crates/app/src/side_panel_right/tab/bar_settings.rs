@@ -290,14 +290,14 @@ impl Render for BarSettingsTab {
         // T284: Frame theme — writes `frame.toml [style]` through the
         // frame's own RMW helper (never `bar.toml`); the 300 ms frame
         // watcher applies it live.
-        let frame_hide = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
-            if let Err(e) = crate::frame::write_style(crate::frame::FrameStyle::Hide) {
+        let frame_normal = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
+            if let Err(e) = crate::frame::write_style(crate::frame::FrameStyle::Normal) {
                 this.error = Some(e);
             }
             cx.notify();
         });
-        let frame_wrap = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
-            if let Err(e) = crate::frame::write_style(crate::frame::FrameStyle::Wrap) {
+        let frame_wrapped = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
+            if let Err(e) = crate::frame::write_style(crate::frame::FrameStyle::Wrapped) {
                 this.error = Some(e);
             }
             cx.notify();
@@ -644,17 +644,17 @@ impl Render for BarSettingsTab {
                             vec![
                                 seg_chip(
                                     theme,
-                                    "frame-seg-hide",
-                                    "Hide",
-                                    cur_style == crate::frame::FrameStyle::Hide,
-                                    frame_hide,
+                                    "frame-seg-normal",
+                                    "Normal",
+                                    cur_style == crate::frame::FrameStyle::Normal,
+                                    frame_normal,
                                 ),
                                 seg_chip(
                                     theme,
-                                    "frame-seg-wrap",
-                                    "Wrap",
-                                    cur_style == crate::frame::FrameStyle::Wrap,
-                                    frame_wrap,
+                                    "frame-seg-wrapped",
+                                    "Wrapped",
+                                    cur_style == crate::frame::FrameStyle::Wrapped,
+                                    frame_wrapped,
                                 ),
                             ],
                         ),

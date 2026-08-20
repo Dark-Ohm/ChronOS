@@ -1,30 +1,22 @@
-//! Desktop frame theme (T268 + T284) — a thin layer-shell strip that closes
-//! the frame around the shell at the bottom bezel, plus the optional `wrap`
-//! theme that turns the frame into a full perimeter card.
+//! Desktop frame theme — the shell's two frame modes (T312):
 //!
-//! ## Hide (default, T268)
-//! The bottom strip over the `gaps_out` gap. Rules (from the task):
-//! 1. **No exclusive zone** — the strip lives over the gap, it never pushes
-//!    windows.
-//! 2. **Half the gap** — default height 4px (= `gaps_out 8` / 2, same value
-//!    as the side hover strips' `STRIP_WIDTH`). Configurable in
-//!    `~/.config/chronos/frame.toml` with a sane floor, not hardcoded.
-//! 3. **Corners are the deliverable** — three junction variants (`flush` /
-//!    `break` / `rounded`), `break` picked by live corners.
-//! 4. **Chrome from T267 tokens** — `bg.tertiary` surface + `border.subtle`
-//!    top border. No fourth custom shade.
+//! ## Normal (default)
+//! No shell. Chrome sits flush against the screen edges: the bar at `y=0`
+//! full width, the side rails at `x=0..39` / `x=2520..2559`, no plate, no
+//! insets, no bottom strip. Wallpaper starts immediately past the rails.
+//! This is the "every pixel for windows" mode.
 //!
-//! The strip's span follows which side rails are mapped (T284 §4): with both
-//! rails gone the strip is closed entirely — a floating bottom bar over the
-//! wallpaper is exactly what the strip is not.
+//! ## Wrapped
+//! `style = "wrapped"` in `frame.toml`: one unified shell with an aperture.
+//! A fullscreen **matte** (Layer::Top, paints only the chrome ring, hole =
+//! wallpaper) plus three invisible exclusive strips L/R/B (thickness =
+//! per-edge `wrap.left/right/bottom`) that push clients off the frame. The
+//! bar stays top-exclusive and reads as the top edge of the frame; the side
+//! rails are the frame's own edges. The bottom plate is the matte's bottom
+//! border (`wrap.bottom`) — there is no separate bottom-strip surface.
 //!
-//! ## Wrap (T284)
-//! `style = "wrap"` in `frame.toml`: one fullscreen **matte** (Layer::Top,
-//! paints only the chrome ring, hole = wallpaper) plus three invisible
-//! exclusive strips L/R/B (thickness = per-edge `wrap.left/right/bottom`) that push
-//! clients off the frame. The bar stays top-exclusive and reads as the top
-//! edge of the frame; side rails/content inset by `wrap_inset()` on the
-//! panel side.
+//! `style = "hide"` / `"wrap"` stay accepted as aliases of `normal` /
+//! `wrapped` so an existing `frame.toml` never collapses to defaults.
 //!
 //! `frame::apply` never imports the panels — panel geometry is re-applied
 //! through the `set_after_apply` hook registered in `main.rs` (one-way
@@ -34,7 +26,7 @@
 //! as bar/panels).
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
@@ -49,17 +41,17 @@ use chronos_ui::Theme;
 
 const CONFIG_BASENAME: &str = "frame.toml";
 const DEBOUNCE_MS: u64 = 300;
-/// Default strip height = half the `gaps_out = 8` gap (rule 2). Same figure
-/// as `side_panel_right::hover_strip::STRIP_WIDTH` (4px) — the frame closes
-/// the gap, it does not cover it.
+/// Legacy default for `[bottom_strip] height` (T268). The bottom strip is no
+/// longer rendered — the wrapped bottom edge is `wrap.bottom` and `normal`
+/// has no bottom chrome (T312). The constant stays only so an existing
+/// `frame.toml` with a `[bottom_strip]` section still parses without failing.
 const DEFAULT_HEIGHT: f32 = 4.0;
 const MIN_HEIGHT: f32 = 1.0;
 const MAX_HEIGHT: f32 = 16.0;
 /// Single source of truth for the rail width (40). The side panels re-export
 /// this constant (they no longer define their own copy) and the frame uses it
-/// for the hide-strip insets and the matte's under-rail corner fill. Owned
-/// here so the frame never imports the panels — the dependency stays one-way
-/// (panels → frame).
+/// for the matte's under-rail corner fill. Owned here so the frame never
+/// imports the panels — the dependency stays one-way (panels → frame).
 pub(crate) const RAIL_WIDTH: f32 = 40.0;
 /// Default `wrap.inner_radius` — the inner corners of the card, not half
 /// the strip height (T284 spec §3). T315 artboard: 10px = 25% of rail
@@ -92,7 +84,10 @@ const DEFAULT_BOTTOM_THICKNESS: f32 = DEFAULT_THICKNESS;
 /// value is an explicit override of the shell's top edge.
 const DEFAULT_TOP: f32 = 0.0;
 
-/// Strip/rail junction at the bottom corners.
+/// Bottom-corner junction for the old Hide strip (T268). Legacy in T312:
+/// the strip is no longer rendered — the wrapped bottom edge is `wrap.bottom`
+/// and `normal` has no bottom chrome. The enum and its variants stay only so
+/// an existing `frame.toml` with `bottom_strip.junction` still parses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FrameJunction {
@@ -112,38 +107,39 @@ impl Default for FrameJunction {
     }
 }
 
-/// Desktop frame style (T284). Deserialized from a **string** via
-/// `deserialize_style` — never `#[derive(Deserialize)]` directly, otherwise
-/// an unknown value fails the whole parse and `load()` silently replaces
-/// the config with defaults (the T268 junction trap).
+/// Desktop frame style (T284, renamed in T312). Deserialized from a
+/// **string** via `deserialize_style` — never `#[derive(Deserialize)]`
+/// directly, otherwise an unknown value fails the whole parse and `load()`
+/// silently replaces the config with defaults (the T268 junction trap).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FrameStyle {
-    /// T268 path: bottom strip between the rails, closed when no rail is
-    /// mapped.
+    /// No shell — chrome at the screen edges, no plate, no insets (T312).
     #[default]
-    Hide,
+    Normal,
     /// Perimeter card: matte + three exclusive edge strips, rails inside.
-    Wrap,
+    Wrapped,
 }
 
 impl FrameStyle {
     pub fn as_str(self) -> &'static str {
         match self {
-            FrameStyle::Hide => "hide",
-            FrameStyle::Wrap => "wrap",
+            FrameStyle::Normal => "normal",
+            FrameStyle::Wrapped => "wrapped",
         }
     }
 
-    /// Unknown values → `Hide` + warn (never panic, never silently enable
-    /// Wrap — spec §3).
+    /// Unknown values → `Normal` + warn (never panic, never silently enable
+    /// Wrapped — spec §3). Case-insensitive; `hide`/`wrap` stay as aliases
+    /// of `normal`/`wrapped` so an existing `frame.toml` never collapses to
+    /// defaults (T268).
     pub fn from_str_sanitized(s: &str) -> Self {
-        match s {
-            "wrap" => FrameStyle::Wrap,
-            "hide" => FrameStyle::Hide,
+        match s.trim().to_ascii_lowercase().as_str() {
+            "normal" | "hide" => FrameStyle::Normal,
+            "wrapped" | "wrap" => FrameStyle::Wrapped,
             other => {
-                tracing::warn!("frame: unknown style {other:?}, falling back to hide");
-                FrameStyle::Hide
+                tracing::warn!("frame: unknown style {other:?}, falling back to normal");
+                FrameStyle::Normal
             }
         }
     }
@@ -296,6 +292,9 @@ fn clamp_thickness(v: f32, label: &'static str) -> f32 {
     }
 }
 
+/// Legacy `[bottom_strip]` section (T268). Kept so an existing `frame.toml`
+/// still parses, but its fields are no longer read (T312): the wrapped bottom
+/// edge is `wrap.bottom` and `normal` has no bottom chrome.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct BottomStripConfig {
@@ -335,7 +334,7 @@ impl BottomStripConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct FrameConfig {
-    /// hide | wrap — missing key / unknown value → Hide (spec §3).
+    /// normal | wrapped — missing key / unknown value → Normal (spec §3).
     #[serde(default, deserialize_with = "deserialize_style")]
     pub style: FrameStyle,
     pub bottom_strip: BottomStripConfig,
@@ -419,10 +418,9 @@ impl FrameConfig {
 
 // ── Rail presence (T284 §4) ─────────────────────────────────────────────────
 //
-// The panels report whether their rail surface is mapped; the hide strip's
-// existence and span, and the wrap inset, derive from this. Stored in an
-// atomic so pure predicates (`hide_strip_wanted`, `hide_strip_insets`) can
-// read it without an `App`.
+// The panels report whether their rail surface is mapped; the wrap inset and
+// the exclusive strips' zones derive from this. Stored in an atomic so pure
+// predicates can read it without an `App`.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FrameSide {
@@ -446,7 +444,8 @@ pub fn rail_mapped(side: FrameSide) -> bool {
 }
 
 /// Panels call this on rail open/close (never from `init_hover_strip` — a
-/// 4px hover strip is not a rail). Re-derives the hide strip and re-applies.
+/// 4px hover strip is not a rail). Re-applies the frame — the wrap strips'
+/// exclusive zones follow rail mapping.
 pub fn set_rail_mapped(side: FrameSide, mapped: bool, cx: &mut App) {
     let bit = rail_bit(side);
     if mapped {
@@ -457,25 +456,9 @@ pub fn set_rail_mapped(side: FrameSide, mapped: bool, cx: &mut App) {
     apply(cx);
 }
 
-/// Hide-strip span insets per side (CSS order left, right): a mapped rail
-/// pushes the strip inward by `RAIL_WIDTH`; a missing rail means the strip
-/// reaches the screen edge.
-pub fn hide_strip_insets(left_mapped: bool, right_mapped: bool) -> (f32, f32) {
-    (
-        if left_mapped { RAIL_WIDTH } else { 0.0 },
-        if right_mapped { RAIL_WIDTH } else { 0.0 },
-    )
-}
-
-/// The Hide strip exists only while at least one rail is mapped — with both
-/// rails gone the bottom chrome would float over the wallpaper (T284 §4).
-pub fn hide_strip_wanted(enabled: bool, left_mapped: bool, right_mapped: bool) -> bool {
-    enabled && (left_mapped || right_mapped)
-}
-
-/// 0 in Hide; the rail-free edge width in Wrap — the frame thickness rails
-/// and content inset by, and the exclusive strips reserve (T284 §5, T303:
-/// no longer `bottom_strip.height`, which is tuned for the thin Hide strip).
+/// 0 in Normal; the rail-free edge width in Wrapped — the frame thickness
+/// rails and content inset by, and the exclusive strips reserve (T284 §5,
+/// T303: no longer `bottom_strip.height`).
 ///
 /// Kept as the "rail-free edge default" — `wrap_inset_left` /
 /// `wrap_inset_right` for side correctness, this for the legacy callers
@@ -484,8 +467,8 @@ pub fn hide_strip_wanted(enabled: bool, left_mapped: bool, right_mapped: bool) -
 /// representative rail-free value.
 pub fn wrap_inset_for(cfg: &FrameConfig) -> f32 {
     match cfg.style {
-        FrameStyle::Hide => 0.0,
-        FrameStyle::Wrap => cfg.wrap.sanitized().left,
+        FrameStyle::Normal => 0.0,
+        FrameStyle::Wrapped => cfg.wrap.sanitized().left,
     }
 }
 
@@ -520,15 +503,15 @@ pub fn wrap_inset() -> f32 {
 // follow-up: bar.rs is out of scope for this ticket).
 
 /// The shell's effective top gap: `wrap.top` when it overrides (>0), else
-/// the live bar height. In Hide there is no wrap frame, but the aperture
+/// the live bar height. In Normal there is no wrap frame, but the aperture
 /// ring still needs a top extent, so this returns the bar height there too.
 /// Used by the matte's aperture ring (the panels clear the bar separately
 /// via `bar_height_px`).
 pub fn shell_top_gap(cfg: &FrameConfig) -> f32 {
     let bar_h = crate::state::bar_height_px();
     match cfg.style {
-        FrameStyle::Hide => bar_h,
-        FrameStyle::Wrap => {
+        FrameStyle::Normal => bar_h,
+        FrameStyle::Wrapped => {
             let top = cfg.wrap.sanitized().top;
             if top > 0.0 {
                 top
@@ -542,8 +525,8 @@ pub fn shell_top_gap(cfg: &FrameConfig) -> f32 {
 /// Bottom edge — the rail-free edge that always carries the plate.
 pub fn wrap_inset_bottom(cfg: &FrameConfig) -> f32 {
     match cfg.style {
-        FrameStyle::Hide => 0.0,
-        FrameStyle::Wrap => cfg.wrap.sanitized().bottom,
+        FrameStyle::Normal => 0.0,
+        FrameStyle::Wrapped => cfg.wrap.sanitized().bottom,
     }
 }
 
@@ -557,9 +540,9 @@ pub fn wrap_inset_bottom_cached() -> f32 {
 /// otherwise `wrap.left`.
 pub fn wrap_inset_left(cfg: &FrameConfig, left_rail_mapped: bool) -> f32 {
     match cfg.style {
-        FrameStyle::Hide => 0.0,
-        FrameStyle::Wrap if left_rail_mapped => 0.0,
-        FrameStyle::Wrap => cfg.wrap.sanitized().left,
+        FrameStyle::Normal => 0.0,
+        FrameStyle::Wrapped if left_rail_mapped => 0.0,
+        FrameStyle::Wrapped => cfg.wrap.sanitized().left,
     }
 }
 
@@ -571,9 +554,9 @@ pub fn wrap_inset_left_cached(left_rail_mapped: bool) -> f32 {
 /// Right edge — mirror of `wrap_inset_left`.
 pub fn wrap_inset_right(cfg: &FrameConfig, right_rail_mapped: bool) -> f32 {
     match cfg.style {
-        FrameStyle::Hide => 0.0,
-        FrameStyle::Wrap if right_rail_mapped => 0.0,
-        FrameStyle::Wrap => cfg.wrap.sanitized().right,
+        FrameStyle::Normal => 0.0,
+        FrameStyle::Wrapped if right_rail_mapped => 0.0,
+        FrameStyle::Wrapped => cfg.wrap.sanitized().right,
     }
 }
 
@@ -590,122 +573,6 @@ pub fn wrap_inner_rect(display_w: f32, display_h: f32, bar_h: f32, inset: f32) -
         point(inset, bar_h),
         point((display_w - inset).max(0.0), (display_h - inset).max(bar_h)),
     )
-}
-
-// ── Hide strip surface (T268) ───────────────────────────────────────────────
-
-struct BottomStripView;
-
-impl Render for BottomStripView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Click-through: the strip eats no input ever, not even hover.
-        window.set_input_region(Some(&[]));
-
-        let theme = Theme::global(cx);
-        let strip = cached_config().bottom_strip;
-
-        // Span/chrome per junction (rule 3): full width for `Flush`; inset to
-        // the rails' inner boundary for `Break`/`Rounded`. The inset follows
-        // which rails are actually mapped (T284 §4).
-        let mut chrome = div()
-            .id("bottom-frame-strip")
-            .h_full()
-            .flex_1()
-            .bg(theme.bg.tertiary)
-            .border_t_1()
-            .border_color(theme.border.subtle);
-        if strip.junction == FrameJunction::Rounded {
-            let radius = (strip.height / 2.0).max(1.0);
-            chrome = chrome.rounded(px(radius));
-        }
-
-        if strip.junction == FrameJunction::Flush {
-            chrome
-        } else {
-            // Spacers on each side inset the chrome to the rails' inner
-            // boundary. Flexible root means margins can't overflow the
-            // window like `.mx()` did (the chrome stretched full width).
-            let (left, right) = hide_strip_insets(
-                rail_mapped(FrameSide::Left),
-                rail_mapped(FrameSide::Right),
-            );
-            div()
-                .id("bottom-frame-strip-shell")
-                .size_full()
-                .flex()
-                .child(div().h_full().w(px(left)))
-                .child(chrome)
-                .child(div().h_full().w(px(right)))
-        }
-    }
-}
-
-/// Window options for the strip on the given display: bottom-anchored,
-/// full-width Overlay, no exclusive zone, no keyboard, transparent.
-fn window_options(display_id: Option<DisplayId>, cx: &App) -> WindowOptions {
-    let display_w = display_id
-        .and_then(|id| cx.find_display(id))
-        .map(|d| f32::from(d.bounds().size.width))
-        .unwrap_or(1920.);
-
-    WindowOptions {
-        display_id,
-        titlebar: None,
-        window_bounds: Some(WindowBounds::Windowed(Bounds {
-            origin: point(px(0.), px(0.)),
-            size: Size::new(px(display_w), px(cached_config().bottom_strip.height)),
-        })),
-        app_id: Some("chronos-frame".to_string()),
-        window_background: WindowBackgroundAppearance::Transparent,
-        kind: WindowKind::LayerShell(LayerShellOptions {
-            namespace: "frame_bottom_strip".to_string(),
-            layer: Layer::Overlay,
-            anchor: Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
-            exclusive_zone: None,
-            margin: None,
-            keyboard_interactivity: KeyboardInteractivity::None,
-            ..Default::default()
-        }),
-        ..Default::default()
-    }
-}
-
-static FRAME_WINDOW: OnceLock<Mutex<Option<WindowHandle<BottomStripView>>>> = OnceLock::new();
-
-fn frame_window() -> &'static Mutex<Option<WindowHandle<BottomStripView>>> {
-    FRAME_WINDOW.get_or_init(|| Mutex::new(None))
-}
-
-/// Open the strip on the pult display. Idempotent — no-op if already open.
-fn open(cx: &mut App) -> bool {
-    if frame_window().lock().unwrap_or_else(|e| e.into_inner()).is_some() {
-        return true;
-    }
-    let display_id = crate::monitor::pult_display_id_or_primary(cx);
-    tracing::info!("frame: opening bottom strip on display_id={display_id:?}");
-    match cx.open_window(window_options(display_id, cx), |_, view_cx| {
-        view_cx.new(|_| BottomStripView {})
-    }) {
-        Ok(handle) => {
-            *frame_window().lock().unwrap_or_else(|e| e.into_inner()) = Some(handle);
-            apply(cx);
-            true
-        }
-        Err(err) => {
-            tracing::warn!("frame: failed to open bottom strip: {err}");
-            false
-        }
-    }
-}
-
-/// Close the strip window (idempotent — no-op if already closed).
-fn close(cx: &mut App) {
-    if let Some(handle) = frame_window().lock().unwrap_or_else(|e| e.into_inner()).take() {
-        match handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
-            Ok(()) => tracing::info!("frame: closed for recreate"),
-            Err(e) => tracing::warn!("frame: close could not reach window ({e})"),
-        }
-    }
 }
 
 // ── Wrap surfaces (T284 §5) ─────────────────────────────────────────────────
@@ -1096,11 +963,16 @@ fn close_wrap_windows(cx: &mut App) {
 
 // ── Apply / orchestration ───────────────────────────────────────────────────
 
-const STYLE_ID_HIDE: u8 = 0;
-const STYLE_ID_WRAP: u8 = 1;
-/// Last applied style — a Hide↔Wrap transition is the only event that
+const STYLE_ID_NORMAL: u8 = 0;
+const STYLE_ID_WRAPPED: u8 = 1;
+/// Last applied style — a Normal↔Wrapped transition is the only event that
 /// re-triggers panel geometry via `after_apply`.
-static LAST_STYLE: AtomicU8 = AtomicU8::new(STYLE_ID_HIDE);
+static LAST_STYLE: AtomicU8 = AtomicU8::new(STYLE_ID_NORMAL);
+
+/// T312: `[bottom_strip]` is legacy. Log once at startup (never per
+/// hot-reload) so a user whose `frame.toml` still carries the section is
+/// told why it no longer does anything.
+static BOTTOM_STRIP_LEGACY_LOGGED: AtomicBool = AtomicBool::new(false);
 
 /// Last applied sanitized wrap geometry. T321: geometry is mutated live
 /// (`window.resize` + `set_exclusive_zone` on the strips, repaint on the
@@ -1113,8 +985,8 @@ fn last_wrap_geometry() -> &'static Mutex<Option<WrapConfig>> {
 }
 
 /// Pure decision: does `current` wrap geometry differ from the last applied
-/// one? `None` (first apply) counts as a change. Split out of `apply_wrap`
-/// so the live-sync rule is unit-testable without an `App`.
+/// one? `None` (first apply) counts as a change. Split out of
+/// `apply_wrapped` so the live-sync rule is unit-testable without an `App`.
 fn wrap_geometry_changed(last: Option<&WrapConfig>, current: &WrapConfig) -> bool {
     last != Some(current)
 }
@@ -1140,7 +1012,7 @@ fn rail_mapping_bits() -> u8 {
 }
 
 /// Pure decision: does the rail mapping differ from the last synchronized
-/// one? Split out of `apply_wrap` so the live-zone rule is unit-testable
+/// one? Split out of `apply_wrapped` so the live-zone rule is unit-testable
 /// without an `App`.
 fn wrap_rail_mapping_changed(last: u8, current: u8) -> bool {
     last != current
@@ -1246,38 +1118,13 @@ fn run_after_apply(cx: &mut App) {
     }
 }
 
-fn apply_hide(cx: &mut App, cfg: &FrameConfig) {
-    // Wrap surfaces never coexist with the hide strip.
+fn apply_normal(cx: &mut App) {
+    // Normal = no shell: no plate, no bottom strip, no exclusive strips.
+    // Just make sure no wrap surfaces linger from a previous mode.
     close_wrap_windows(cx);
-
-    let wanted = hide_strip_wanted(
-        cfg.bottom_strip.enabled,
-        rail_mapped(FrameSide::Left),
-        rail_mapped(FrameSide::Right),
-    );
-    let Some(handle) = *frame_window().lock().unwrap_or_else(|e| e.into_inner()) else {
-        if wanted {
-            open(cx);
-        }
-        return;
-    };
-    if !wanted {
-        close(cx);
-        return;
-    }
-
-    match handle.update(cx, |_, window: &mut Window, cx| {
-        let current = window.bounds().size;
-        window.resize(Size::new(current.width, px(cfg.bottom_strip.height)));
-        window.set_input_region(Some(&[]));
-        cx.notify();
-    }) {
-        Ok(()) => tracing::debug!("frame: bottom strip config applied"),
-        Err(e) => tracing::warn!("frame: apply could not reach window ({e})"),
-    }
 }
 
-fn apply_wrap(cx: &mut App, cfg: &FrameConfig) {
+fn apply_wrapped(cx: &mut App, cfg: &FrameConfig) {
     // T319: a `wrap.top` override means the bar's own height is ignored for
     // the shell's top edge. Log once per apply (not per render) so a live
     // override is visible in the log but never spams.
@@ -1288,11 +1135,11 @@ fn apply_wrap(cx: &mut App, cfg: &FrameConfig) {
         );
     }
 
-    // T321: open the wrap set first (idempotent). Only a hide→wrap transition
-    // or the first apply actually opens surfaces; a live thickness/radius
-    // edit mutates the already-open set in place (`sync_wrap_surfaces`).
-    // Opening BEFORE dropping the hide strip means a failed open leaves the
-    // previous Hide state intact instead of a frame-less half-state.
+    // T321: open the wrap set first (idempotent). Only a normal→wrapped
+    // transition or the first apply actually opens surfaces; a live
+    // thickness/radius edit mutates the already-open set in place
+    // (`sync_wrap_surfaces`). Opening first means a failed open leaves the
+    // previous Normal state intact instead of a frame-less half-state.
     let was_open = wrap_windows()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -1301,11 +1148,6 @@ fn apply_wrap(cx: &mut App, cfg: &FrameConfig) {
     if !open_wrap_windows(cx) {
         tracing::warn!("frame: wrap open failed — previous frame style kept");
         return;
-    }
-    // Hide strip never coexists with the matte — drop it only now that the
-    // wrap set is confirmed up.
-    if frame_window().lock().unwrap_or_else(|e| e.into_inner()).is_some() {
-        close(cx);
     }
 
     if was_open {
@@ -1336,15 +1178,28 @@ fn apply_wrap(cx: &mut App, cfg: &FrameConfig) {
 /// open/close, and once at startup.
 pub fn apply(cx: &mut App) {
     let cfg = cached_config();
+    // T312: [bottom_strip] is legacy — log once so a user whose frame.toml
+    // carries the section is told why it does nothing. The non-default check
+    // comes FIRST: `swap` before it would burn the one-shot on the very first
+    // apply of a clean config, and a section added later by hot-reload would
+    // then be swallowed in silence (errata to the T312 report's gate).
+    if cfg.bottom_strip != BottomStripConfig::default()
+        && !BOTTOM_STRIP_LEGACY_LOGGED.swap(true, Ordering::Relaxed)
+    {
+        tracing::warn!(
+            "frame: [bottom_strip] is legacy — height/junction/enabled are no longer read; the wrapped bottom edge is now wrap.bottom"
+        );
+    }
+
     let style_id = match cfg.style {
-        FrameStyle::Hide => STYLE_ID_HIDE,
-        FrameStyle::Wrap => STYLE_ID_WRAP,
+        FrameStyle::Normal => STYLE_ID_NORMAL,
+        FrameStyle::Wrapped => STYLE_ID_WRAPPED,
     };
     let changed = LAST_STYLE.swap(style_id, Ordering::Relaxed) != style_id;
 
     match cfg.style {
-        FrameStyle::Hide => apply_hide(cx, &cfg),
-        FrameStyle::Wrap => apply_wrap(cx, &cfg),
+        FrameStyle::Normal => apply_normal(cx),
+        FrameStyle::Wrapped => apply_wrapped(cx, &cfg),
     }
 
     // A style transition changes the panel geometry (margin/height), which
@@ -1472,7 +1327,8 @@ fn spawn_watcher(cx: &mut App) {
 /// Opens the frame once at startup. Called from `main.rs`. Deferred ~40 ms
 /// so Wayland has enumerated displays (frame must land on the pult, like
 /// bar/panels). `apply` decides the surface set from the loaded style — no
-/// strip is opened until a rail maps, and no matte is opened in Hide.
+/// surfaces are opened in Normal; the matte + exclusive strips open in
+/// Wrapped.
 pub fn init(cx: &mut App) {
     FrameConfig::apply();
     spawn_watcher(cx);
@@ -1497,7 +1353,7 @@ mod tests {
         assert!(cfg.bottom_strip.enabled);
         assert_eq!(cfg.bottom_strip.height, 4.0);
         assert_eq!(cfg.bottom_strip.junction, FrameJunction::Break);
-        assert_eq!(cfg.style, FrameStyle::Hide);
+        assert_eq!(cfg.style, FrameStyle::Normal);
         assert_eq!(cfg.wrap.top, DEFAULT_TOP);
         assert_eq!(cfg.wrap.left, DEFAULT_THICKNESS);
         assert_eq!(cfg.wrap.right, DEFAULT_THICKNESS);
@@ -1553,31 +1409,67 @@ mod tests {
     // ── T284: style / wrap config ──────────────────────────────────────
 
     #[test]
-    fn missing_style_is_hide() {
+    fn missing_style_is_normal() {
         let cfg: FrameConfig = toml::from_str("[bottom_strip]\nenabled=true\n").unwrap();
-        assert_eq!(cfg.style, FrameStyle::Hide);
+        assert_eq!(cfg.style, FrameStyle::Normal);
     }
 
     #[test]
-    fn unknown_style_falls_back_to_hide() {
+    fn unknown_style_falls_back_to_normal() {
         let cfg: FrameConfig = toml::from_str("style = \"diagonal\"\n").unwrap();
-        assert_eq!(cfg.style, FrameStyle::Hide);
+        assert_eq!(cfg.style, FrameStyle::Normal);
     }
 
     #[test]
-    fn wrap_style_parses() {
-        let cfg: FrameConfig = toml::from_str("style = \"wrap\"\n").unwrap();
-        assert_eq!(cfg.style, FrameStyle::Wrap);
+    fn style_normal_and_wrapped_parse() {
+        let normal: FrameConfig = toml::from_str("style = \"normal\"\n").unwrap();
+        assert_eq!(normal.style, FrameStyle::Normal);
+        let wrapped: FrameConfig = toml::from_str("style = \"wrapped\"\n").unwrap();
+        assert_eq!(wrapped.style, FrameStyle::Wrapped);
     }
 
     #[test]
-    fn wrap_inset_zero_in_hide_thickness_in_wrap() {
-        let hide = FrameConfig {
-            style: FrameStyle::Hide,
+    fn style_legacy_aliases_parse() {
+        // T312: `hide`/`wrap` are aliases of the new names — an existing
+        // `frame.toml` with the old value must not collapse to defaults (T268).
+        let hide: FrameConfig = toml::from_str("style = \"hide\"\n").unwrap();
+        assert_eq!(hide.style, FrameStyle::Normal);
+        let wrap: FrameConfig = toml::from_str("style = \"wrap\"\n").unwrap();
+        assert_eq!(wrap.style, FrameStyle::Wrapped);
+    }
+
+    #[test]
+    fn style_parse_is_case_insensitive() {
+        for s in ["WRAP", "Wrapped", "wRaPpEd"] {
+            let cfg: FrameConfig = toml::from_str(&format!("style = \"{s}\"\n")).unwrap();
+            assert_eq!(cfg.style, FrameStyle::Wrapped);
+        }
+        let normal: FrameConfig = toml::from_str("style = \"NORMAL\"\n").unwrap();
+        assert_eq!(normal.style, FrameStyle::Normal);
+    }
+
+    #[test]
+    fn unknown_style_keeps_other_fields() {
+        // T312: the whole point of manual `deserialize_style` — a bad `style`
+        // must fall back to the default WITHOUT wiping `wrap.thickness` /
+        // `bottom_strip.height` from the same TOML (the T268 trap).
+        let doc = "style = \"banana\"\n[wrap]\nthickness = 24.0\ninner_radius = 12.0\n[bottom_strip]\nheight = 8.0\n";
+        let cfg: FrameConfig = toml::from_str(doc).unwrap();
+        assert_eq!(cfg.style, FrameStyle::Normal);
+        assert_eq!(cfg.wrap.left, 24.0);
+        assert_eq!(cfg.wrap.right, 24.0);
+        assert_eq!(cfg.wrap.inner_radius, 12.0);
+        assert_eq!(cfg.bottom_strip.height, 8.0);
+    }
+
+    #[test]
+    fn wrap_inset_zero_in_normal_thickness_in_wrapped() {
+        let normal = FrameConfig {
+            style: FrameStyle::Normal,
             ..FrameConfig::default()
         };
-        let wrap = FrameConfig {
-            style: FrameStyle::Wrap,
+        let wrapped = FrameConfig {
+            style: FrameStyle::Wrapped,
             wrap: WrapConfig {
                 left: 4.0,
                 right: 4.0,
@@ -1585,14 +1477,14 @@ mod tests {
             },
             ..FrameConfig::default()
         };
-        assert_eq!(wrap_inset_for(&hide), 0.0);
-        assert_eq!(wrap_inset_for(&wrap), 4.0);
+        assert_eq!(wrap_inset_for(&normal), 0.0);
+        assert_eq!(wrap_inset_for(&wrapped), 4.0);
         // No [wrap] section → default thickness drives the inset.
-        let wrap_default = FrameConfig {
-            style: FrameStyle::Wrap,
+        let wrapped_default = FrameConfig {
+            style: FrameStyle::Wrapped,
             ..FrameConfig::default()
         };
-        assert_eq!(wrap_inset_for(&wrap_default), DEFAULT_THICKNESS);
+        assert_eq!(wrap_inset_for(&wrapped_default), DEFAULT_THICKNESS);
     }
 
     #[test]
@@ -1602,7 +1494,7 @@ mod tests {
         // 0 — the rail already paints that edge, the wrap must not waste
         // pixels on top. Bottom always reads `wrap.bottom`.
         let mut cfg = FrameConfig {
-            style: FrameStyle::Wrap,
+            style: FrameStyle::Wrapped,
             ..FrameConfig::default()
         };
         cfg.wrap.left = 16.0;
@@ -1626,19 +1518,19 @@ mod tests {
         assert_eq!(wrap_inset_right(&cfg, true), 0.0);
         assert_eq!(wrap_inset_bottom(&cfg), 6.0);
 
-        // Hide style → everything collapses to 0 because no matte is
+        // Normal style → everything collapses to 0 because no matte is
         // drawn, even with both rails gone.
-        let hide = FrameConfig {
-            style: FrameStyle::Hide,
+        let normal = FrameConfig {
+            style: FrameStyle::Normal,
             ..FrameConfig::default()
         };
-        assert_eq!(wrap_inset_left(&hide, false), 0.0);
-        assert_eq!(wrap_inset_right(&hide, false), 0.0);
-        assert_eq!(wrap_inset_bottom(&hide), 0.0);
+        assert_eq!(wrap_inset_left(&normal, false), 0.0);
+        assert_eq!(wrap_inset_right(&normal, false), 0.0);
+        assert_eq!(wrap_inset_bottom(&normal), 0.0);
     }
 
     #[test]
-    fn wrap_inset_left_zero_in_hide_thickness_in_wrap() {
+    fn wrap_inset_left_zero_in_normal_thickness_in_wrapped() {
         // T311 D3: legacy `wrap_inset_for` still returns the rail-free
         // thickness value (same semantics it had pre-D3), so a config
         // consumer that does not yet know about per-edge insets does not
@@ -1646,30 +1538,16 @@ mod tests {
         // recommended path; this entry point is kept only for tests and
         // any external reader (settings UI, IPC) that summarizes the
         // shape.
-        let wrap = FrameConfig {
-            style: FrameStyle::Wrap,
+        let wrapped = FrameConfig {
+            style: FrameStyle::Wrapped,
             ..FrameConfig::default()
         };
-        assert_eq!(wrap_inset_for(&wrap), DEFAULT_THICKNESS);
-        let hide = FrameConfig {
-            style: FrameStyle::Hide,
+        assert_eq!(wrap_inset_for(&wrapped), DEFAULT_THICKNESS);
+        let normal = FrameConfig {
+            style: FrameStyle::Normal,
             ..FrameConfig::default()
         };
-        assert_eq!(wrap_inset_for(&hide), 0.0);
-    }
-
-    #[test]
-    fn hide_strip_wanted_false_when_no_rails() {
-        assert!(!hide_strip_wanted(true, false, false));
-        assert!(hide_strip_wanted(true, true, false));
-        assert!(!hide_strip_wanted(false, true, true));
-    }
-
-    #[test]
-    fn hide_strip_insets_one_rail() {
-        assert_eq!(hide_strip_insets(true, false), (RAIL_WIDTH, 0.0));
-        assert_eq!(hide_strip_insets(false, true), (0.0, RAIL_WIDTH));
-        assert_eq!(hide_strip_insets(true, true), (RAIL_WIDTH, RAIL_WIDTH));
+        assert_eq!(wrap_inset_for(&normal), 0.0);
     }
 
     #[test]
@@ -1787,10 +1665,10 @@ mod tests {
     #[test]
     fn shell_top_gap_follows_bar_then_overrides() {
         // T319: top = 0 → the live bar height; top > 0 → explicit override.
-        // Hide has no wrap frame but panels still clear the bar.
+        // Normal has no wrap frame but panels still clear the bar.
         let bar = crate::state::bar_height_px();
         let follow = FrameConfig {
-            style: FrameStyle::Wrap,
+            style: FrameStyle::Wrapped,
             wrap: WrapConfig {
                 top: 0.0,
                 ..Default::default()
@@ -1800,7 +1678,7 @@ mod tests {
         assert_eq!(shell_top_gap(&follow), bar);
 
         let overridden = FrameConfig {
-            style: FrameStyle::Wrap,
+            style: FrameStyle::Wrapped,
             wrap: WrapConfig {
                 top: 42.0,
                 ..Default::default()
@@ -1809,11 +1687,11 @@ mod tests {
         };
         assert_eq!(shell_top_gap(&overridden), 42.0);
 
-        let hide = FrameConfig {
-            style: FrameStyle::Hide,
+        let normal = FrameConfig {
+            style: FrameStyle::Normal,
             ..FrameConfig::default()
         };
-        assert_eq!(shell_top_gap(&hide), bar);
+        assert_eq!(shell_top_gap(&normal), bar);
     }
 
     #[test]
@@ -1832,10 +1710,10 @@ mod tests {
             "[wrap]\nthickness = 16.0\ninner_radius = 16.0\nbottom_thickness = 4.0\n",
         )
         .unwrap();
-        write_style_at(&path, FrameStyle::Wrap).unwrap();
+        write_style_at(&path, FrameStyle::Wrapped).unwrap();
         let doc: toml::Value =
             std::fs::read_to_string(&path).unwrap().parse().unwrap();
-        assert_eq!(doc["style"], toml::Value::String("wrap".into()));
+        assert_eq!(doc["style"], toml::Value::String("wrapped".into()));
         assert_eq!(
             doc["wrap"]["bottom_thickness"],
             toml::Value::Float(4.0)
@@ -1950,9 +1828,9 @@ mod tests {
             "[wrap]\ninner_radius = 24.0\n\n[bottom_strip]\nenabled = false\nheight = 8.0\njunction = \"flush\"\n",
         )
         .unwrap();
-        write_style_at(&path, FrameStyle::Wrap).unwrap();
+        write_style_at(&path, FrameStyle::Wrapped).unwrap();
         let doc: toml::Value = std::fs::read_to_string(&path).unwrap().parse().unwrap();
-        assert_eq!(doc["style"], toml::Value::String("wrap".into()));
+        assert_eq!(doc["style"], toml::Value::String("wrapped".into()));
         assert_eq!(doc["wrap"]["inner_radius"], toml::Value::Float(24.0));
         assert_eq!(doc["bottom_strip"]["enabled"], toml::Value::Boolean(false));
         assert_eq!(doc["bottom_strip"]["height"], toml::Value::Float(8.0));
@@ -1967,9 +1845,9 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("frame.toml");
         std::fs::write(&path, "style = \"wrap\"\n").unwrap();
-        write_style_at(&path, FrameStyle::Hide).unwrap();
+        write_style_at(&path, FrameStyle::Normal).unwrap();
         let doc: toml::Value = std::fs::read_to_string(&path).unwrap().parse().unwrap();
-        assert_eq!(doc["style"], toml::Value::String("hide".into()));
+        assert_eq!(doc["style"], toml::Value::String("normal".into()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
