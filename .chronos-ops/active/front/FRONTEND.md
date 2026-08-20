@@ -7,17 +7,11 @@ packaging (это BACKEND).
 
 ## Очередь
 
-1. **T316** — `T316-bar-radius-closes-aperture-top.md`. P2, СВОБОДЕН
-   (T318 принят, радиус = 10). Нижние углы бара замыкают апертуру
-   сверху. Остаток T311 D4.
-2. **T312** — `T312-frame-modes-normal-wrapped.md`. P2, СВОБОДЕН.
+1. **T312** — `T312-frame-modes-normal-wrapped.md`. P2, СВОБОДЕН.
    Два режима `normal`/`wrapped`, алиасы старых имён в
    `deserialize_style`.
-3. **T313** — `T313-theme-picker-and-mocha-mousse-scheme.md`. P2,
+2. **T313** — `T313-theme-picker-and-mocha-mousse-scheme.md`. P2,
    СВОБОДЕН. Picker схем со свотчами + схема Mocha Mousse.
-
-T316 и T312 параллелить нельзя — оба трогают раму. Порядок
-T316 → T312.
 
 T313 независим от рамы (зоны `crates/ui/src/theme/`,
 `side_panel_right/tab/bar_settings.rs`, `theme_config.rs`) — идёт
@@ -35,6 +29,5 @@ T313 независим от рамы (зоны `crates/ui/src/theme/`,
 **Закрыто 2026-08-18/19 (детали — `MIGRATION.md`):** T301, T302, T303,
 T305, T307, T308, T311 (единая плита), T314 (живая эксклюзивная зона —
 рельс стал кромкой кадра), T318 (оболочка обводит окно), T317 (WCAG muted), T319 (геометрия по краям), T321 (живая геометрия + эррата на нулевой размер), T322 (панели без
-пересоздания
-), T320 (вкладки
+пересоздания), T316 (закрыт как сделанный T318 — кода нет), T320 (вкладки
 вернулись в панель, control-center снят).
