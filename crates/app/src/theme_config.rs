@@ -207,35 +207,47 @@ pub fn apply(cx: &mut App) {
     cx.refresh_windows();
 }
 
-/// Toggle Default (dark) ↔ Light, persist `theme.toml`, refresh windows.
+/// Apply a scheme by name: persist `theme.toml`, resolve, overlay surface
+/// settings, set the global, sync gpui-component and refresh windows.
+///
+/// Shared by `toggle` and the theme picker — one apply path, no copies.
 ///
 /// If `CHRONOS_THEME` is set it still wins on next cold `apply`/reload —
-/// toggle applies immediately and writes the file for normal resolution.
+/// select applies immediately and writes the file for normal resolution.
 ///
-/// T266: the toggle must NOT reset surface settings — the next scheme is
-/// overlaid with the current config's alpha/blur (regression gate: an
-/// existing translucent setup survives a theme switch).
-pub fn toggle(cx: &mut App) {
+/// T266: must NOT reset surface settings — the next scheme is overlaid with
+/// the current config's alpha/blur (regression gate: an existing translucent
+/// setup survives a theme switch).
+pub fn select(name: &str, cx: &mut App) {
     let cfg = load_config();
+    if let Err(e) = persist_scheme(name) {
+        tracing::warn!("theme: failed to persist scheme={name}: {e}");
+    }
+    let scheme = Theme::select_scheme(Some(name.to_string()));
+    let theme = apply_surface_config(scheme, &cfg);
+    tracing::info!(
+        scheme = name,
+        is_light = theme.is_light,
+        surface_alpha = theme.surface.alpha,
+        "theme: selected"
+    );
+    cx.set_global(theme);
+    sync_gpui_component_theme(cx);
+    cx.refresh_windows();
+}
+
+/// Toggle Default (dark) ↔ Light through the shared `select` path.
+///
+/// T313: the toggle is hardwired to Default↔Light by `is_light`; after the
+/// picker lands this becomes odd (select Solarized, hotkey → Default). Known
+/// behavior, NOT fixed here — see the T313 report.
+pub fn toggle(cx: &mut App) {
     let next_name = if Theme::global(cx).is_light {
         "Default"
     } else {
         "Light"
     };
-    if let Err(e) = persist_scheme(next_name) {
-        tracing::warn!("theme: failed to persist scheme={next_name}: {e}");
-    }
-    let scheme = Theme::select_scheme(Some(next_name.to_string()));
-    let theme = apply_surface_config(scheme, &cfg);
-    tracing::info!(
-        scheme = next_name,
-        is_light = theme.is_light,
-        surface_alpha = theme.surface.alpha,
-        "theme: toggled"
-    );
-    cx.set_global(theme);
-    sync_gpui_component_theme(cx);
-    cx.refresh_windows();
+    select(next_name, cx);
 }
 
 pub(crate) fn persist_scheme(name: &str) -> std::io::Result<()> {

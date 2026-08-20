@@ -19,7 +19,7 @@
 
 use std::path::PathBuf;
 
-use chronos_ui::{Theme, elevation_apply_light_chrome};
+use chronos_ui::{Theme, ThemeScheme, builtin_schemes, elevation_apply_light_chrome};
 use gpui::{
     App, AnyElement, BoxShadow, ClickEvent, Context, DragMoveEvent, EmptyView, FontWeight,
     InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle, SharedString, Styled,
@@ -326,16 +326,6 @@ impl Render for BarSettingsTab {
             cx.notify();
         });
 
-        // T196: theme toggle — goes through `theme_config::toggle` (the
-        // IPC/hot-reload path that `set_global`s, persists the scheme, syncs
-        // gpui-component and refreshes windows — never panics).
-        let is_light = theme.is_light;
-        let theme_scheme = if is_light { "Light" } else { "Default" };
-        let toggle_theme = cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
-            crate::theme_config::toggle(cx);
-            this.error = None;
-            cx.notify();
-        });
 
         // ── Render state ──────────────────────────────────────────────
         let cur = self.current;
@@ -661,57 +651,39 @@ impl Render for BarSettingsTab {
                     )),
             );
 
-        // ── Theme toggle ──────────────────────────────────────────────
+        // ── Theme picker (T313) ────────────────────────────────────────
+        // One swatch card per `builtin_schemes()` entry. Swatch colors come
+        // from the scheme's own `Theme` (never hardcoded here) — the strip is
+        // bg.primary/secondary/tertiary/elevated + an accent dot. Active
+        // scheme is matched by color core (surface alpha/blur are overlaid
+        // by the config, so a whole-theme equality would misfire on
+        // translucent setups).
+        let mut swatches: Vec<AnyElement> = Vec::new();
+        for scheme in builtin_schemes() {
+            let name = scheme.name;
+            let active = scheme_core_matches(&scheme.theme, &theme);
+            swatches.push(theme_swatch_card(
+                theme,
+                &scheme,
+                active,
+                cx.listener(move |this, _ev, _w, cx: &mut Context<BarSettingsTab>| {
+                    crate::theme_config::select(name, cx);
+                    this.error = None;
+                    cx.notify();
+                }),
+            ));
+        }
         card = card
             .child(section_header(theme, "Theme", "theme.toml — hot-reload"))
             .child(
                 div()
-                    .id("sys-theme-toggle")
+                    .id("sys-theme-swatches")
+                    .grid()
                     .w_full()
-                    .flex()
-                    .justify_between()
-                    .items_center()
-                    .px(px(12.))
-                    .py(px(9.))
-                    .rounded_md()
-                    .border_1()
-                    .border_color(theme.border.subtle)
-                    .child(
-                        div()
-                            .flex_col()
-                            .gap(px(2.))
-                            .child(
-                                div()
-                                    .text_color(theme.text.primary)
-                                    .text_size(px(12.))
-                                    .child(if is_light { "☀ Light" } else { "🌙 Dark" }),
-                            )
-                            .child(
-                                div()
-                                    .text_color(theme.text.muted)
-                                    .text_xs()
-                                    .font_family(theme.font_mono)
-                                    .child(theme_scheme),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .id("sys-theme-btn")
-                            .px(px(10.))
-                            .py(px(5.))
-                            .rounded_md()
-                            .cursor_pointer()
-                            .text_size(px(11.5))
-                            .font_family(theme.font_mono)
-                            .font_weight(FontWeight::MEDIUM)
-                            .bg(theme.accent.primary.opacity(0.16))
-                            .text_color(theme.accent.primary)
-                            .border_1()
-                            .border_color(theme.accent.primary)
-                            .hover(|s| s.bg(theme.accent.primary.opacity(0.28)))
-                            .on_click(toggle_theme)
-                            .child("Toggle"),
-                    ),
+                    .gap(px(8.))
+                    .when(is_wide, |d| d.grid_cols(2))
+                    .when(!is_wide, |d| d.grid_cols(1))
+                    .children(swatches),
             );
 
         // ── Hypr modules — compact grid on wide (T231 §4) ────────────
@@ -1026,6 +998,98 @@ where
                 .text_xs()
                 .font_family(theme.font_mono)
                 .child(desc),
+        )
+        .into_any_element()
+}
+
+/// True when a scheme's color core (everything except the surface tokens)
+/// equals the active theme. Surface alpha/blur are overlaid by the config on
+/// top of any scheme, so a whole-`Theme` comparison would never match a
+/// translucent setup.
+fn scheme_core_matches(scheme: &Theme, active: &Theme) -> bool {
+    scheme.bg == active.bg
+        && scheme.text == active.text
+        && scheme.border == active.border
+        && scheme.accent == active.accent
+        && scheme.status == active.status
+        && scheme.interactive == active.interactive
+}
+
+/// T313 theme picker card: live palette strip (bg.primary/secondary/
+/// tertiary/elevated + accent dot) with the scheme name underneath. Active
+/// card wears the accent border/state language shared with `seg_chip` and
+/// `onoff_chip`. Colors are read from the scheme's own `Theme` — hardcoding
+/// hexes here would drift from the palette on the next scheme edit.
+fn theme_swatch_card<F>(
+    theme: Theme,
+    scheme: &ThemeScheme,
+    active: bool,
+    on_click: F,
+) -> AnyElement
+where
+    F: Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+{
+    let id = SharedString::from(format!("theme-swatch-{}", scheme.name));
+    let name = SharedString::from(scheme.name);
+    let s = &scheme.theme;
+    div()
+        .id(id)
+        .flex_col()
+        .gap(px(6.))
+        .px(px(10.))
+        .py(px(8.))
+        .rounded_md()
+        .cursor_pointer()
+        .bg(if active {
+            theme.accent.primary.opacity(0.16)
+        } else {
+            theme.bg.secondary.opacity(0.5)
+        })
+        .border_1()
+        .border_color(if active { theme.accent.primary } else { theme.border.subtle })
+        .hover(move |s| {
+            if active {
+                s.bg(theme.accent.primary.opacity(0.16))
+            } else {
+                s.bg(theme.interactive.hover)
+            }
+        })
+        .on_click(on_click)
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .w_full()
+                .child(
+                    div()
+                        .flex_1()
+                        .flex()
+                        .h(px(18.))
+                        .rounded(px(4.))
+                        .overflow_hidden()
+                        .border_1()
+                        .border_color(theme.border.subtle)
+                        .child(div().flex_1().bg(s.bg.primary))
+                        .child(div().flex_1().bg(s.bg.secondary))
+                        .child(div().flex_1().bg(s.bg.tertiary))
+                        .child(div().flex_1().bg(s.bg.elevated)),
+                )
+                .child(
+                    div()
+                        .size(px(18.))
+                        .rounded_full()
+                        .bg(s.accent.primary)
+                        .border_1()
+                        .border_color(theme.border.subtle),
+                ),
+        )
+        .child(
+            div()
+                .text_size(px(11.5))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(if active { theme.accent.primary } else { theme.text.primary })
+                .child(name),
         )
         .into_any_element()
 }
