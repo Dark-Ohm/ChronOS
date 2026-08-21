@@ -118,8 +118,10 @@ fn wallpaper_dir() -> Option<PathBuf> {
     }
 }
 
-/// Scan the wallpaper directory for images, sorted alphabetically.
-pub fn scan_wallpapers() -> Vec<PathBuf> {
+/// Scan the wallpaper directory, sorted alphabetically. `include_video` adds
+/// video files for video-capable backends (mpvpaper/gslapper; T349) — awww /
+/// hyprpaper / swaybg cannot play them, so they keep the image-only scan.
+fn scan_media(include_video: bool) -> Vec<PathBuf> {
     let Some(dir) = wallpaper_dir() else {
         return Vec::new();
     };
@@ -128,7 +130,7 @@ pub fn scan_wallpapers() -> Vec<PathBuf> {
         .flatten()
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.is_file() && is_image(p))
+        .filter(|p| p.is_file() && is_media(p, include_video))
         .collect();
     entries.sort_by(|a, b| {
         let a_name = a
@@ -142,6 +144,12 @@ pub fn scan_wallpapers() -> Vec<PathBuf> {
         a_name.cmp(&b_name)
     });
     entries
+}
+
+/// Whether `path` is scannable media: always images; videos only when the
+/// active backend can play them.
+fn is_media(path: &Path, include_video: bool) -> bool {
+    is_image(path) || (include_video && is_video(path))
 }
 
 /// Video extensions awww cannot display (and which `IMAGE_EXTENSIONS` does not
@@ -185,8 +193,13 @@ fn refusal_message(video_count: Option<usize>) -> String {
 
 /// Cycle to the next wallpaper in the folder (round-robin from current).
 /// If `WallpaperState.current` is not in the folder or is None, picks the first.
+///
+/// T349: when the active backend plays video (mpvpaper/gslapper), the cycle
+/// includes video files — real rotation, not the T339 "videos skipped" refusal
+/// (that message now only fires for engines that genuinely cannot play them).
 pub fn next(cx: &mut gpui::App) {
-    let wallpapers = scan_wallpapers();
+    let backend = state::AppState::wallpaper(cx).get().backend;
+    let wallpapers = scan_media(backend.supports_video());
     if wallpapers.is_empty() {
         warn!("wallpaper_ctl: no wallpapers found in ~/Pictures/Wallpapers");
         // T339: an empty scan is a visible refusal, not a dead button — tell
@@ -231,17 +244,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scan_wallpapers_empty_when_dir_missing() {
+    fn scan_media_empty_when_dir_missing() {
         // wallpaper_dir() returns None when ~/Pictures/Wallpapers doesn't exist
         // (CI environment). Just verify it returns an empty Vec, not a panic.
-        let result = scan_wallpapers();
+        let result = scan_media(false);
         // Can't assert empty — dir might exist on the host. Just assert no panic.
         let _ = result.len();
     }
 
     #[test]
-    fn scan_wallpapers_sorted() {
-        let wallpapers = scan_wallpapers();
+    fn scan_media_sorted() {
+        let wallpapers = scan_media(false);
         for window in wallpapers.windows(2) {
             let a = window[0].file_stem().unwrap().to_string_lossy();
             let b = window[1].file_stem().unwrap().to_string_lossy();
@@ -266,5 +279,14 @@ mod tests {
         assert!(is_video(Path::new("a.MKV")));
         assert!(!is_video(Path::new("a.png")));
         assert!(!is_video(Path::new("a.txt")));
+    }
+
+    #[test]
+    fn is_media_includes_video_only_when_asked() {
+        assert!(is_media(Path::new("a.png"), false));
+        assert!(is_media(Path::new("a.png"), true));
+        assert!(!is_media(Path::new("a.mp4"), false));
+        assert!(is_media(Path::new("a.mp4"), true));
+        assert!(!is_media(Path::new("a.txt"), true));
     }
 }

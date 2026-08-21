@@ -1,5 +1,9 @@
-//! Wallpaper service via `awww` (Wayland wallpaper daemon, a maintained swww
-//! fork) — see `/usr/bin/awww` and `/usr/bin/awww-daemon` (v0.12.1).
+//! Wallpaper service — multi-backend dispatcher (T349). Drives `awww` (a
+//! maintained swww fork — see `/usr/bin/awww` and `/usr/bin/awww-daemon`
+//! v0.12.1) plus hyprpaper / swaybg / mpvpaper / gslapper. The active engine
+//! is resolved once at startup (config override → autodetect → awww) and
+//! cached in `WallpaperState.backend`; `dispatch` routes every command through
+//! it, killing all other engines first (waytrogen's one-live-engine rule).
 //!
 //! ASYNC TEMPLATE (spec §5.1): same shape as `AudioSubscriber`. `new()`
 //! captures `Handle::current()` and `tokio::spawn`s a one-shot startup that
@@ -9,13 +13,17 @@
 //!
 //! Backend knowledge (CLI surface, daemon bootstrap, `--resize`/`--transition-type`
 //! flags, enum→string maps) is sourced from the `waytrogen` project
-//! (Unlicense / public domain; see `Source/NOTICE`). The awww application
-//! itself is NOT embedded — only the subprocess contract.
+//! (Unlicense / public domain; see `Source/NOTICE`). The engine applications
+//! themselves are NOT embedded — only the subprocess contract.
 //!
 //! LIMITATION (by design): the reactive state reflects only wallpapers changed
-//! through this service. If another process runs `awww img` directly, our
+//! through this service. If another process changes the wallpaper directly, our
 //! `WallpaperState` goes stale until the next `Set`. This is accepted: the
 //! shell owns wallpaper changes.
+
+pub mod backends;
+pub mod config;
+pub mod types;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -30,8 +38,6 @@ use crate::ServiceStatus;
 pub use types::{
     Backend, IMAGE_EXTENSIONS, WallpaperCommand, WallpaperState, is_image,
 };
-
-pub mod types;
 
 pub const AWWW_BIN: &str = "awww";
 pub const AWWW_DAEMON_BIN: &str = "awww-daemon";
@@ -71,7 +77,14 @@ impl WallpaperSubscriber {
     /// Panics if called outside a tokio runtime — `Handle::current()` requires
     /// one. `init_all()` (spec §7) calls this inside `rt.block_on`.
     pub fn new() -> Self {
-        let data = Mutable::new(WallpaperState::default());
+        // Resolve the active engine once (config override → autodetect → awww).
+        // A handful of fast `pidof`/config reads; `new()` runs inside
+        // `rt.block_on` (spec §7) so the synchronous probe is acceptable here.
+        let backend = backends::resolve_backend();
+
+        let mut initial = WallpaperState::default();
+        initial.backend = backend;
+        let data = Mutable::new(initial);
         let status = Mutable::new(ServiceStatus::Initializing);
 
         // Guard: must run inside `rt.block_on` (spec §5.1 + §7).
@@ -81,33 +94,42 @@ impl WallpaperSubscriber {
         let data_clone = data.clone();
         let status_clone = status.clone();
         handle.spawn(async move {
-            if ensure_daemon().await == StartOutcome::SkippedForeignBackend {
-                // A foreign backend owns the wallpaper layer; leave it
-                // untouched and report that the shell is not driving it.
-                status_clone.set(ServiceStatus::Degraded("wallpaper managed externally".into()));
-                return;
-            }
-            match query_current().await {
-                // We only reflect awww's current state, never drive it. Do
-                // NOT call `awww restore` on an empty read: it reapplies
-                // awww's own on-disk cache (`~/.cache/awww/<ver>/<output>`),
-                // which can drift from what the user's actual wallpaper
-                // manager (waytrogen) currently has selected — caught live
-                // 2026-08-04: awww's cache pointed at
-                // `musely_pixel_art.gif` while waytrogen's own config.json
-                // said `musely_pixel_art-4k.png`, and restoring from the
-                // stale awww cache silently overrode waytrogen's choice on
-                // every chronos restart. Directive: only waytrogen manages
-                // the background.
-                Ok(state) => {
-                    data_clone.set(state);
-                    status_clone.set(ServiceStatus::Available);
+            match backend {
+                // awww: respect foreign ownership at startup (T338), then
+                // reflect what awww currently displays.
+                Backend::Awww => {
+                    if ensure_daemon().await == StartOutcome::SkippedForeignBackend {
+                        // A foreign backend owns the wallpaper layer; leave it
+                        // untouched and report that the shell is not driving it.
+                        status_clone
+                            .set(ServiceStatus::Degraded("wallpaper managed externally".into()));
+                        return;
+                    }
+                    match query_current().await {
+                        // We only reflect awww's current state, never drive it.
+                        // Do NOT call `awww restore` on an empty read: it
+                        // reapplies awww's own on-disk cache, which can drift
+                        // from the user's actual selection (caught live
+                        // 2026-08-04; waytrogen's config.json vs awww's cache).
+                        Ok(state) => {
+                            data_clone.set(state);
+                            status_clone.set(ServiceStatus::Available);
+                        }
+                        Err(e) => {
+                            // awww not installed / daemon failed to start.
+                            warn!("WallpaperSubscriber: awww unavailable ({e}); degraded");
+                            status_clone.set(ServiceStatus::Degraded("awww unavailable".into()));
+                        }
+                    }
                 }
-                Err(e) => {
-                    // awww not installed / daemon failed to start: degraded.
-                    // Wallpapers can still be set later once awww is present.
-                    warn!("WallpaperSubscriber: awww unavailable ({e}); degraded");
-                    status_clone.set(ServiceStatus::Degraded("awww unavailable".into()));
+                // The other engines have no query surface we own; we drive
+                // them on the next Set. Report available with the engine
+                // known and the current path unknown.
+                other => {
+                    info!(
+                        "WallpaperSubscriber: active backend {other:?} (no query); ready to drive it"
+                    );
+                    status_clone.set(ServiceStatus::Available);
                 }
             }
         });
@@ -124,13 +146,16 @@ impl WallpaperSubscriber {
     pub fn dispatch(&self, cmd: WallpaperCommand) {
         let data = self.data.clone();
         let status = self.status.clone();
+        // Route through the active engine resolved at startup (config override
+        // → autodetect → awww).
+        let backend = self.data.get_cloned().backend;
         self.runtime.spawn(async move {
-            match apply_command(&cmd).await {
+            match apply_command(&cmd, backend).await {
                 Ok(()) => {
                     // Reflect locally: update current and per_monitor for the
                     // targeted (or all) outputs so UI does not wait for a poll.
                     let mut state = data.get_cloned();
-                    state.backend = Backend::Awww;
+                    state.backend = backend;
                     if let Some(mon) = &cmd.monitor {
                         state.per_monitor.insert(mon.clone(), cmd.path.clone());
                     } else {
@@ -153,21 +178,11 @@ impl WallpaperSubscriber {
         });
     }
 
-    /// Kill any running backend so a new one can take the wallpaper layer.
-    ///
-    /// Only `Awww` is implemented; the others are stubbed per the framework
-    /// (they are not built in this MVP).
+    /// Kill any running backend so a new one can take the wallpaper layer
+    /// (T349: all five engines are killable — `pkill -9` for the subprocess
+    /// backends, IPC `stop` for gslapper).
     pub fn kill_backend(&self, backend: Backend) {
-        match backend {
-            Backend::Awww => {
-                // awww runs per-output daemons; `awww clear` removes the image.
-                // We don't block the caller: best-effort, fire-and-forget.
-                self.runtime.spawn(async {
-                    let _ = Command::new(AWWW_BIN).arg("clear").output();
-                });
-            }
-            other => warn!("kill_backend: backend not implemented: {}", other.as_str()),
-        }
+        backends::kill_backend_fn(backend, None);
     }
 
     /// Re-query `awww query` and update reactive state.
@@ -308,20 +323,14 @@ async fn spawn_daemon() {
 
 /// `true` if `awww-daemon` is alive (from `pidof`).
 fn daemon_alive() -> bool {
-    process_alive(AWWW_DAEMON_BIN)
+    backends::process_alive(AWWW_DAEMON_BIN)
 }
 
 /// `true` if any foreign wallpaper backend is alive (from `pidof`).
 fn foreign_backend_alive() -> bool {
-    FOREIGN_BACKEND_BINS.iter().any(|bin| process_alive(bin))
-}
-
-/// `true` if `pidof <bin>` reports a live process.
-fn process_alive(bin: &str) -> bool {
-    Command::new("pidof")
-        .arg(bin)
-        .output()
-        .is_ok_and(|o| o.status.success())
+    FOREIGN_BACKEND_BINS
+        .iter()
+        .any(|bin| backends::process_alive(bin))
 }
 
 /// Pure mapping of [`WallpaperCommand`] → `awww img` argv (no binary name).
@@ -347,7 +356,17 @@ pub fn command_to_awww_args(cmd: &WallpaperCommand) -> Vec<String> {
     args
 }
 
-async fn apply_command(cmd: &WallpaperCommand) -> anyhow::Result<()> {
+/// Route a command through the active backend, killing every other engine
+/// first — one live engine at a time (waytrogen's `change()` discipline).
+async fn apply_command(cmd: &WallpaperCommand, backend: Backend) -> anyhow::Result<()> {
+    backends::kill_all_except(backend, cmd.monitor.as_deref());
+    backends::apply_backend(cmd, backend).await
+}
+
+/// awww Set: ensure the daemon is up (forced — the user chose awww), then
+/// `awww img ...`. Kept here because awww's daemon bootstrap predates the
+/// dispatcher; `backends::apply_backend` forwards the `Awww` arm to it.
+pub(crate) async fn apply_awww(cmd: &WallpaperCommand) -> anyhow::Result<()> {
     ensure_daemon_forced().await;
     let args = command_to_awww_args(cmd);
     tokio::task::spawn_blocking(move || {

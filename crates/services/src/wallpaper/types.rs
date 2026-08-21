@@ -3,12 +3,13 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Wallpaper backend engines. Only `Awww` is implemented in this MVP; the
-/// rest are placeholders so the framework is extensible (mirrors waytrogen's
-/// `WallpaperChangers` enum without the iced/GUI bits).
+/// Wallpaper backend engines. All five are real, driveable backends since
+/// T349 (dispatcher); command builders live in
+/// [`super::backends`]. Mirrors waytrogen's `WallpaperChangers` enum without
+/// the iced/GUI bits.
 ///
-/// Knowledge of the awww CLI is taken from the `waytrogen` project
-/// (Unlicense / public domain — see `Source/NOTICE`).
+/// Knowledge of the per-engine CLI/IPC surface is taken from the `waytrogen`
+/// project (Unlicense / public domain — see `Source/NOTICE`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Backend {
     Awww,
@@ -27,6 +28,33 @@ impl Backend {
             Backend::Swaybg => "swaybg",
             Backend::Mpvpaper => "mpvpaper",
             Backend::Gslapper => "gslapper",
+        }
+    }
+
+    /// Parse a backend name (case-insensitive), e.g. from `wallpaper.toml`.
+    /// `None` for unknown names — callers decide whether to warn + fall back.
+    pub fn parse(s: &str) -> Option<Backend> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "awww" => Some(Backend::Awww),
+            "hyprpaper" => Some(Backend::Hyprpaper),
+            "swaybg" => Some(Backend::Swaybg),
+            "mpvpaper" => Some(Backend::Mpvpaper),
+            "gslapper" => Some(Backend::Gslapper),
+            _ => None,
+        }
+    }
+
+    /// Whether this backend can play video wallpapers (mpv / GStreamer).
+    pub fn supports_video(&self) -> bool {
+        matches!(self, Backend::Mpvpaper | Backend::Gslapper)
+    }
+
+    /// `pidof`-able process name used to detect whether this backend is
+    /// currently alive. awww is special: the daemon, not the `awww` CLI.
+    pub fn process_bin(&self) -> &'static str {
+        match self {
+            Backend::Awww => "awww-daemon",
+            other => other.as_str(),
         }
     }
 }
