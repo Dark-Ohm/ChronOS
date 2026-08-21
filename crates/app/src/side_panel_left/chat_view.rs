@@ -75,7 +75,12 @@ impl ChatView {
         cx: &mut Context<ChatTab>,
     ) -> impl IntoElement {
         let theme = *Theme::global(cx);
-        let has_messages = !self.messages.is_empty();
+        // A placeholder agent message is pushed with `segments: Vec::new()`
+        // before a turn replays/starts (composer.rs start_acp_turn,
+        // chat.rs run_load_session). It must not count as content — an empty
+        // session shows the empty state, and the bubble only appears once
+        // the first streaming event fills a segment.
+        let has_messages = self.messages.iter().any(|m| !m.segments.is_empty());
 
         let messages_el = div()
             .id("chat-messages-scroll")
@@ -92,6 +97,11 @@ impl ChatView {
                 let mut el = el;
                 let last_idx = self.messages.len().saturating_sub(1);
                 for (msg_idx, msg) in self.messages.iter().enumerate() {
+                    // Skip empty placeholders — nothing to draw until the
+                    // streaming events fill their segments.
+                    if msg.segments.is_empty() {
+                        continue;
+                    }
                     let is_last = msg_idx == last_idx;
                     el = el.child(render_message(
                         msg,
