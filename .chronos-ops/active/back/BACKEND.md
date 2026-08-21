@@ -13,9 +13,31 @@ tags: [chronos-ops, back, index]
 
 ## Очередь
 
-1. **T349** — `T349-wallpaper-multi-backend-dispatch.md`. P2. Диспетчер
-   обоев на 5 движков (hyprpaper/swaybg/mpvpaper/gslapper + awww) — точные
-   команды из принятого T348 (`reports-log/recon/`). Снят с HOLD 2026-08-22.
+1. **T351** — `T351-wallpaper-hyprpaper-live-verify.md`. P2. Живой Set
+   hyprpaper (демон-bootstrap вопрос архитектору), не только argv-юнит.
+2. **T352** — `T352-wallpaper-swaybg-live-verify.md`. P2. Живой Set,
+   проверить потерю картинки на другом мониторе при повторном Set
+   (нет per-monitor реестра в отличие от waytrogen).
+3. **T353** — `T353-wallpaper-gslapper-live-verify.md`. P2. Самый
+   рискованный — IPC-протокол (спавн/change/restart-на-смене-медиа),
+   живьём не подтверждён.
+
+Делать **последовательно**, не параллельно — все три в одном файле
+(`backends.rs`).
+
+**T349 ЗАКРЫТ 2026-08-22** — диспетчер: `resolve_backend()` (config
+`~/.config/chronos/wallpaper.toml` → autodetect pidof mpvpaper→gslapper→
+swaybg→hyprpaper→awww → default awww), `backends.rs` — argv-билдеры
++ apply для всех 4 неawww движков (точные команды из T348), `kill_all_except`
+(gslapper — IPC `stop`, остальные `pkill -9`), `wallpaper_ctl::next()`
+теперь ротирует видео на video-бэкендах (mpvpaper/gslapper), не только
+сообщает «skipped». Живой Set подтверждён на mpvpaper (два монитора,
+видео реально рисуется, не чёрный кадр); hyprpaper/swaybg/gslapper —
+только argv-юниты, живьём не гонялись (честно раскрыто, бриф требовал
+только «хотя бы один из четырёх»). `cargo test -p chronos-services`
+289/0, `cargo test -p chronos wallpaper_ctl` 6+6 — перепрогнано
+архитектором. Отчёт — `reports-log/back/T349-wallpaper-multi-backend-dispatch-report.md`.
+Живая проверка остальных трёх движков — см. T351/T352/T353.
 
 **T330 ЗАКРЫТ 2026-08-21** — `run_listener` слушает `ActiveMonitorChanged`
 (`focusedmon`) и зовёт `refresh_workspaces`; хелпер
