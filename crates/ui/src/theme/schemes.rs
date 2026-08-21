@@ -139,10 +139,19 @@ fn solarized_dark_scheme() -> Result<ThemeScheme> {
         "6c71c4", // base0e accent/hover
         "d33682", // base0f
     ])?;
+    let mut theme = colors.to_theme();
+    // T340: базовый маппинг Base16 кладёт interactive.active на base04
+    // (#839496) — ту же ступень, что text.disabled. Выбранный чип настроек
+    // рендерится как непрозрачная плита interactive.active под текстом
+    // text.primary; на base04 база base07 даёт 2.93:1 — чип не читается
+    // (T328 B3). Опускаем плиту на base01 (#073642) — это родной
+    // highlight-фон Solarized Dark: контраст base07-текста ~11:1, с запасом
+    // для WCAG-ворот теста ниже (≥ 4.5:1).
+    theme.interactive.active = colors.base01;
     Ok(ThemeScheme::new(
         "Solarized Dark",
         "Solarized Dark через Base16",
-        colors.to_theme(),
+        theme,
     ))
 }
 
@@ -393,6 +402,35 @@ mod tests {
                 ratio
             );
         }
+    }
+    /// T340: выбранный чип настроек (seg/preset/onoff/карточка схемы;
+    /// `bar_settings.rs`) — `text.primary` на непрозрачной плите
+    /// `interactive.active` — обязан давать ≥ 4.5:1 в КАЖДОЙ встроенной
+    /// схеме. Старая пара accent-текст на accent@0.16 проваливалась до
+    /// 1.19:1 (Solarized Dark: «Top», «on», «Wrapped», имя карточки —
+    /// T328 B3). Ворота по образцу T317: итерируем `builtin_schemes()`,
+    /// мутация одной схемы роняет тест.
+    #[test]
+    fn selected_chip_passes_wcag_aa_in_all_schemes() {
+        for scheme in builtin_schemes() {
+            let ratio =
+                contrast_ratio(scheme.theme.text.primary, scheme.theme.interactive.active);
+            assert!(
+                ratio >= 4.5,
+                "{}: text.primary {} на interactive.active {} = {:.2}:1 (нужно ≥ 4.5) — выбранный чип нечитаем",
+                scheme.name,
+                scheme.theme.text.primary,
+                scheme.theme.interactive.active,
+                ratio
+            );
+        }
+        // Якорь Solarized-правки: плита опущена на base01. Возврат к base04
+        // (#839496) даёт 2.93:1 — этот assert и цикл выше обязаны упасть.
+        let solarized = builtin_schemes()
+            .into_iter()
+            .find(|s| s.name == "Solarized Dark")
+            .expect("Solarized Dark — встроенная схема");
+        assert_eq!(solarized.theme.interactive.active, hex("073642"));
     }
 
     /// T317: иерархия primary > secondary > muted > disabled обязана остаться

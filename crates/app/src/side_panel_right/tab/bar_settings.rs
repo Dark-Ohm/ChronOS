@@ -8,7 +8,11 @@
 //! - Visual hierarchy: section headers (accent tick + semibold title + mono
 //!   subtitle) vs setting labels (label + mono path).
 //! - Controls: sliders with a thick track + bordered/shadowed thumb,
-//!   `-`/`+` step buttons with borders, segmented chips with accent state.
+//!   `-`/`+` step buttons with borders, segmented chips whose selected state
+//!   is an opaque `interactive.active` plate + `text.primary` label
+//!   (T340: WCAG-gated ≥ 4.5:1 in every built-in scheme — see the
+//!   `selected_chip_passes_wcag_aa_in_all_schemes` test in
+//!   `chronos_ui::theme::schemes`); the accent border stays the state signal.
 //! - The whole content sits on a `theme.bg.elevated` card with the theme's
 //!   elevation language (`elevation_popup` + `elevation_apply_light_chrome`).
 //!
@@ -969,7 +973,11 @@ fn segmented(theme: Theme, chips: Vec<AnyElement>) -> AnyElement {
         .into_any_element()
 }
 
-/// Segmented-control chip — accent state (T231 §3 keeps the accent language).
+/// Segmented-control chip. T340: selected = opaque `interactive.active`
+/// plate + `text.primary` label — that pair is WCAG-gated (≥ 4.5:1 in every
+/// built-in scheme, test in `theme::schemes`); the old accent text on the
+/// accent@0.16 fill fell to 1.19:1 on Solarized Dark (T328 B3). The accent
+/// border still carries the selected-state language (T231 §3).
 fn seg_chip<F>(theme: Theme, id: &str, label: &str, active: bool, on_click: F) -> AnyElement
 where
     F: Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -990,16 +998,18 @@ where
         .text_size(px(11.5))
         .font_family(theme.font_mono)
         .bg(if active {
-            theme.accent.primary.opacity(0.16)
+            theme.interactive.active
         } else {
             gpui::transparent_black()
         })
-        .text_color(if active { theme.accent.primary } else { theme.text.secondary })
+        .text_color(if active { theme.text.primary } else { theme.text.secondary })
         .border_1()
         .border_color(if active { theme.accent.primary } else { theme.border.subtle })
         .hover(move |s| {
             if active {
-                s.bg(theme.accent.primary.opacity(0.16))
+                // T340: hold the opaque plate on hover — re-compositing the
+                // old translucent fill here was part of the contrast loss.
+                s.bg(theme.interactive.active)
             } else {
                 s.bg(theme.interactive.hover)
             }
@@ -1028,7 +1038,8 @@ where
         .rounded_md()
         .cursor_pointer()
         .bg(if active {
-            theme.accent.primary.opacity(0.16)
+            // T340: same WCAG-gated plate + `text.primary` pair as `seg_chip`.
+            theme.interactive.active
         } else {
             theme.bg.secondary.opacity(0.5)
         })
@@ -1036,7 +1047,7 @@ where
         .border_color(if active { theme.accent.primary } else { theme.border.subtle })
         .hover(move |s| {
             if active {
-                s.bg(theme.accent.primary.opacity(0.16))
+                s.bg(theme.interactive.active)
             } else {
                 s.bg(theme.interactive.hover)
             }
@@ -1046,7 +1057,7 @@ where
             div()
                 .text_size(px(11.5))
                 .font_weight(FontWeight::MEDIUM)
-                .text_color(if active { theme.accent.primary } else { theme.text.primary })
+                .text_color(theme.text.primary)
                 .child(name),
         )
         .child(
@@ -1074,9 +1085,12 @@ fn scheme_core_matches(scheme: &Theme, active: &Theme) -> bool {
 
 /// T313 theme picker card: live palette strip (bg.primary/secondary/
 /// tertiary/elevated + accent dot) with the scheme name underneath. Active
-/// card wears the accent border/state language shared with `seg_chip` and
-/// `onoff_chip`. Colors are read from the scheme's own `Theme` — hardcoding
-/// hexes here would drift from the palette on the next scheme edit.
+/// card wears the accent border + opaque `interactive.active` plate shared
+/// with `seg_chip` and `onoff_chip` (T340: plate + `text.primary` name is
+/// the WCAG-gated pair; the old accent name on the accent@0.16 fill lost
+/// the card title, T328 B3). Colors are read from the scheme's own `Theme`
+/// — hardcoding hexes here would drift from the palette on the next scheme
+/// edit.
 fn theme_swatch_card<F>(
     theme: Theme,
     scheme: &ThemeScheme,
@@ -1098,7 +1112,10 @@ where
         .rounded_md()
         .cursor_pointer()
         .bg(if active {
-            theme.accent.primary.opacity(0.16)
+            // T340: same WCAG-gated plate + `text.primary` name as `seg_chip`.
+            // Painted with the ACTIVE scheme's own tokens (that's what the
+            // plate and name will sit on once this card is selected).
+            s.interactive.active
         } else {
             theme.bg.secondary.opacity(0.5)
         })
@@ -1106,7 +1123,7 @@ where
         .border_color(if active { theme.accent.primary } else { theme.border.subtle })
         .hover(move |s| {
             if active {
-                s.bg(theme.accent.primary.opacity(0.16))
+                s.bg(theme.interactive.active)
             } else {
                 s.bg(theme.interactive.hover)
             }
@@ -1145,13 +1162,14 @@ where
             div()
                 .text_size(px(11.5))
                 .font_weight(FontWeight::MEDIUM)
-                .text_color(if active { theme.accent.primary } else { theme.text.primary })
+                .text_color(theme.text.primary)
                 .child(name),
         )
         .into_any_element()
 }
 
-/// On/off chip (Floating, Exclusive zone) — same accent-state language.
+/// On/off chip (Floating, Exclusive zone) — same selected-state language as
+/// `seg_chip` (T340 plate + `text.primary`, accent border).
 fn onoff_chip<F>(theme: Theme, id: &str, on: bool, on_click: F) -> AnyElement
 where
     F: Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -1165,16 +1183,16 @@ where
         .text_size(px(11.5))
         .font_family(theme.font_mono)
         .bg(if on {
-            theme.accent.primary.opacity(0.16)
+            theme.interactive.active
         } else {
             gpui::transparent_black()
         })
-        .text_color(if on { theme.accent.primary } else { theme.text.secondary })
+        .text_color(if on { theme.text.primary } else { theme.text.secondary })
         .border_1()
         .border_color(if on { theme.accent.primary } else { theme.border.subtle })
         .hover(move |s| {
             if on {
-                s.bg(theme.accent.primary.opacity(0.16))
+                s.bg(theme.interactive.active)
             } else {
                 s.bg(theme.interactive.hover)
             }
