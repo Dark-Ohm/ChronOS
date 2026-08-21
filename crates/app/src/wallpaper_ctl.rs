@@ -144,12 +144,55 @@ pub fn scan_wallpapers() -> Vec<PathBuf> {
     entries
 }
 
+/// Video extensions awww cannot display (and which `IMAGE_EXTENSIONS` does not
+/// cover). Used only to explain why `next()` found nothing — never to set them
+/// (awww plays images, not video; T339).
+const VIDEO_EXTENSIONS: &[&str] = &[
+    "mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv", "ogv", "mpg",
+    "mpeg", "m2v", "ts", "mts", "m2ts", "vob", "3gp", "3g2",
+];
+
+/// Whether `path` looks like a video file by extension.
+fn is_video(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+}
+
+/// Count video files in the wallpaper directory. `None` when the directory
+/// itself is missing.
+fn count_videos() -> Option<usize> {
+    let dir = wallpaper_dir()?;
+    Some(
+        std::fs::read_dir(&dir)
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.is_file() && is_video(p))
+            .count(),
+    )
+}
+
+/// Human refusal for an empty `next()` scan (T339).
+fn refusal_message(video_count: Option<usize>) -> String {
+    match video_count {
+        Some(0) => "wallpaper folder is empty".to_string(),
+        Some(n) => format!("no images, {n} videos skipped"),
+        None => "wallpaper folder not found".to_string(),
+    }
+}
+
 /// Cycle to the next wallpaper in the folder (round-robin from current).
 /// If `WallpaperState.current` is not in the folder or is None, picks the first.
 pub fn next(cx: &mut gpui::App) {
     let wallpapers = scan_wallpapers();
     if wallpapers.is_empty() {
         warn!("wallpaper_ctl: no wallpapers found in ~/Pictures/Wallpapers");
+        // T339: an empty scan is a visible refusal, not a dead button — tell
+        // the user WHY (folder of videos / empty / missing) instead of silently
+        // keeping the previous wallpaper.
+        crate::notifications::push_internal(cx, "Wallpapers", &refusal_message(count_videos()));
         return;
     }
 
@@ -204,5 +247,24 @@ mod tests {
             let b = window[1].file_stem().unwrap().to_string_lossy();
             assert!(a <= b, "wallpapers not sorted: {a} > {b}",);
         }
+    }
+
+    #[test]
+    fn refusal_message_reports_videos_skipped() {
+        assert_eq!(refusal_message(Some(34)), "no images, 34 videos skipped");
+    }
+
+    #[test]
+    fn refusal_message_covers_empty_and_missing_folder() {
+        assert_eq!(refusal_message(Some(0)), "wallpaper folder is empty");
+        assert_eq!(refusal_message(None), "wallpaper folder not found");
+    }
+
+    #[test]
+    fn is_video_matches_common_extensions_only() {
+        assert!(is_video(Path::new("a.mp4")));
+        assert!(is_video(Path::new("a.MKV")));
+        assert!(!is_video(Path::new("a.png")));
+        assert!(!is_video(Path::new("a.txt")));
     }
 }

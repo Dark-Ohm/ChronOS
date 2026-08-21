@@ -1,8 +1,8 @@
 ---
 ticket: T339
 role: front
-status: active
-tags: [chronos-ops, front, active]
+status: done
+tags: [chronos-ops, front, done]
 ---
 
 # T339 — Next: не мёртвая кнопка на видео-обоях
