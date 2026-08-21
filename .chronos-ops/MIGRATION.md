@@ -435,7 +435,8 @@ Hermes против нашей.
 | T337 | **FRONTEND** | `HEIGHT_MIN` бара = высота, на которой виджеты читаются | **Очередь.** Grim height=20. T331 HOLD | `active/front/T337-bar-height-min-readable.md` |
 | T338 | **BACKEND** | Не сносить стол: не стартовать пустой awww поверх mpvpaper | **Очередь.** T328 B1 | `active/back/T338-wallpaper-do-not-stomp-desk.md` |
 | T339 | **FRONTEND** | Next: видимый отказ, если в Wallpapers только видео | **Очередь.** T328 B2 | `active/front/T339-wallpaper-next-empty-feedback.md` |
-| T340 | **FRONTEND** | Выбранный чип ≥ 4.5:1 во всех схемах | **Очередь.** T328 B3. T317 не покрывал selected | `active/front/T340-scheme-selected-chip-contrast.md` |
+| T340 | **FRONTEND** | Выбранный чип ≥ 4.5:1 во всех схемах | **ПРИНЯТ 2026-08-21.** Плита `interactive.active` + `text.primary` во всех четырёх chip-билдерах, Solarized `interactive.active` опущен на base01. Ворота `selected_chip_passes_wcag_aa_in_all_schemes` проверены СВОЕЙ мутацией (Mocha → 1.14:1, тест падает). Живьём Solarized читается. Числа контраста в отчёте все четыре неверны (реально 6.68/9.24/12.05/**4.89**), вердикт не меняется. Побочка на глифы левой панели → **T344** | `done/front/T340-scheme-selected-chip-contrast.md` |
 | T341 | **FRONTEND** | Blur: установить `45-surface-effects-chronos.lua` | **Очередь.** T328 B4 | `active/front/T341-blur-module-install.md` |
 | T342 | **FRONTEND** | `surface_alpha` на раму и Start, не только бар | **Очередь.** T328 B5 | `active/front/T342-surface-alpha-chrome.md` |
 | T343 | **FRONTEND** | Граница бара в `normal` переживает height hot-reload | **Очередь.** T328 F1 | `active/front/T343-bar-border-survives-height-hot-reload.md` |
+| T344 | **FRONTEND** | Левая панель: шеврон/точка/пустой чат — на `text.muted`, не на `interactive.active` | **Очередь.** Побочка T340; токен состояния красил глифы, на Solarized ≈1.2:1 | `active/front/T344-left-panel-glyphs-off-interactive-active.md` |

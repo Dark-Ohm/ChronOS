@@ -21,7 +21,9 @@ packaging (это BACKEND).
 6. **T336** — `T336-resolve-tab-before-ensure.md`. P2. IPC вне mode set
    не спавнит terminal. `view.rs` `on_tab_select`.
 7. **T339** — `T339-wallpaper-next-empty-feedback.md`. P1. Next не молчит.
-8. **T340** — `T340-scheme-selected-chip-contrast.md`. P1. Чипы ≥ 4.5:1.
+8. **T344** — `T344-left-panel-glyphs-off-interactive-active.md`. P1.
+   Побочка T340: шеврон/точка/пустой чат в левой панели на Solarized
+   невидимы. Два файла `side_panel_left/`, палитры не трогать.
 9. **T341** — `T341-blur-module-install.md`. P1. Install 45-surface-effects.
    **Приоритет вырос:** без блюра вся семья попапов — прозрачное стекло,
    а не матовое (видно на кадре T329/02).
@@ -29,6 +31,18 @@ packaging (это BACKEND).
     Не `calendar_popup/` (T329 принят).
 11. **T343** — `T343-bar-border-survives-height-hot-reload.md`. P2. `bar/mod.rs`.
     Параллелен T337. T313-хвосты в TBD не трогать.
+
+**`interactive.active` — плита, а не текст (T340, 2026-08-21):** токен
+задаёт фон выбранного состояния и с T340 стоит под воротами
+`selected_chip_passes_wcag_aa_in_all_schemes` (`text.primary` на нём
+≥ 4.5:1 во всех `builtin_schemes()`; запас у Mocha Mousse всего 0.39 —
+4.89:1). Красить им глифы нельзя: в Solarized Dark он теперь base01
+`#073642`. Приглушённый текст — `text.muted` (ворота T317).
+
+**Числа контраста — из прогона, не из головы (T340):** в отчёте были
+названы четыре значения, и все четыре разошлись с реальностью
+(6.68/9.24/12.05/4.89 против 7.37/8.93/10.93/5.69). Если пишешь
+контраст — напечатай его тем же `contrast_ratio`, которым меряет тест.
 
 **Живой смок мышью — единственный рабочий рецепт (2026-08-21, T329):**
 `ydotool mousemove --absolute` на этой машине НЕ попадает в заказанные
