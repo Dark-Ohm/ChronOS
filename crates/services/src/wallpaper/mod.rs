@@ -36,6 +36,17 @@ pub mod types;
 pub const AWWW_BIN: &str = "awww";
 pub const AWWW_DAEMON_BIN: &str = "awww-daemon";
 
+/// Wallpaper backends that waytrogen can drive but this service does NOT own.
+/// If one of these holds the background layer, spawning an empty `awww-daemon`
+/// over it wins the Hyprland layer-level z-order fight (last mapper wins) and
+/// blackens the user's wallpaper — the T338 startup stomp.
+///
+/// awww itself is shared with waytrogen, so a live `awww-daemon` is never
+/// treated as foreign: we query it instead of spawning over it. The gallery
+/// app (`waytrogen`) is also deliberately absent — it only holds the layer
+/// indirectly through one of these daemons.
+const FOREIGN_BACKEND_BINS: &[&str] = &["hyprpaper", "swaybg", "mpvpaper", "gslapper"];
+
 /// Default resize mode if the UI does not specify one. awww's own default is
 /// `crop`; we make it explicit for determinism.
 const DEFAULT_RESIZE: &str = "crop";
@@ -70,7 +81,12 @@ impl WallpaperSubscriber {
         let data_clone = data.clone();
         let status_clone = status.clone();
         handle.spawn(async move {
-            ensure_daemon().await;
+            if ensure_daemon().await == StartOutcome::SkippedForeignBackend {
+                // A foreign backend owns the wallpaper layer; leave it
+                // untouched and report that the shell is not driving it.
+                status_clone.set(ServiceStatus::Degraded("wallpaper managed externally".into()));
+                return;
+            }
             match query_current().await {
                 // We only reflect awww's current state, never drive it. Do
                 // NOT call `awww restore` on an empty read: it reapplies
@@ -172,6 +188,12 @@ impl WallpaperSubscriber {
                 }
                 Err(e) => {
                     warn!("WallpaperSubscriber::refresh failed: {e}");
+                    // Honest "daemon dead": awww no longer owns the layer
+                    // (e.g. mpvpaper killed it). Clear stale state so the UI
+                    // does not keep showing a wallpaper the daemon is no
+                    // longer serving.
+                    status.set(ServiceStatus::Degraded("awww daemon dead".into()));
+                    data.set(WallpaperState::default());
                 }
             }
         });
@@ -206,13 +228,50 @@ impl Service for WallpaperSubscriber {
     }
 }
 
-/// Ensure the awww daemon is running. Idempotent: if `awww-daemon` is already
-/// alive (via `pidof`), do nothing; otherwise spawn it and wait for its socket
-/// by polling `awww query` (no blind `sleep`).
-async fn ensure_daemon() {
+/// What [`ensure_daemon`] decided at startup.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StartOutcome {
+    /// `awww-daemon` was already alive; nothing was spawned.
+    AlreadyAlive,
+    /// We spawned the daemon and its socket came up.
+    Started,
+    /// A foreign backend owns the wallpaper layer; we left the desktop
+    /// untouched rather than stomping it.
+    SkippedForeignBackend,
+}
+
+/// Ensure the awww daemon is running for the STARTUP path. Idempotent: if
+/// `awww-daemon` is already alive (via `pidof`), do nothing; if a foreign
+/// backend holds the wallpaper layer, skip the spawn entirely (T338);
+/// otherwise spawn it and wait for its socket by polling `awww query` (no
+/// blind `sleep`).
+async fn ensure_daemon() -> StartOutcome {
+    if daemon_alive() {
+        return StartOutcome::AlreadyAlive;
+    }
+    if foreign_backend_alive() {
+        info!(
+            "WallpaperSubscriber: foreign backend owns the wallpaper layer; not starting {AWWW_DAEMON_BIN}"
+        );
+        return StartOutcome::SkippedForeignBackend;
+    }
+    spawn_daemon().await;
+    StartOutcome::Started
+}
+
+/// Spawn awww-daemon regardless of a foreign backend. Used by explicit user
+/// wallpaper commands (`Set`/`Next`): the user chose awww, so it may take the
+/// layer. The startup path (`new`) must NOT call this — it respects foreign
+/// ownership via [`ensure_daemon`].
+async fn ensure_daemon_forced() {
     if daemon_alive() {
         return;
     }
+    spawn_daemon().await;
+}
+
+/// Spawn `awww-daemon --no-cache` and poll `awww query` until its socket is up.
+async fn spawn_daemon() {
     info!("WallpaperSubscriber: starting {AWWW_DAEMON_BIN}");
     // Detach stdio so a stuck daemon cannot hold the caller's pipes open.
     // `--no-cache`: a fresh daemon spawn otherwise self-restores its
@@ -249,8 +308,18 @@ async fn ensure_daemon() {
 
 /// `true` if `awww-daemon` is alive (from `pidof`).
 fn daemon_alive() -> bool {
+    process_alive(AWWW_DAEMON_BIN)
+}
+
+/// `true` if any foreign wallpaper backend is alive (from `pidof`).
+fn foreign_backend_alive() -> bool {
+    FOREIGN_BACKEND_BINS.iter().any(|bin| process_alive(bin))
+}
+
+/// `true` if `pidof <bin>` reports a live process.
+fn process_alive(bin: &str) -> bool {
     Command::new("pidof")
-        .arg(AWWW_DAEMON_BIN)
+        .arg(bin)
         .output()
         .is_ok_and(|o| o.status.success())
 }
@@ -279,7 +348,7 @@ pub fn command_to_awww_args(cmd: &WallpaperCommand) -> Vec<String> {
 }
 
 async fn apply_command(cmd: &WallpaperCommand) -> anyhow::Result<()> {
-    ensure_daemon().await;
+    ensure_daemon_forced().await;
     let args = command_to_awww_args(cmd);
     tokio::task::spawn_blocking(move || {
         let output = Command::new(AWWW_BIN)
@@ -431,6 +500,27 @@ mod tests {
         assert_eq!(Backend::Awww.as_str(), "awww");
         assert_eq!(Backend::Hyprpaper.as_str(), "hyprpaper");
         assert_eq!(Backend::Gslapper.as_str(), "gslapper");
+    }
+
+    #[test]
+    fn foreign_backend_bins_excludes_awww_and_covers_foreign_backends() {
+        // awww is shared with waytrogen, so a live daemon must never be
+        // treated as foreign; every non-awww backend must be, or startup
+        // would stomp it (T338).
+        assert!(!FOREIGN_BACKEND_BINS.contains(&AWWW_BIN));
+        assert!(!FOREIGN_BACKEND_BINS.contains(&AWWW_DAEMON_BIN));
+        for backend in [
+            Backend::Hyprpaper,
+            Backend::Swaybg,
+            Backend::Mpvpaper,
+            Backend::Gslapper,
+        ] {
+            assert!(
+                FOREIGN_BACKEND_BINS.contains(&backend.as_str()),
+                "foreign backend {} must be detected so startup never stomps it",
+                backend.as_str()
+            );
+        }
     }
 
     // --- Fixtures from live `awww query` output (captured on this host) ---

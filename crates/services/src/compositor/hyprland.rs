@@ -10,8 +10,9 @@ use anyhow::Result;
 use futures_signals::signal::Mutable;
 use hyprland::{
     data::{Client, Clients, Devices, Monitors, Workspace as HWorkspace, Workspaces},
-    event_listener::EventListener,
+    event_listener::{EventListener, MonitorEventData},
     prelude::*,
+    shared::WorkspaceType,
 };
 use tracing::{debug, error, warn};
 
@@ -226,6 +227,20 @@ fn refresh_workspaces(data: &Mutable<CompositorState>, hint_active: Option<i32>)
     }
 }
 
+/// Extract the active workspace id hint from a `focusedmon` event.
+///
+/// `MonitorEventData.workspace_name` is a [`WorkspaceType`], not an id. For a
+/// numeric workspace ("2") that parses straight to the id; named ("foo") and
+/// special (`special`/`special:name`) workspaces fall back to `None`, in which
+/// case [`refresh_workspaces`] polls `HWorkspace::get_active()` — same as the
+/// `workspace_added`/`workspace_deleted` handlers.
+fn focusedmon_active_id_hint(evt: &MonitorEventData) -> Option<i32> {
+    match &evt.workspace_name {
+        Some(WorkspaceType::Regular(name)) => name.parse::<i32>().ok(),
+        _ => None,
+    }
+}
+
 /// Live on-screen position + size of a mapped window by its `xdg_toplevel`
 /// class (Hyprland's `initialClass`/`class`), in Hyprland's global compositor
 /// layout coordinates (same frame as `Monitors::get()`'s `x`/`y`) — the
@@ -337,6 +352,18 @@ fn run_listener(data: Mutable<CompositorState>) -> Result<()> {
     }
     {
         let data = data.clone();
+        listener.add_active_monitor_changed_handler(move |evt| {
+            debug!("active monitor changed: {:?}", evt.monitor_name);
+            // `focusedmon` fires when focus moves to a monitor whose workspace
+            // is already active (Hyprland sends no `workspace` event then), so
+            // the bar never refreshed and the blue dot stayed on the old
+            // monitor's workspace (T330). Re-read the active workspace and
+            // trust the event's workspace id where it is a plain number.
+            refresh_workspaces(&data, focusedmon_active_id_hint(&evt));
+        });
+    }
+    {
+        let data = data.clone();
         listener.add_workspace_added_handler(move |evt| {
             debug!("workspace added: {:?}", evt.name);
             refresh_workspaces(&data, None);
@@ -424,5 +451,47 @@ mod tests {
             command_to_socket_line(&CompositorCommand::FocusWorkspace(-2)),
             "hl.dsp.focus({ workspace = -2 })"
         );
+    }
+
+    // ── T330: `focusedmon` → active-workspace hint (pure, no socket) ──
+
+    #[test]
+    fn focusedmon_hint_parses_numeric_workspace() {
+        let evt = MonitorEventData {
+            monitor_name: "DP-1".into(),
+            workspace_name: Some(WorkspaceType::Regular("2".into())),
+        };
+        assert_eq!(focusedmon_active_id_hint(&evt), Some(2));
+    }
+
+    #[test]
+    fn focusedmon_hint_falls_back_for_named_special_and_missing() {
+        let named = MonitorEventData {
+            monitor_name: "DP-1".into(),
+            workspace_name: Some(WorkspaceType::Regular("foo".into())),
+        };
+        assert_eq!(focusedmon_active_id_hint(&named), None);
+
+        let special = MonitorEventData {
+            monitor_name: "DP-1".into(),
+            workspace_name: Some(WorkspaceType::Special(Some("magic".into()))),
+        };
+        assert_eq!(focusedmon_active_id_hint(&special), None);
+
+        let missing = MonitorEventData {
+            monitor_name: "DP-1".into(),
+            workspace_name: None,
+        };
+        assert_eq!(focusedmon_active_id_hint(&missing), None);
+    }
+
+    #[test]
+    fn active_monitor_handler_registers_without_socket() {
+        // `EventListener::new()` + handler registration must not touch the
+        // compositor socket (only `start_listener` does). Guards that the
+        // `add_active_monitor_changed_handler` wiring compiles and registers.
+        let mut listener = EventListener::new();
+        listener.add_active_monitor_changed_handler(|_evt| {});
+        let _ = listener;
     }
 }

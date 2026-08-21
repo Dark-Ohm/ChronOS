@@ -1,3 +1,10 @@
+---
+ticket: T338
+role: back
+status: done
+tags: [chronos-ops, back, done]
+---
+
 # T338 — не сносить стол пользователя при старте
 
 **Роль:** BACKEND. **P1.** Живая находка T328 B1.

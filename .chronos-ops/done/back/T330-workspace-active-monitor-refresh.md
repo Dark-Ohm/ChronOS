@@ -1,3 +1,10 @@
+---
+ticket: T330
+role: back
+status: done
+tags: [chronos-ops, back, done]
+---
+
 # T330 — подсветка воркспейса слушает focusedmon
 
 **Роль:** BACKEND. **P1.** Живая находка T324 B2.
