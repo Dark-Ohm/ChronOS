@@ -187,6 +187,56 @@ Hermes/OmniRoute, не ChronOS. → отдельной задачей или в 
 
 ---
 
+## T328 — рама/тема/обои (2026-08-21, QA, принято)
+
+Полный отчёт: `reports-log/qa/T328-frame-theme-wallpaper-ux-audit-report.md`.
+Тикеты T338–T343. Не тикеты:
+
+- [ ] Light + белый стол растворяет раму (~1.06:1). T328 F3.
+- [ ] `[bottom_strip]` no-op в `normal` (T312). T328 F4.
+- [ ] Display tab ~1200 px пустоты. T328 F6.
+- [ ] Preset «Top full» рвёт подпись скобкой. Правая панель, T327 хвост.
+
+## T327 — правая панель (2026-08-21, QA, принято)
+
+Полный отчёт: `reports-log/qa/T327-right-panel-modes-ux-audit-report.md`.
+Тикеты T334/T335/T336. Не тикеты:
+
+- [ ] Notifications empty — одинокая строка, T309 polish, не новый.
+
+## T326 — левая панель (2026-08-21, QA, принято)
+
+Полный отчёт: `reports-log/qa/T326-left-panel-ux-audit-report.md`.
+Баг T333. Не тикеты:
+
+- [ ] Пять rail-tabs (Plan/Tools/Skills/Context/Archive) — честные
+      `Coming in Slice B/C`, без плиты, обои сквозь текст. Slice B/C,
+      не чинить заглушку косметикой.
+- [ ] Строка Sessions без title (`Sun 8:39 PM` + `⋯`); smoke-turn
+      `T326 smoke: reply OK` в список не попал. `auto_title_from_text`
+      есть, список не подхватил.
+
+## T325 — попапы (2026-08-21, QA, принято)
+
+Полный отчёт: `reports-log/qa/T325-popups-overlays-ux-audit-report.md`.
+Блокер T332. Не тикеты:
+
+- [ ] History колокола = вкладка Notifications, почти пустой экран на одном toast.
+- [ ] Launcher: 78× `usvg` `marker-start/mid/end='none'` на один open.
+- [ ] OSD layer может висеть, пока открыт tray (кадр 25: `osd` + catcher).
+
+## T324 — бар/dock (2026-08-21, QA, принято)
+
+Полный отчёт: `reports-log/qa/T324-bar-dock-widgets-ux-audit-report.md`.
+Блокеры заведены: T329 / T330 / T331. Полировка, не тикеты:
+
+- [ ] Точки ws 7px, без hover/номера/тултипа; список всех мониторов вперемешку.
+- [ ] Network без клика и hover; idle-точка мигает каждую секунду (`IDLE_THRESHOLD`).
+- [ ] Dock context menu: палитра gpui-component `#0A0A0A`, min-width 230 под «Unpin».
+- [ ] Dock tooltip отсутствует (в коде не было; T323 ошибся).
+- [ ] `separator` в `right` молча дропается (T234), в `bar.toml` сохраняется.
+- [ ] dock.toml пины `firefox`/`code`/`vivaldi` протухли — на диске есть `vivaldi-snapshot.desktop` (уточнение T309, не регресс).
+
 ## T309 — живой UX-критик-аудит (2026-08-19, QA)
 
 Полный отчёт: `.chronos-ops/reports-log/qa/T309-live-ux-critique-audit-report.md`

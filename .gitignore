@@ -21,6 +21,9 @@ reference/
 # Session logs
 log-dump/
 
+# Live QA evidence frames (survive reboot, do not commit PNGs)
+.chronos-ops/dump/qa-ux/
+
 # lean-ctx / codebase-context cache
 contexts/
 

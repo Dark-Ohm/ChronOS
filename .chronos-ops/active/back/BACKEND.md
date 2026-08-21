@@ -5,7 +5,9 @@
 
 **Общие правила:** `.chronos-ops/RULES.md` — прочитать перед стартом.
 
-**Активного задания нет** (T300 закрыт 2026-08-18: `docs/hyprland/` слит в
-`packaging/hyprland/40-windowrules-chronos.lua` и удалён, packaging —
-единственный источник истины). Следующее задание кладётся сюда файлом
-`TNNN-slug.md`, и эта строка меняется на указатель.
+## Очередь
+
+1. **T330** — `T330-workspace-active-monitor-refresh.md`. P1.
+   Listener: `ActiveMonitorChanged` → `refresh_workspaces`.
+2. **T338** — `T338-wallpaper-do-not-stomp-desk.md`. P1. Не стартовать
+   пустой `awww-daemon` поверх mpvpaper/waytrogen. Параллелен T330.

@@ -7,10 +7,43 @@ packaging (это BACKEND).
 
 ## Очередь
 
-Пусто. Ждём новую работу от владельца. Кандидаты в тикеты лежат в
-`checkpoint/TBD.md` (раздел «T313»): лесенка контролов на странице
-System settings, `toggle-theme` мимо пикера схем, карточка-обёртка как
-лишний слой.
+1. **T337** — `T337-bar-height-min-readable.md`. P1. `HEIGHT_MIN` — высота,
+   на которой бар читается. `appearance.rs` + слайдер `bar_settings.rs`.
+   **T331 HOLD**, пока не будет нового пола.
+2. **T332** — `T332-anchored-popup-click-away.md`. P1. Click-away Sound/Calendar.
+   **Разблокирован:** T329 принят 2026-08-21, плита календаря уже в дереве.
+3. **T333** — `T333-active-project-reselect-noop.md`. P1. Reselect проекта
+   не чистит session. Параллелен T331 (`side_panel_left/`).
+4. **T334** — `T334-updates-upgrade-all-honest-label.md`. P1. Upgrade all
+   не обещает AUR. `updates.rs` only; yay apply не делать (T294).
+5. **T335** — `T335-acp-settings-open-fits-320.md`. P2. Open agents.toml
+   на 320 px. `acp_settings.rs`. Reload `flex_none` не снимать (T212).
+6. **T336** — `T336-resolve-tab-before-ensure.md`. P2. IPC вне mode set
+   не спавнит terminal. `view.rs` `on_tab_select`.
+7. **T339** — `T339-wallpaper-next-empty-feedback.md`. P1. Next не молчит.
+8. **T340** — `T340-scheme-selected-chip-contrast.md`. P1. Чипы ≥ 4.5:1.
+9. **T341** — `T341-blur-module-install.md`. P1. Install 45-surface-effects.
+   **Приоритет вырос:** без блюра вся семья попапов — прозрачное стекло,
+   а не матовое (видно на кадре T329/02).
+10. **T342** — `T342-surface-alpha-chrome.md`. P1. Alpha на раму/Start.
+    Не `calendar_popup/` (T329 принят).
+11. **T343** — `T343-bar-border-survives-height-hot-reload.md`. P2. `bar/mod.rs`.
+    Параллелен T337. T313-хвосты в TBD не трогать.
+
+**Живой смок мышью — единственный рабочий рецепт (2026-08-21, T329):**
+`ydotool mousemove --absolute` на этой машине НЕ попадает в заказанные
+координаты (акселерация: `-x 2404 -y 10` → фактически `3475, 39`, т.е.
+второй монитор). Warping — только через Lua-Hyprland 0.56.2, и позицию
+ОБЯЗАТЕЛЬНО сверять:
+```bash
+export YDOTOOL_SOCKET=/run/user/1000/.ydotool_socket
+hyprctl dispatch 'hl.dsp.cursor.move({x=2404, y=10})'   # старый `movecursor 2404 10` — Lua-ошибка
+hyprctl cursorpos                                        # СВЕРИТЬ до клика
+ydotool click 0xC0
+```
+Якорный попап (Sound/Calendar) — xdg_popup-ребёнок бара: его НЕТ ни в
+`hyprctl layers`, ни в `hyprctl clients`. Открылся или нет — решает
+только `grim`.
 
 **Страница System settings шире (T313, 2026-08-20):**
 `PanelTab::EditorSettings.preferred_content_width()` = **800** (было
