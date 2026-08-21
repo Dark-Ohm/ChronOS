@@ -10,9 +10,7 @@ packaging (это BACKEND).
 1. **T337** — `T337-bar-height-min-readable.md`. P1. `HEIGHT_MIN` — высота,
    на которой бар читается. `appearance.rs` + слайдер `bar_settings.rs`.
    **T331 HOLD**, пока не будет нового пола.
-2. **T332** — `T332-anchored-popup-click-away.md`. P1. Click-away Sound/Calendar.
-   **Разблокирован:** T329 принят 2026-08-21, плита календаря уже в дереве.
-3. **T333** — `T333-active-project-reselect-noop.md`. P1. Reselect проекта
+2. **T333** — `T333-active-project-reselect-noop.md`. P1. Reselect проекта
    не чистит session. Параллелен T331 (`side_panel_left/`).
 4. **T334** — `T334-updates-upgrade-all-honest-label.md`. P1. Upgrade all
    не обещает AUR. `updates.rs` only; yay apply не делать (T294).
@@ -33,6 +31,15 @@ packaging (это BACKEND).
     `opacity(0)`), но на правой панели — флаг по коду, живьём не
     воспроизведён. **Сначала воспроизвести, потом чинить** — не
     копировать фикс T346 вслепую.
+
+**T332 ЗАКРЫТ 2026-08-21** — Sound/Calendar получили `click_catcher` +
+singleton (как у tray/dock): click-away, взаимное закрытие Sound↔Calendar,
+Start/edit-mode дисмиссят оба. Живой прогон (8 сценариев, `hyprctl layers`
++ grim) и `cargo test --lib` (617/0) сошлись с кодом. Разночтение с брифом
+п.5: коммент оставлен `click-away / re-toggle / ✕` без Escape — у попапов
+`grab: false` и ни одного keystroke-хендлера, Escape физически не приходит
+(писать его значило бы завести новый лгущий коммент). Отчёт —
+`reports-log/front/T332-anchored-popup-click-away-report.md`.
 
 **T346 ЗАКРЫТ 2026-08-21** — левая панель мертвела после первого закрытия
 (enter-анимация `with_animation` залипала на `opacity(0)` на свежем

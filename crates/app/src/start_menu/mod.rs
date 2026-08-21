@@ -140,6 +140,12 @@ pub fn open(cx: &mut App) {
         return;
     }
 
+    // Singleton with the Sound/Calendar popups: they anchor to the bar's
+    // top-right corner and carry their own full-output click-catchers —
+    // leave none of them stacked under the Overlay menu (or each other).
+    crate::volume_popup::close(cx);
+    crate::calendar_popup::close(cx);
+
     // Do not close the left panel: the menu is Overlay and must sit *on top*
     // of it (owner errata). The right panel still closes when geometries
     // would intersect — two Overlay surfaces in one rectangle is the

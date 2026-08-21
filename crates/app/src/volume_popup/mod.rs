@@ -2,16 +2,19 @@
 //! footer dual mute. Anchored to the bar volume widget (LayerShell
 //! fallback on platforms without `AnchoredPopup`).
 //!
-//! Opened by clicking the bar volume widget. Window lifecycle mirrors
-//! `updates_popup/`: anchored popup, no close-on-focus-loss (only explicit
-//! toggle / ✕). In-popup close uses `close_this` (direct
-//! `remove_window`) — never re-entrant `handle.update`.
+//! Opened by clicking the bar volume widget. Anchored popup with
+//! `grab: false` (T264): dismissal is ours — click-away (shared
+//! click-catcher), re-toggle, or ✕. In-popup close uses `close_this`
+//! (direct `remove_window`) — never re-entrant `handle.update`.
 
 pub mod view;
 
+use std::rc::Rc;
+
 use gpui::{
-    AnyWindowHandle, App, Bounds, Context, DisplayId, Entity, Global, Pixels, Size, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions,
+    AnyWindowHandle, App, Bounds, Context, DisplayId, Entity, Global, Pixels, Size, Subscription,
+    Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowId, WindowKind,
+    WindowOptions,
     layer_shell::*,
     point,
     popup::{
@@ -37,6 +40,9 @@ const BASE_HEIGHT: f32 = 290.;
 const DEVICE_ROW_H: f32 = 28.;
 /// Cap expanded list so the popup does not eat the whole screen.
 const MAX_DEVICE_ROWS: usize = 8;
+/// Tallest the popup can get with an expanded device picker — the
+/// click-catcher hole reserves this so a growing picker never outgrows it.
+const MAX_POPUP_HEIGHT: f32 = BASE_HEIGHT + MAX_DEVICE_ROWS as f32 * DEVICE_ROW_H;
 /// Below the bar top edge — same budget as updates_popup / tray_menu.
 const POPUP_MARGIN_TOP: f32 = 36.;
 const POPUP_MARGIN_RIGHT: f32 = 8.;
@@ -63,6 +69,12 @@ pub(crate) fn estimate_popup_height(
 pub struct VolumePopupState {
     handle: Option<WindowHandle<VolumePopupView>>,
     watcher: Option<Entity<VolumePopupWatcher>>,
+    /// Transparent layer-surface that receives clicks outside the popup while
+    /// the native popup intentionally has `grab: false` (T264).
+    click_catcher: Option<AnyWindowHandle>,
+    /// Clears stale state when the compositor closes the popup externally
+    /// (bypassing our explicit close paths).
+    window_closed_subscription: Option<Subscription>,
 }
 
 impl Global for VolumePopupState {}
@@ -134,6 +146,22 @@ fn window_options(
     }
 }
 
+fn open_click_catcher(
+    cx: &mut App,
+    anchor_rect: Bounds<Pixels>,
+) -> anyhow::Result<AnyWindowHandle> {
+    crate::popup_click_catcher::open_for_popup(
+        cx,
+        anchor_rect,
+        Size::new(px(POPUP_WIDTH), px(MAX_POPUP_HEIGHT)),
+        Rc::new(|window, cx| close_from_click_catcher(window, cx)),
+    )
+}
+
+fn window_closed_is_tracked(tracked: Option<WindowId>, closed: WindowId) -> bool {
+    tracked == Some(closed)
+}
+
 /// Open the popup (idempotent — no-op if already open). Falls back to a
 /// fixed-corner LayerShell popup when `AnchoredPopup` isn't supported.
 pub fn open(cx: &mut App, anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle) {
@@ -141,7 +169,13 @@ pub fn open(cx: &mut App, anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle) 
         return;
     }
 
+    // Singleton: Sound and Calendar share the bar's top-right corner. Only
+    // one may be open — two full-output click-catchers stacked would fight.
+    crate::calendar_popup::close(cx);
+
     let height = estimate_popup_height(&AppState::audio(cx).get(), None);
+
+    let mut click_catcher = open_click_catcher(cx, anchor_rect).ok();
 
     let result = cx.open_window(window_options(anchor_rect, parent, height), |_, app_cx| {
         app_cx.new(|view_cx| VolumePopupView::new(view_cx))
@@ -149,6 +183,14 @@ pub fn open(cx: &mut App, anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle) 
 
     let result = match result {
         Err(err) => {
+            // The LayerShell fallback sits at a fixed corner, not at
+            // `anchor_rect`, so the anchored catcher hole would be wrong —
+            // drop it (mirrors tray_menu's fallback: no click-catcher there).
+            if let Some(catcher) = click_catcher.take() {
+                if let Err(e) = catcher.update(cx, |_, window, _| window.remove_window()) {
+                    tracing::warn!("volume_popup: failed to drop click-catcher on fallback: {e}");
+                }
+            }
             if err.downcast_ref::<PopupNotSupportedError>().is_some() {
                 tracing::warn!(
                     "volume_popup: AnchoredPopup not supported on this platform, falling back to fixed-corner LayerShell"
@@ -166,17 +208,55 @@ pub fn open(cx: &mut App, anchor_rect: Bounds<Pixels>, parent: AnyWindowHandle) 
 
     match result {
         Ok(new_handle) => {
-            cx.global_mut::<VolumePopupState>().handle = Some(new_handle);
+            let window_id = new_handle.window_id();
+            let window_closed_subscription = cx.on_window_closed(move |cx, closed_id| {
+                let tracked = cx
+                    .global::<VolumePopupState>()
+                    .handle
+                    .as_ref()
+                    .map(|handle| handle.window_id());
+                if closed_id != window_id || !window_closed_is_tracked(tracked, closed_id) {
+                    return;
+                }
+                let catcher = {
+                    let state = cx.global_mut::<VolumePopupState>();
+                    state.handle = None;
+                    state.window_closed_subscription = None;
+                    state.click_catcher.take()
+                };
+                if let Some(catcher) = catcher {
+                    if let Err(e) = catcher.update(cx, |_, window, _| window.remove_window()) {
+                        tracing::warn!(
+                            "volume_popup: failed to remove click-catcher on window close: {e}"
+                        );
+                    }
+                }
+            });
+            let state = cx.global_mut::<VolumePopupState>();
+            state.handle = Some(new_handle);
+            state.window_closed_subscription = Some(window_closed_subscription);
+            state.click_catcher = click_catcher;
         }
         Err(err) => tracing::warn!("volume_popup: failed to open popup: {err}"),
     }
 }
 
-/// Close from outside the popup (bar toggle). Uses `handle.update`.
+/// Close from outside the popup (bar toggle). Uses `handle.update`; removes
+/// both the popup and the click-catcher.
 pub fn close(cx: &mut App) {
-    if let Some(handle) = cx.global_mut::<VolumePopupState>().handle.take() {
+    let (handle, catcher) = {
+        let state = cx.global_mut::<VolumePopupState>();
+        state.window_closed_subscription = None;
+        (state.handle.take(), state.click_catcher.take())
+    };
+    if let Some(handle) = handle {
         if let Err(e) = handle.update(cx, |_, window: &mut Window, _| window.remove_window()) {
             tracing::warn!("volume_popup: close remove_window failed (already dead?): {e}");
+        }
+    }
+    if let Some(catcher) = catcher {
+        if let Err(e) = catcher.update(cx, |_, window, _| window.remove_window()) {
+            tracing::warn!("volume_popup: close click-catcher remove_window failed (already dead?): {e}");
         }
     }
 }
@@ -191,10 +271,42 @@ pub(crate) fn close_this(window: &mut Window, cx: &mut App) {
         .as_ref()
         .map(|h| **h == this)
         .unwrap_or(false);
-    if tracked {
-        cx.global_mut::<VolumePopupState>().handle.take();
+    let catcher = {
+        let state = cx.global_mut::<VolumePopupState>();
+        if tracked {
+            state.handle.take();
+            state.window_closed_subscription = None;
+        }
+        state.click_catcher.take()
+    };
+    if let Some(catcher) = catcher {
+        if let Err(e) = catcher.update(cx, |_, catcher_window, _| catcher_window.remove_window()) {
+            tracing::warn!("volume_popup: close_this failed to remove click-catcher: {e}");
+        }
     }
     window.remove_window();
+}
+
+/// Close both surfaces from the transparent click-catcher's own callback.
+fn close_from_click_catcher(window: &mut Window, cx: &mut App) {
+    let this = window.window_handle();
+    let (popup, catcher) = {
+        let state = cx.global_mut::<VolumePopupState>();
+        state.window_closed_subscription = None;
+        (state.handle.take(), state.click_catcher.take())
+    };
+    if let Some(popup) = popup {
+        if let Err(e) = popup.update(cx, |_, popup_window, _| popup_window.remove_window()) {
+            tracing::warn!("volume_popup: click-catcher failed to remove popup: {e}");
+        }
+    }
+    if catcher == Some(this) {
+        window.remove_window();
+    } else if let Some(catcher) = catcher {
+        if let Err(e) = catcher.update(cx, |_, catcher_window, _| catcher_window.remove_window()) {
+            tracing::warn!("volume_popup: click-catcher failed to remove catcher: {e}");
+        }
+    }
 }
 
 /// Bar-icon toggle. Caller's window is the bar, not the popup → use `close`.
@@ -248,4 +360,36 @@ pub fn init(cx: &mut App) {
 
     cx.global_mut::<VolumePopupState>().watcher = Some(watcher);
     tracing::info!("volume_popup: subscribed to audio service");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{window_options, BASE_HEIGHT};
+    use gpui::{AppContext, Bounds, Context, Render, TestAppContext, Window, WindowKind, div};
+
+    struct EmptyView;
+
+    impl Render for EmptyView {
+        fn render(
+            &mut self,
+            _window: &mut Window,
+            _cx: &mut Context<Self>,
+        ) -> impl gpui::IntoElement {
+            div()
+        }
+    }
+
+    #[gpui::test]
+    fn anchored_popup_does_not_request_a_compositor_grab(cx: &mut TestAppContext) {
+        let parent = cx.update(|cx| {
+            cx.open_window(Default::default(), |_window, cx| cx.new(|_| EmptyView))
+                .expect("test parent window")
+        });
+        let options = window_options(Bounds::default(), parent.into(), BASE_HEIGHT);
+        let WindowKind::AnchoredPopup(options) = options.kind else {
+            panic!("volume popup must remain an anchored popup");
+        };
+
+        assert!(!options.grab, "T264 forbids compositor popup grabs");
+    }
 }

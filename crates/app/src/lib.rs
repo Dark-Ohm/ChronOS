@@ -46,6 +46,10 @@ pub mod side_panel_common;
 // (lib) toggles it via `crate::start_menu`. Same twin pattern as
 // `dock` / `calendar_popup` so the path resolves in either crate.
 pub(crate) mod start_menu;
+// Lib-side twin of bin `mod volume_popup` (main.rs): calendar_popup and
+// start_menu (both lib) close it as a singleton, and its grab:false
+// click-catcher test runs under `cargo test --lib`. Same twin pattern.
+pub(crate) mod volume_popup;
 pub mod state;
 mod gaming_mode;
 pub mod theme_config;

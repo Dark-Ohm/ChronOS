@@ -28,6 +28,13 @@ pub fn toggle(cx: &mut App) {
         s.active = !s.active;
         s.active
     };
+    // Entering edit mode re-chromes the bar, so any bar-anchored popup must
+    // yield — their anchor geometry is about to change and their
+    // click-catchers would fight the edit affordances.
+    if active {
+        crate::volume_popup::close(cx);
+        crate::calendar_popup::close(cx);
+    }
     tracing::info!(active, "edit_mode: toggled");
     cx.refresh_windows();
 }
