@@ -16,7 +16,11 @@ tags: [chronos-ops, recon, index]
 
 **Общие правила:** `.chronos-ops/RULES.md` — прочитать перед стартом.
 
-**Очередь RECON пуста.**
+## Очередь
+
+1. **T348** — `T348-wallpaper-backend-control-surfaces.md`. P1. Control-surface
+   hyprpaper/swaybg/mpvpaper/gslapper (Set/Query/video/multi-spawn) —
+   питает T349 (BACKEND, HOLD до этого отчёта).
 
 T306 принят 2026-08-19 — `handoff.log` (3995 строк) разрезан по месяцам
 (`handoff-2026-07.log` 2351, `handoff-2026-08.log` 1636, `INDEX.md` 320),

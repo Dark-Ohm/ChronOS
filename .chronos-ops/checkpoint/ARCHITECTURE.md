@@ -469,3 +469,45 @@ T314 → T318 → T319 → T321 → T322 → T312. Разбор и опрове�
   живьём НЕ подтверждён (T347, в очереди). Прежде чем переносить фикс
   T346, воспроизвести на правой панели — структура другая (`TabContent`
   enum), бездумный copy-paste не гарантирован.
+
+## 19. Обои — пять движков реально поддержаны, не только awww (2026-08-22)
+
+- **Канон владельца:** ChronOS поддерживает **hyprpaper, swaybg, mpvpaper,
+  awww, gslapper** как равноправные wallpaper-движки — не «awww + четыре
+  чужих, которые просто не стоит будить». `Backend` enum
+  (`crates/services/src/wallpaper/types.rs:13`) уже перечисляет все пять,
+  но комментарий над ним («Only `Awww` is implemented in this MVP; the
+  rest are placeholders») с 2026-08-22 устарел по факту решения владельца.
+- **Текущее состояние (T338/T339, оба приняты 2026-08-21) исходило из
+  старой рамки:** `FOREIGN_BACKEND_BINS` (T338) детектит живой
+  hyprpaper/swaybg/mpvpaper/gslapper только чтобы НЕ спавнить awww поверх
+  них — то есть уступает им стол, но не управляет. `wallpaper_ctl::next()`
+  (T339) на папке из одних `.mp4` показывает честный отказ («no images,
+  N videos skipped») — корректно для рамки «awww не играет видео», но
+  неверно по факту: на машине владельца mp4 — это и есть обои, просто
+  через mpvpaper, а не awww. Оба тикета сделали ровно то, что просили их
+  брифы — рамку менять здесь, не код задним числом.
+- **Не готово для реальной многодвижковой поддержки:** ни один бэкенд
+  кроме awww не имеет command builder'а (Set/Next/query) — только
+  строковую метку в `Backend::as_str()` для `pidof`. Реальный CLI/IPC
+  каждого движка (restart-based vs socket, как выглядит query текущего
+  состояния) не исследован — T348 (recon) заведён на это, T349 (back,
+  зависит от T348) — на диспетчер.
+- **Конечная цель — отказаться от `waytrogen` как внешнего приложения.**
+  Сейчас Display-вкладка (`side_panel_right/tab/display.rs:455-480`)
+  только запускает чужой GUI кнопкой «Open waytrogen»
+  (`wallpaper_ctl::open_waytrogen_gallery`, зависимость `WAYTROGEN_BIN` +
+  CTA «yay -S waytrogen» если не установлен). Цель — собственный
+  компонент галереи в этой же вкладке (превью, выбор монитора,
+  переключение движка), поверх диспетчера T349. Цепочка целиком:
+  T338(принят)→T339(принят)→**T348**(recon, active)→**T349**(back, hold
+  до T348)→**T350**(front, hold до T349) — T350 сносит
+  `WAYTROGEN_BIN`/`open_waytrogen_gallery*`/install-CTA полностью.
+- **`reference/waytrogen-main/` (gitignored, НЕ коммитить) — Unlicense
+  (public domain), в отличие от `reference/gpui-shell-main` (без
+  лицензии).** Можно читать исходники и портировать паттерном с
+  атрибуцией в `Source/NOTICE` (прецедент уже есть — awww CLI в
+  `types.rs` doc-комментарии сослан на этот источник). Command builder'ы
+  на все пять движков лежат в `src/changers/{awww,hyprpaper,swaybg,
+  mpvpaper,gslapper}.rs` — это первичный источник для T348, не
+  `--help`/man.

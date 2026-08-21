@@ -24,8 +24,7 @@ packaging (это BACKEND).
    на 320 px. `acp_settings.rs`. Reload `flex_none` не снимать (T212).
 6. **T336** — `T336-resolve-tab-before-ensure.md`. P2. IPC вне mode set
    не спавнит terminal. `view.rs` `on_tab_select`.
-7. **T339** — `T339-wallpaper-next-empty-feedback.md`. P1. Next не молчит.
-8. **T341** — `T341-blur-module-install.md`. P1. Install 45-surface-effects.
+7. **T341** — `T341-blur-module-install.md`. P1. Install 45-surface-effects.
    **Приоритет вырос:** без блюра вся семья попапов — прозрачное стекло,
    а не матовое (видно на кадре T329/02).
 9. **T342** — `T342-surface-alpha-chrome.md`. P1. Alpha на раму/Start.
@@ -37,6 +36,21 @@ packaging (это BACKEND).
     `opacity(0)`), но на правой панели — флаг по коду, живьём не
     воспроизведён. **Сначала воспроизвести, потом чинить** — не
     копировать фикс T346 вслепую.
+
+**T350** (`active/hold/T350-wallpaper-gallery-replace-waytrogen.md`) —
+HOLD до приёмки T349 (BACKEND). Финал цепочки T338→T339→T348→T349→T350:
+своя галерея обоев в Display-вкладке взамен кнопки «Open waytrogen»,
+снос `WAYTROGEN_BIN`/`open_waytrogen_gallery*`/CTA. Канон —
+`ARCHITECTURE.md` §19.
+
+**T339 ЗАКРЫТ 2026-08-21** — пустая выдача `next()` (папка только с видео)
+теперь толкает тост `push_internal("Wallpapers", refusal_message(...))`
+вместо молчаливого WARN — сообщение честное: «no images, N videos skipped»
+/ «folder is empty» / «folder not found». Покрывает и кнопку, и IPC
+`wallpaper-next` (тост живёт в `next()`), `display.rs` не тронут. Живой
+тост на реальных 34 mp4 (проверил число сам), текст совпал с юнитом.
+`cargo test wallpaper_ctl` 5/5+5/5 (перепрогнан). Отчёт —
+`reports-log/front/T339-wallpaper-next-empty-feedback-report.md`.
 
 **T332 ЗАКРЫТ 2026-08-21** — Sound/Calendar получили `click_catcher` +
 singleton (как у tray/dock): click-away, взаимное закрытие Sound↔Calendar,

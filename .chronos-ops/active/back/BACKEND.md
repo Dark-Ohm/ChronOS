@@ -13,7 +13,8 @@ tags: [chronos-ops, back, index]
 
 ## Очередь
 
-Пусто.
+Пусто. **T349** (`T349-wallpaper-multi-backend-dispatch.md`, диспетчер
+обоев на 5 движков) в `active/hold/` — HOLD до приёмки T348 (RECON).
 
 **T330 ЗАКРЫТ 2026-08-21** — `run_listener` слушает `ActiveMonitorChanged`
 (`focusedmon`) и зовёт `refresh_workspaces`; хелпер
