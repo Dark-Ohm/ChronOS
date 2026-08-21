@@ -1,3 +1,10 @@
+---
+ticket: T343
+role: front
+status: active
+tags: [chronos-ops, front, active]
+---
+
 # T343 — граница бара в normal переживает смену высоты
 
 **Роль:** FRONTEND. **P2.** T328 F1.

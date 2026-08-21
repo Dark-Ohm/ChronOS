@@ -1,3 +1,10 @@
+---
+ticket: T323
+role: hold
+status: hold
+tags: [chronos-ops, hold]
+---
+
 # T323 — HOLD: целый шелл одним заходом
 
 **Статус:** HOLD / SPLIT 2026-08-21. **Не выдавать, не исполнять.**

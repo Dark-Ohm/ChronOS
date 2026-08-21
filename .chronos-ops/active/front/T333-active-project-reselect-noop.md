@@ -1,3 +1,10 @@
+---
+ticket: T333
+role: front
+status: active
+tags: [chronos-ops, front, active]
+---
+
 # T333 — повторный клик по активному проекту не сбрасывает session
 
 **Роль:** FRONTEND. **P1.** Живая находка T326 B2.

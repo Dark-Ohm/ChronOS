@@ -1,3 +1,10 @@
+---
+ticket: T335
+role: front
+status: active
+tags: [chronos-ops, front, active]
+---
+
 # T335 — Open agents.toml читается на 320 px
 
 **Роль:** FRONTEND. **P2.** Живая находка T327 B2.

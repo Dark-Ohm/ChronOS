@@ -1,3 +1,10 @@
+---
+ticket: T282
+role: hold
+status: hold
+tags: [chronos-ops, hold]
+---
+
 # T282 — Packaging: воспроизводимая сборка, AUR-пакет, release tarball
 
 **Статус:** LAST — не начинать, пока в `active/` есть другие тикеты ChronOS.

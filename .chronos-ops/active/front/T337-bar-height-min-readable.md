@@ -1,3 +1,10 @@
+---
+ticket: T337
+role: front
+status: active
+tags: [chronos-ops, front, active]
+---
+
 # T337 — HEIGHT_MIN бара: высота, на которой виджеты читаются
 
 **Роль:** FRONTEND. **P1.** Живой grim 2026-08-21, `bar.toml` height=20.

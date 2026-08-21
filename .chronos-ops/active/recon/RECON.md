@@ -1,3 +1,9 @@
+---
+role: recon
+status: index
+tags: [chronos-ops, recon, index]
+---
+
 # RECON — точка входа роли (кухня `.chronos-ops`)
 
 **Роль:** разведка фактов. Читать чужие исходники и отвечать на вопросы

@@ -1,3 +1,10 @@
+---
+ticket: T339
+role: front
+status: active
+tags: [chronos-ops, front, active]
+---
+
 # T339 — Next: не мёртвая кнопка на видео-обоях
 
 **Роль:** FRONTEND. **P1.** T328 B2.

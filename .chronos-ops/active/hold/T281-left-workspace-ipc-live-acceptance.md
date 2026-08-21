@@ -1,3 +1,10 @@
+---
+ticket: T281
+role: hold
+status: hold
+tags: [chronos-ops, hold]
+---
+
 # T281 — левая workspace: IPC, focus, dock и live-приёмка Slice A
 
 **Статус:** PARK — 2026-08-15. Не выдавать, не писать код, не архивировать.

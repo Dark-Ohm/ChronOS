@@ -1,3 +1,9 @@
+---
+role: front
+status: index
+tags: [chronos-ops, front, index]
+---
+
 # FRONTEND — точка входа роли (кухня `.chronos-ops`)
 
 **Роль:** UI, взаимодействие, тема — ChronOS. Не пишет сервисы/IPC/

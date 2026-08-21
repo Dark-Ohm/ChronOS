@@ -1,3 +1,10 @@
+---
+ticket: T341
+role: front
+status: active
+tags: [chronos-ops, front, active]
+---
+
 # T341 — Blur: положить модуль, не серая кнопка
 
 **Роль:** FRONTEND. **P1.** T328 B4.

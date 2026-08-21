@@ -1,3 +1,10 @@
+---
+ticket: T347
+role: front
+status: active
+tags: [chronos-ops, front, active]
+---
+
 # T347 — правая панель: тот же класс бага, что T346 (enter-анимация может залипнуть на opacity(0))
 
 **Роль:** FRONTEND. **P1.** Флаг из приёмки T346 (2026-08-21) — не

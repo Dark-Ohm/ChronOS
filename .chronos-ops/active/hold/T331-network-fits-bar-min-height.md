@@ -1,3 +1,10 @@
+---
+ticket: T331
+role: hold
+status: hold
+tags: [chronos-ops, hold]
+---
+
 # T331 — сетевой виджет влезает в HEIGHT_MIN
 
 **HOLD 2026-08-21.** Пол 20 пересматривает **T337**. Не стартовать, пока

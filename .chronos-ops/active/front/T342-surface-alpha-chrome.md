@@ -1,3 +1,10 @@
+---
+ticket: T342
+role: front
+status: active
+tags: [chronos-ops, front, active]
+---
+
 # T342 — surface_alpha красит раму и Start, не только бар
 
 **Роль:** FRONTEND. **P1.** T328 B5 / гипотеза T323.

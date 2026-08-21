@@ -1,3 +1,10 @@
+---
+ticket: T334
+role: front
+status: active
+tags: [chronos-ops, front, active]
+---
+
 # T334 — Upgrade all не обещает AUR
 
 **Роль:** FRONTEND. **P1.** Живая находка T327 B1. T294: apply = pacman.

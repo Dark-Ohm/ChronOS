@@ -1,3 +1,9 @@
+---
+role: design
+status: index
+tags: [chronos-ops, design, index]
+---
+
 # DESIGN — точка входа роли (кухня `.chronos-ops`)
 
 **Роль:** визуальные решения, артборды, спеки. В `crates/` не пишет.

@@ -1,3 +1,10 @@
+---
+ticket: T336
+role: front
+status: active
+tags: [chronos-ops, front, active]
+---
+
 # T336 — select-tab вне mode set не создаёт скрытый backend
 
 **Роль:** FRONTEND. **P2.** Живая находка T327 B3.

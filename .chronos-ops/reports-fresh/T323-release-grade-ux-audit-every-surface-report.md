@@ -1,3 +1,10 @@
+---
+ticket: T323
+role: qa
+status: report
+tags: [chronos-ops, qa, report]
+---
+
 НЕТ — в текущем виде я бы не заплатил за ChronOS $100: основные поверхности уже выглядят цельно, но продукт всё ещё показывает покупателю незавершённые разделы, молча отклоняет часть собственных IPC-команд и ненадёжно управляет popup/wallpaper lifecycle.
 
 # T323 — release-grade UX audit: every surface

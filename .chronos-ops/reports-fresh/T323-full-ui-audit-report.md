@@ -1,3 +1,10 @@
+---
+ticket: T323
+role: qa
+status: report
+tags: [chronos-ops, qa, report]
+---
+
 # T323 — Full-surface UI audit (QA) — report
 
 - **Ticket:** T323 (`.chronos-ops/active/qa/T323-full-ui-audit.md`)
