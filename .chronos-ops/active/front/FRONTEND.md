@@ -21,9 +21,10 @@ packaging (это BACKEND).
 6. **T336** — `T336-resolve-tab-before-ensure.md`. P2. IPC вне mode set
    не спавнит terminal. `view.rs` `on_tab_select`.
 7. **T339** — `T339-wallpaper-next-empty-feedback.md`. P1. Next не молчит.
-8. **T344** — `T344-left-panel-glyphs-off-interactive-active.md`. P1.
-   Побочка T340: шеврон/точка/пустой чат в левой панели на Solarized
-   невидимы. Два файла `side_panel_left/`, палитры не трогать.
+8. **T345** — `T345-left-panel-chat-area-renders-nothing.md`. P1. Чат-область
+   пуста: ни сообщений, ни «No messages yet». Сначала диагноз, потом правка.
+   **Блокирует любую визуальную проверку левой панели** — и долг по кадрам
+   T344 закрывается здесь же.
 9. **T341** — `T341-blur-module-install.md`. P1. Install 45-surface-effects.
    **Приоритет вырос:** без блюра вся семья попапов — прозрачное стекло,
    а не матовое (видно на кадре T329/02).
