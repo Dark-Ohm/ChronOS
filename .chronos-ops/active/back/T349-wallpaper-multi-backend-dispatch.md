@@ -1,15 +1,16 @@
 ---
 ticket: T349
-role: hold
-status: hold
-tags: [chronos-ops, hold]
+role: back
+status: active
+tags: [chronos-ops, back, active]
 ---
 
-# T349 — BACKEND: диспетчер обоев на пять движков (HOLD до T348)
+# T349 — BACKEND: диспетчер обоев на пять движков
 
-**Статус:** HOLD — не выдавать, пока T348 (RECON) не принят. Этот бриф
-специально написан без точных команд движков: их даст T348, не гадать
-заранее.
+**Статус:** АКТИВЕН — T348 (RECON) принят 2026-08-22, точные команды
+движков в `reports-log/recon/T348-wallpaper-backend-control-surfaces-report.md`.
+Использовать ИХ дословно (пути:строки на `reference/waytrogen-main/src/
+changers/*.rs`), не изобретать заново.
 **Роль:** BACKEND. **P2.** Родитель T338/T339, канон —
 `.chronos-ops/checkpoint/ARCHITECTURE.md` §19 (2026-08-22).
 **Зона:** `crates/services/src/wallpaper/mod.rs`,
@@ -39,11 +40,18 @@ Display-вкладке (превью, выбор монитора, перекл�
 `display.rs`, `system.rs`) целиком. Не делать этот вынос здесь — только
 диспетчер, на который та галерея потом ляжет.
 
-## Что сделать (уточнить после T348)
+## Что сделать
 
 1. Command builder per-backend: `apply_command`-эквивалент для каждого
    из hyprpaper/swaybg/mpvpaper/gslapper, используя ТОЧНЫЕ команды из
-   отчёта T348 (не изобретать заново).
+   T348-отчёта (таблица в начале + разделы по движкам): hyprpaper — IPC
+   `hyprctl hyprpaper wallpaper "<mon>,<path>,<fit>"`; swaybg — restart
+   (`pkill -9 swaybg`) + один процесс с блоками `-o/-i/-m/-c`; mpvpaper —
+   restart, процесс на монитор (`*` = All), `-o <mpv_opts>
+   [--auto-pause|--auto-stop] [-n secs] <mon> <path> -f`; gslapper — IPC
+   `change <path>` по сокету `$XDG_RUNTIME_DIR/waytrogen/gslapper-<hash>.sock`
+   (не переиспользовать `waytrogen`-путь как есть — свой namespace), при
+   ошибке смены типа медиа restart (`stop` + новый спавн).
 2. Выбор активного бэкенда: либо конфиг (`[wallpaper] backend = "..."`,
    паттерн `theme_config`/`bar` config), либо автодетект живого движка
    при старте (расширение той же логики, что уже даёт `daemon_alive`/

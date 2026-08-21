@@ -18,9 +18,16 @@ tags: [chronos-ops, recon, index]
 
 ## Очередь
 
-1. **T348** — `T348-wallpaper-backend-control-surfaces.md`. P1. Control-surface
-   hyprpaper/swaybg/mpvpaper/gslapper (Set/Query/video/multi-spawn) —
-   питает T349 (BACKEND, HOLD до этого отчёта).
+Пусто.
+
+**T348 ПРИНЯТ 2026-08-22** — control-surface пяти движков
+(hyprpaper/swaybg/mpvpaper/gslapper + awww для сверки) из
+`reference/waytrogen-main/src/changers/*.rs`: Set/Query/per-monitor/video/
+kill с путём:строкой на каждый факт, плюс задел про scan/thumbnail-кэш
+(`fs.rs`/`database.rs`) для будущей галереи (T350). Точечная сверка
+цитат архитектором против исходника (hyprpaper/swaybg/mpvpaper/gslapper)
+— совпало. T349 (BACKEND) снят с HOLD. Отчёт —
+`reports-log/recon/T348-wallpaper-backend-control-surfaces-report.md`.
 
 T306 принят 2026-08-19 — `handoff.log` (3995 строк) разрезан по месяцам
 (`handoff-2026-07.log` 2351, `handoff-2026-08.log` 1636, `INDEX.md` 320),
