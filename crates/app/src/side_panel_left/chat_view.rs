@@ -114,7 +114,7 @@ impl ChatView {
                         .items_center()
                         .justify_center()
                         .text_size(px(12.))
-                        .text_color(theme.interactive.active)
+                        .text_color(theme.text.muted)
                         .child("No messages yet"),
                 )
             });

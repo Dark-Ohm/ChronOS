@@ -20,7 +20,7 @@ impl<'a> ToolCard<'a> {
             "running" => theme.status.warning,
             "done" => theme.status.success,
             "error" => theme.status.error,
-            _ => theme.interactive.active,
+            _ => theme.text.muted,
         };
 
         let toggle_icon = if self.expanded { "▾" } else { "▸" };
@@ -71,7 +71,7 @@ impl<'a> ToolCard<'a> {
             .child(
                 div()
                     .text_size(px(10.))
-                    .text_color(theme.interactive.active)
+                    .text_color(theme.text.muted)
                     .child(toggle_icon),
             );
 
