@@ -76,6 +76,21 @@ pub fn apply_enter_from_left<E: Styled>(el: E, delta: f32) -> E {
     el.opacity(d).left(px(-SLIDE_PX * (1.0 - d)))
 }
 
+/// Panel-enter delta for the left content window. T346: the enter
+/// animation's zero frame must never be able to strand the content
+/// window at `opacity(0)` (a fully transparent layer-shell surface that
+/// Hyprland stops driving with frame callbacks looks dead forever). A
+/// panel whose ticker is **not** armed renders at `delta = 1` — fully
+/// visible — so the only way content stays invisible is if the window
+/// itself is gone. Armed panels clamp the ticker's eased progress.
+pub fn panel_enter_delta(enter_t: f32, armed: bool) -> f32 {
+    if armed {
+        enter_t.clamp(0.0, 1.0)
+    } else {
+        1.0
+    }
+}
+
 /// Opacity + rise from style fields (popups, view-driven `enter_t`).
 pub fn apply_enter_rise<E: Styled>(el: E, delta: f32) -> E {
     let d = delta.clamp(0.0, 1.0);
@@ -166,6 +181,23 @@ mod tests {
     fn ease_enter_endpoints() {
         assert!((ease_enter(0.0) - 0.0).abs() < 1e-5);
         assert!((ease_enter(1.0) - 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn panel_enter_delta_never_transparent_when_unarmed() {
+        // T346 regression: an unarmed panel (ticker not yet armed / not
+        // running) must render at delta = 1, never at delta = 0 — the
+        // zero frame of the old `with_animation` chain could stick at
+        // opacity(0) forever on a fresh layer-shell window.
+        assert_eq!(panel_enter_delta(0.0, false), 1.0);
+        assert_eq!(panel_enter_delta(0.5, false), 1.0);
+        assert_eq!(panel_enter_delta(1.0, false), 1.0);
+        // Armed panels pass the ticker's eased progress through, clamped.
+        assert_eq!(panel_enter_delta(0.0, true), 0.0);
+        assert_eq!(panel_enter_delta(0.5, true), 0.5);
+        assert_eq!(panel_enter_delta(1.0, true), 1.0);
+        assert_eq!(panel_enter_delta(1.2, true), 1.0);
+        assert_eq!(panel_enter_delta(-0.2, true), 0.0);
     }
 
     #[test]

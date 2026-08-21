@@ -15,8 +15,8 @@
 //! and re-issues `set_input_region` on the next paint.
 
 use gpui::{
-    AnyElement, App, AnimationExt, Bounds, Context, Entity, IntoElement, Render, Subscription,
-    Window, div, prelude::*, px,
+    AnyElement, App, Bounds, Context, Entity, IntoElement, Render, Subscription, Window, div,
+    prelude::*, px,
 };
 
 use chronos_ui::{Theme, WindowRootExt};
@@ -58,6 +58,18 @@ pub struct WorkspaceView {
     focus_composer_pending: bool,
     /// Held only to keep the subscriptions alive; not read.
     _subs: Vec<Subscription>,
+    /// T346: content enter-animation progress 0→1. Driven by a
+    /// view-driven ticker ([`crate::motion::arm_enter_progress`]) instead
+    /// of `with_animation`'s compositor-frame-callback chain — on a fresh
+    /// layer-shell window that chain can stall after the first transparent
+    /// frame, stranding the panel at `opacity(0)` (dead content). The
+    /// ticker runs on the background executor, so it is guaranteed to reach
+    /// 1 within `ENTER_MS` regardless of what the compositor does.
+    enter_t: f32,
+    /// True while the enter ticker is armed (panel visible, fade in
+    /// flight or complete). Reset on rail-only so each expand replays the
+    /// enter.
+    enter_armed: bool,
 }
 
 impl WorkspaceView {
@@ -77,6 +89,8 @@ impl WorkspaceView {
             resize_start_width: None,
             focus_composer_pending: false,
             _subs: vec![sub],
+            enter_t: 1.0,
+            enter_armed: false,
         }
     }
 
@@ -349,6 +363,26 @@ impl Render for WorkspaceView {
 
         let visible_w = geometry::visible_content_width(panel_w);
 
+        // T346: arm the content enter when the clip first becomes visible
+        // (rail-only → expanded), reset when it collapses. The ticker
+        // (background executor) guarantees `enter_t` reaches 1 within
+        // ENTER_MS — unlike `with_animation`, whose frame-callback chain
+        // the compositor can stall, leaving the surface at opacity 0.
+        if visible_w > 0.0 {
+            if !self.enter_armed {
+                self.enter_armed = true;
+                if cx.reduce_motion() {
+                    self.enter_t = 1.0;
+                } else {
+                    self.enter_t = 0.0;
+                    crate::motion::arm_enter_progress(cx, |view, t| view.enter_t = t);
+                }
+            }
+        } else {
+            self.enter_armed = false;
+            self.enter_t = 1.0;
+        }
+
         // T278 architect round 2: the Chat child must mirror the VISIBLE
         // slice width (not logical panel_width) on every render — it
         // stays always-alive and is only the active body when
@@ -359,6 +393,13 @@ impl Render for WorkspaceView {
             child.state.width = visible_w.max(crate::side_panel_left::sessions_list::SIDEBAR_MIN_WIDTH);
             child.state.dock_chat = dock;
             child.state.remembered_chat_width = Some(child.state.width);
+            // T346: mirror the visibility so the chat's own enter replays
+            // on each expand — its render only fires while the clip is in
+            // the tree, so it cannot detect the collapse itself.
+            if visible_w <= 0.0 {
+                child.enter_armed = false;
+                child.enter_t = 1.0;
+            }
         });
 
         // T279 / Task 4 — lazy-create the active tab's entity and build
@@ -420,11 +461,14 @@ impl Render for WorkspaceView {
                     .child(self.ensure_shell(active_tab, cx)),
             };
             // T315: enter animation — content slides in from the rail edge.
+            // T346: driven by the view ticker (`enter_t`), not
+            // `with_animation` — the ticker is compositor-independent and
+            // `panel_enter_delta` guarantees an unarmed panel is never at
+            // opacity 0 (see motion.rs).
             Some(
-                el.with_animation(
-                    "side-panel-left-content-enter",
-                    crate::motion::enter_animation(),
-                    crate::motion::apply_enter_from_left,
+                crate::motion::apply_enter_from_left(
+                    el,
+                    crate::motion::panel_enter_delta(self.enter_t, self.enter_armed),
                 )
                 .into_any_element(),
             )

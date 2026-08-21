@@ -21,20 +21,20 @@ packaging (это BACKEND).
 6. **T336** — `T336-resolve-tab-before-ensure.md`. P2. IPC вне mode set
    не спавнит terminal. `view.rs` `on_tab_select`.
 7. **T339** — `T339-wallpaper-next-empty-feedback.md`. P1. Next не молчит.
-8. **T346** — `T346-left-panel-content-never-paints-after-reopen.md`. **P0,
-   вперёд всей очереди.** После первого закрытия левой панели слой
-   `side_panel_left_content` открывается с верной геометрией и рисует ноль
-   пикселей — панель мертва до перезапуска шелла. Сначала диагноз, потом
-   правка; ведущая гипотеза (enter-анимация при `delta=0` → `opacity(0)`)
-   в тикете, на веру не принимать. **Блокирует любой живой смок левой
-   панели.** T345 принят — `chat_view.rs` не трогать.
-9. **T341** — `T341-blur-module-install.md`. P1. Install 45-surface-effects.
+8. **T341** — `T341-blur-module-install.md`. P1. Install 45-surface-effects.
    **Приоритет вырос:** без блюра вся семья попапов — прозрачное стекло,
    а не матовое (видно на кадре T329/02).
-10. **T342** — `T342-surface-alpha-chrome.md`. P1. Alpha на раму/Start.
-    Не `calendar_popup/` (T329 принят).
-11. **T343** — `T343-bar-border-survives-height-hot-reload.md`. P2. `bar/mod.rs`.
+9. **T342** — `T342-surface-alpha-chrome.md`. P1. Alpha на раму/Start.
+   Не `calendar_popup/` (T329 принят).
+10. **T343** — `T343-bar-border-survives-height-hot-reload.md`. P2. `bar/mod.rs`.
     Параллелен T337. T313-хвосты в TBD не трогать.
+
+**T346 ЗАКРЫТ 2026-08-21** — левая панель мертвела после первого закрытия
+(enter-анимация `with_animation` залипала на `opacity(0)` на свежем
+layer-shell окне). Перевели на view-driven тикер (`motion::arm_enter_progress`
++ `panel_enter_delta` — неармленная панель всегда `delta=1`, никогда
+прозрачна), тот же паттерн, что уже несёт `volume_popup`. С этим очередь
+снова по порядку.
 
 **`interactive.active` — плита, а не текст (T340, 2026-08-21):** токен
 задаёт фон выбранного состояния и с T340 стоит под воротами

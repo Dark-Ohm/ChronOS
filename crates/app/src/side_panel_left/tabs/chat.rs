@@ -19,7 +19,7 @@ use gpui::{
     Context, Focusable, Window,
     prelude::*, px,
 };
-use gpui::{AnimationExt, IntoElement, div, svg};
+use gpui::{IntoElement, div, svg};
 use chronos_ui::{Theme, WindowRootExt, elevation_glow_bar};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -115,10 +115,33 @@ pub struct ChatTab {
     /// ACP turn fires once the client connects (ChatTab::new spawn) or
     /// is dropped honestly if connect fails / the agent is switched.
     pub(crate) pending_send: Option<String>,
+    /// T346: chat-body enter-animation progress 0→1, driven by the
+    /// view-driven ticker ([`crate::motion::arm_enter_progress`]) instead
+    /// of `with_animation`'s compositor-frame-callback chain (stallable on
+    /// fresh layer-shell windows → content stranded at opacity 0).
+    /// Re-armed by `WorkspaceView` on every rail-only → visible
+    /// transition (the chat's own render only fires while visible).
+    pub(crate) enter_t: f32,
+    /// True while the enter ticker is armed (panel visible).
+    pub(crate) enter_armed: bool,
 }
 
 impl Render for ChatTab {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // T346: arm the chat-body enter on the first visible render. The
+        // chat only renders while the content window's clip exists
+        // (`visible_w > 0`), so any render here means the panel is on
+        // screen; the ticker is guaranteed to reach 1 on the background
+        // executor (see WorkspaceView for the full rationale).
+        if !self.enter_armed {
+            self.enter_armed = true;
+            if cx.reduce_motion() {
+                self.enter_t = 1.0;
+            } else {
+                self.enter_t = 0.0;
+                crate::motion::arm_enter_progress(cx, |view, t| view.enter_t = t);
+            }
+        }
         // T278: `ChatTab` no longer owns window lifecycle, exclusive
         // zone, width, dock, or resize. Those responsibilities moved to
         // `WorkspaceView` (content canvas) and `RailView` (rail surface).
@@ -424,6 +447,8 @@ impl ChatTab {
             composer_drop_hover: false,
             streaming: state::StreamingState::new(),
             pending_send: None,
+            enter_t: 1.0,
+            enter_armed: false,
         };
 
         // T281 gate 8 — on startup, restore the last valid session of the
@@ -1388,14 +1413,44 @@ pub fn render_panel(
         .overflow_hidden()
         .child(thread_column_with_header);
 
-    // Outer: sole window-level on_hover. Motion is native with_animation on the
-    // shell row (T129) — not gpui_animation transition_when (silent no-op on
-    // fresh layer-shell windows).
+    // Outer: sole window-level on_hover. Motion is the view-driven enter
+    // ticker (T129 heritage) — `gpui_animation transition_when` is a silent
+    // no-op on fresh layer-shell windows, and `with_animation`'s
+    // compositor-frame-callback chain can stall with the panel stuck at
+    // opacity 0 (T346). The ticker runs on the background executor and is
+    // guaranteed to reach 1.
     //
     // T217: round the top corners + clip when either corner is free (bar does
     // not reach it). The window base is transparent, so rounded cutouts show
     // the desktop behind. When both corners are covered (full-width bar) no
     // rounding and no clip — keeps the elevation shadows intact.
+    // T346: the motion div's enter is driven by the view ticker
+    // (`enter_t`), not `with_animation` — the ticker runs on the
+    // background executor and is guaranteed to reach 1, and
+    // `panel_enter_delta` keeps an unarmed panel at full opacity (see
+    // WorkspaceView for the full rationale).
+    let motion_div = div()
+        .id("side-panel-left-motion")
+        .relative()
+        .flex_1()
+        .min_w(px(0.))
+        .h_full()
+        .flex()
+        .flex_row()
+        .child(
+            div()
+                .id("main-content")
+                .flex_1()
+                .min_w(px(0.))
+                .overflow_hidden()
+                .h_full()
+                .flex()
+                .flex_col()
+                // T266: the chat tab's plate follows surface alpha.
+                .bg(theme.surface_color(theme.bg.primary))
+                .shadow(elev.shadows.to_vec())
+                .child(clipped_content),
+        );
     div()
         .id("side-panel-left-root")
         .window_font(&theme)
@@ -1415,40 +1470,15 @@ pub fn render_panel(
                 crate::side_panel_left::schedule_release_peek(cx);
             }
         })
-        .child(
-            div()
-                .id("side-panel-left-motion")
-                .relative()
-                .flex_1()
-                .min_w(px(0.))
-                .h_full()
-                .flex()
-                .flex_row()
-                .child(
-                    div()
-                        .id("main-content")
-                        .flex_1()
-                        .min_w(px(0.))
-                        .overflow_hidden()
-                        .h_full()
-                        .flex()
-                        .flex_col()
-                        // T266: the chat tab's plate follows surface alpha.
-                        .bg(theme.surface_color(theme.bg.primary))
-                        .shadow(elev.shadows.to_vec())
-                        .child(clipped_content),
-                )
-                // T278: the resize handle used to live here. It now lives in
-                // `WorkspaceView` (transparent 4 px grab on the visible
-                // slice's outer edge). The legacy body renders inside the
-                // workspace's input region, which already enforces the
-                // left-aligned visible-rect boundary.
-                .with_animation(
-                    "side-panel-left-enter",
-                    motion::enter_animation(),
-                    motion::apply_enter_from_left,
-                ),
-        )
+        // T278: the resize handle used to live here. It now lives in
+        // `WorkspaceView` (transparent 4 px grab on the visible slice's
+        // outer edge). The legacy body renders inside the workspace's input
+        // region, which already enforces the left-aligned visible-rect
+        // boundary.
+        .child(motion::apply_enter_from_left(
+            motion_div,
+            motion::panel_enter_delta(panel.enter_t, panel.enter_armed),
+        ))
 }
 
 #[cfg(test)]
