@@ -13,15 +13,22 @@ tags: [chronos-ops, back, index]
 
 ## Очередь
 
-1. **T352** — `T352-wallpaper-swaybg-live-verify.md`. P2. Живой Set,
-   проверить потерю картинки на другом мониторе при повторном Set
-   (нет per-monitor реестра в отличие от waytrogen).
-2. **T353** — `T353-wallpaper-gslapper-live-verify.md`. P2. Самый
+1. **T353** — `T353-wallpaper-gslapper-live-verify.md`. P2. Самый
    рискованный — IPC-протокол (спавн/change/restart-на-смене-медиа),
    живьём не подтверждён.
 
-Делать **последовательно**, не параллельно — оба в одном файле
-(`backends.rs`).
+**T352 ЗАКРЫТ 2026-08-22** — живой Set подтверждён на «All» (один
+процесс, оба монитора красные). Point-Set регресс подтверждён живьём в
+обе стороны (Set на DP-1 → HDMI гаснет; Set на HDMI → DP-1 гаснет) —
+ChronOS не портировал waytrogen'овский `SWAYBG_WALLPAPERS`-реестр.
+**Решение архитектора: регресс принят, не чинить** — per-monitor Set
+недостижим ни из одного UI/IPC-пути ChronOS до T350 (галерея с monitor
+picker); канон записан в `checkpoint/REJECTED.md` (2026-08-22, «T352:
+swaybg per-monitor Set теряет картинку…»). Диф — только 2 живых
+`#[ignore]`-теста, продакшн-код не тронут. `cargo test -p
+chronos-services wallpaper` 28/0/3-ignored — перепроверено архитектором,
+включая независимый живой прогон обоих `#[ignore]`-тестов и пиксель-сверку.
+Отчёт — `reports-log/back/T352-wallpaper-swaybg-live-verify-report.md`.
 
 **T351 ЗАКРЫТ 2026-08-22** — `ensure_hyprpaper_daemon()` (lazy bootstrap:
 pidof → `systemctl --user start hyprpaper` → голый спавн → поллинг →

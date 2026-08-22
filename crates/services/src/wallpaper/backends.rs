@@ -616,6 +616,43 @@ mod tests {
         assert!(process_alive("hyprpaper"), "daemon must be alive after Set");
     }
 
+    /// T352 live legs for the point-Set divergence: ChronOS `apply_swaybg`
+    /// restarts ONE process carrying only the current command's monitor, so a
+    /// Set on another monitor drops the first monitor's image (waytrogen
+    /// would rebuild all known `-o` blocks from its registry). Run the two
+    /// tests in order, grimming between, to document the fact.
+    #[test]
+    #[ignore = "drives real swaybg on a live Hyprland session; needs /tmp/t351-red.png"]
+    fn live_apply_swaybg_point_set_dp1() {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        rt.block_on(async {
+            let cmd = WallpaperCommand {
+                path: PathBuf::from("/tmp/t351-red.png"),
+                monitor: Some("DP-1".into()),
+                transition: None,
+            };
+            apply_swaybg(&cmd).await.expect("apply_swaybg DP-1");
+        });
+        std::thread::sleep(Duration::from_millis(700));
+        assert!(process_alive("swaybg"), "swaybg must be alive after Set");
+    }
+
+    #[test]
+    #[ignore = "run after live_apply_swaybg_point_set_dp1; needs /tmp/t351-blue.png"]
+    fn live_apply_swaybg_point_set_hdmi_second() {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        rt.block_on(async {
+            let cmd = WallpaperCommand {
+                path: PathBuf::from("/tmp/t351-blue.png"),
+                monitor: Some("HDMI-A-1".into()),
+                transition: None,
+            };
+            apply_swaybg(&cmd).await.expect("apply_swaybg HDMI-A-1");
+        });
+        std::thread::sleep(Duration::from_millis(700));
+        assert!(process_alive("swaybg"), "swaybg must be alive after Set");
+    }
+
     #[test]
     fn swaybg_argv_all_omits_output_block() {
         let argv = swaybg_argv(None, Path::new("/pics/a.png"), "fill", "#000000");
