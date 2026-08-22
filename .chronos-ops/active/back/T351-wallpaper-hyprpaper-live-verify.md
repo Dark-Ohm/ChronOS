@@ -36,14 +36,17 @@ CLI/сокет. Это самый вероятный источник расхо
 1. Проверить, поднимается ли hyprpaper демон на этой машине:
    `systemctl --user start hyprpaper` (или просто `hyprpaper &` если
    юнита нет — сверить оба пути).
-2. Если `apply_hyprpaper` в `backends.rs` НЕ бутстрапит демон (только шлёт
-   `hyprctl hyprpaper wallpaper`) — решить и реализовать: либо стартовать
-   демон лениво при первом Set на hyprpaper (аналог `ensure_daemon` у
-   awww), либо явно задокументировать, что демон должен быть поднят
-   заранее (`systemctl --user enable --now hyprpaper`) и `apply_hyprpaper`
-   вернёт понятную ошибку, если `hyprctl hyprpaper` не отвечает.
-   **Спросить архитектора, какой вариант**, не решать в одиночку — это
-   меняет UX (тихий bootstrap vs явная ошибка).
+2. **Решено архитектором (2026-08-22): вариант 1, lazy bootstrap.**
+   `apply_hyprpaper` сейчас НЕ бутстрапит демон — только шлёт `hyprctl
+   hyprpaper wallpaper`. Добавить bootstrap на Set: `pidof hyprpaper` →
+   `systemctl --user start hyprpaper` → bare-spawn fallback (голый
+   `hyprpaper &`, если юнита systemd нет) → bounded readiness poll →
+   затем IPC-Set. Зеркалит awww `ensure_daemon_forced` и сам
+   waytrogen-источник (`changers/hyprpaper.rs`, см. T348-отчёт раздел
+   «hyprpaper», абзац «Демон» — pgrep/systemctl/bare-spawn уже описаны
+   там с путём:строкой, портировать оттуда, не изобретать). Zero-config
+   UX — асимметрия «awww поднимается сам, hyprpaper нет» была
+   недосмотром T349, не сознательным решением.
 3. Живой Set на одном мониторе + на «All» (цикл по `hyprctl monitors`,
    `apply_hyprpaper`'s `monitor_names()`) — картинка, не видео (hyprpaper
    не умеет video, `Backend::Hyprpaper.supports_video() == false`).
