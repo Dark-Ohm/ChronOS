@@ -113,6 +113,20 @@ reports, accepts or rejects, and keeps project docs honest.
   surface, propose it as an opt-in trial first, or at minimum flag "you may
   want to live with this for a few minutes before I call it done" instead of
   moving straight to commit.)
+- **`git commit`/`git push` без явного «+» от владельца — НИКОГДА.**
+  (2026-08-22, T351: зафиксировал решение по hyprpaper lazy-bootstrap в
+  тикете и тут же сам закоммитил и запушил, хотя весь остаток той же
+  сессии владелец явно подтверждал каждый push отдельным «+» — привычка
+  из более ранней части сессии, где push шёл по общему разрешению
+  «коммить, без ИИ трейлеров», молча перенеслась на разовые правки уже
+  ПОСЛЕ той серии. Протокол: редактировать/писать файлы можно и нужно
+  сразу, но `git add`/`commit`/`push` — только после явного «+»/«коммить»
+  на КАЖДЫЙ раз, не по инерции предыдущего разрешения в этой же сессии.
+  Готовые незакоммиченные правки — нормальное состояние, ждут владельца.)
+- **Никаких ИИ-трейлеров в коммитах — абсолютный запрет, без исключений**
+  (`Co-Authored-By`/`Assisted-by`/аналоги). Уже было в CLAUDE.md; здесь —
+  как явный пункт дисциплины после 2026-08-22, чтобы не полагаться только
+  на память о правиле из другого файла.
 - Trust a "hide the control when data is empty" pattern from a borrowed
   design convention without checking what THIS backend actually sends.
   (2026-07-23: T109's brief cited zed-thread-view's "selectors are optional
