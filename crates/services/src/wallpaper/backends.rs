@@ -36,6 +36,14 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(3);
 /// gslapper socket poll interval.
 const PROBE_INTERVAL: Duration = Duration::from_millis(25);
 
+/// hyprpaper daemon startup deadline (lazy bootstrap, T351).
+const HYPRPAPER_START_TIMEOUT: Duration = Duration::from_secs(3);
+/// hyprpaper daemon poll interval.
+const HYPRPAPER_PROBE_INTERVAL: Duration = Duration::from_millis(50);
+/// Settle after the hyprpaper process appears: its IPC endpoint needs a beat
+/// before the first `hyprctl hyprpaper` lands (waytrogen settles 200ms too).
+const HYPRPAPER_IPC_SETTLE: Duration = Duration::from_millis(200);
+
 /// mpvpaper pause mode (waytrogen `MpvPaperPauseModes`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MpvpaperPause {
@@ -72,6 +80,18 @@ pub fn hyprpaper_argv(monitor: &str, path: &Path, fit: &str) -> Vec<String> {
         "hyprpaper".to_string(),
         "wallpaper".to_string(),
         format!("{monitor},{},{}", path.display(), fit),
+    ]
+}
+
+/// systemd user-unit start for the persistent hyprpaper daemon — preferred
+/// over a bare spawn so `Restart=on-failure` supervision applies
+/// (architect decision, T351).
+pub fn hyprpaper_systemctl_start_argv() -> Vec<String> {
+    vec![
+        "systemctl".to_string(),
+        "--user".to_string(),
+        "start".to_string(),
+        "hyprpaper".to_string(),
     ]
 }
 
@@ -301,7 +321,65 @@ async fn spawn_argv_detached(argv: &[String]) -> anyhow::Result<()> {
     .map_err(|e| anyhow::anyhow!("wallpaper spawn join error: {e}"))?
 }
 
+/// Lazy-bootstrap the persistent hyprpaper daemon: alive check → systemd user
+/// unit → bare-spawn fallback → bounded readiness poll (architect decision,
+/// T351; waytrogen parity). Blocking — call from `spawn_blocking`.
+fn ensure_hyprpaper_daemon() -> anyhow::Result<()> {
+    if process_alive("hyprpaper") {
+        return Ok(());
+    }
+
+    let argv = hyprpaper_systemctl_start_argv();
+    let unit_started = Command::new(&argv[0])
+        .args(&argv[1..])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+        && wait_for_hyprpaper_process();
+
+    if !unit_started {
+        // No unit on this machine, or the unit came up dead.
+        Command::new("hyprpaper")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| anyhow::anyhow!("failed to spawn hyprpaper daemon: {e}"))?;
+        if !wait_for_hyprpaper_process() {
+            anyhow::bail!("hyprpaper daemon did not come up within {HYPRPAPER_START_TIMEOUT:?}");
+        }
+    }
+
+    info!(
+        "wallpaper: hyprpaper daemon {}",
+        if unit_started {
+            "started via systemctl --user"
+        } else {
+            "spawned directly"
+        }
+    );
+    std::thread::sleep(HYPRPAPER_IPC_SETTLE);
+    Ok(())
+}
+
+fn wait_for_hyprpaper_process() -> bool {
+    let deadline = Instant::now() + HYPRPAPER_START_TIMEOUT;
+    loop {
+        if process_alive("hyprpaper") {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(HYPRPAPER_PROBE_INTERVAL);
+    }
+}
+
 async fn apply_hyprpaper(cmd: &WallpaperCommand) -> anyhow::Result<()> {
+    tokio::task::spawn_blocking(ensure_hyprpaper_daemon)
+        .await
+        .map_err(|e| anyhow::anyhow!("hyprpaper bootstrap join error: {e}"))??;
+
     match &cmd.monitor {
         Some(mon) => {
             let argv = hyprpaper_argv(mon, &cmd.path, HYPRPAPER_FIT);
@@ -504,6 +582,38 @@ mod tests {
                 "DP-1,/pics/a.png,cover",
             ]
         );
+    }
+
+    #[test]
+    fn hyprpaper_systemctl_start_argv_matches_unit_name() {
+        assert_eq!(
+            hyprpaper_systemctl_start_argv(),
+            vec!["systemctl", "--user", "start", "hyprpaper"]
+        );
+    }
+
+    /// T351 live proof of the `Some(monitor)` branch + lazy daemon bootstrap:
+    /// kills any running hyprpaper, applies to one monitor, asserts the daemon
+    /// was raised. Needs a real Hyprland session — hence `#[ignore]`.
+    #[test]
+    #[ignore = "drives the real hyprpaper daemon via hyprctl; needs a live Hyprland session"]
+    fn live_apply_hyprpaper_single_monitor_bootstraps_daemon() {
+        let _ = Command::new("pkill").args(["-x", "hyprpaper"]).status();
+        std::thread::sleep(Duration::from_millis(500));
+        assert!(!process_alive("hyprpaper"), "precondition: daemon dead");
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        rt.block_on(async {
+            let cmd = WallpaperCommand {
+                path: PathBuf::from("/tmp/t351-red.png"),
+                monitor: Some("DP-1".into()),
+                transition: None,
+            };
+            apply_hyprpaper(&cmd)
+                .await
+                .expect("apply_hyprpaper single-monitor");
+        });
+        assert!(process_alive("hyprpaper"), "daemon must be alive after Set");
     }
 
     #[test]

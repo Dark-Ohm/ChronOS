@@ -13,17 +13,27 @@ tags: [chronos-ops, back, index]
 
 ## Очередь
 
-1. **T351** — `T351-wallpaper-hyprpaper-live-verify.md`. P2. Живой Set
-   hyprpaper (демон-bootstrap вопрос архитектору), не только argv-юнит.
-2. **T352** — `T352-wallpaper-swaybg-live-verify.md`. P2. Живой Set,
+1. **T352** — `T352-wallpaper-swaybg-live-verify.md`. P2. Живой Set,
    проверить потерю картинки на другом мониторе при повторном Set
    (нет per-monitor реестра в отличие от waytrogen).
-3. **T353** — `T353-wallpaper-gslapper-live-verify.md`. P2. Самый
+2. **T353** — `T353-wallpaper-gslapper-live-verify.md`. P2. Самый
    рискованный — IPC-протокол (спавн/change/restart-на-смене-медиа),
    живьём не подтверждён.
 
-Делать **последовательно**, не параллельно — все три в одном файле
+Делать **последовательно**, не параллельно — оба в одном файле
 (`backends.rs`).
+
+**T351 ЗАКРЫТ 2026-08-22** — `ensure_hyprpaper_daemon()` (lazy bootstrap:
+pidof → `systemctl --user start hyprpaper` → голый спавн → поллинг →
+200мс settle), решение архитектора (вариант 1) реализовано дословно.
+Попутно найден API-дрейф Hyprland 0.56.2: у hyprpaper из IPC осталась
+ТОЛЬКО `wallpaper mon,path,fit` (preload/listloaded/listactive мертвы) —
+T349-argv уже был на актуальной поверхности, повезло. Архитектор
+перепроверил на ЗАНОВО собранном release-бинаре (чужой был на 32 мин
+старше правки) — живой Set подтверждён и на одном мониторе, и на «All»
+(оба монитора, все открытые поля/углы — красный `srgb(253,0,0)`).
+`cargo test -p chronos-services wallpaper` 28/0/1-ignored. Отчёт —
+`reports-log/back/T351-wallpaper-hyprpaper-live-verify-report.md`.
 
 **T349 ЗАКРЫТ 2026-08-22** — диспетчер: `resolve_backend()` (config
 `~/.config/chronos/wallpaper.toml` → autodetect pidof mpvpaper→gslapper→
